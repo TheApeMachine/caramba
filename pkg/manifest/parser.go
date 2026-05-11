@@ -1,8 +1,8 @@
 package manifest
 
 import (
-	"maps"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,12 +14,21 @@ import (
 var substitutionPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 
 /*
-Parser loads a manifest file, resolves !!include directives and ${var.path} interpolations,
-and returns the decoded document.
+Parser loads a manifest file, resolves include directives and ${var.path}
+interpolations, and returns the decoded document.
 
-Include paths use dot-separated segments relative to the project root, e.g.
+Include paths use dot-separated segments relative to the project root:
 
 	!!include architecture.block.dba  →  <root>/architecture/block/dba.yml
+	!include  architecture.block.dba  →  same (single or double bang both work)
+
+Parameterised includes pass a scoped variable namespace to the included file:
+
+	path: architecture.block.dba
+	variables:
+	  d_model: 512
+
+Inside the included file, those variables are reachable as ${include.d_model}.
 */
 type Parser struct {
 	root string
@@ -152,11 +161,28 @@ func (parser *Parser) nodeToAny(yamlNode *yaml.Node) (any, error) {
 }
 
 /*
-resolveNode walks the yaml.Node tree, handling !!include tags and ${} interpolation.
+resolveNode walks the yaml.Node tree, handling include directives and ${} interpolation.
+
+Two include forms are recognised:
+
+ 1. Scalar with tag ending in "include":
+    !!include architecture.block.dba
+    !include  architecture.block.dba
+
+ 2. Mapping with an "include" key (parameterised form):
+    include: architecture.block.dba
+    variables:
+    d_model: 512
 */
 func (parser *Parser) resolveNode(yamlNode *yaml.Node) (any, error) {
 	if yamlNode.Kind == yaml.ScalarNode && strings.HasSuffix(yamlNode.Tag, "include") {
-		return parser.loadIncludeTarget(yamlNode.Value)
+		return parser.loadIncludeTarget(yamlNode.Value, nil)
+	}
+
+	if yamlNode.Kind == yaml.MappingNode {
+		if dotPath, vars, ok := parser.extractIncludeMapping(yamlNode); ok {
+			return parser.loadIncludeTarget(dotPath, vars)
+		}
 	}
 
 	switch yamlNode.Kind {
@@ -211,9 +237,61 @@ func (parser *Parser) resolveNode(yamlNode *yaml.Node) (any, error) {
 }
 
 /*
-loadIncludeTarget loads a !!include dot-path as YAML and resolves it fully.
+extractIncludeMapping detects a parameterised include mapping of the form:
+
+	include: some.dot.path
+	variables:
+	  key: value
+
+Returns the dot-path, the resolved variables map, and true when found.
 */
-func (parser *Parser) loadIncludeTarget(dotPath string) (any, error) {
+func (parser *Parser) extractIncludeMapping(
+	yamlNode *yaml.Node,
+) (dotPath string, vars map[string]any, ok bool) {
+	rawMap := make(map[string]*yaml.Node, len(yamlNode.Content)/2)
+
+	for pairIndex := 0; pairIndex < len(yamlNode.Content)-1; pairIndex += 2 {
+		key := yamlNode.Content[pairIndex].Value
+		rawMap[key] = yamlNode.Content[pairIndex+1]
+	}
+
+	pathNode, hasInclude := rawMap["include"]
+
+	if !hasInclude || pathNode.Kind != yaml.ScalarNode {
+		return "", nil, false
+	}
+
+	dotPath = pathNode.Value
+	vars = make(map[string]any)
+
+	varsNode, hasVars := rawMap["variables"]
+
+	if !hasVars {
+		return dotPath, vars, true
+	}
+
+	resolved, err := parser.resolveNode(varsNode)
+
+	if err != nil {
+		return "", nil, false
+	}
+
+	varMap, ok := resolved.(map[string]any)
+
+	if !ok {
+		return "", nil, false
+	}
+
+	maps.Copy(vars, varMap)
+
+	return dotPath, vars, true
+}
+
+/*
+loadIncludeTarget loads a dot-path as YAML and resolves it with a child parser
+that inherits current vars plus an "include" namespace for any passed variables.
+*/
+func (parser *Parser) loadIncludeTarget(dotPath string, includeVars map[string]any) (any, error) {
 	relativePath := strings.ReplaceAll(dotPath, ".", string(filepath.Separator)) + ".yml"
 	includedPath := filepath.Join(parser.root, relativePath)
 
@@ -223,7 +301,18 @@ func (parser *Parser) loadIncludeTarget(dotPath string) (any, error) {
 		return nil, err
 	}
 
-	return parser.resolveNode(childNode)
+	child := &Parser{
+		root: parser.root,
+		vars: make(map[string]any, len(parser.vars)+1),
+	}
+
+	maps.Copy(child.vars, parser.vars)
+
+	if len(includeVars) > 0 {
+		child.vars["include"] = includeVars
+	}
+
+	return child.resolveNode(childNode)
 }
 
 /*

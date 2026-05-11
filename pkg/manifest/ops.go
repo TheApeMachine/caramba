@@ -4,7 +4,9 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/activation"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/attention"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/bench"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/convolution"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/data"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/embedding"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/masking"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
@@ -12,12 +14,15 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/positional"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/projection"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/shape"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/train"
 )
 
 func init() {
 	registerActivation()
 	registerAttention()
+	registerBench()
 	registerConvolution()
+	registerData()
 	registerEmbedding()
 	registerMasking()
 	registerMath()
@@ -25,6 +30,7 @@ func init() {
 	registerPositional()
 	registerProjection()
 	registerShape()
+	registerTrain()
 }
 
 func registerActivation() {
@@ -311,6 +317,130 @@ func registerShape() {
 	Register("shape.merge_heads", func(_ map[string]any) (operation.Operation, error) {
 		return shape.NewMergeHeads(), nil
 	})
+}
+
+func registerData() {
+	Register("data.huggingface", func(config map[string]any) (operation.Operation, error) {
+		dataset, _ := config["dataset"].(string)
+		datasetConfig, _ := config["config"].(string)
+
+		if datasetConfig == "" {
+			datasetConfig = "default"
+		}
+
+		split, _ := config["split"].(string)
+
+		if split == "" {
+			split = "train"
+		}
+
+		field, _ := config["field"].(string)
+
+		if field == "" {
+			field = "label"
+		}
+
+		page := intParamDefault(config, "page", 100)
+
+		return data.NewHuggingFace(dataset, datasetConfig, split, field, page), nil
+	})
+}
+
+func registerTrain() {
+	Register("train.loss.mse", func(_ map[string]any) (operation.Operation, error) {
+		return train.NewMSELoss(), nil
+	})
+	Register("train.loss.cross_entropy", func(_ map[string]any) (operation.Operation, error) {
+		return train.NewCrossEntropyLoss(), nil
+	})
+	Register("train.grad.mse", func(_ map[string]any) (operation.Operation, error) {
+		return train.NewMSEGrad(), nil
+	})
+	Register("train.grad.cross_entropy", func(_ map[string]any) (operation.Operation, error) {
+		return train.NewCrossEntropyGrad(), nil
+	})
+	Register("train.optimizer.adam", func(config map[string]any) (operation.Operation, error) {
+		return train.NewAdamStep(
+			floatParamDefault(config, "lr", 1e-3),
+			floatParamDefault(config, "beta1", 0.9),
+			floatParamDefault(config, "beta2", 0.999),
+			floatParamDefault(config, "eps", 1e-8),
+			floatParamDefault(config, "wd", 0),
+		), nil
+	})
+	Register("train.optimizer.adamw", func(config map[string]any) (operation.Operation, error) {
+		return train.NewAdamWStep(
+			floatParamDefault(config, "lr", 1e-3),
+			floatParamDefault(config, "beta1", 0.9),
+			floatParamDefault(config, "beta2", 0.999),
+			floatParamDefault(config, "eps", 1e-8),
+			floatParamDefault(config, "wd", 1e-2),
+		), nil
+	})
+	Register("train.optimizer.sgd", func(config map[string]any) (operation.Operation, error) {
+		return train.NewSGDStep(
+			floatParamDefault(config, "lr", 1e-2),
+			floatParamDefault(config, "momentum", 0),
+			floatParamDefault(config, "wd", 0),
+			boolParam(config, "nesterov"),
+		), nil
+	})
+	Register("train.optimizer.lion", func(config map[string]any) (operation.Operation, error) {
+		return train.NewLionStep(
+			floatParamDefault(config, "lr", 1e-4),
+			floatParamDefault(config, "beta1", 0.9),
+			floatParamDefault(config, "beta2", 0.99),
+			floatParamDefault(config, "wd", 0),
+		), nil
+	})
+	Register("train.optimizer.rmsprop", func(config map[string]any) (operation.Operation, error) {
+		return train.NewRMSPropStep(
+			floatParamDefault(config, "lr", 1e-2),
+			floatParamDefault(config, "alpha", 0.99),
+			floatParamDefault(config, "eps", 1e-8),
+			floatParamDefault(config, "momentum", 0),
+			floatParamDefault(config, "wd", 0),
+		), nil
+	})
+	Register("train.checkpoint.save", func(config map[string]any) (operation.Operation, error) {
+		dir, _ := config["dir"].(string)
+		prefix, _ := config["prefix"].(string)
+
+		return train.NewCheckpointSave(dir, prefix), nil
+	})
+	Register("train.checkpoint.load", func(config map[string]any) (operation.Operation, error) {
+		path, _ := config["path"].(string)
+
+		return train.NewCheckpointLoad(path), nil
+	})
+}
+
+func registerBench() {
+	Register("bench.metric.accuracy", func(_ map[string]any) (operation.Operation, error) {
+		return bench.NewAccuracy(), nil
+	})
+	Register("bench.metric.perplexity", func(_ map[string]any) (operation.Operation, error) {
+		return bench.NewPerplexity(), nil
+	})
+	Register("bench.metric.f1", func(_ map[string]any) (operation.Operation, error) {
+		return bench.NewF1(), nil
+	})
+}
+
+func floatParamDefault(config map[string]any, key string, defaultVal float64) float64 {
+	val, ok := config[key]
+
+	if !ok {
+		return defaultVal
+	}
+
+	f, ok := val.(float64)
+
+	if !ok {
+		return defaultVal
+	}
+
+	return f
 }
 
 func intParam(config map[string]any, key string) int {

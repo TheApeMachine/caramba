@@ -4,7 +4,12 @@
 - THE GOAL IS NOT TO FIND THE QUICKEST ROUTE TO SOLVE A LOCAL ISSUE
 - THE GOAL IS TO FIND SOLUTIONS THAT REMAIN FUTURE PROOF
 - BEFORE ADDING CODE, FIRST THINK ABOUT WHAT YOU COULD REMOVE BY REFACTORING
-- IGNORE THE FIRST TWO SOLUTIONS YOU THINK OF AND LOOK FOR THE BEST SOLUTION, AND DISREGARD FACTORS LIKE COMPLEXITY OF IMPLEMENTATION, TIME-HORIZON, ETC. ALWAYS OPT FOR THE BEST SOLUTION AND DELIVER THE HIGHEST QUALITY, FORGET ABOUT DELIVERY TIME.
+- IGNORE THE FIRST TWO SOLUTIONS YOU THINK OF AT FIRST AND LOOK FOR THE BEST SOLUTION, AND DISREGARD FACTORS LIKE COMPLEXITY OF IMPLEMENTATION, TIME-HORIZON, ETC. ALWAYS OPT FOR THE BEST SOLUTION AND DELIVER THE HIGHEST QUALITY, FORGET ABOUT DELIVERY TIME.
+
+This is a general A.I. research platform, which does not stop at the traditional ML boundaries, but implements what researchers need to quickly iterate on even the most esoteric architectures.
+It is therefor **vital** that anywhere that it makes sense we not only implement a feature in standard Go, but also SIMD/Assembly (avx2, sse2, neon), Metal, Cuda, and XLA.
+We never ever skimp on this, we don't make optimized paths refer back to the non-optimized Go "for now" and we don't allow ourselves any excuses to get out from under it.
+This is the very core of our platform.
 
 ## Clean, Modular, Reusable
 

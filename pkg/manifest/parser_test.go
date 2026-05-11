@@ -59,6 +59,27 @@ func TestParser_Parse(t *testing.T) {
 				So(included["heads"], ShouldEqual, 8)
 			})
 
+			Convey("It should resolve parameterised includes with an include namespace", func() {
+				write("block/ffn.yml", "d_model: ${include.d_model}\nbias: false\n")
+				write("master.yml", "ffn:\n  include: block.ffn\n  variables:\n    d_model: 256\n")
+				document, err := parser.Parse("master.yml")
+				So(err, ShouldBeNil)
+				included, ok := document["ffn"].(map[string]any)
+				So(ok, ShouldBeTrue)
+				So(included["d_model"], ShouldEqual, "256")
+				So(included["bias"], ShouldEqual, false)
+			})
+
+			Convey("It should pass parent vars into parameterised includes", func() {
+				write("block/proj.yml", "out: ${include.dim}\n")
+				write("master.yml", "variables:\n  model:\n    dim: 128\nproj:\n  include: block.proj\n  variables:\n    dim: ${model.dim}\n")
+				document, err := parser.Parse("master.yml")
+				So(err, ShouldBeNil)
+				included, ok := document["proj"].(map[string]any)
+				So(ok, ShouldBeTrue)
+				So(included["out"], ShouldEqual, "128")
+			})
+
 			Convey("It should return an error for a missing file", func() {
 				_, err := parser.Parse("nonexistent.yml")
 				So(err, ShouldNotBeNil)

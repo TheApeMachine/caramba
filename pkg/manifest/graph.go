@@ -154,3 +154,47 @@ func (graph *Graph) gatherInputsForNode(node *Node, state map[string][]float64) 
 
 	return data, nil
 }
+
+/*
+Weights returns the current parameter state of each node, keyed by node ID.
+Nodes whose Operation does not implement Parameterized are skipped.
+*/
+func (graph *Graph) Weights() (map[string][]float64, error) {
+	out := make(map[string][]float64, len(graph.nodes))
+
+	for _, node := range graph.nodes {
+		parameterized, ok := node.Op.(operation.Parameterized)
+
+		if !ok {
+			continue
+		}
+
+		out[node.ID] = parameterized.Params()
+	}
+
+	return out, nil
+}
+
+/*
+LoadWeights restores per-node parameters from a previously saved state map.
+Nodes absent from state are left untouched.
+*/
+func (graph *Graph) LoadWeights(state map[string][]float64) error {
+	for nodeID, params := range state {
+		node, ok := graph.index[nodeID]
+
+		if !ok {
+			continue
+		}
+
+		parameterized, ok := node.Op.(operation.Parameterized)
+
+		if !ok {
+			return fmt.Errorf("graph: node %q is not parameterized", nodeID)
+		}
+
+		parameterized.SetParams(params)
+	}
+
+	return nil
+}
