@@ -99,7 +99,11 @@ func (p *ProjectionOps) Forward(shape []int, data ...[]float64) []float64 {
 	if len(data) >= 3 {
 		bias = data[2]
 	}
-	out, _ := p.Linear(shape, data[1], bias, data[0])
+	out, err := p.Linear(shape, data[1], bias, data[0])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

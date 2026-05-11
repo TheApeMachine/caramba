@@ -7,7 +7,7 @@
 //   - openxla/xla headers on the include path
 //   - Link against the PJRT plugin shared library for your platform.
 
-#include "math.h"
+#include "xla_math.h"
 
 #include <cmath>
 #include <cstdio>
@@ -98,7 +98,8 @@ static int run_exec(PJRT_LoadedExecutable* exec,
     PJRT_LoadedExecutable_Execute_Args xa{};
     xa.struct_size = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
     xa.executable  = exec;
-    xa.options     = nullptr;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    xa.options     = &options;
     PJRT_Buffer* const* arg_lists[1] = { input_bufs.data() };
     xa.argument_lists      = arg_lists;
     xa.num_devices         = 1;
@@ -120,13 +121,13 @@ static int run_exec(PJRT_LoadedExecutable* exec,
     }
 
     // Copy output back
-    PJRT_Buffer_CopyToHostBuffer_Args ca{};
-    ca.struct_size = PJRT_Buffer_CopyToHostBuffer_Args_STRUCT_SIZE;
-    ca.buffer = out_bufs[0];
+    PJRT_Buffer_ToHostBuffer_Args ca{};
+    ca.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
+    ca.src = out_bufs[0];
     ca.dst = out_ptr;
     ca.dst_size = out_size;
     ca.host_layout = nullptr;
-    auto* cerr = gm_api->PJRT_Buffer_CopyToHostBuffer(&ca);
+    auto* cerr = gm_api->PJRT_Buffer_ToHostBuffer(&ca);
     if (!mcheck(gm_api, cerr)) return -1;
     // await copy event
     PJRT_Event_Await_Args ea2{};
@@ -161,13 +162,18 @@ static PJRT_LoadedExecutable* compile_module(const std::string& key,
     auto it = gm_execs.find(key);
     if (it != gm_execs.end()) return it->second;
 
+    PJRT_Program prog{};
+    prog.struct_size = PJRT_Program_STRUCT_SIZE;
+    prog.code        = const_cast<char*>(mlir.c_str());
+    prog.code_size   = mlir.size();
+    prog.format      = "mlir";
+    prog.format_size = 4;
+
     PJRT_Client_Compile_Args ca{};
     ca.struct_size   = PJRT_Client_Compile_Args_STRUCT_SIZE;
     ca.client        = gm_client;
-    ca.program       = mlir.c_str();
-    ca.program_size  = mlir.size();
-    ca.compile_options = nullptr;
-    ca.compile_options_size = 0;
+    ca.program       = &prog;
+    set_single_device_compile_options(&ca);
 
     auto* err = gm_api->PJRT_Client_Compile(&ca);
     if (!mcheck(gm_api, err)) return nullptr;
@@ -182,40 +188,41 @@ static PJRT_LoadedExecutable* compile_module(const std::string& key,
 
 static std::string elementwise_module(const std::string& op, int n) {
     // op: stablehlo op name like "stablehlo.add", "stablehlo.multiply", etc.
-    char buf[1024];
-    snprintf(buf, sizeof(buf),
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+
+    return
         "module @m {"
-        "  func.func @main(%%a: tensor<%df64>, %%b: tensor<%df64>) -> tensor<%df64> {"
-        "    %%r = %s %%a, %%b : tensor<%df64>"
-        "    return %%r : tensor<%df64>"
+        "  func.func @main(%a: " + t + ", %b: " + t + ") -> " + t + " {"
+        "    %r = " + op + " %a, %b : " + t +
+        "    return %r : " + t +
         "  }"
-        "}", n, n, op.c_str(), n, n);
-    return buf;
+        "}";
 }
 
 static std::string unary_module(const std::string& op, int n) {
-    char buf[1024];
-    snprintf(buf, sizeof(buf),
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+
+    return
         "module @m {"
-        "  func.func @main(%%x: tensor<%df64>) -> tensor<%df64> {"
-        "    %%r = %s %%x : tensor<%df64>"
-        "    return %%r : tensor<%df64>"
+        "  func.func @main(%x: " + t + ") -> " + t + " {"
+        "    %r = " + op + " %x : " + t +
+        "    return %r : " + t +
         "  }"
-        "}", n, op.c_str(), n);
-    return buf;
+        "}";
 }
 
 static std::string scale_module(int n, double scale) {
     char buf[2048];
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
     snprintf(buf, sizeof(buf),
         "module @m {"
-        "  func.func @main(%%x: tensor<%df64>) -> tensor<%df64> {"
+        "  func.func @main(%%x: %s) -> %s {"
         "    %%s = stablehlo.constant dense<%.17g> : tensor<f64>"
-        "    %%b = stablehlo.broadcast_in_dim %%s, dims=[] : (tensor<f64>) -> tensor<%df64>"
-        "    %%r = stablehlo.multiply %%x, %%b : tensor<%df64>"
-        "    return %%r : tensor<%df64>"
+        "    %%b = stablehlo.broadcast_in_dim %%s, dims=[] : (tensor<f64>) -> %s"
+        "    %%r = stablehlo.multiply %%x, %%b : %s"
+        "    return %%r : %s"
         "  }"
-        "}", n, scale, n, n);
+        "}", t.c_str(), t.c_str(), scale, t.c_str(), t.c_str(), t.c_str());
     return buf;
 }
 
@@ -236,12 +243,7 @@ int xla_math_init(const char* platform) {
     // Since we can't share statics across TUs easily we do a fresh init.
 
     // Try the PJRT dynamic load approach:
-    std::string plugin;
-    if (std::string(platform) == "cpu") {
-        plugin = "pjrt_c_api_cpu_plugin.so";
-    } else {
-        plugin = "pjrt_c_api_gpu_plugin.so";
-    }
+    std::string plugin = pjrt_plugin_path(platform);
 
 #ifdef __linux__
     void* handle = dlopen(plugin.c_str(), RTLD_NOW | RTLD_LOCAL);
@@ -465,15 +467,22 @@ int xla_outer(const double* a, const double* b, double* dst, int M, int N) {
     char key[64];
     snprintf(key, sizeof(key), "outer_%d_%d", M, N);
     char buf[2048];
+    std::string a_type = "tensor<" + std::to_string(M) + "xf64>";
+    std::string b_type = "tensor<" + std::to_string(N) + "xf64>";
+    std::string out_type = "tensor<" + std::to_string(M) + "x" + std::to_string(N) + "xf64>";
     snprintf(buf, sizeof(buf),
         "module @m {"
-        "  func.func @main(%%a: tensor<%df64>, %%b: tensor<%df64>) -> tensor<%dx%df64> {"
-        "    %%ab = stablehlo.broadcast_in_dim %%a, dims=[0] : (tensor<%df64>) -> tensor<%dx%df64>"
-        "    %%bb = stablehlo.broadcast_in_dim %%b, dims=[1] : (tensor<%df64>) -> tensor<%dx%df64>"
-        "    %%r  = stablehlo.multiply %%ab, %%bb : tensor<%dx%df64>"
-        "    return %%r : tensor<%dx%df64>"
+        "  func.func @main(%%a: %s, %%b: %s) -> %s {"
+        "    %%ab = stablehlo.broadcast_in_dim %%a, dims=[0] : (%s) -> %s"
+        "    %%bb = stablehlo.broadcast_in_dim %%b, dims=[1] : (%s) -> %s"
+        "    %%r  = stablehlo.multiply %%ab, %%bb : %s"
+        "    return %%r : %s"
         "  }"
-        "}", M, M, N, M, M, N, N, M, N, M, N);
+        "}",
+        a_type.c_str(), b_type.c_str(), out_type.c_str(),
+        a_type.c_str(), out_type.c_str(),
+        b_type.c_str(), out_type.c_str(),
+        out_type.c_str(), out_type.c_str());
     auto* exec = compile_module(key, std::string(buf));
     if (!exec) {
         // scalar fallback

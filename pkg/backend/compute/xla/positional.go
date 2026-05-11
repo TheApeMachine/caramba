@@ -11,11 +11,8 @@ package xla
 //
 // Example build:
 //   CGO_CPPFLAGS="-I/path/to/xla" \
-//   CGO_LDFLAGS="-ldl -lstdc++" \
-//   go build -tags "cgo xla" ./backend/compute/xla/
+//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo LDFLAGS: -ldl -lstdc++
 // #include <stdlib.h>
 // #include "positional.h"
 import "C"
@@ -33,8 +30,13 @@ type XLAPositionalOps struct {
 
 // NewPositional initialises the PJRT client for the given platform.
 func NewPositional(platform string) (*XLAPositionalOps, error) {
+	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+		return nil, err
+	}
+
 	cp := C.CString(platform)
 	defer C.free(unsafe.Pointer(cp))
+
 	if rc := C.xla_positional_init(cp); rc != 0 {
 		return nil, fmt.Errorf("xla_positional_init failed for platform %q", platform)
 	}
@@ -162,7 +164,11 @@ func (x *XLAPositionalOps) RoPEForward(base float64, shape []int, data ...[]floa
 
 // Forward dispatches RoPE with the universal signature.
 func (x *XLAPositionalOps) Forward(shape []int, data ...[]float64) []float64 {
-	out, _ := x.RoPEForward(10000.0, shape, data...)
+	out, err := x.RoPEForward(10000.0, shape, data...)
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

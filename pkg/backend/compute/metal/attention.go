@@ -52,7 +52,7 @@ func (m *MetalAttention) Forward(shape []int, data ...[]float64) []float64 {
 			shape[0], shape[1], shape[2], shape[3], shape[4]
 		out, err := m.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
 		if err != nil {
-			return nil
+			panic(err)
 		}
 		return out
 
@@ -65,7 +65,7 @@ func (m *MetalAttention) Forward(shape []int, data ...[]float64) []float64 {
 		if len(data[1]) == kvSize {
 			out, err := m.MQA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
 			if err != nil {
-				return nil
+				panic(err)
 			}
 			return out
 		}
@@ -73,14 +73,14 @@ func (m *MetalAttention) Forward(shape []int, data ...[]float64) []float64 {
 		if m.Window > 0 {
 			out, err := m.SlidingWindow(data[0], data[1], data[2], batch, numHeads, seqLen, headDim, m.Window)
 			if err != nil {
-				return nil
+				panic(err)
 			}
 			return out
 		}
 
 		out, err := m.SDPA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
 		if err != nil {
-			return nil
+			panic(err)
 		}
 		return out
 	}
@@ -111,7 +111,7 @@ func (m *MetalAttention) SDPA(q, k, v []float64, batch, numHeads, seqLen, headDi
 
 // MQA computes multi-query attention (K/V shared across Q heads).
 func (m *MetalAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim int) ([]float64, error) {
-	qn  := batch * numHeads * seqLen * headDim
+	qn := batch * numHeads * seqLen * headDim
 	kvn := batch * 1 * seqLen * headDim
 	if len(q) != qn || len(k) != kvn || len(v) != kvn {
 		return nil, fmt.Errorf("metal_mqa: input length mismatch")
@@ -135,7 +135,7 @@ func (m *MetalAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim
 
 // GQA computes grouped query attention.
 func (m *MetalAttention) GQA(q, k, v []float64, batch, numHeads, numKVHeads, seqLen, headDim int) ([]float64, error) {
-	qn  := batch * numHeads * seqLen * headDim
+	qn := batch * numHeads * seqLen * headDim
 	kvn := batch * numKVHeads * seqLen * headDim
 	if len(q) != qn || len(k) != kvn || len(v) != kvn {
 		return nil, fmt.Errorf("metal_gqa: input length mismatch")

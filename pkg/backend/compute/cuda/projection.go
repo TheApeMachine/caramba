@@ -79,7 +79,11 @@ func (c *CUDAProjection) Forward(shape []int, data ...[]float64) []float64 {
 	if len(data) >= 3 {
 		bias = data[2]
 	}
-	out, _ := c.Linear(shape, data[1], bias, data[0])
+	out, err := c.Linear(shape, data[1], bias, data[0])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

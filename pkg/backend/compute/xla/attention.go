@@ -11,11 +11,8 @@ package xla
 //
 // Example build:
 //   CGO_CPPFLAGS="-I/path/to/xla" \
-//   CGO_LDFLAGS="-ldl -lstdc++" \
-//   go build -tags "cgo xla" ./backend/compute/xla/
+//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo LDFLAGS: -ldl -lstdc++
 // #include <stdlib.h>
 // #include "activation.h"
 // #include "attention.h"
@@ -36,18 +33,18 @@ type XLAAttention struct {
 }
 
 // NewAttention initialises a new XLAAttention for the given platform ("cpu" or "gpu").
-// It reuses the same PJRT client initialised by the activation backend (xla_init).
-// If the client is not yet initialised, call xla.New first.
+// It reuses the shared PJRT client when one already exists.
 func NewAttention(platform string) (*XLAAttention, error) {
-	// Reuse the existing PJRT client if already initialised via xla.New.
-	// If not, attempt to initialise.
+	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+		return nil, err
+	}
+
 	cp := C.CString(platform)
 	defer func() { C.free(unsafe.Pointer(cp)) }()
 
-	// xla_init is idempotent in the sense that if g_client is already set
-	// by activation.go's New(), the attention functions will just use it.
-	// We attempt init; failure is only fatal if g_client is nil.
-	_ = C.xla_init(cp)
+	if rc := C.xla_init(cp); rc != 0 {
+		return nil, fmt.Errorf("xla_init failed for platform %q", platform)
+	}
 
 	return &XLAAttention{platform: platform}, nil
 }
@@ -68,7 +65,7 @@ func (x *XLAAttention) Forward(shape []int, data ...[]float64) []float64 {
 			shape[0], shape[1], shape[2], shape[3], shape[4]
 		out, err := x.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
 		if err != nil {
-			return nil
+			panic(err)
 		}
 		return out
 
@@ -78,20 +75,20 @@ func (x *XLAAttention) Forward(shape []int, data ...[]float64) []float64 {
 		if len(data[1]) == kvSize {
 			out, err := x.MQA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
 			if err != nil {
-				return nil
+				panic(err)
 			}
 			return out
 		}
 		if x.Window > 0 {
 			out, err := x.SlidingWindow(data[0], data[1], data[2], batch, numHeads, seqLen, headDim, x.Window)
 			if err != nil {
-				return nil
+				panic(err)
 			}
 			return out
 		}
 		out, err := x.SDPA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
 		if err != nil {
-			return nil
+			panic(err)
 		}
 		return out
 	}
@@ -119,7 +116,7 @@ func (x *XLAAttention) SDPA(q, k, v []float64, batch, numHeads, seqLen, headDim 
 
 // MQA computes multi-query attention (K/V shared across Q heads per batch).
 func (x *XLAAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim int) ([]float64, error) {
-	qn  := batch * numHeads * seqLen * headDim
+	qn := batch * numHeads * seqLen * headDim
 	kvn := batch * 1 * seqLen * headDim
 	if len(q) != qn || len(k) != kvn || len(v) != kvn {
 		return nil, fmt.Errorf("xla_mqa: input length mismatch")
@@ -140,7 +137,7 @@ func (x *XLAAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim i
 
 // GQA computes grouped query attention.
 func (x *XLAAttention) GQA(q, k, v []float64, batch, numHeads, numKVHeads, seqLen, headDim int) ([]float64, error) {
-	qn  := batch * numHeads * seqLen * headDim
+	qn := batch * numHeads * seqLen * headDim
 	kvn := batch * numKVHeads * seqLen * headDim
 	if len(q) != qn || len(k) != kvn || len(v) != kvn {
 		return nil, fmt.Errorf("xla_gqa: input length mismatch")

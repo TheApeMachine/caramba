@@ -31,7 +31,11 @@ func NewCUDAEmbedding(vocabSize, dModel int) *CUDAEmbedding {
 //
 // Returns []float64 of length batch*seq_len*DModel.
 func (c *CUDAEmbedding) Forward(shape []int, data ...[]float64) []float64 {
-	out, _ := c.TokenEmbedding(data[0], data[1])
+	out, err := c.TokenEmbedding(data[0], data[1])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

@@ -159,6 +159,38 @@ caramba inspect model.cbm
 
 → [Getting Started Guide](./docs/getting-started.md)
 
+## Compute Backends
+
+The compute package is organized around explicit tensor ownership. Backend
+kernels upload values once into a `pkg/backend/compute/tensor.Backend`, keep
+tensors resident in that backend, and only download through an explicit
+`DownloadFloat64` call at a real boundary. Native CPU execution now exposes a
+resident tensor backend for activation, math, and fused matmul+bias(+GELU)
+kernels. CUDA exposes resident device tensors plus device-to-device activation,
+math, and fused linear launches under the CUDA build tags. Metal exposes
+resident `MTLBuffer` tensors plus tensor activation, math, and fused linear
+dispatch once the Metal pipelines are initialized. This is the path for feature
+parity between native Go, SIMD assembly, Metal, CUDA, and XLA without
+reintroducing per-operation host staging.
+
+XLA is built through PJRT and requires real headers and a plugin library in the
+build/runtime environment. With those present, `xla.NewTensorBackend(platform)`
+exposes resident PJRT buffers for activation, elementwise math, matmul, and
+fused matmul+bias(+GELU):
+
+```bash
+export CARAMBA_XLA_INCLUDE_DIR=/path/to/xla
+export CGO_CPPFLAGS="-I${CARAMBA_XLA_INCLUDE_DIR}"
+export CARAMBA_PJRT_CPU_PLUGIN=/path/to/pjrt_c_api_cpu_plugin.so
+# macOS builds can point this at a dylib instead, for example:
+# export CARAMBA_PJRT_CPU_PLUGIN=/usr/local/lib/libpjrt_c_api.dylib
+
+go test -tags "cgo xla" ./pkg/backend/compute/xla
+```
+
+For GPU PJRT, set `CARAMBA_PJRT_GPU_PLUGIN` instead. `CARAMBA_PJRT_PLUGIN`
+remains available when one plugin path should be shared by all XLA callers.
+
 ---
 
 ## Documentation

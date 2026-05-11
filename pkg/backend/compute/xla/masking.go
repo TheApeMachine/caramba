@@ -6,11 +6,8 @@ package xla
 //
 // Build requirements (same as activation.go):
 //   CGO_CPPFLAGS="-I/path/to/xla" \
-//   CGO_LDFLAGS="-ldl -lstdc++" \
-//   go build -tags "cgo xla" ./backend/compute/xla/
+//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo LDFLAGS: -ldl -lstdc++
 // #include <stdlib.h>
 // #include <stdlib.h>
 // #include "masking.h"
@@ -29,6 +26,10 @@ type XLAMasking struct {
 
 // NewMasking initialises the PJRT client for masking operations.
 func NewMasking(platform string) (*XLAMasking, error) {
+	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+		return nil, err
+	}
+
 	cp := C.CString(platform)
 	defer C.free(unsafe.Pointer(cp))
 

@@ -2,6 +2,8 @@
 
 package metal
 
+import computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+
 type MathOps struct{}
 
 func NewMathOps(metallib string) (*MathOps, error) {
@@ -18,6 +20,36 @@ func (m *MathOps) Add(shape []int, data ...[]float64) []float64 {
 
 func (m *MathOps) Mul(shape []int, data ...[]float64) []float64 {
 	panic(errMetalUnavailable)
+}
+
+func (m *MathOps) AddTensor(
+	left, right computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return nil, errMetalUnavailable
+}
+
+func (m *MathOps) MulTensor(
+	left, right computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return nil, errMetalUnavailable
+}
+
+func (m *MathOps) MatmulTensor(
+	left, right computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return nil, errMetalUnavailable
+}
+
+func (m *MathOps) MatmulAddTensor(
+	left, right, bias computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return nil, errMetalUnavailable
+}
+
+func (m *MathOps) MatmulAddGELUTensor(
+	left, right, bias computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return nil, errMetalUnavailable
 }
 
 func (m *MathOps) InvSqrtDimScale(shape []int, data ...[]float64) []float64 {

@@ -5,11 +5,9 @@ package xla
 // XLA projection backend via the PJRT C API.
 //
 // Build requirements (same as activation.go):
-//   CGO_CPPFLAGS="-I/path/to/xla" CGO_LDFLAGS="-ldl -lstdc++"
-//   go build -tags "cgo xla" ./backend/compute/xla/
+//   CGO_CPPFLAGS="-I/path/to/xla"
+//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo LDFLAGS: -ldl -lstdc++
 // #include <stdlib.h>
 // #include "projection.h"
 import "C"
@@ -29,6 +27,10 @@ type XLAProjection struct {
 // NewXLAProjection initialises the PJRT projection client.
 // Call xla.New(platform) for the activation client first; this reuses globals.
 func NewXLAProjection(platform string) (*XLAProjection, error) {
+	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+		return nil, err
+	}
+
 	cp := C.CString(platform)
 	defer C.free(unsafe.Pointer(cp))
 
@@ -99,7 +101,11 @@ func (x *XLAProjection) Forward(shape []int, data ...[]float64) []float64 {
 	if len(data) >= 3 {
 		bias = data[2]
 	}
-	out, _ := x.Linear(shape, data[1], bias, data[0])
+	out, err := x.Linear(shape, data[1], bias, data[0])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

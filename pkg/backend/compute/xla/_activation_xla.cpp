@@ -16,6 +16,7 @@
 #include <cstring>
 #include <unordered_map>
 #include <string>
+#include <vector>
 
 // PJRT C API header from the XLA distribution.
 // Adjust the include path to match your XLA installation.
@@ -27,6 +28,8 @@
 
 const PJRT_Api*        g_api     = nullptr;
 PJRT_Client*           g_client  = nullptr;
+PJRT_Device*           g_device  = nullptr;
+PJRT_Memory*           g_memory  = nullptr;
 
 // one cached dlopen handle for the PJRT plugin (closed in xla_shutdown).
 static void* g_plugin_handle = nullptr;
@@ -62,6 +65,53 @@ static bool check(const PJRT_Api* api, PJRT_Error* err, const char* ctx) {
 }
 
 // ---------------------------------------------------------------------------
+// Compile options
+// ---------------------------------------------------------------------------
+
+static const char k_single_device_compile_options[] = {
+    // CompileOptionsProto.executable_build_options = {
+    //   num_replicas = 1,
+    //   num_partitions = 1,
+    // }
+    //
+    // PJRT_Client_Compile expects a serialized xla.CompileOptionsProto. The
+    // proto3 zero value decodes to zero replicas and zero partitions, which
+    // makes the CPU plugin abort while building its default device assignment.
+    0x1a, 0x04, 0x20, 0x01, 0x28, 0x01,
+};
+
+static void set_single_device_compile_options(PJRT_Client_Compile_Args* args) {
+    args->compile_options = k_single_device_compile_options;
+    args->compile_options_size = sizeof(k_single_device_compile_options);
+}
+
+static PJRT_ExecuteOptions single_device_execute_options() {
+    PJRT_ExecuteOptions options{};
+    options.struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
+    options.use_major_to_minor_data_layout_for_callbacks = true;
+
+    return options;
+}
+
+static bool await_and_destroy_event(PJRT_Event* event, const char* context) {
+    if (!event) return true;
+
+    PJRT_Event_Await_Args await_args{};
+    await_args.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
+    await_args.event = event;
+
+    PJRT_Error* err = g_api->PJRT_Event_Await(&await_args);
+    bool ok = check(g_api, err, context);
+
+    PJRT_Event_Destroy_Args destroy_args{};
+    destroy_args.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+    destroy_args.event = event;
+    g_api->PJRT_Event_Destroy(&destroy_args);
+
+    return ok;
+}
+
+// ---------------------------------------------------------------------------
 // Platform plugin loader
 // ---------------------------------------------------------------------------
 
@@ -70,23 +120,136 @@ static bool check(const PJRT_Api* api, PJRT_Error* err, const char* ctx) {
 
 typedef const PJRT_Api* (*GetPjrtApiFn)();
 
-static const PJRT_Api* load_pjrt_plugin(const char* platform) {
-    char path[256];
-    if (strcmp(platform, "gpu") == 0) {
-        snprintf(path, sizeof(path), "pjrt_c_api_gpu_plugin.so");
-    } else {
-        snprintf(path, sizeof(path), "pjrt_c_api_cpu_plugin.so");
+static const char* pjrt_platform_plugin_env(const char* platform) {
+    if (strcmp(platform, "gpu") == 0 || strcmp(platform, "cuda") == 0) {
+        return "CARAMBA_PJRT_GPU_PLUGIN";
     }
 
-    void* handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+    return "CARAMBA_PJRT_CPU_PLUGIN";
+}
+
+static bool pjrt_file_exists(const std::string& path) {
+    FILE* file = std::fopen(path.c_str(), "rb");
+
+    if (!file) return false;
+
+    std::fclose(file);
+    return true;
+}
+
+static bool pjrt_contains_path(const std::vector<std::string>& paths, const std::string& path) {
+    for (const std::string& existing : paths) {
+        if (existing == path) return true;
+    }
+
+    return false;
+}
+
+static char pjrt_path_separator() {
+#ifdef _WIN32
+    return ';';
+#else
+    return ':';
+#endif
+}
+
+static void pjrt_append_library_dirs(std::vector<std::string>& dirs, const char* env_name) {
+    const char* raw_value = std::getenv(env_name);
+
+    if (!raw_value || raw_value[0] == '\0') return;
+
+    std::string value(raw_value);
+    size_t start = 0;
+    char separator = pjrt_path_separator();
+
+    while (start <= value.size()) {
+        size_t end = value.find(separator, start);
+        std::string dir = value.substr(start, end == std::string::npos ? std::string::npos : end - start);
+
+        if (!dir.empty() && !pjrt_contains_path(dirs, dir)) {
+            dirs.push_back(dir);
+        }
+
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+}
+
+static std::vector<std::string> pjrt_library_dirs() {
+    std::vector<std::string> dirs;
+    pjrt_append_library_dirs(dirs, "CARAMBA_PJRT_LIBRARY_DIR");
+    pjrt_append_library_dirs(dirs, "LD_LIBRARY_PATH");
+    pjrt_append_library_dirs(dirs, "DYLD_LIBRARY_PATH");
+    return dirs;
+}
+
+static std::vector<std::string> pjrt_plugin_names(const char* platform) {
+    if (strcmp(platform, "gpu") == 0 || strcmp(platform, "cuda") == 0) {
+        return {
+            "pjrt_c_api_gpu_plugin.so",
+            "pjrt_c_api_gpu_plugin.dylib",
+        };
+    }
+
+    return {
+        "pjrt_c_api_cpu_plugin.so",
+        "pjrt_c_api_cpu_plugin.dylib",
+    };
+}
+
+static std::string pjrt_join_path(const std::string& dir, const std::string& file) {
+    if (dir.empty()) return file;
+
+    char last = dir[dir.size() - 1];
+
+    if (last == '/' || last == '\\') return dir + file;
+
+    return dir + "/" + file;
+}
+
+static std::string pjrt_plugin_path(const char* platform) {
+    const char* platform_path = std::getenv(pjrt_platform_plugin_env(platform));
+    if (platform_path && platform_path[0] != '\0') {
+        return std::string(platform_path);
+    }
+
+    const char* generic_path = std::getenv("CARAMBA_PJRT_PLUGIN");
+    if (generic_path && generic_path[0] != '\0') {
+        return std::string(generic_path);
+    }
+
+    const char* legacy_path = std::getenv("PJRT_PLUGIN_PATH");
+    if (legacy_path && legacy_path[0] != '\0') {
+        return std::string(legacy_path);
+    }
+
+    std::vector<std::string> plugin_names = pjrt_plugin_names(platform);
+
+    for (const std::string& library_dir : pjrt_library_dirs()) {
+        for (const std::string& plugin_name : plugin_names) {
+            std::string candidate = pjrt_join_path(library_dir, plugin_name);
+
+            if (pjrt_file_exists(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    return plugin_names[0];
+}
+
+static const PJRT_Api* load_pjrt_plugin(const char* platform) {
+    std::string path = pjrt_plugin_path(platform);
+
+    void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
     if (!handle) {
-        fprintf(stderr, "XLA: failed to dlopen %s: %s\n", path, dlerror());
+        fprintf(stderr, "XLA: failed to dlopen %s: %s\n", path.c_str(), dlerror());
         return nullptr;
     }
 
     auto get_api = (GetPjrtApiFn)dlsym(handle, "GetPjrtApi");
     if (!get_api) {
-        fprintf(stderr, "XLA: GetPjrtApi not found in %s\n", path);
+        fprintf(stderr, "XLA: GetPjrtApi not found in %s\n", path.c_str());
         dlclose(handle);
         return nullptr;
     }
@@ -94,6 +257,28 @@ static const PJRT_Api* load_pjrt_plugin(const char* platform) {
     const PJRT_Api* api = get_api();
     if (!api) {
         fprintf(stderr, "XLA: GetPjrtApi returned null\n");
+        dlclose(handle);
+        return nullptr;
+    }
+
+    if (api->pjrt_api_version.major_version != PJRT_API_MAJOR) {
+        fprintf(stderr,
+                "XLA: PJRT API major mismatch, plugin=%d header=%d\n",
+                api->pjrt_api_version.major_version, PJRT_API_MAJOR);
+        dlclose(handle);
+        return nullptr;
+    }
+
+    if (!api->PJRT_Plugin_Initialize) {
+        fprintf(stderr, "XLA: PJRT plugin does not expose PJRT_Plugin_Initialize\n");
+        dlclose(handle);
+        return nullptr;
+    }
+
+    PJRT_Plugin_Initialize_Args init_args{};
+    init_args.struct_size = PJRT_Plugin_Initialize_Args_STRUCT_SIZE;
+    PJRT_Error* err = api->PJRT_Plugin_Initialize(&init_args);
+    if (!check(api, err, "PJRT_Plugin_Initialize")) {
         dlclose(handle);
         return nullptr;
     }
@@ -113,7 +298,7 @@ static const PJRT_Api* load_pjrt_plugin(const char* platform) {
 static PJRT_LoadedExecutable* compile_stablehlo(const std::string& mlir_text) {
     PJRT_Program prog{};
     prog.struct_size = PJRT_Program_STRUCT_SIZE;
-    prog.code        = mlir_text.c_str();
+    prog.code        = const_cast<char*>(mlir_text.c_str());
     prog.code_size   = mlir_text.size();
     prog.format      = "mlir";
     prog.format_size = 4;
@@ -122,9 +307,7 @@ static PJRT_LoadedExecutable* compile_stablehlo(const std::string& mlir_text) {
     ca.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
     ca.client      = g_client;
     ca.program     = &prog;
-    // Compile options: leave as default (no serialized options).
-    ca.compile_options      = nullptr;
-    ca.compile_options_size = 0;
+    set_single_device_compile_options(&ca);
 
     PJRT_Error* err = g_api->PJRT_Client_Compile(&ca);
     if (!check(g_api, err, "PJRT_Client_Compile")) return nullptr;
@@ -166,7 +349,7 @@ static std::string build_leaky_relu(int n, double alpha) {
         "    %alpha = stablehlo.constant dense<" + abuf + "> : " + t + "\n"
         "    %scaled = stablehlo.multiply %arg0, %alpha : " + t + "\n"
         "    %mask   = stablehlo.compare GT, %arg0, %zero, TOTALORDER : ("+t+","+t+") -> tensor<"+std::to_string(n)+"xi1>\n"
-        "    %out    = stablehlo.select %mask, %arg0, %scaled : tensor<"+std::to_string(n)+"xi1>, "+t+", "+t+"\n"
+        "    %out    = stablehlo.select %mask, %arg0, %scaled : (tensor<"+std::to_string(n)+"xi1>, "+t+", "+t+") -> "+t+"\n"
         "    return %out : " + t + "\n"
         "  }\n"
         "}\n";
@@ -248,16 +431,26 @@ static int run_executable(
     const double* src, int src_n,
     double* dst,       int dst_n)
 {
+    std::vector<double> host_values;
+
+    if (src_n > 0) {
+        if (!src) return -1;
+
+        host_values.assign(src, src + src_n);
+    }
+
     // --- Create input buffer ---
     PJRT_Client_BufferFromHostBuffer_Args ba{};
     ba.struct_size = PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE;
     ba.client      = g_client;
-    ba.data        = src;
+    ba.data        = host_values.empty() ? nullptr : host_values.data();
     ba.type        = PJRT_Buffer_Type_F64;
     int64_t dims[1] = { (int64_t)src_n };
     ba.dims        = dims;
     ba.num_dims    = 1;
     ba.host_buffer_semantics = PJRT_HostBufferSemantics_kImmutableOnlyDuringCall;
+    ba.device      = g_device;
+    ba.memory      = g_memory;
 
     PJRT_Error* err = g_api->PJRT_Client_BufferFromHostBuffer(&ba);
     if (!check(g_api, err, "BufferFromHostBuffer")) return -1;
@@ -271,6 +464,11 @@ static int run_executable(
         da.buffer = b;
         g_api->PJRT_Buffer_Destroy(&da);
     };
+
+    if (!await_and_destroy_event(ba.done_with_host_buffer, "Event_Await(host buffer)")) {
+        destroy_buf(in_buf);
+        return -1;
+    }
 
     // Wait for transfer to complete.
     {
@@ -307,7 +505,8 @@ static int run_executable(
     ea.num_devices        = 1;
     ea.num_args           = 1;
     ea.output_lists       = out_list;
-    ea.execute_options    = nullptr;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options = &options;
 
     err = g_api->PJRT_LoadedExecutable_Execute(&ea);
     if (!check(g_api, err, "Execute")) {
@@ -358,6 +557,8 @@ static int run_executable(
 extern "C" {
 
 int xla_init(const char* platform) {
+    if (g_client) return 0;
+
     g_api = load_pjrt_plugin(platform);
     if (!g_api) return -1;
 
@@ -368,6 +569,28 @@ int xla_init(const char* platform) {
     if (!check(g_api, err, "PJRT_Client_Create")) return -1;
 
     g_client = ca.client;
+
+    PJRT_Client_AddressableDevices_Args da{};
+    da.struct_size = PJRT_Client_AddressableDevices_Args_STRUCT_SIZE;
+    da.client = g_client;
+    err = g_api->PJRT_Client_AddressableDevices(&da);
+    if (!check(g_api, err, "PJRT_Client_AddressableDevices")) return -1;
+    if (da.num_addressable_devices == 0 || !da.addressable_devices) {
+        fprintf(stderr, "XLA: PJRT client returned no addressable devices\n");
+        return -1;
+    }
+
+    g_device = da.addressable_devices[0];
+
+    PJRT_Client_AddressableMemories_Args ma{};
+    ma.struct_size = PJRT_Client_AddressableMemories_Args_STRUCT_SIZE;
+    ma.client = g_client;
+    err = g_api->PJRT_Client_AddressableMemories(&ma);
+    if (!check(g_api, err, "PJRT_Client_AddressableMemories")) return -1;
+    if (ma.num_addressable_memories > 0 && ma.addressable_memories) {
+        g_memory = ma.addressable_memories[0];
+    }
+
     return 0;
 }
 
@@ -473,6 +696,8 @@ void xla_shutdown(void) {
 
     g_compiled_n = 0;
     g_api        = nullptr;
+    g_device     = nullptr;
+    g_memory     = nullptr;
 
     if (g_plugin_handle) {
         dlclose(g_plugin_handle);

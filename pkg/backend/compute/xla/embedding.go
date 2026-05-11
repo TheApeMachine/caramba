@@ -11,11 +11,8 @@ package xla
 //
 // Example build:
 //   CGO_CPPFLAGS="-I/path/to/xla" \
-//   CGO_LDFLAGS="-ldl -lstdc++" \
-//   go build -tags "cgo xla" ./backend/compute/xla/
+//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo LDFLAGS: -ldl -lstdc++
 // #include <stdlib.h>
 // #include "embedding.h"
 import "C"
@@ -35,6 +32,10 @@ type XLAEmbedding struct {
 // NewXLAEmbedding initialises the PJRT client for the given platform
 // ("cpu" or "gpu") and stores the embedding dimensions.
 func NewXLAEmbedding(platform string, vocabSize, dModel int) (*XLAEmbedding, error) {
+	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+		return nil, err
+	}
+
 	cp := C.CString(platform)
 	defer C.free(unsafe.Pointer(cp))
 
@@ -57,7 +58,11 @@ func (x *XLAEmbedding) Shutdown() {
 //
 // Returns []float64 of length batch*seq_len*DModel.
 func (x *XLAEmbedding) Forward(shape []int, data ...[]float64) []float64 {
-	out, _ := x.TokenEmbedding(data[0], data[1])
+	out, err := x.TokenEmbedding(data[0], data[1])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

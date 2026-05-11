@@ -60,20 +60,15 @@ static bool emb_check(const PJRT_Api* api, PJRT_Error* err, const char* ctx) {
 typedef const PJRT_Api* (*GetPjrtApiFn)();
 
 static const PJRT_Api* emb_load_plugin(const char* platform) {
-    char path[256];
-    if (strcmp(platform, "gpu") == 0) {
-        snprintf(path, sizeof(path), "pjrt_c_api_gpu_plugin.so");
-    } else {
-        snprintf(path, sizeof(path), "pjrt_c_api_cpu_plugin.so");
-    }
-    void* handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+    std::string path = pjrt_plugin_path(platform);
+    void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
     if (!handle) {
-        fprintf(stderr, "XLA embedding: failed to dlopen %s: %s\n", path, dlerror());
+        fprintf(stderr, "XLA embedding: failed to dlopen %s: %s\n", path.c_str(), dlerror());
         return nullptr;
     }
     auto get_api = (GetPjrtApiFn)dlsym(handle, "GetPjrtApi");
     if (!get_api) {
-        fprintf(stderr, "XLA embedding: GetPjrtApi not found in %s\n", path);
+        fprintf(stderr, "XLA embedding: GetPjrtApi not found in %s\n", path.c_str());
         return nullptr;
     }
     return get_api();
@@ -124,18 +119,18 @@ static std::string build_token_embedding(int n, int d_model, int vocab_size) {
 // ---------------------------------------------------------------------------
 
 static PJRT_LoadedExecutable* emb_compile(const std::string& mlir_text) {
+    PJRT_Program prog{};
+    prog.struct_size = PJRT_Program_STRUCT_SIZE;
+    prog.code        = const_cast<char*>(mlir_text.c_str());
+    prog.code_size   = mlir_text.size();
+    prog.format      = "mlir";
+    prog.format_size = 4;
+
     PJRT_Client_Compile_Args ca{};
     ca.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
     ca.client      = g_emb_client;
-    ca.program      = &(PJRT_Program{
-        .struct_size = PJRT_Program_STRUCT_SIZE,
-        .code        = mlir_text.c_str(),
-        .code_size   = mlir_text.size(),
-        .format      = "mlir",
-        .format_size = 4,
-    });
-    ca.compile_options      = nullptr;
-    ca.compile_options_size = 0;
+    ca.program      = &prog;
+    set_single_device_compile_options(&ca);
 
     PJRT_Error* err = g_emb_api->PJRT_Client_Compile(&ca);
     if (!emb_check(g_emb_api, err, "PJRT_Client_Compile(embedding)")) return nullptr;
@@ -225,7 +220,7 @@ static PJRT_Buffer* make_token_buffer(const double* tokens, int n) {
     return ba.buffer;
 }
 
-static void destroy_buffer(PJRT_Buffer* b) {
+static void emb_destroy_buffer(PJRT_Buffer* b) {
     if (!b) return;
     PJRT_Buffer_Destroy_Args da{};
     da.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
@@ -291,7 +286,7 @@ int xla_token_embedding(
     if (!buf_weight) return -1;
 
     PJRT_Buffer* buf_tokens = make_token_buffer(tokens, n);
-    if (!buf_tokens) { destroy_buffer(buf_weight); return -1; }
+    if (!buf_tokens) { emb_destroy_buffer(buf_weight); return -1; }
 
     // Execute.
     PJRT_Buffer* in_list[2]   = { buf_weight, buf_tokens };
@@ -305,12 +300,13 @@ int xla_token_embedding(
     ea.num_devices     = 1;
     ea.num_args        = 2;
     ea.output_lists    = out_list;
-    ea.execute_options = nullptr;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options = &options;
 
     PJRT_Error* err = g_emb_api->PJRT_LoadedExecutable_Execute(&ea);
     if (!emb_check(g_emb_api, err, "Execute(embedding)")) {
-        destroy_buffer(buf_weight);
-        destroy_buffer(buf_tokens);
+        emb_destroy_buffer(buf_weight);
+        emb_destroy_buffer(buf_tokens);
         return -1;
     }
 
@@ -325,9 +321,9 @@ int xla_token_embedding(
 
     err = g_emb_api->PJRT_Buffer_ToHostBuffer(&tha);
     if (!emb_check(g_emb_api, err, "ToHostBuffer(embedding)")) {
-        destroy_buffer(buf_weight);
-        destroy_buffer(buf_tokens);
-        destroy_buffer(out_buf);
+        emb_destroy_buffer(buf_weight);
+        emb_destroy_buffer(buf_tokens);
+        emb_destroy_buffer(out_buf);
         return -1;
     }
 
@@ -342,9 +338,9 @@ int xla_token_embedding(
     eda.event = tha.event;
     g_emb_api->PJRT_Event_Destroy(&eda);
 
-    destroy_buffer(buf_weight);
-    destroy_buffer(buf_tokens);
-    destroy_buffer(out_buf);
+    emb_destroy_buffer(buf_weight);
+    emb_destroy_buffer(buf_tokens);
+    emb_destroy_buffer(out_buf);
     return 0;
 }
 

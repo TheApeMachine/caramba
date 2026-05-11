@@ -41,7 +41,11 @@ func NewEmbeddingOps(metallib string, vocabSize, dModel int) (*EmbeddingOps, err
 //
 // Returns []float64 of length batch*seq_len*DModel.
 func (e *EmbeddingOps) Forward(shape []int, data ...[]float64) []float64 {
-	out, _ := e.TokenEmbedding(data[0], data[1])
+	out, err := e.TokenEmbedding(data[0], data[1])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

@@ -8,6 +8,8 @@ DATA ·sigHalf_amd64+0(SB)/8, $0.5
 GLOBL ·sigHalf_amd64(SB), RODATA, $8
 DATA ·sigOne_amd64+0(SB)/8, $1.0
 GLOBL ·sigOne_amd64(SB), RODATA, $8
+DATA ·sigNegOne_amd64+0(SB)/8, $-1.0
+GLOBL ·sigNegOne_amd64(SB), RODATA, $8
 
 // SigmoidAVX2(dst, src []float64)
 // ABI0: dst+0(FP)=ptr, src_base+24(FP)=ptr, src_len+32(FP)=len
@@ -26,6 +28,8 @@ TEXT ·SigmoidAVX2(SB), NOSPLIT, $0-48
 	VBROADCASTSD X12, Y12
 	VMOVSD ·sigOne_amd64(SB), X13
 	VBROADCASTSD X13, Y13
+	VMOVSD ·sigNegOne_amd64(SB), X14
+	VBROADCASTSD X14, Y14
 
 loop:
 	VMOVUPD (DI), Y0
@@ -36,6 +40,8 @@ loop:
 	VADDPD Y10, Y4, Y4           // 27+9*(x/2)^2
 	VMULPD Y1, Y3, Y5            // (x/2)*(27+(x/2)^2)
 	VDIVPD Y4, Y5, Y6            // tanh(x/2)
+	VMINPD Y13, Y6, Y6
+	VMAXPD Y14, Y6, Y6
 	VADDPD Y13, Y6, Y6           // 1+tanh
 	VMULPD Y12, Y6, Y6           // 0.5*(1+tanh)
 	VMOVUPD Y6, (AX)

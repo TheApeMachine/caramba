@@ -5,9 +5,11 @@ package math
 import "golang.org/x/sys/cpu"
 
 var useAVX2 bool
+var useFMA bool
 
 func init() {
 	useAVX2 = cpu.X86.HasAVX2
+	useFMA = cpu.X86.HasFMA
 }
 
 //go:noescape
@@ -53,56 +55,136 @@ func reduceSumSqAVX2(a []float64) float64
 func reduceSumSqSSE2(a []float64) float64
 
 func reduceSum(a []float64) float64 {
+	limit := alignedLen(len(a))
+	sum := 0.0
+
 	if useAVX2 {
-		return reduceSumAVX2(a)
+		if limit > 0 {
+			sum = reduceSumAVX2(a[:limit])
+		}
+	} else if limit > 0 {
+		sum = reduceSumSSE2(a[:limit])
 	}
-	return reduceSumSSE2(a)
+
+	for _, value := range a[limit:] {
+		sum += value
+	}
+
+	return sum
 }
 
 func reduceMax(a []float64) float64 {
-	if useAVX2 {
-		return reduceMaxAVX2(a)
+	if len(a) == 0 {
+		return 0
 	}
-	return reduceMaxSSE2(a)
+
+	limit := alignedLen(len(a))
+	start := limit
+	var maxValue float64
+
+	if useAVX2 {
+		if limit > 0 {
+			maxValue = reduceMaxAVX2(a[:limit])
+		}
+	} else if limit > 0 {
+		maxValue = reduceMaxSSE2(a[:limit])
+	}
+
+	if limit == 0 {
+		maxValue = a[0]
+		start = 1
+	}
+
+	for _, value := range a[start:] {
+		if value > maxValue {
+			maxValue = value
+		}
+	}
+
+	return maxValue
 }
 
 func divScalar(dst []float64, s float64) {
+	limit := alignedLen(len(dst))
+
 	if useAVX2 {
-		divScalarAVX2(dst, s)
-	} else {
-		divScalarSSE2(dst, s)
+		if limit > 0 {
+			divScalarAVX2(dst[:limit], s)
+		}
+	} else if limit > 0 {
+		divScalarSSE2(dst[:limit], s)
+	}
+
+	for index := limit; index < len(dst); index++ {
+		dst[index] /= s
 	}
 }
 
 func addVec(dst, a, b []float64) {
+	limit := alignedLen(len(a))
+
 	if useAVX2 {
-		addVecAVX2(dst, a, b)
-	} else {
-		addVecSSE2(dst, a, b)
+		if limit > 0 {
+			addVecAVX2(dst[:limit], a[:limit], b[:limit])
+		}
+	} else if limit > 0 {
+		addVecSSE2(dst[:limit], a[:limit], b[:limit])
+	}
+
+	for index := limit; index < len(a); index++ {
+		dst[index] = a[index] + b[index]
 	}
 }
 
 func mulVec(dst, a, b []float64) {
+	limit := alignedLen(len(a))
+
 	if useAVX2 {
-		mulVecAVX2(dst, a, b)
-	} else {
-		mulVecSSE2(dst, a, b)
+		if limit > 0 {
+			mulVecAVX2(dst[:limit], a[:limit], b[:limit])
+		}
+	} else if limit > 0 {
+		mulVecSSE2(dst[:limit], a[:limit], b[:limit])
+	}
+
+	for index := limit; index < len(a); index++ {
+		dst[index] = a[index] * b[index]
 	}
 }
 
 func mulScalar(dst []float64, s float64) {
+	limit := alignedLen(len(dst))
+
 	if useAVX2 {
-		mulScalarAVX2(dst, s)
-	} else {
-		mulScalarSSE2(dst, s)
+		if limit > 0 {
+			mulScalarAVX2(dst[:limit], s)
+		}
+	} else if limit > 0 {
+		mulScalarSSE2(dst[:limit], s)
+	}
+
+	for index := limit; index < len(dst); index++ {
+		dst[index] *= s
 	}
 }
 
 func reduceSumSq(a []float64) float64 {
+	limit := alignedLen(len(a))
+	sum := 0.0
+
 	if useAVX2 {
-		return reduceSumSqAVX2(a)
+		if limit > 0 {
+			sum = reduceSumSqAVX2(a[:limit])
+		}
+	} else if limit > 0 {
+		sum = reduceSumSqSSE2(a[:limit])
 	}
-	return reduceSumSqSSE2(a)
+
+	for _, value := range a[limit:] {
+		sum += value * value
+	}
+
+	return sum
 }
 
 //go:noescape
@@ -118,34 +200,30 @@ func outerRowAVX2(dst, b []float64, scale float64)
 func outerRowSSE2(dst, b []float64, scale float64)
 
 func signVec(dst, src []float64) {
-	n := len(src)
-	stride := 4
-	if !useAVX2 {
-		stride = 2
-		signVecSSE2(dst, src)
-	} else {
-		signVecAVX2(dst, src)
-	}
-	for i := (n / stride) * stride; i < n; i++ {
+	for i := range src {
 		switch {
 		case src[i] > 0:
 			dst[i] = 1
 		case src[i] < 0:
 			dst[i] = -1
+		default:
+			dst[i] = 0
 		}
 	}
 }
 
 func outerRow(dst, b []float64, scale float64) {
-	n := len(b)
-	stride := 4
-	if !useAVX2 {
-		stride = 2
-		outerRowSSE2(dst, b, scale)
-	} else {
-		outerRowAVX2(dst, b, scale)
+	limit := alignedLen(len(b))
+
+	if useAVX2 {
+		if limit > 0 {
+			outerRowAVX2(dst[:limit], b[:limit], scale)
+		}
+	} else if limit > 0 {
+		outerRowSSE2(dst[:limit], b[:limit], scale)
 	}
-	for i := (n / stride) * stride; i < n; i++ {
+
+	for i := limit; i < len(b); i++ {
 		dst[i] = scale * b[i]
 	}
 }
@@ -185,54 +263,66 @@ func clampVecSSE2(dst []float64, lo, hi float64)
 
 // addScaledVec: dst[i] += scale * src[i]  (AXPY)
 func addScaledVec(dst, src []float64, scale float64) {
-	n, stride := len(src), 4
-	if !useAVX2 {
-		stride = 2
-		addScaledVecSSE2(dst, src, scale)
-	} else {
-		addScaledVecAVX2(dst, src, scale)
+	limit := alignedLen(len(src))
+
+	if useAVX2 {
+		if limit > 0 {
+			addScaledVecAVX2(dst[:limit], src[:limit], scale)
+		}
+	} else if limit > 0 {
+		addScaledVecSSE2(dst[:limit], src[:limit], scale)
 	}
-	for i := (n / stride) * stride; i < n; i++ {
+
+	for i := limit; i < len(src); i++ {
 		dst[i] += scale * src[i]
 	}
 }
 
 // sqrtVec: dst[i] = sqrt(src[i])
 func sqrtVec(dst, src []float64) {
-	n, stride := len(src), 4
-	if !useAVX2 {
-		stride = 2
-		sqrtVecSSE2(dst, src)
-	} else {
-		sqrtVecAVX2(dst, src)
+	limit := alignedLen(len(src))
+
+	if useAVX2 {
+		if limit > 0 {
+			sqrtVecAVX2(dst[:limit], src[:limit])
+		}
+	} else if limit > 0 {
+		sqrtVecSSE2(dst[:limit], src[:limit])
 	}
-	scalarSqrtTail(dst, src, (n/stride)*stride)
+
+	scalarSqrtTail(dst, src, limit)
 }
 
 // addScalarVec: dst[i] += scalar
 func addScalarVec(dst []float64, scalar float64) {
-	n, stride := len(dst), 4
-	if !useAVX2 {
-		stride = 2
-		addScalarVecSSE2(dst, scalar)
-	} else {
-		addScalarVecAVX2(dst, scalar)
+	limit := alignedLen(len(dst))
+
+	if useAVX2 {
+		if limit > 0 {
+			addScalarVecAVX2(dst[:limit], scalar)
+		}
+	} else if limit > 0 {
+		addScalarVecSSE2(dst[:limit], scalar)
 	}
-	for i := (n / stride) * stride; i < n; i++ {
+
+	for i := limit; i < len(dst); i++ {
 		dst[i] += scalar
 	}
 }
 
 // divVec: dst[i] = a[i] / b[i]
 func divVec(dst, a, b []float64) {
-	n, stride := len(a), 4
-	if !useAVX2 {
-		stride = 2
-		divVecSSE2(dst, a, b)
-	} else {
-		divVecAVX2(dst, a, b)
+	limit := alignedLen(len(a))
+
+	if useAVX2 {
+		if limit > 0 {
+			divVecAVX2(dst[:limit], a[:limit], b[:limit])
+		}
+	} else if limit > 0 {
+		divVecSSE2(dst[:limit], a[:limit], b[:limit])
 	}
-	for i := (n / stride) * stride; i < n; i++ {
+
+	for i := limit; i < len(a); i++ {
 		dst[i] = a[i] / b[i]
 	}
 }
@@ -247,18 +337,31 @@ func l2NormSq(a []float64) float64 {
 
 // clampVec: dst[i] = clamp(dst[i], lo, hi)
 func clampVec(dst []float64, lo, hi float64) {
-	n, stride := len(dst), 4
-	if !useAVX2 {
-		stride = 2
-		clampVecSSE2(dst, lo, hi)
-	} else {
-		clampVecAVX2(dst, lo, hi)
+	limit := alignedLen(len(dst))
+
+	if useAVX2 {
+		if limit > 0 {
+			clampVecAVX2(dst[:limit], lo, hi)
+		}
+	} else if limit > 0 {
+		clampVecSSE2(dst[:limit], lo, hi)
 	}
-	for i := (n / stride) * stride; i < n; i++ {
+
+	for i := limit; i < len(dst); i++ {
 		if dst[i] < lo {
 			dst[i] = lo
 		} else if dst[i] > hi {
 			dst[i] = hi
 		}
 	}
+}
+
+func alignedLen(n int) int {
+	width := 2
+
+	if useAVX2 {
+		width = 4
+	}
+
+	return n / width * width
 }

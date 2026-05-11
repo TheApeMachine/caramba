@@ -1,3 +1,6 @@
+//go:build amd64 && alibi_asm
+// +build amd64,alibi_asm
+
 #include "textflag.h"
 
 // ALiBiRowSSE2(dst []float64, slope float64, q int, seqLenK int)

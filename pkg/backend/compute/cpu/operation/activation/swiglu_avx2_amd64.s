@@ -8,6 +8,8 @@ DATA ·swigluHalf_amd64+0(SB)/8, $0.5
 GLOBL ·swigluHalf_amd64(SB), RODATA, $8
 DATA ·swigluOne_amd64+0(SB)/8, $1.0
 GLOBL ·swigluOne_amd64(SB), RODATA, $8
+DATA ·swigluNegOne_amd64+0(SB)/8, $-1.0
+GLOBL ·swigluNegOne_amd64(SB), RODATA, $8
 
 // SwiGLUAVX2(dst, src []float64)
 // src.len = 2n; gates = src[0..n-1], values = src[n..2n-1]
@@ -30,6 +32,8 @@ TEXT ·SwiGLUAVX2(SB), NOSPLIT, $0-48
 	VBROADCASTSD X12, Y12
 	VMOVSD ·swigluOne_amd64(SB), X13
 	VBROADCASTSD X13, Y13
+	VMOVSD ·swigluNegOne_amd64(SB), X14
+	VBROADCASTSD X14, Y14
 
 	// values ptr = gates ptr + n*8
 	MOVQ BX, R9
@@ -48,6 +52,8 @@ loop:
 	VADDPD Y10, Y5, Y5
 	VMULPD Y2, Y4, Y6
 	VDIVPD Y5, Y6, Y6
+	VMINPD Y13, Y6, Y6
+	VMAXPD Y14, Y6, Y6
 	VADDPD Y13, Y6, Y6
 	VMULPD Y12, Y6, Y6         // sigmoid
 	VMULPD Y1, Y6, Y7

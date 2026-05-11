@@ -7,6 +7,7 @@ package cuda
 import "C"
 
 import (
+	"fmt"
 	"unsafe"
 
 	cpumodel "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/model"
@@ -61,12 +62,16 @@ a [M×K], b [K×N] → c [M×N], all row-major float64 (double).
 func cudaMatMul(a, b []float64, M, K, N int) []float64 {
 	c := make([]float64, M*N)
 
-	C.cuda_matmul(
+	rc := C.cuda_matmul(
 		(*C.double)(unsafe.Pointer(&a[0])),
 		(*C.double)(unsafe.Pointer(&b[0])),
 		(*C.double)(unsafe.Pointer(&c[0])),
 		C.int(M), C.int(K), C.int(N),
 	)
+
+	if rc != 0 {
+		panic(fmt.Sprintf("cuda_matmul failed (rc=%d)", rc))
+	}
 
 	return c
 }

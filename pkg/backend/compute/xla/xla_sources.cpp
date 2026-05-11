@@ -12,6 +12,7 @@
 // activation_xla.cpp defines the shared globals g_api and g_client.
 // All other units reference them via extern declarations.
 #include "_activation_xla.cpp"
+#include "_tensor_xla.cpp"
 #include "_shape_xla.cpp"
 #include "_math_xla.cpp"
 #include "_attention_xla.cpp"

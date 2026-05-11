@@ -24,18 +24,18 @@ extern PJRT_Client*    g_client;
 // ---------------------------------------------------------------------------
 
 static PJRT_LoadedExecutable* compile_shape_stablehlo(const std::string& mlir_text) {
+    PJRT_Program prog{};
+    prog.struct_size = PJRT_Program_STRUCT_SIZE;
+    prog.code        = const_cast<char*>(mlir_text.c_str());
+    prog.code_size   = mlir_text.size();
+    prog.format      = "mlir";
+    prog.format_size = 4;
+
     PJRT_Client_Compile_Args ca{};
     ca.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
     ca.client      = g_client;
-    ca.program      = &(PJRT_Program{
-        .struct_size = PJRT_Program_STRUCT_SIZE,
-        .code        = mlir_text.c_str(),
-        .code_size   = mlir_text.size(),
-        .format      = "mlir",
-        .format_size = 4,
-    });
-    ca.compile_options      = nullptr;
-    ca.compile_options_size = 0;
+    ca.program      = &prog;
+    set_single_device_compile_options(&ca);
 
     PJRT_Error* err = g_api->PJRT_Client_Compile(&ca);
     if (err) {
@@ -108,7 +108,8 @@ static int run_shape_exec(
     ea.num_devices     = 1;
     ea.num_args        = 1;
     ea.output_lists    = out_list;
-    ea.execute_options = nullptr;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options = &options;
 
     err = g_api->PJRT_LoadedExecutable_Execute(&ea);
     if (err) return -1;

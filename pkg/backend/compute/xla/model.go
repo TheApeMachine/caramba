@@ -2,13 +2,12 @@
 
 package xla
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo LDFLAGS: -ldl -lstdc++
 // #include <stdlib.h>
-// #include "math.h"
+// #include "xla_math.h"
 import "C"
 
 import (
+	"fmt"
 	"unsafe"
 
 	cpumodel "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/model"
@@ -63,12 +62,16 @@ a [M×K], b [K×N] → c [M×N], all row-major float64 (double).
 func xlaMatMul(a, b []float64, M, K, N int) []float64 {
 	c := make([]float64, M*N)
 
-	C.xla_matmul(
+	rc := C.xla_matmul(
 		(*C.double)(unsafe.Pointer(&a[0])),
 		(*C.double)(unsafe.Pointer(&b[0])),
 		(*C.double)(unsafe.Pointer(&c[0])),
 		C.int(M), C.int(K), C.int(N),
 	)
+
+	if rc != 0 {
+		panic(fmt.Sprintf("xla_matmul failed (rc=%d)", rc))
+	}
 
 	return c
 }

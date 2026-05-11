@@ -1,0 +1,55 @@
+//go:build !darwin || !cgo
+
+package metal
+
+import (
+	"fmt"
+
+	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+)
+
+var _ computetensor.Backend = (*TensorBackend)(nil)
+
+/*
+TensorBackend reports unavailable Metal tensor support when Metal is not built in.
+*/
+type TensorBackend struct{}
+
+/*
+NewTensorBackend creates a Metal tensor backend stub.
+*/
+func NewTensorBackend() (*TensorBackend, error) {
+	return nil, fmt.Errorf("metal tensor: build on darwin with cgo")
+}
+
+/*
+Location identifies the intended Metal storage location.
+*/
+func (tensorBackend *TensorBackend) Location() computetensor.Location {
+	return computetensor.Metal
+}
+
+/*
+UploadFloat64 rejects uploads when Metal support is not built in.
+*/
+func (tensorBackend *TensorBackend) UploadFloat64(
+	shape computetensor.Shape, values []float64,
+) (computetensor.Float64Tensor, error) {
+	return nil, fmt.Errorf("metal tensor: build on darwin with cgo")
+}
+
+/*
+DownloadFloat64 rejects downloads when Metal support is not built in.
+*/
+func (tensorBackend *TensorBackend) DownloadFloat64(
+	input computetensor.Float64Tensor,
+) ([]float64, error) {
+	return nil, fmt.Errorf("metal tensor: build on darwin with cgo")
+}
+
+/*
+Close is a no-op for the Metal tensor backend stub.
+*/
+func (tensorBackend *TensorBackend) Close() error {
+	return nil
+}

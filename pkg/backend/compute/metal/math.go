@@ -9,6 +9,8 @@ import "C"
 import (
 	"fmt"
 	"unsafe"
+
+	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
 // MathOps dispatches math kernels to the GPU via Metal.
@@ -43,7 +45,7 @@ func (m *MathOps) Matmul(shape []int, data ...[]float64) []float64 {
 		C.int(M), C.int(K), C.int(N),
 	)
 	if rc != 0 {
-		return make([]float64, M*N)
+		panic(fmt.Sprintf("metal_matmul failed (rc=%d)", rc))
 	}
 	return toFloat64(C_)
 }
@@ -64,7 +66,7 @@ func (m *MathOps) Add(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		return make([]float64, n)
+		panic(fmt.Sprintf("metal_add failed (rc=%d)", rc))
 	}
 	return toFloat64(out)
 }
@@ -85,9 +87,254 @@ func (m *MathOps) Mul(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		return make([]float64, n)
+		panic(fmt.Sprintf("metal_mul failed (rc=%d)", rc))
 	}
 	return toFloat64(out)
+}
+
+/*
+AddTensor performs resident Metal elementwise addition.
+*/
+func (m *MathOps) AddTensor(
+	left, right computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return m.binaryTensor(left, right, "add")
+}
+
+/*
+MulTensor performs resident Metal elementwise multiplication.
+*/
+func (m *MathOps) MulTensor(
+	left, right computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return m.binaryTensor(left, right, "mul")
+}
+
+/*
+MatmulTensor performs resident Metal row-major matrix multiplication.
+*/
+func (m *MathOps) MatmulTensor(
+	left, right computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	metalLeft, err := requireMetalTensor(left)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalRight, err := requireMetalTensor(right)
+
+	if err != nil {
+		return nil, err
+	}
+
+	leftDims := metalLeft.shape.Dims()
+	rightDims := metalRight.shape.Dims()
+
+	if len(leftDims) != 2 || len(rightDims) != 2 {
+		return nil, fmt.Errorf("metal tensor: matmul requires rank-2 tensors")
+	}
+
+	if leftDims[1] != rightDims[0] {
+		return nil, fmt.Errorf(
+			"metal tensor: matmul dimension mismatch [%d,%d] x [%d,%d]",
+			leftDims[0], leftDims[1], rightDims[0], rightDims[1],
+		)
+	}
+
+	outputShape, err := computetensor.NewShape([]int{leftDims[0], rightDims[1]})
+
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_matmul_tensor(
+		metalLeft.buffer,
+		metalRight.buffer,
+		output.buffer,
+		C.int(leftDims[0]),
+		C.int(leftDims[1]),
+		C.int(rightDims[1]),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal tensor: matmul launch failed")
+	}
+
+	return output, nil
+}
+
+/*
+MatmulAddTensor performs resident Metal matrix multiplication with broadcast bias.
+*/
+func (m *MathOps) MatmulAddTensor(
+	left, right, bias computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return m.matmulAddTensor(left, right, bias, false)
+}
+
+/*
+MatmulAddGELUTensor performs resident Metal matrix multiplication, bias, and GELU.
+*/
+func (m *MathOps) MatmulAddGELUTensor(
+	left, right, bias computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return m.matmulAddTensor(left, right, bias, true)
+}
+
+func (m *MathOps) binaryTensor(
+	left, right computetensor.Float64Tensor, name string,
+) (computetensor.Float64Tensor, error) {
+	metalLeft, err := requireMetalTensor(left)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalRight, err := requireMetalTensor(right)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !metalLeft.shape.Equal(metalRight.shape) {
+		return nil, fmt.Errorf("metal tensor: binary operation shape mismatch")
+	}
+
+	output, err := newMetalTensor(metalLeft.shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var rc C.int
+
+	switch name {
+	case "add":
+		rc = C.metal_add_tensor(metalLeft.buffer, metalRight.buffer, output.buffer, C.int(output.Len()))
+	case "mul":
+		rc = C.metal_mul_tensor(metalLeft.buffer, metalRight.buffer, output.buffer, C.int(output.Len()))
+	default:
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal tensor: unknown binary kernel %q", name)
+	}
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal tensor: %s launch failed", name)
+	}
+
+	return output, nil
+}
+
+func (m *MathOps) matmulAddTensor(
+	left, right, bias computetensor.Float64Tensor, gelu bool,
+) (computetensor.Float64Tensor, error) {
+	metalLeft, metalRight, metalBias, outputShape, err := metalMatmulAddInputs(
+		left, right, bias,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	leftDims := metalLeft.shape.Dims()
+	rightDims := metalRight.shape.Dims()
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	applyGELU := 0
+
+	if gelu {
+		applyGELU = 1
+	}
+
+	rc := C.metal_matmul_add_tensor(
+		metalLeft.buffer,
+		metalRight.buffer,
+		metalBias.buffer,
+		output.buffer,
+		C.int(leftDims[0]),
+		C.int(leftDims[1]),
+		C.int(rightDims[1]),
+		C.int(metalBias.Len()),
+		C.int(applyGELU),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal tensor: fused matmul launch failed")
+	}
+
+	return output, nil
+}
+
+func metalMatmulAddInputs(
+	left, right, bias computetensor.Float64Tensor,
+) (*Tensor, *Tensor, *Tensor, computetensor.Shape, error) {
+	metalLeft, err := requireMetalTensor(left)
+
+	if err != nil {
+		return nil, nil, nil, computetensor.Shape{}, err
+	}
+
+	metalRight, err := requireMetalTensor(right)
+
+	if err != nil {
+		return nil, nil, nil, computetensor.Shape{}, err
+	}
+
+	metalBias, err := requireMetalTensor(bias)
+
+	if err != nil {
+		return nil, nil, nil, computetensor.Shape{}, err
+	}
+
+	leftDims := metalLeft.shape.Dims()
+	rightDims := metalRight.shape.Dims()
+
+	if len(leftDims) != 2 || len(rightDims) != 2 {
+		return nil, nil, nil, computetensor.Shape{}, fmt.Errorf("metal tensor: fused matmul requires rank-2 tensors")
+	}
+
+	if leftDims[1] != rightDims[0] {
+		return nil, nil, nil, computetensor.Shape{}, fmt.Errorf(
+			"metal tensor: fused matmul dimension mismatch [%d,%d] x [%d,%d]",
+			leftDims[0], leftDims[1], rightDims[0], rightDims[1],
+		)
+	}
+
+	M, N := leftDims[0], rightDims[1]
+	biasLen := metalBias.Len()
+
+	if biasLen != N && biasLen != M*N {
+		return nil, nil, nil, computetensor.Shape{}, fmt.Errorf(
+			"metal tensor: fused matmul bias length %d must be N=%d or M*N=%d",
+			biasLen, N, M*N,
+		)
+	}
+
+	outputShape, err := computetensor.NewShape([]int{M, N})
+
+	if err != nil {
+		return nil, nil, nil, computetensor.Shape{}, err
+	}
+
+	return metalLeft, metalRight, metalBias, outputShape, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +352,7 @@ func (m *MathOps) InvSqrtDimScale(shape []int, data ...[]float64) []float64 {
 		C.int(n), C.int(dim),
 	)
 	if rc != 0 {
-		return make([]float64, n)
+		panic(fmt.Sprintf("metal_inv_sqrt_dim_scale failed (rc=%d)", rc))
 	}
 	return toFloat64(dst)
 }
@@ -124,7 +371,7 @@ func (m *MathOps) Exp(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		return make([]float64, n)
+		panic(fmt.Sprintf("metal_exp failed (rc=%d)", rc))
 	}
 	return toFloat64(dst)
 }
@@ -143,7 +390,7 @@ func (m *MathOps) Log(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		return make([]float64, n)
+		panic(fmt.Sprintf("metal_log failed (rc=%d)", rc))
 	}
 	return toFloat64(dst)
 }
@@ -164,7 +411,7 @@ func (m *MathOps) Softmax(shape []int, data ...[]float64) []float64 {
 		C.int(numRows), C.int(dimSize),
 	)
 	if rc != 0 {
-		return make([]float64, n)
+		panic(fmt.Sprintf("metal_softmax failed (rc=%d)", rc))
 	}
 	return toFloat64(dst)
 }
@@ -189,7 +436,7 @@ func (m *MathOps) LayerNorm(shape []int, eps float64, weight, bias []float64, da
 		C.int(numRows), C.int(dModel), C.float(eps),
 	)
 	if rc != 0 {
-		return make([]float64, n)
+		panic(fmt.Sprintf("metal_layernorm failed (rc=%d)", rc))
 	}
 	return toFloat64(dst)
 }
@@ -212,7 +459,7 @@ func (m *MathOps) RMSNorm(shape []int, eps float64, weight []float64, data ...[]
 		C.int(numRows), C.int(dModel), C.float(eps),
 	)
 	if rc != 0 {
-		return make([]float64, n)
+		panic(fmt.Sprintf("metal_rmsnorm failed (rc=%d)", rc))
 	}
 	return toFloat64(dst)
 }
@@ -228,7 +475,7 @@ func (m *MathOps) Sign(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		return make([]float64, n)
+		panic(fmt.Sprintf("metal_sign failed (rc=%d)", rc))
 	}
 	return toFloat64(dst)
 }
@@ -246,7 +493,7 @@ func (m *MathOps) Outer(shape []int, data ...[]float64) []float64 {
 		C.int(M), C.int(N),
 	)
 	if rc != 0 {
-		return make([]float64, M*N)
+		panic(fmt.Sprintf("metal_outer failed (rc=%d)", rc))
 	}
 	return toFloat64(dst)
 }

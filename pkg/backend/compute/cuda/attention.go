@@ -40,7 +40,7 @@ func (c *CUDAAttention) Forward(shape []int, data ...[]float64) []float64 {
 			shape[0], shape[1], shape[2], shape[3], shape[4]
 		out, err := c.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
 		if err != nil {
-			return nil
+			panic(err)
 		}
 		return out
 
@@ -50,20 +50,20 @@ func (c *CUDAAttention) Forward(shape []int, data ...[]float64) []float64 {
 		if len(data[1]) == kvSize {
 			out, err := c.MQA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
 			if err != nil {
-				return nil
+				panic(err)
 			}
 			return out
 		}
 		if c.Window > 0 {
 			out, err := c.SlidingWindow(data[0], data[1], data[2], batch, numHeads, seqLen, headDim, c.Window)
 			if err != nil {
-				return nil
+				panic(err)
 			}
 			return out
 		}
 		out, err := c.SDPA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
 		if err != nil {
-			return nil
+			panic(err)
 		}
 		return out
 	}
@@ -91,7 +91,7 @@ func (c *CUDAAttention) SDPA(q, k, v []float64, batch, numHeads, seqLen, headDim
 
 // MQA computes multi-query attention (K/V shared across Q heads per batch).
 func (c *CUDAAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim int) ([]float64, error) {
-	qn  := batch * numHeads * seqLen * headDim
+	qn := batch * numHeads * seqLen * headDim
 	kvn := batch * 1 * seqLen * headDim
 	if len(q) != qn || len(k) != kvn || len(v) != kvn {
 		return nil, fmt.Errorf("cuda_mqa: input length mismatch")
@@ -112,7 +112,7 @@ func (c *CUDAAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim 
 
 // GQA computes grouped query attention.
 func (c *CUDAAttention) GQA(q, k, v []float64, batch, numHeads, numKVHeads, seqLen, headDim int) ([]float64, error) {
-	qn  := batch * numHeads * seqLen * headDim
+	qn := batch * numHeads * seqLen * headDim
 	kvn := batch * numKVHeads * seqLen * headDim
 	if len(q) != qn || len(k) != kvn || len(v) != kvn {
 		return nil, fmt.Errorf("cuda_gqa: input length mismatch")

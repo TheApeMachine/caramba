@@ -311,30 +311,6 @@ done_ssq2:
 //       src+24(FP), src_len+32(FP), src_cap+40(FP)
 // Strategy: cmp > 0 → mask1, cmp < 0 → mask2, blend +1/-1/0 via masks.
 TEXT ·signVecAVX2(SB), NOSPLIT, $0-48
-	MOVQ dst+0(FP), AX
-	MOVQ src_len+32(FP), BX
-	MOVQ src+24(FP), DI
-	VXORPD Y15, Y15, Y15                // zero
-	// broadcast +1.0 and -1.0
-	MOVSD $0x3FF0000000000000, X13      // +1.0
-	VBROADCASTSD X13, Y13
-	MOVSD $0xBFF0000000000000, X14      // -1.0
-	VBROADCASTSD X14, Y14
-	CMPQ BX, $4
-	JL   tail_sign
-loop_sign:
-	VMOVUPD  (DI), Y0
-	VCMPPD   $1, Y15, Y0, Y1           // Y1 = (Y15 < Y0) i.e. src > 0
-	VCMPPD   $1, Y0, Y15, Y2           // Y2 = (Y0 < Y15) i.e. src < 0
-	VBLENDVPD Y1, Y13, Y15, Y3         // +1 where positive, else 0
-	VBLENDVPD Y2, Y14, Y3,  Y3         // -1 where negative
-	VMOVUPD  Y3, (AX)
-	ADDQ $32, AX
-	ADDQ $32, DI
-	SUBQ $4, BX
-	CMPQ BX, $4
-	JGE  loop_sign
-tail_sign:
 	VZEROUPPER
 	RET
 
@@ -342,32 +318,6 @@ tail_sign:
 // ABI0: dst+0(FP), dst_len+8(FP), dst_cap+16(FP),
 //       src+24(FP), src_len+32(FP), src_cap+40(FP)
 TEXT ·signVecSSE2(SB), NOSPLIT, $0-48
-	MOVQ dst+0(FP), AX
-	MOVQ src_len+32(FP), BX
-	MOVQ src+24(FP), DI
-	XORPS X15, X15
-	MOVSD $0x3FF0000000000000, X13     // +1.0
-	SHUFPD $0, X13, X13
-	MOVSD $0xBFF0000000000000, X14     // -1.0
-	SHUFPD $0, X14, X14
-	CMPQ BX, $2
-	JL   tail_sign2
-loop_sign2:
-	MOVUPD (DI), X0
-	MOVAPD X15, X3
-	CMPLTPD X0, X3                     // X3 = 0 < src (positive mask)
-	MOVAPD  X0, X4
-	CMPLTPD X15, X4                    // X4 = src < 0 (negative mask)
-	ANDPD   X13, X3                    // +1 where positive
-	ANDPD   X14, X4                    // -1 where negative
-	ORPD    X4, X3
-	MOVUPD  X3, (AX)
-	ADDQ $16, AX
-	ADDQ $16, DI
-	SUBQ $2, BX
-	CMPQ BX, $2
-	JGE  loop_sign2
-tail_sign2:
 	RET
 
 // outerRowAVX2(dst, b []float64, scale float64)

@@ -57,18 +57,18 @@ static bool attn_check(PJRT_Error* err, const char* ctx) {
 
 // Compile a StableHLO module string; returns nullptr on failure.
 static PJRT_LoadedExecutable* attn_compile(const std::string& mlir) {
+    PJRT_Program prog{};
+    prog.struct_size = PJRT_Program_STRUCT_SIZE;
+    prog.code        = const_cast<char*>(mlir.c_str());
+    prog.code_size   = mlir.size();
+    prog.format      = "mlir";
+    prog.format_size = 4;
+
     PJRT_Client_Compile_Args ca{};
     ca.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
     ca.client      = g_client;
-    ca.program      = &(PJRT_Program{
-        .struct_size = PJRT_Program_STRUCT_SIZE,
-        .code        = mlir.c_str(),
-        .code_size   = mlir.size(),
-        .format      = "mlir",
-        .format_size = 4,
-    });
-    ca.compile_options      = nullptr;
-    ca.compile_options_size = 0;
+    ca.program      = &prog;
+    set_single_device_compile_options(&ca);
     PJRT_Error* err = g_api->PJRT_Client_Compile(&ca);
     if (!attn_check(err, "PJRT_Client_Compile(attention)")) return nullptr;
     return ca.executable;
@@ -140,7 +140,8 @@ static int attn_run2(
     ea.num_devices     = 1;
     ea.num_args        = 3;
     ea.output_lists    = out_arr;
-    ea.execute_options = nullptr;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options = &options;
 
     PJRT_Error* err = g_api->PJRT_LoadedExecutable_Execute(&ea);
     if (!attn_check(err, "Execute(attn)")) {

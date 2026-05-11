@@ -68,7 +68,11 @@ func (m *MetalShapeOps) Transpose(shape []int, dim0, dim1 int, data []float64) (
 // use the Transpose method directly for full control.
 // This satisfies the universal Forward interface as a no-op copy fallback.
 func (m *MetalShapeOps) Forward(shape []int, data ...[]float64) []float64 {
-	out, _ := m.Copy(data[0])
+	out, err := m.Copy(data[0])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

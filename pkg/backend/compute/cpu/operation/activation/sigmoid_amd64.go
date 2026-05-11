@@ -9,9 +9,25 @@ func SigmoidAVX2(dst, src []float64)
 func SigmoidSSE2(dst, src []float64)
 
 func applySigmoid(dst, src []float64) {
+	width := 2
+
 	if useAVX2 {
-		SigmoidAVX2(dst, src)
-	} else {
-		SigmoidSSE2(dst, src)
+		width = 4
+		limit := len(src) / width * width
+
+		if limit > 0 {
+			SigmoidAVX2(dst[:limit], src[:limit])
+		}
+
+		scalarSigmoid(dst[limit:], src[limit:])
+		return
 	}
+
+	limit := len(src) / width * width
+
+	if limit > 0 {
+		SigmoidSSE2(dst[:limit], src[:limit])
+	}
+
+	scalarSigmoid(dst[limit:], src[limit:])
 }

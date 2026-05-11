@@ -1,14 +1,14 @@
 #include "textflag.h"
 
 // RoPENEON(dst, src, cosTable, sinTable []float64, numPairs int)
-// ABI0: dst+0, src+24, cos+48, sin+72, numPairs+96
+// ABI0: dst+0, src+24, cosTable+48, sinTable+72, numPairs+96
 // Processes one pair per iteration using ARM64 scalar float64.
 
 TEXT ·RoPENEON(SB), NOSPLIT, $0-104
 	MOVD dst+0(FP),      R0
 	MOVD src+24(FP),     R1
-	MOVD cos+48(FP),     R2
-	MOVD sin+72(FP),     R3
+	MOVD cosTable+48(FP), R2
+	MOVD sinTable+72(FP), R3
 	MOVD numPairs+96(FP), R4
 
 loop:

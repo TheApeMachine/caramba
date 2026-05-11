@@ -6,5 +6,11 @@ package activation
 func SigmoidNEON(dst, src []float64)
 
 func applySigmoid(dst, src []float64) {
-	SigmoidNEON(dst, src)
+	limit := len(src) / 2 * 2
+
+	if limit > 0 {
+		SigmoidNEON(dst[:limit], src[:limit])
+	}
+
+	scalarSigmoid(dst[limit:], src[limit:])
 }

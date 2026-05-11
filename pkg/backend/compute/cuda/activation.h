@@ -21,6 +21,14 @@ int cuda_sigmoid(const double* src, double* dst, int n);
 // src has 2*n doubles (gates then values); dst has n doubles.
 int cuda_swiglu(const double* src, double* dst, int n);
 
+// Device-resident variants. src/dst are CUDA device pointers.
+int cuda_relu_device(const void* src, void* dst, int n);
+int cuda_leaky_relu_device(const void* src, void* dst, double alpha, int n);
+int cuda_gelu_device(const void* src, void* dst, int n);
+int cuda_tanh_device(const void* src, void* dst, int n);
+int cuda_sigmoid_device(const void* src, void* dst, int n);
+int cuda_swiglu_device(const void* src, void* dst, int n);
+
 #ifdef __cplusplus
 }
 #endif

@@ -20,10 +20,10 @@
 // Globals (separate from activation.cc to allow standalone use)
 // ---------------------------------------------------------------------------
 
-static const PJRT_Api*  gm_api    = nullptr;
-static PJRT_Client*     gm_client = nullptr;
+static const PJRT_Api*  g_mask_api    = nullptr;
+static PJRT_Client*     g_mask_client = nullptr;
 
-static std::unordered_map<std::string, PJRT_LoadedExecutable*> gm_execs;
+static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_mask_execs;
 static int gm_compiled_causal_n = 0;
 static int gm_compiled_apply_n  = 0;
 
@@ -54,15 +54,10 @@ static bool gm_check(const PJRT_Api* api, PJRT_Error* err, const char* ctx) {
 typedef const PJRT_Api* (*GetPjrtApiFn)();
 
 static const PJRT_Api* gm_load_plugin(const char* platform) {
-    char path[256];
-    if (strcmp(platform, "gpu") == 0) {
-        snprintf(path, sizeof(path), "pjrt_c_api_gpu_plugin.so");
-    } else {
-        snprintf(path, sizeof(path), "pjrt_c_api_cpu_plugin.so");
-    }
-    void* handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+    std::string path = pjrt_plugin_path(platform);
+    void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
     if (!handle) {
-        fprintf(stderr, "XLA masking: failed to dlopen %s: %s\n", path, dlerror());
+        fprintf(stderr, "XLA masking: failed to dlopen %s: %s\n", path.c_str(), dlerror());
         return nullptr;
     }
     auto get_api = (GetPjrtApiFn)dlsym(handle, "GetPjrtApi");
@@ -71,20 +66,20 @@ static const PJRT_Api* gm_load_plugin(const char* platform) {
 }
 
 static PJRT_LoadedExecutable* gm_compile(const std::string& mlir_text) {
+    PJRT_Program prog{};
+    prog.struct_size = PJRT_Program_STRUCT_SIZE;
+    prog.code        = const_cast<char*>(mlir_text.c_str());
+    prog.code_size   = mlir_text.size();
+    prog.format      = "mlir";
+    prog.format_size = 4;
+
     PJRT_Client_Compile_Args ca{};
     ca.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
-    ca.client      = gm_client;
-    ca.program      = &(PJRT_Program{
-        .struct_size = PJRT_Program_STRUCT_SIZE,
-        .code        = mlir_text.c_str(),
-        .code_size   = mlir_text.size(),
-        .format      = "mlir",
-        .format_size = 4,
-    });
-    ca.compile_options      = nullptr;
-    ca.compile_options_size = 0;
-    PJRT_Error* err = gm_api->PJRT_Client_Compile(&ca);
-    if (!gm_check(gm_api, err, "gm_compile")) return nullptr;
+    ca.client      = g_mask_client;
+    ca.program      = &prog;
+    set_single_device_compile_options(&ca);
+    PJRT_Error* err = g_mask_api->PJRT_Client_Compile(&ca);
+    if (!gm_check(g_mask_api, err, "gm_compile")) return nullptr;
     return ca.executable;
 }
 
@@ -95,7 +90,7 @@ static int gm_run(
 {
     PJRT_Client_BufferFromHostBuffer_Args ba{};
     ba.struct_size = PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE;
-    ba.client      = gm_client;
+    ba.client      = g_mask_client;
     ba.data        = src;
     ba.type        = PJRT_Buffer_Type_F64;
     int64_t dims[1] = { (int64_t)src_n };
@@ -103,25 +98,25 @@ static int gm_run(
     ba.num_dims    = 1;
     ba.host_buffer_semantics = PJRT_HostBufferSemantics_kImmutableOnlyDuringCall;
 
-    PJRT_Error* err = gm_api->PJRT_Client_BufferFromHostBuffer(&ba);
-    if (!gm_check(gm_api, err, "BufferFromHostBuffer")) return -1;
+    PJRT_Error* err = g_mask_api->PJRT_Client_BufferFromHostBuffer(&ba);
+    if (!gm_check(g_mask_api, err, "BufferFromHostBuffer")) return -1;
     PJRT_Buffer* in_buf = ba.buffer;
 
     {
         PJRT_Buffer_ReadyEvent_Args re{};
         re.struct_size = PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE;
         re.buffer = in_buf;
-        err = gm_api->PJRT_Buffer_ReadyEvent(&re);
-        if (!gm_check(gm_api, err, "ReadyEvent(in)")) return -1;
+        err = g_mask_api->PJRT_Buffer_ReadyEvent(&re);
+        if (!gm_check(g_mask_api, err, "ReadyEvent(in)")) return -1;
         PJRT_Event_Await_Args ea{};
         ea.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
         ea.event = re.event;
-        err = gm_api->PJRT_Event_Await(&ea);
-        gm_check(gm_api, err, "Event_Await(in)");
+        err = g_mask_api->PJRT_Event_Await(&ea);
+        gm_check(g_mask_api, err, "Event_Await(in)");
         PJRT_Event_Destroy_Args eda{};
         eda.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
         eda.event = re.event;
-        gm_api->PJRT_Event_Destroy(&eda);
+        g_mask_api->PJRT_Event_Destroy(&eda);
     }
 
     PJRT_Buffer*  in_list[1]  = { in_buf };
@@ -136,9 +131,10 @@ static int gm_run(
     ea.num_devices     = 1;
     ea.num_args        = 1;
     ea.output_lists    = out_list;
-    ea.execute_options = nullptr;
-    err = gm_api->PJRT_LoadedExecutable_Execute(&ea);
-    if (!gm_check(gm_api, err, "Execute")) return -1;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options = &options;
+    err = g_mask_api->PJRT_LoadedExecutable_Execute(&ea);
+    if (!gm_check(g_mask_api, err, "Execute")) return -1;
 
     PJRT_Buffer* out_buf = out_buf_storage;
 
@@ -147,26 +143,26 @@ static int gm_run(
     tha.src         = out_buf;
     tha.dst         = dst;
     tha.dst_size    = (size_t)dst_n * sizeof(double);
-    err = gm_api->PJRT_Buffer_ToHostBuffer(&tha);
-    if (!gm_check(gm_api, err, "ToHostBuffer")) return -1;
+    err = g_mask_api->PJRT_Buffer_ToHostBuffer(&tha);
+    if (!gm_check(g_mask_api, err, "ToHostBuffer")) return -1;
 
     {
         PJRT_Event_Await_Args ev{};
         ev.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
         ev.event = tha.event;
-        err = gm_api->PJRT_Event_Await(&ev);
-        gm_check(gm_api, err, "Event_Await(out)");
+        err = g_mask_api->PJRT_Event_Await(&ev);
+        gm_check(g_mask_api, err, "Event_Await(out)");
         PJRT_Event_Destroy_Args eda{};
         eda.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
         eda.event = tha.event;
-        gm_api->PJRT_Event_Destroy(&eda);
+        g_mask_api->PJRT_Event_Destroy(&eda);
     }
 
     auto destroy_buf = [&](PJRT_Buffer* b) {
         PJRT_Buffer_Destroy_Args da{};
         da.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
         da.buffer = b;
-        gm_api->PJRT_Buffer_Destroy(&da);
+        g_mask_api->PJRT_Buffer_Destroy(&da);
     };
     destroy_buf(in_buf);
     destroy_buf(out_buf);
@@ -241,43 +237,43 @@ static std::string build_apply_mask(int n) {
 extern "C" {
 
 int xla_masking_init(const char* platform) {
-    gm_api = gm_load_plugin(platform);
-    if (!gm_api) return -1;
+    g_mask_api = gm_load_plugin(platform);
+    if (!g_mask_api) return -1;
 
     PJRT_Client_Create_Args ca{};
     ca.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
-    PJRT_Error* err = gm_api->PJRT_Client_Create(&ca);
-    if (!gm_check(gm_api, err, "PJRT_Client_Create")) return -1;
-    gm_client = ca.client;
+    PJRT_Error* err = g_mask_api->PJRT_Client_Create(&ca);
+    if (!gm_check(g_mask_api, err, "PJRT_Client_Create")) return -1;
+    g_mask_client = ca.client;
     return 0;
 }
 
 int xla_causal_mask(double* out, int seq_len) {
-    if (!gm_client) return -1;
+    if (!g_mask_client) return -1;
     int n2 = seq_len * seq_len;
 
     // CausalMask takes no inputs — we pass a dummy 1-element input.
     // The module @main has no arguments but PJRT execute needs >=0 inputs.
     // We compile/cache keyed on seq_len.
     std::string key = "causal_mask_" + std::to_string(seq_len);
-    if (gm_execs.find(key) == gm_execs.end() || gm_compiled_causal_n != seq_len) {
-        if (gm_execs.count(key)) {
+    if (g_mask_execs.find(key) == g_mask_execs.end() || gm_compiled_causal_n != seq_len) {
+        if (g_mask_execs.count(key)) {
             PJRT_LoadedExecutable_Destroy_Args da{};
             da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
-            da.executable  = gm_execs[key];
-            gm_api->PJRT_LoadedExecutable_Destroy(&da);
-            gm_execs.erase(key);
+            da.executable  = g_mask_execs[key];
+            g_mask_api->PJRT_LoadedExecutable_Destroy(&da);
+            g_mask_execs.erase(key);
         }
         auto* exec = gm_compile(build_causal_mask(seq_len));
         if (!exec) return -1;
-        gm_execs[key] = exec;
+        g_mask_execs[key] = exec;
         gm_compiled_causal_n = seq_len;
     }
 
     // Execute with no input buffer: use a dummy empty double.
     // We need to call PJRT with num_args=0, but the run_executable helper
     // requires src. Use a workaround: call directly.
-    PJRT_LoadedExecutable* exec = gm_execs[key];
+    PJRT_LoadedExecutable* exec = g_mask_execs[key];
 
     // No-input execute
     PJRT_Buffer** no_inputs[1]  = { nullptr };
@@ -292,9 +288,10 @@ int xla_causal_mask(double* out, int seq_len) {
     ea.num_devices     = 1;
     ea.num_args        = 0;
     ea.output_lists    = out_list;
-    ea.execute_options = nullptr;
-    PJRT_Error* err    = gm_api->PJRT_LoadedExecutable_Execute(&ea);
-    if (!gm_check(gm_api, err, "xla_causal_mask Execute")) return -1;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options = &options;
+    PJRT_Error* err    = g_mask_api->PJRT_LoadedExecutable_Execute(&ea);
+    if (!gm_check(g_mask_api, err, "xla_causal_mask Execute")) return -1;
 
     PJRT_Buffer* out_buf = out_buf_store;
     PJRT_Buffer_ToHostBuffer_Args tha{};
@@ -302,44 +299,44 @@ int xla_causal_mask(double* out, int seq_len) {
     tha.src         = out_buf;
     tha.dst         = out;
     tha.dst_size    = (size_t)n2 * sizeof(double);
-    err = gm_api->PJRT_Buffer_ToHostBuffer(&tha);
-    if (!gm_check(gm_api, err, "xla_causal_mask ToHostBuffer")) return -1;
+    err = g_mask_api->PJRT_Buffer_ToHostBuffer(&tha);
+    if (!gm_check(g_mask_api, err, "xla_causal_mask ToHostBuffer")) return -1;
 
     {
         PJRT_Event_Await_Args ev{};
         ev.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
         ev.event = tha.event;
-        err = gm_api->PJRT_Event_Await(&ev);
-        gm_check(gm_api, err, "Event_Await(causal_mask)");
+        err = g_mask_api->PJRT_Event_Await(&ev);
+        gm_check(g_mask_api, err, "Event_Await(causal_mask)");
         PJRT_Event_Destroy_Args eda{};
         eda.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
         eda.event = tha.event;
-        gm_api->PJRT_Event_Destroy(&eda);
+        g_mask_api->PJRT_Event_Destroy(&eda);
     }
     {
         PJRT_Buffer_Destroy_Args da{};
         da.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
         da.buffer = out_buf;
-        gm_api->PJRT_Buffer_Destroy(&da);
+        g_mask_api->PJRT_Buffer_Destroy(&da);
     }
     return 0;
 }
 
 int xla_apply_mask(const double* scores, const double* mask, double* out, int n) {
-    if (!gm_client) return -1;
+    if (!g_mask_client) return -1;
 
     std::string key = "apply_mask_" + std::to_string(n);
-    if (gm_execs.find(key) == gm_execs.end() || gm_compiled_apply_n != n) {
-        if (gm_execs.count(key)) {
+    if (g_mask_execs.find(key) == g_mask_execs.end() || gm_compiled_apply_n != n) {
+        if (g_mask_execs.count(key)) {
             PJRT_LoadedExecutable_Destroy_Args da{};
             da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
-            da.executable  = gm_execs[key];
-            gm_api->PJRT_LoadedExecutable_Destroy(&da);
-            gm_execs.erase(key);
+            da.executable  = g_mask_execs[key];
+            g_mask_api->PJRT_LoadedExecutable_Destroy(&da);
+            g_mask_execs.erase(key);
         }
         auto* exec = gm_compile(build_apply_mask(n));
         if (!exec) return -1;
-        gm_execs[key] = exec;
+        g_mask_execs[key] = exec;
         gm_compiled_apply_n = n;
     }
 
@@ -348,23 +345,23 @@ int xla_apply_mask(const double* scores, const double* mask, double* out, int n)
     memcpy(combined.data(),     scores, (size_t)n * sizeof(double));
     memcpy(combined.data() + n, mask,   (size_t)n * sizeof(double));
 
-    return gm_run(gm_execs[key], combined.data(), 2 * n, out, n);
+    return gm_run(g_mask_execs[key], combined.data(), 2 * n, out, n);
 }
 
 void xla_masking_shutdown(void) {
-    for (auto& kv : gm_execs) {
+    for (auto& kv : g_mask_execs) {
         PJRT_LoadedExecutable_Destroy_Args da{};
         da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
         da.executable  = kv.second;
-        gm_api->PJRT_LoadedExecutable_Destroy(&da);
+        g_mask_api->PJRT_LoadedExecutable_Destroy(&da);
     }
-    gm_execs.clear();
-    if (gm_client) {
+    g_mask_execs.clear();
+    if (g_mask_client) {
         PJRT_Client_Destroy_Args da{};
         da.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
-        da.client      = gm_client;
-        gm_api->PJRT_Client_Destroy(&da);
-        gm_client = nullptr;
+        da.client      = g_mask_client;
+        g_mask_api->PJRT_Client_Destroy(&da);
+        g_mask_client = nullptr;
     }
 }
 

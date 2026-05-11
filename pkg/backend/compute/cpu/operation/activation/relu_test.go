@@ -26,6 +26,12 @@ func TestReLU(t *testing.T) {
 				out := op.Forward([]int{8}, in)
 				So(out, ShouldResemble, in)
 			})
+
+			Convey("It should process odd-length tails", func() {
+				out := op.Forward([]int{3}, []float64{-1, 0, 2})
+
+				So(out, ShouldResemble, []float64{0, 0, 2})
+			})
 		})
 	})
 }

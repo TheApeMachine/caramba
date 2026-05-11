@@ -17,9 +17,25 @@ func GeLUAVX2(dst, x []float64)
 func GeLUSSE2(dst, x []float64)
 
 func applyGeLU(dst, src []float64) {
+	width := 2
+
 	if useAVX2 {
-		GeLUAVX2(dst, src)
-	} else {
-		GeLUSSE2(dst, src)
+		width = 4
+		limit := len(src) / width * width
+
+		if limit > 0 {
+			GeLUAVX2(dst[:limit], src[:limit])
+		}
+
+		scalarGeLU(dst[limit:], src[limit:])
+		return
 	}
+
+	limit := len(src) / width * width
+
+	if limit > 0 {
+		GeLUSSE2(dst[:limit], src[:limit])
+	}
+
+	scalarGeLU(dst[limit:], src[limit:])
 }

@@ -21,6 +21,15 @@ int metal_add(const float* a, const float* b, float* out, int n);
 // Elementwise multiply: out[i] = a[i] * b[i].
 int metal_mul(const float* a, const float* b, float* out, int n);
 
+// Resident MTLBuffer variants. Handles are produced by metal_tensor_*.
+int metal_matmul_tensor(void* A, void* B, void* C, int M, int K, int N);
+int metal_add_tensor(void* a, void* b, void* out, int n);
+int metal_mul_tensor(void* a, void* b, void* out, int n);
+int metal_matmul_add_tensor(
+    void* A, void* B, void* bias, void* C,
+    int M, int K, int N, int bias_n, int gelu
+);
+
 // Scale: dst[i] = src[i] * (1/sqrt(dim)).
 int metal_inv_sqrt_dim_scale(const float* src, float* dst, int n, int dim);
 

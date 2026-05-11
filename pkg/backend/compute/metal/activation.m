@@ -132,6 +132,43 @@ static int dispatch_2buf(
     }
 }
 
+static int dispatch_tensor_2buf(
+    id<MTLComputePipelineState> pso,
+    void* src,
+    void* dst,
+    const void* scalar, NSUInteger scalar_bytes,
+    int grid_n)
+{
+    @autoreleasepool {
+        if (!gQueue || !pso || !src || !dst) return -1;
+
+        id<MTLBuffer> bufSrc = (id<MTLBuffer>)src;
+        id<MTLBuffer> bufDst = (id<MTLBuffer>)dst;
+
+        id<MTLCommandBuffer> cb = [gQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+
+        [enc setComputePipelineState:pso];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+
+        if (scalar && scalar_bytes > 0) {
+            [enc setBytes:scalar length:scalar_bytes atIndex:2];
+        }
+
+        NSUInteger tw = pso.threadExecutionWidth;
+        MTLSize threads = MTLSizeMake((NSUInteger)grid_n, 1, 1);
+        MTLSize threadgroup = MTLSizeMake(tw, 1, 1);
+
+        [enc dispatchThreads:threads threadsPerThreadgroup:threadgroup];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        return 0;
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 int metal_relu(const float* src, float* dst, int n) {
@@ -158,4 +195,29 @@ int metal_swiglu(const float* src, float* dst, int n) {
     unsigned int un = (unsigned int)n;
     // src has 2*n elements (gates then values); dst has n elements.
     return dispatch_2buf(gPSO_swiglu, src, 2*n, dst, n, &un, sizeof(unsigned int), n);
+}
+
+int metal_relu_tensor(void* src, void* dst, int n) {
+    return dispatch_tensor_2buf(gPSO_relu, src, dst, NULL, 0, n);
+}
+
+int metal_leaky_relu_tensor(void* src, void* dst, float alpha, int n) {
+    return dispatch_tensor_2buf(gPSO_leaky, src, dst, &alpha, sizeof(float), n);
+}
+
+int metal_gelu_tensor(void* src, void* dst, int n) {
+    return dispatch_tensor_2buf(gPSO_gelu, src, dst, NULL, 0, n);
+}
+
+int metal_tanh_tensor(void* src, void* dst, int n) {
+    return dispatch_tensor_2buf(gPSO_tanh, src, dst, NULL, 0, n);
+}
+
+int metal_sigmoid_tensor(void* src, void* dst, int n) {
+    return dispatch_tensor_2buf(gPSO_sigmoid, src, dst, NULL, 0, n);
+}
+
+int metal_swiglu_tensor(void* src, void* dst, int n) {
+    unsigned int un = (unsigned int)n;
+    return dispatch_tensor_2buf(gPSO_swiglu, src, dst, &un, sizeof(unsigned int), n);
 }

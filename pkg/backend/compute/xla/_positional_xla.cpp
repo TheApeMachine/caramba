@@ -64,15 +64,10 @@ static bool pos_check(const PJRT_Api* api, PJRT_Error* err, const char* ctx) {
 typedef const PJRT_Api* (*GetPjrtApiFn)();
 
 static const PJRT_Api* pos_load_pjrt_plugin(const char* platform) {
-    char path[256];
-    if (strcmp(platform, "gpu") == 0) {
-        snprintf(path, sizeof(path), "pjrt_c_api_gpu_plugin.so");
-    } else {
-        snprintf(path, sizeof(path), "pjrt_c_api_cpu_plugin.so");
-    }
-    void* handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+    std::string path = pjrt_plugin_path(platform);
+    void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
     if (!handle) {
-        fprintf(stderr, "XLA positional: failed to dlopen %s: %s\n", path, dlerror());
+        fprintf(stderr, "XLA positional: failed to dlopen %s: %s\n", path.c_str(), dlerror());
         return nullptr;
     }
     auto fn = (GetPjrtApiFn)dlsym(handle, "GetPjrtApi");
@@ -107,28 +102,27 @@ static const PJRT_Api* pos_load_pjrt_plugin(const char* platform) {
 // The Go wrapper does the scatter/gather of even/odd elements and the broadcast.
 static std::string build_rope_hlo(int n, int num_pairs) {
     // n = total_heads * seq_len * num_pairs
-    char buf[4096];
-    snprintf(buf, sizeof(buf), R"mlir(
-module @rope {
-  func.func @main(
-    %x_even: tensor<%df64>,
-    %x_odd:  tensor<%df64>,
-    %cos_t:  tensor<%df64>,
-    %sin_t:  tensor<%df64>
-  ) -> (tensor<%df64>, tensor<%df64>) {
-    %%out_even = stablehlo.subtract
-      (stablehlo.multiply %x_even, %cos_t : tensor<%df64>),
-      (stablehlo.multiply %x_odd,  %sin_t : tensor<%df64>)
-      : tensor<%df64>
-    %%out_odd = stablehlo.add
-      (stablehlo.multiply %x_even, %sin_t : tensor<%df64>),
-      (stablehlo.multiply %x_odd,  %cos_t : tensor<%df64>)
-      : tensor<%df64>
-    return %%out_even, %%out_odd : tensor<%df64>, tensor<%df64>
-  }
-}
-)mlir", n, n, n, n, n, n, n, n, n, n, n, n);
-    return std::string(buf);
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+
+    return
+        "module @rope {\n"
+        "  func.func @main(\n"
+        "    %x_even: " + t + ",\n"
+        "    %x_odd:  " + t + ",\n"
+        "    %cos_t:  " + t + ",\n"
+        "    %sin_t:  " + t + "\n"
+        "  ) -> (" + t + ", " + t + ") {\n"
+        "    %out_even = stablehlo.subtract\n"
+        "      (stablehlo.multiply %x_even, %cos_t : " + t + "),\n"
+        "      (stablehlo.multiply %x_odd,  %sin_t : " + t + ")\n"
+        "      : " + t + "\n"
+        "    %out_odd = stablehlo.add\n"
+        "      (stablehlo.multiply %x_even, %sin_t : " + t + "),\n"
+        "      (stablehlo.multiply %x_odd,  %cos_t : " + t + ")\n"
+        "      : " + t + "\n"
+        "    return %out_even, %out_odd : " + t + ", " + t + "\n"
+        "  }\n"
+        "}\n";
 }
 
 // ALiBi module: out[h*Tq*Tk + q*Tk + k] = slopes[h] * (k - q)
@@ -136,19 +130,18 @@ module @rope {
 // rel = iota_k - iota_q, bias = slopes * rel
 // For simplicity, accept flattened slopes and rel_pos arrays:
 static std::string build_alibi_hlo(int total) {
-    char buf[2048];
-    snprintf(buf, sizeof(buf), R"mlir(
-module @alibi {
-  func.func @main(
-    %slopes_bc: tensor<%df64>,
-    %rel_pos:   tensor<%df64>
-  ) -> tensor<%df64> {
-    %%out = stablehlo.multiply %slopes_bc, %rel_pos : tensor<%df64>
-    return %%out : tensor<%df64>
-  }
-}
-)mlir", total, total, total);
-    return std::string(buf);
+    std::string t = "tensor<" + std::to_string(total) + "xf64>";
+
+    return
+        "module @alibi {\n"
+        "  func.func @main(\n"
+        "    %slopes_bc: " + t + ",\n"
+        "    %rel_pos:   " + t + "\n"
+        "  ) -> " + t + " {\n"
+        "    %out = stablehlo.multiply %slopes_bc, %rel_pos : " + t + "\n"
+        "    return %out : " + t + "\n"
+        "  }\n"
+        "}\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +160,7 @@ static PJRT_LoadedExecutable* pos_compile(const char* hlo_text) {
     ca.struct_size  = PJRT_Client_Compile_Args_STRUCT_SIZE;
     ca.client       = gp_client;
     ca.program      = &prog;
+    set_single_device_compile_options(&ca);
 
     PJRT_Error* err = gp_api->PJRT_Client_Compile(&ca);
     if (!pos_check(gp_api, err, "PJRT_Client_Compile")) return nullptr;

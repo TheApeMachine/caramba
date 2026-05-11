@@ -24,7 +24,11 @@ func New() *CUDAActivation {
 // Forward dispatches to ReLU with the new universal signature.
 // shape is metadata only; data[0] is the primary input buffer.
 func (c *CUDAActivation) Forward(shape []int, data ...[]float64) []float64 {
-	out, _ := c.ReLU(data[0])
+	out, err := c.ReLU(data[0])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

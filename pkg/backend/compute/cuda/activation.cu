@@ -63,6 +63,12 @@ static const int BLOCK = 256;
 
 static inline int blocks(int n) { return (n + BLOCK - 1) / BLOCK; }
 
+static int synchronize_launch() {
+    if (cudaGetLastError() != cudaSuccess) return -1;
+    if (cudaDeviceSynchronize() != cudaSuccess) return -1;
+    return 0;
+}
+
 // ---------------------------------------------------------------------------
 // C linkage wrappers — host memory in, host memory out.
 // All device memory management is internal.
@@ -214,6 +220,54 @@ fail:
     cudaFree(d_src);
     cudaFree(d_dst);
     return -1;
+}
+
+int cuda_relu_device(const void* src, void* dst, int n) {
+    if (n == 0) return 0;
+    if (!src || !dst) return -1;
+
+    relu_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, n);
+    return synchronize_launch();
+}
+
+int cuda_leaky_relu_device(const void* src, void* dst, double alpha, int n) {
+    if (n == 0) return 0;
+    if (!src || !dst) return -1;
+
+    leaky_relu_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, alpha, n);
+    return synchronize_launch();
+}
+
+int cuda_gelu_device(const void* src, void* dst, int n) {
+    if (n == 0) return 0;
+    if (!src || !dst) return -1;
+
+    gelu_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, n);
+    return synchronize_launch();
+}
+
+int cuda_tanh_device(const void* src, void* dst, int n) {
+    if (n == 0) return 0;
+    if (!src || !dst) return -1;
+
+    tanh_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, n);
+    return synchronize_launch();
+}
+
+int cuda_sigmoid_device(const void* src, void* dst, int n) {
+    if (n == 0) return 0;
+    if (!src || !dst) return -1;
+
+    sigmoid_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, n);
+    return synchronize_launch();
+}
+
+int cuda_swiglu_device(const void* src, void* dst, int n) {
+    if (n == 0) return 0;
+    if (!src || !dst) return -1;
+
+    swiglu_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, n);
+    return synchronize_launch();
 }
 
 } // extern "C"

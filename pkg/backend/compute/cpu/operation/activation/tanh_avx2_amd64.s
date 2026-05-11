@@ -4,6 +4,10 @@ DATA ·tanhConst27_amd64+0(SB)/8, $27.0
 GLOBL ·tanhConst27_amd64(SB), RODATA, $8
 DATA ·tanhConst9_amd64+0(SB)/8, $9.0
 GLOBL ·tanhConst9_amd64(SB), RODATA, $8
+DATA ·tanhOne_amd64+0(SB)/8, $1.0
+GLOBL ·tanhOne_amd64(SB), RODATA, $8
+DATA ·tanhNegOne_amd64+0(SB)/8, $-1.0
+GLOBL ·tanhNegOne_amd64(SB), RODATA, $8
 
 // TanhAVX2(dst, src []float64)
 // ABI0: dst+0(FP)=ptr, src_base+24(FP)=ptr, src_len+32(FP)=len
@@ -17,6 +21,10 @@ TEXT ·TanhAVX2(SB), NOSPLIT, $0-48
 	VBROADCASTSD X10, Y10
 	VMOVSD ·tanhConst9_amd64(SB), X11
 	VBROADCASTSD X11, Y11
+	VMOVSD ·tanhOne_amd64(SB), X12
+	VBROADCASTSD X12, Y12
+	VMOVSD ·tanhNegOne_amd64(SB), X13
+	VBROADCASTSD X13, Y13
 
 loop:
 	VMOVUPD (DI), Y0
@@ -26,6 +34,8 @@ loop:
 	VADDPD Y10, Y3, Y3
 	VMULPD Y0, Y2, Y4
 	VDIVPD Y3, Y4, Y5
+	VMINPD Y12, Y5, Y5
+	VMAXPD Y13, Y5, Y5
 	VMOVUPD Y5, (AX)
 	ADDQ $32, AX
 	ADDQ $32, DI

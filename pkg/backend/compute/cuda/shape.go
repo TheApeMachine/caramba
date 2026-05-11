@@ -22,7 +22,11 @@ func NewShapeOps() *CUDAShapeOps {
 // Forward satisfies the universal operation interface.
 // It performs a no-op copy (reshape).  Use the typed methods for full control.
 func (c *CUDAShapeOps) Forward(shape []int, data ...[]float64) []float64 {
-	out, _ := c.Copy(data[0])
+	out, err := c.Copy(data[0])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

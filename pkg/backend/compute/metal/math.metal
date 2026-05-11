@@ -50,6 +50,90 @@ kernel void matmul_kernel(
     }
 }
 
+static inline float gelu_value(float x) {
+    float x3 = x * x * x;
+    float z = 0.7978845608028654f * (x + 0.044715f * x3);
+    return 0.5f * x * (1.0f + tanh(z));
+}
+
+kernel void matmul_add_kernel(
+    device const float* A     [[buffer(0)]],
+    device const float* B     [[buffer(1)]],
+    device const float* bias  [[buffer(2)]],
+    device float* C           [[buffer(3)]],
+    constant uint4& dims      [[buffer(4)]],
+    uint2 lid                 [[thread_position_in_threadgroup]],
+    uint2 tgid                [[threadgroup_position_in_grid]])
+{
+    uint M = dims.x, K = dims.y, N = dims.z, biasN = dims.w;
+    uint row = tgid.y * TILE_SIZE + lid.y;
+    uint col = tgid.x * TILE_SIZE + lid.x;
+
+    threadgroup float tA[TILE_SIZE][TILE_SIZE];
+    threadgroup float tB[TILE_SIZE][TILE_SIZE];
+
+    float acc = 0.0f;
+    uint numTiles = (K + TILE_SIZE - 1) / TILE_SIZE;
+
+    for (uint t = 0; t < numTiles; t++) {
+        uint aCol = t * TILE_SIZE + lid.x;
+        uint bRow = t * TILE_SIZE + lid.y;
+
+        tA[lid.y][lid.x] = (row < M && aCol < K) ? A[row * K + aCol] : 0.0f;
+        tB[lid.y][lid.x] = (bRow < K && col < N) ? B[bRow * N + col] : 0.0f;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        for (uint i = 0; i < TILE_SIZE; i++) {
+            acc += tA[lid.y][i] * tB[i][lid.x];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (row < M && col < N) {
+        acc += biasN == N ? bias[col] : bias[row * N + col];
+        C[row * N + col] = acc;
+    }
+}
+
+kernel void matmul_add_gelu_kernel(
+    device const float* A     [[buffer(0)]],
+    device const float* B     [[buffer(1)]],
+    device const float* bias  [[buffer(2)]],
+    device float* C           [[buffer(3)]],
+    constant uint4& dims      [[buffer(4)]],
+    uint2 lid                 [[thread_position_in_threadgroup]],
+    uint2 tgid                [[threadgroup_position_in_grid]])
+{
+    uint M = dims.x, K = dims.y, N = dims.z, biasN = dims.w;
+    uint row = tgid.y * TILE_SIZE + lid.y;
+    uint col = tgid.x * TILE_SIZE + lid.x;
+
+    threadgroup float tA[TILE_SIZE][TILE_SIZE];
+    threadgroup float tB[TILE_SIZE][TILE_SIZE];
+
+    float acc = 0.0f;
+    uint numTiles = (K + TILE_SIZE - 1) / TILE_SIZE;
+
+    for (uint t = 0; t < numTiles; t++) {
+        uint aCol = t * TILE_SIZE + lid.x;
+        uint bRow = t * TILE_SIZE + lid.y;
+
+        tA[lid.y][lid.x] = (row < M && aCol < K) ? A[row * K + aCol] : 0.0f;
+        tB[lid.y][lid.x] = (bRow < K && col < N) ? B[bRow * N + col] : 0.0f;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        for (uint i = 0; i < TILE_SIZE; i++) {
+            acc += tA[lid.y][i] * tB[i][lid.x];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (row < M && col < N) {
+        acc += biasN == N ? bias[col] : bias[row * N + col];
+        C[row * N + col] = gelu_value(acc);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // add_kernel: elementwise a + b
 // ---------------------------------------------------------------------------

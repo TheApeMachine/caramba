@@ -18,6 +18,15 @@ int cuda_add(const double* a, const double* b, double* out, int n);
 // Elementwise: out = a * b
 int cuda_mul(const double* a, const double* b, double* out, int n);
 
+// Device-resident variants. All pointers are CUDA device pointers.
+int cuda_matmul_device(const void* A, const void* B, void* C, int M, int K, int N);
+int cuda_add_device(const void* a, const void* b, void* out, int n);
+int cuda_mul_device(const void* a, const void* b, void* out, int n);
+int cuda_matmul_add_device(
+    const void* A, const void* B, const void* bias, void* C,
+    int M, int K, int N, int bias_n, int gelu
+);
+
 // Scale: dst = src * (1/sqrt(dim))
 int cuda_inv_sqrt_dim_scale(const double* src, double* dst, int n, int dim);
 

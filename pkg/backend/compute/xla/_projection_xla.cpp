@@ -57,18 +57,18 @@ static bool proj_check(const PJRT_Api* api, PJRT_Error* err, const char* ctx) {
 // ---------------------------------------------------------------------------
 
 static PJRT_LoadedExecutable* proj_compile(const std::string& mlir) {
+    PJRT_Program prog{};
+    prog.struct_size = PJRT_Program_STRUCT_SIZE;
+    prog.code        = const_cast<char*>(mlir.c_str());
+    prog.code_size   = mlir.size();
+    prog.format      = "mlir";
+    prog.format_size = 4;
+
     PJRT_Client_Compile_Args ca{};
     ca.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
     ca.client      = g_client;
-    ca.program      = &(PJRT_Program{
-        .struct_size = PJRT_Program_STRUCT_SIZE,
-        .code        = mlir.c_str(),
-        .code_size   = mlir.size(),
-        .format      = "mlir",
-        .format_size = 4,
-    });
-    ca.compile_options      = nullptr;
-    ca.compile_options_size = 0;
+    ca.program      = &prog;
+    set_single_device_compile_options(&ca);
 
     PJRT_Error* err = g_api->PJRT_Client_Compile(&ca);
     if (!proj_check(g_api, err, "PJRT_Client_Compile(proj)")) return nullptr;
@@ -82,7 +82,7 @@ static PJRT_LoadedExecutable* proj_compile(const std::string& mlir) {
 static std::string s(int v) { return std::to_string(v); }
 
 // f64 tensor type helpers
-static std::string t1(int n)           { return "tensor<" + s(n) + "xf64>"; }
+static std::string proj_t1(int n)      { return "tensor<" + s(n) + "xf64>"; }
 static std::string t2(int r, int c)    { return "tensor<" + s(r) + "x" + s(c) + "xf64>"; }
 
 // Linear / FusedQKV: result = A[M,K] dot W[N,K]^T  => [M,N]
@@ -91,7 +91,7 @@ static std::string build_linear(int M, int K, int N, bool has_bias) {
     // A: [M,K], W: [N,K], bias: [N] (optional)
     std::string tA    = t2(M, K);
     std::string tW    = t2(N, K);
-    std::string tBias = t1(N);
+    std::string tBias = proj_t1(N);
     std::string tC    = t2(M, N);
 
     std::string args = "%a: " + tA + ", %w: " + tW;
@@ -188,7 +188,8 @@ static int proj_run2(
     ea.num_devices     = 1;
     ea.num_args        = 2;
     ea.output_lists    = out_list;
-    ea.execute_options = nullptr;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options = &options;
 
     PJRT_Error* err = g_api->PJRT_LoadedExecutable_Execute(&ea);
     if (!proj_check(g_api, err, "Execute")) return -1;
@@ -278,7 +279,8 @@ static int proj_run3(
     ea.num_devices     = 1;
     ea.num_args        = 3;
     ea.output_lists    = out_list;
-    ea.execute_options = nullptr;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options = &options;
 
     PJRT_Error* err = g_api->PJRT_LoadedExecutable_Execute(&ea);
     if (!proj_check(g_api, err, "Execute3")) return -1;

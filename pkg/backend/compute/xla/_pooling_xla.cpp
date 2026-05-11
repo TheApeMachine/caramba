@@ -53,18 +53,18 @@ static bool pool_check(PJRT_Error* err, const char* ctx) {
 }
 
 static PJRT_LoadedExecutable* pool_compile(const std::string& mlir_text) {
+    PJRT_Program prog{};
+    prog.struct_size = PJRT_Program_STRUCT_SIZE;
+    prog.code        = const_cast<char*>(mlir_text.c_str());
+    prog.code_size   = mlir_text.size();
+    prog.format      = "mlir";
+    prog.format_size = 4;
+
     PJRT_Client_Compile_Args ca{};
     ca.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
     ca.client      = g_client;
-    ca.program      = &(PJRT_Program{
-        .struct_size = PJRT_Program_STRUCT_SIZE,
-        .code        = mlir_text.c_str(),
-        .code_size   = mlir_text.size(),
-        .format      = "mlir",
-        .format_size = 4,
-    });
-    ca.compile_options      = nullptr;
-    ca.compile_options_size = 0;
+    ca.program      = &prog;
+    set_single_device_compile_options(&ca);
 
     PJRT_Error* err = g_api->PJRT_Client_Compile(&ca);
     if (!pool_check(err, "PJRT_Client_Compile")) return nullptr;
@@ -122,7 +122,8 @@ static int pool_run(
     ea.num_devices     = 1;
     ea.num_args        = 1;
     ea.output_lists    = out_list;
-    ea.execute_options = nullptr;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options = &options;
 
     err = g_api->PJRT_LoadedExecutable_Execute(&ea);
     if (!pool_check(err, "Execute")) return -1;
@@ -325,7 +326,7 @@ static std::string ada_max_key(int N, int C, int H, int W, int OutH, int OutW) {
     return buf;
 }
 
-static PJRT_LoadedExecutable* get_or_compile(const std::string& key, const std::string& mlir) {
+static PJRT_LoadedExecutable* pool_get_or_compile(const std::string& key, const std::string& mlir) {
     auto it = g_pool_execs.find(key);
     if (it != g_pool_execs.end()) return it->second;
     PJRT_LoadedExecutable* exec = pool_compile(mlir);
@@ -352,7 +353,7 @@ int xla_compile_pooling(
 {
     if (!g_client) return -1;
     std::string k = max_key(N,C,H,W,kH,kW,sH,sW,pH,pW,dH,dW,Hout,Wout);
-    return get_or_compile(k, build_max_pool2d(N,C,H,W,kH,kW,sH,sW,pH,pW,dH,dW,Hout,Wout))
+    return pool_get_or_compile(k, build_max_pool2d(N,C,H,W,kH,kW,sH,sW,pH,pW,dH,dW,Hout,Wout))
            ? 0 : -1;
 }
 
@@ -365,7 +366,7 @@ int xla_max_pool2d(
 {
     if (!g_client) return -1;
     std::string k = max_key(N,C,H,W,kH,kW,sH,sW,pH,pW,dH,dW,Hout,Wout);
-    PJRT_LoadedExecutable* exec = get_or_compile(k,
+    PJRT_LoadedExecutable* exec = pool_get_or_compile(k,
         build_max_pool2d(N,C,H,W,kH,kW,sH,sW,pH,pW,dH,dW,Hout,Wout));
     if (!exec) return -1;
     return pool_run(exec, src, N*C*H*W, dst, N*C*Hout*Wout);
@@ -382,7 +383,7 @@ int xla_avg_pool2d(
     if (!g_client) return -1;
     std::string k = avg_key(N,C,H,W,kH,kW,sH,sW,pH,pW,dH,dW,Hout,Wout,
                             count_include_pad,divisor_override);
-    PJRT_LoadedExecutable* exec = get_or_compile(k,
+    PJRT_LoadedExecutable* exec = pool_get_or_compile(k,
         build_avg_pool2d(N,C,H,W,kH,kW,sH,sW,pH,pW,dH,dW,Hout,Wout,
                          count_include_pad,divisor_override));
     if (!exec) return -1;
@@ -396,7 +397,7 @@ int xla_adaptive_avg_pool2d(
 {
     if (!g_client) return -1;
     std::string k = ada_avg_key(N,C,H,W,OutH,OutW);
-    PJRT_LoadedExecutable* exec = get_or_compile(k,
+    PJRT_LoadedExecutable* exec = pool_get_or_compile(k,
         build_adaptive_avg_pool2d(N,C,H,W,OutH,OutW));
     if (!exec) return -1;
     return pool_run(exec, src, N*C*H*W, dst, N*C*OutH*OutW);
@@ -409,7 +410,7 @@ int xla_adaptive_max_pool2d(
 {
     if (!g_client) return -1;
     std::string k = ada_max_key(N,C,H,W,OutH,OutW);
-    PJRT_LoadedExecutable* exec = get_or_compile(k,
+    PJRT_LoadedExecutable* exec = pool_get_or_compile(k,
         build_adaptive_max_pool2d(N,C,H,W,OutH,OutW));
     if (!exec) return -1;
     return pool_run(exec, src, N*C*H*W, dst, N*C*OutH*OutW);

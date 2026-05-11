@@ -6,8 +6,6 @@ package xla
 //
 // Build requirements: same as activation.go in this package.
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo LDFLAGS: -ldl -lstdc++
 // #include <stdlib.h>
 // #include "convolution.h"
 import "C"
@@ -25,6 +23,10 @@ type XLAConvolution struct {
 
 // NewXLAConvolution initialises the PJRT client for the given platform.
 func NewXLAConvolution(platform string) (*XLAConvolution, error) {
+	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+		return nil, err
+	}
+
 	cp := C.CString(platform)
 	defer C.free(unsafe.Pointer(cp))
 

@@ -8,8 +8,6 @@ package xla
 //   - Same as activation.go (XLA headers, PJRT plugin library).
 //   - xla_init() must be called before using any XLAShapeOps method.
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo LDFLAGS: -ldl -lstdc++
 // #include "shape.h"
 import "C"
 
@@ -29,7 +27,11 @@ func NewShapeOps() *XLAShapeOps {
 
 // Forward satisfies the universal operation interface — performs a copy.
 func (x *XLAShapeOps) Forward(shape []int, data ...[]float64) []float64 {
-	out, _ := x.Copy(data[0])
+	out, err := x.Copy(data[0])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

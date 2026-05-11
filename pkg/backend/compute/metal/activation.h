@@ -30,6 +30,15 @@ int metal_sigmoid(const float* src, float* dst, int n);
 // src has 2*n elements (gates first, then values); dst has n elements.
 int metal_swiglu(const float* src, float* dst, int n);
 
+// Device-resident variants. src/dst are MTLBuffer handles produced by
+// metal_tensor_* functions.
+int metal_relu_tensor(void* src, void* dst, int n);
+int metal_leaky_relu_tensor(void* src, void* dst, float alpha, int n);
+int metal_gelu_tensor(void* src, void* dst, int n);
+int metal_tanh_tensor(void* src, void* dst, int n);
+int metal_sigmoid_tensor(void* src, void* dst, int n);
+int metal_swiglu_tensor(void* src, void* dst, int n);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,0 +1,355 @@
+package tensor
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+)
+
+const maxInt = int(^uint(0) >> 1)
+
+var (
+	errClosedBackend = errors.New("tensor: backend is closed")
+	errClosedTensor  = errors.New("tensor: tensor is closed")
+	errInvalidShape  = errors.New("tensor: shape is invalid")
+)
+
+/*
+DType identifies the scalar representation stored by a tensor.
+*/
+type DType string
+
+const (
+	Float64 DType = "float64"
+	Float32 DType = "float32"
+	Int64   DType = "int64"
+)
+
+/*
+Size returns the number of bytes used by one scalar value.
+*/
+func (dtype DType) Size() (int, error) {
+	switch dtype {
+	case Float64, Int64:
+		return 8, nil
+	case Float32:
+		return 4, nil
+	default:
+		return 0, fmt.Errorf("tensor: unsupported dtype %q", dtype)
+	}
+}
+
+/*
+Location identifies where tensor storage is owned.
+*/
+type Location string
+
+const (
+	Host  Location = "host"
+	CUDA  Location = "cuda"
+	Metal Location = "metal"
+	XLA   Location = "xla"
+)
+
+/*
+Shape is validated tensor metadata with a cached element count.
+*/
+type Shape struct {
+	dims     []int
+	elements int
+	valid    bool
+}
+
+/*
+NewShape validates dimensions and records the element count once.
+*/
+func NewShape(dims []int) (Shape, error) {
+	shape := Shape{
+		dims:     slices.Clone(dims),
+		elements: 1,
+		valid:    true,
+	}
+
+	for dimensionIndex, dimension := range shape.dims {
+		if dimension < 0 {
+			return Shape{}, fmt.Errorf(
+				"%w: dimension %d is negative (%d)",
+				errInvalidShape, dimensionIndex, dimension,
+			)
+		}
+
+		if dimension == 0 {
+			shape.elements = 0
+			continue
+		}
+
+		if shape.elements > maxInt/dimension {
+			return Shape{}, fmt.Errorf("%w: element count overflows int", errInvalidShape)
+		}
+
+		shape.elements *= dimension
+	}
+
+	return shape, nil
+}
+
+/*
+Valid reports whether the shape came from NewShape.
+*/
+func (shape Shape) Valid() bool {
+	return shape.valid
+}
+
+/*
+Dims returns an immutable copy of the dimensions.
+*/
+func (shape Shape) Dims() []int {
+	return slices.Clone(shape.dims)
+}
+
+/*
+Len returns the number of elements addressed by the shape.
+*/
+func (shape Shape) Len() int {
+	return shape.elements
+}
+
+/*
+Bytes returns the storage footprint for this shape and dtype.
+*/
+func (shape Shape) Bytes(dtype DType) (int, error) {
+	if !shape.valid {
+		return 0, errInvalidShape
+	}
+
+	size, err := dtype.Size()
+
+	if err != nil {
+		return 0, err
+	}
+
+	if shape.elements > maxInt/size {
+		return 0, fmt.Errorf("%w: byte count overflows int", errInvalidShape)
+	}
+
+	return shape.elements * size, nil
+}
+
+/*
+Equal reports whether two shapes address the same dimensions.
+*/
+func (shape Shape) Equal(other Shape) bool {
+	return slices.Equal(shape.dims, other.dims) && shape.elements == other.elements && shape.valid == other.valid
+}
+
+/*
+Tensor is the backend-neutral contract for persistent compute storage.
+*/
+type Tensor interface {
+	Shape() Shape
+	DType() DType
+	Location() Location
+	Len() int
+	Bytes() int
+	Close() error
+}
+
+/*
+Float64Tensor is a tensor that can be copied back to host float64 values.
+*/
+type Float64Tensor interface {
+	Tensor
+	CloneFloat64() ([]float64, error)
+}
+
+/*
+Backend owns persistent tensors for one compute location.
+*/
+type Backend interface {
+	Location() Location
+	UploadFloat64(shape Shape, values []float64) (Float64Tensor, error)
+	DownloadFloat64(tensor Float64Tensor) ([]float64, error)
+	Close() error
+}
+
+/*
+HostBackend owns tensors backed by Go heap storage.
+*/
+type HostBackend struct {
+	closed bool
+}
+
+/*
+NewHostBackend creates a backend for native Go tensor ownership.
+*/
+func NewHostBackend() *HostBackend {
+	return &HostBackend{}
+}
+
+/*
+Location identifies this backend as host-owned storage.
+*/
+func (hostBackend *HostBackend) Location() Location {
+	return Host
+}
+
+/*
+UploadFloat64 copies host values into a persistent host tensor.
+*/
+func (hostBackend *HostBackend) UploadFloat64(
+	shape Shape, values []float64,
+) (Float64Tensor, error) {
+	return hostBackend.createFloat64(shape, values, true)
+}
+
+/*
+AdoptFloat64 takes ownership of values without copying.
+*/
+func (hostBackend *HostBackend) AdoptFloat64(
+	shape Shape, values []float64,
+) (Float64Tensor, error) {
+	return hostBackend.createFloat64(shape, values, false)
+}
+
+func (hostBackend *HostBackend) createFloat64(
+	shape Shape, values []float64, copyValues bool,
+) (Float64Tensor, error) {
+	if hostBackend.closed {
+		return nil, errClosedBackend
+	}
+
+	if !shape.Valid() {
+		return nil, errInvalidShape
+	}
+
+	if shape.Len() != len(values) {
+		return nil, fmt.Errorf(
+			"tensor: shape has %d elements but upload received %d float64 values",
+			shape.Len(), len(values),
+		)
+	}
+
+	bytes, err := shape.Bytes(Float64)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if copyValues {
+		values = slices.Clone(values)
+	}
+
+	return &HostTensor{
+		bytes:  bytes,
+		shape:  shape,
+		values: values,
+	}, nil
+}
+
+/*
+DownloadFloat64 copies tensor contents back to host memory.
+*/
+func (hostBackend *HostBackend) DownloadFloat64(tensor Float64Tensor) ([]float64, error) {
+	if hostBackend.closed {
+		return nil, errClosedBackend
+	}
+
+	if tensor == nil {
+		return nil, errors.New("tensor: cannot download nil tensor")
+	}
+
+	if tensor.Location() != Host {
+		return nil, fmt.Errorf("tensor: host backend cannot download %s tensor", tensor.Location())
+	}
+
+	return tensor.CloneFloat64()
+}
+
+/*
+Close releases the backend. Existing tensors remain responsible for themselves.
+*/
+func (hostBackend *HostBackend) Close() error {
+	hostBackend.closed = true
+
+	return nil
+}
+
+/*
+HostTensor is persistent tensor storage backed by a Go float64 slice.
+*/
+type HostTensor struct {
+	bytes  int
+	shape  Shape
+	values []float64
+	closed bool
+}
+
+/*
+Shape returns validated tensor dimensions.
+*/
+func (hostTensor *HostTensor) Shape() Shape {
+	return hostTensor.shape
+}
+
+/*
+DType reports the scalar representation.
+*/
+func (hostTensor *HostTensor) DType() DType {
+	return Float64
+}
+
+/*
+Location reports host storage ownership.
+*/
+func (hostTensor *HostTensor) Location() Location {
+	return Host
+}
+
+/*
+Len returns the number of tensor elements.
+*/
+func (hostTensor *HostTensor) Len() int {
+	return hostTensor.shape.Len()
+}
+
+/*
+Bytes returns the number of bytes owned by this tensor.
+*/
+func (hostTensor *HostTensor) Bytes() int {
+	return hostTensor.bytes
+}
+
+/*
+Float64 returns the zero-copy host view for CPU kernels.
+*/
+func (hostTensor *HostTensor) Float64() ([]float64, error) {
+	if hostTensor.closed {
+		return nil, errClosedTensor
+	}
+
+	return hostTensor.values, nil
+}
+
+/*
+CloneFloat64 returns a host copy suitable for crossing backend boundaries.
+*/
+func (hostTensor *HostTensor) CloneFloat64() ([]float64, error) {
+	values, err := hostTensor.Float64()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return slices.Clone(values), nil
+}
+
+/*
+Close releases host tensor storage.
+*/
+func (hostTensor *HostTensor) Close() error {
+	hostTensor.bytes = 0
+	hostTensor.values = nil
+	hostTensor.closed = true
+
+	return nil
+}

@@ -165,6 +165,10 @@ func (c *CUDAPooling) Forward(shape []int, data ...[]float64) []float64 {
 		PadH: 0, PadW: 0,
 		DilationH: 1, DilationW: 1,
 	}
-	out, _ := c.MaxPool2d(shape, p, data[0])
+	out, err := c.MaxPool2d(shape, p, data[0])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }

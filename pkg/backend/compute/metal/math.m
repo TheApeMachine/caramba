@@ -10,6 +10,8 @@
 static id<MTLDevice>               gMDevice        = nil;
 static id<MTLCommandQueue>         gMQueue         = nil;
 static id<MTLComputePipelineState> gPSO_matmul     = nil;
+static id<MTLComputePipelineState> gPSO_matmul_add = nil;
+static id<MTLComputePipelineState> gPSO_matmul_add_gelu = nil;
 static id<MTLComputePipelineState> gPSO_add        = nil;
 static id<MTLComputePipelineState> gPSO_mul        = nil;
 static id<MTLComputePipelineState> gPSO_isdscale   = nil;
@@ -48,6 +50,8 @@ int metal_math_init(const char* metallib_path) {
         if (!lib) return -1;
 
         gPSO_matmul    = make_mpso(lib, @"matmul_kernel");
+        gPSO_matmul_add = make_mpso(lib, @"matmul_add_kernel");
+        gPSO_matmul_add_gelu = make_mpso(lib, @"matmul_add_gelu_kernel");
         gPSO_add       = make_mpso(lib, @"add_kernel");
         gPSO_mul       = make_mpso(lib, @"mul_kernel");
         gPSO_isdscale  = make_mpso(lib, @"inv_sqrt_dim_scale_kernel");
@@ -65,7 +69,8 @@ int metal_math_init(const char* metallib_path) {
         gPSO_div_vec    = make_mpso(lib, @"div_vec_kernel");
         gPSO_clamp_vec  = make_mpso(lib, @"clamp_vec_kernel");
 
-        if (!gPSO_matmul || !gPSO_add || !gPSO_mul || !gPSO_isdscale ||
+        if (!gPSO_matmul || !gPSO_matmul_add || !gPSO_matmul_add_gelu ||
+            !gPSO_add || !gPSO_mul || !gPSO_isdscale ||
             !gPSO_exp    || !gPSO_log || !gPSO_softmax ||
             !gPSO_layernorm || !gPSO_rmsnorm ||
             !gPSO_sign || !gPSO_outer ||
@@ -112,6 +117,36 @@ static id<MTLCommandBuffer> begin_cb(void) {
 static void commit_wait(id<MTLCommandBuffer> cb) {
     [cb commit];
     [cb waitUntilCompleted];
+}
+
+static int dispatch_binary_tensor(
+    id<MTLComputePipelineState> pso,
+    void* a,
+    void* b,
+    void* out,
+    int n)
+{
+    @autoreleasepool {
+        if (!gMQueue || !pso || !a || !b || !out) return -1;
+
+        id<MTLBuffer> bufA = (id<MTLBuffer>)a;
+        id<MTLBuffer> bufB = (id<MTLBuffer>)b;
+        id<MTLBuffer> bufOut = (id<MTLBuffer>)out;
+
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:pso];
+        [enc setBuffer:bufA offset:0 atIndex:0];
+        [enc setBuffer:bufB offset:0 atIndex:1];
+        [enc setBuffer:bufOut offset:0 atIndex:2];
+        NSUInteger tw = pso.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(tw,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+
+        return 0;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +230,90 @@ int metal_mul(const float* a, const float* b, float* out, int n) {
         [enc endEncoding];
         commit_wait(cb);
         copy_back_if_needed(bOut, out, nb);
+        return 0;
+    }
+}
+
+int metal_matmul_tensor(void* A, void* B, void* C, int M, int K, int N) {
+    @autoreleasepool {
+        if (!gMQueue || !gPSO_matmul || !A || !B || !C) return -1;
+
+        id<MTLBuffer> bufA = (id<MTLBuffer>)A;
+        id<MTLBuffer> bufB = (id<MTLBuffer>)B;
+        id<MTLBuffer> bufC = (id<MTLBuffer>)C;
+
+        unsigned int dims[3] = { (unsigned int)M, (unsigned int)K, (unsigned int)N };
+        id<MTLBuffer> bufDims = [gMDevice newBufferWithBytes:dims length:sizeof(dims)
+                                                     options:MTLResourceStorageModeShared];
+
+        id<MTLCommandBuffer> cmdBuf = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cmdBuf computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_matmul];
+        [enc setBuffer:bufA offset:0 atIndex:0];
+        [enc setBuffer:bufB offset:0 atIndex:1];
+        [enc setBuffer:bufC offset:0 atIndex:2];
+        [enc setBuffer:bufDims offset:0 atIndex:3];
+
+        NSUInteger ts = 16;
+        MTLSize tg = MTLSizeMake(ts, ts, 1);
+        MTLSize grid = MTLSizeMake(((NSUInteger)N+ts-1)/ts * ts,
+                                   ((NSUInteger)M+ts-1)/ts * ts, 1);
+        [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+        [enc endEncoding];
+        commit_wait(cmdBuf);
+
+        return 0;
+    }
+}
+
+int metal_add_tensor(void* a, void* b, void* out, int n) {
+    return dispatch_binary_tensor(gPSO_add, a, b, out, n);
+}
+
+int metal_mul_tensor(void* a, void* b, void* out, int n) {
+    return dispatch_binary_tensor(gPSO_mul, a, b, out, n);
+}
+
+int metal_matmul_add_tensor(
+    void* A, void* B, void* bias, void* C,
+    int M, int K, int N, int bias_n, int gelu)
+{
+    @autoreleasepool {
+        id<MTLComputePipelineState> pso = gelu ? gPSO_matmul_add_gelu : gPSO_matmul_add;
+        if (!gMQueue || !pso || !A || !B || !bias || !C) return -1;
+        if (bias_n != N && bias_n != M * N) return -1;
+
+        id<MTLBuffer> bufA = (id<MTLBuffer>)A;
+        id<MTLBuffer> bufB = (id<MTLBuffer>)B;
+        id<MTLBuffer> bufBias = (id<MTLBuffer>)bias;
+        id<MTLBuffer> bufC = (id<MTLBuffer>)C;
+
+        unsigned int dims[4] = {
+            (unsigned int)M,
+            (unsigned int)K,
+            (unsigned int)N,
+            (unsigned int)bias_n
+        };
+        id<MTLBuffer> bufDims = [gMDevice newBufferWithBytes:dims length:sizeof(dims)
+                                                     options:MTLResourceStorageModeShared];
+
+        id<MTLCommandBuffer> cmdBuf = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cmdBuf computeCommandEncoder];
+        [enc setComputePipelineState:pso];
+        [enc setBuffer:bufA offset:0 atIndex:0];
+        [enc setBuffer:bufB offset:0 atIndex:1];
+        [enc setBuffer:bufBias offset:0 atIndex:2];
+        [enc setBuffer:bufC offset:0 atIndex:3];
+        [enc setBuffer:bufDims offset:0 atIndex:4];
+
+        NSUInteger ts = 16;
+        MTLSize tg = MTLSizeMake(ts, ts, 1);
+        MTLSize grid = MTLSizeMake(((NSUInteger)N+ts-1)/ts * ts,
+                                   ((NSUInteger)M+ts-1)/ts * ts, 1);
+        [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+        [enc endEncoding];
+        commit_wait(cmdBuf);
+
         return 0;
     }
 }

@@ -7,8 +7,6 @@ package xla
 // Build requirements: same as activation.go.
 // Pooling modules are compiled on-demand and cached per parameter set.
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo LDFLAGS: -ldl -lstdc++
 // #include <stdlib.h>
 // #include "pooling.h"
 import "C"
@@ -27,6 +25,10 @@ type XLAPooling struct {
 // NewXLAPooling initialises the PJRT client for pooling.
 // Call after (or instead of) NewXLAActivation — they share the same PJRT client.
 func NewXLAPooling(platform string) (*XLAPooling, error) {
+	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+		return nil, err
+	}
+
 	cp := C.CString(platform)
 	defer C.free(unsafe.Pointer(cp))
 
@@ -183,6 +185,10 @@ func (x *XLAPooling) Forward(shape []int, data ...[]float64) []float64 {
 		PadH: 0, PadW: 0,
 		DilationH: 1, DilationW: 1,
 	}
-	out, _ := x.MaxPool2d(shape, p, data[0])
+	out, err := x.MaxPool2d(shape, p, data[0])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }

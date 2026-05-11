@@ -4,7 +4,9 @@ package metal
 
 type ProjectionOps struct{}
 
-func NewProjectionOps(metallib string) (*ProjectionOps, error) { return &ProjectionOps{}, nil }
+func NewProjectionOps(metallib string) (*ProjectionOps, error) {
+	return nil, errMetalUnavailable
+}
 
 func (p *ProjectionOps) Forward(shape []int, data ...[]float64) []float64 { panic(errMetalUnavailable) }
 

@@ -43,18 +43,18 @@ extern int  run_executable(PJRT_LoadedExecutable* exec,
 // ---------------------------------------------------------------------------
 
 static PJRT_LoadedExecutable* compile_stablehlo_conv(const std::string& mlir) {
+    PJRT_Program prog{};
+    prog.struct_size = PJRT_Program_STRUCT_SIZE;
+    prog.code        = const_cast<char*>(mlir.c_str());
+    prog.code_size   = mlir.size();
+    prog.format      = "mlir";
+    prog.format_size = 4;
+
     PJRT_Client_Compile_Args ca{};
     ca.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
     ca.client      = g_client;
-    ca.program     = &(PJRT_Program{
-        .struct_size = PJRT_Program_STRUCT_SIZE,
-        .code        = mlir.c_str(),
-        .code_size   = mlir.size(),
-        .format      = "mlir",
-        .format_size = 4,
-    });
-    ca.compile_options      = nullptr;
-    ca.compile_options_size = 0;
+    ca.program     = &prog;
+    set_single_device_compile_options(&ca);
     PJRT_Error* err = g_api->PJRT_Client_Compile(&ca);
     if (!check(g_api, err, "compile_stablehlo_conv")) return nullptr;
     return ca.executable;
@@ -116,7 +116,8 @@ static int run_conv_exec(
     ea.num_devices    = 1;
     ea.num_args       = 3;
     ea.output_lists   = out_list;
-    ea.execute_options = nullptr;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options = &options;
 
     PJRT_Error* err = g_api->PJRT_LoadedExecutable_Execute(&ea);
     if (!check(g_api, err, "Execute(conv)")) return -1;
@@ -378,13 +379,8 @@ int xla_conv_init(const char* platform) {
     // Reuse existing client if already initialized by activation backend.
     if (g_client) return 0;
 
-    char path[256];
-    if (strcmp(platform, "gpu") == 0) {
-        snprintf(path, sizeof(path), "pjrt_c_api_gpu_plugin.so");
-    } else {
-        snprintf(path, sizeof(path), "pjrt_c_api_cpu_plugin.so");
-    }
-    void* handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+    std::string path = pjrt_plugin_path(platform);
+    void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_GLOBAL);
     if (!handle) return -1;
     auto get_api = (GetPjrtApiFn)dlsym(handle, "GetPjrtApi");
     if (!get_api) return -1;

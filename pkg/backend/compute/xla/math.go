@@ -10,14 +10,11 @@ package xla
 //
 // Example build:
 //   CGO_CPPFLAGS="-I/path/to/xla" \
-//   CGO_LDFLAGS="-ldl -lstdc++" \
-//   go build -tags "cgo xla" ./backend/compute/xla/
+//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo LDFLAGS: -ldl -lstdc++
 // #include <stdlib.h>
 // #include <stdlib.h>
-// #include "math.h"
+// #include "xla_math.h"
 import "C"
 
 import (
@@ -32,8 +29,13 @@ type XLAMathOps struct {
 
 // NewMathOps initialises the PJRT client for the given platform ("cpu"/"gpu").
 func NewMathOps(platform string) (*XLAMathOps, error) {
+	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+		return nil, err
+	}
+
 	cp := C.CString(platform)
 	defer C.free(unsafe.Pointer(cp))
+
 	if rc := C.xla_math_init(cp); rc != 0 {
 		return nil, fmt.Errorf("xla_math_init failed for platform %q", platform)
 	}

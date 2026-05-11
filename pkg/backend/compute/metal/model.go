@@ -7,6 +7,7 @@ package metal
 import "C"
 
 import (
+	"fmt"
 	"unsafe"
 
 	cpumodel "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/model"
@@ -76,12 +77,16 @@ func metalMatMul(a, b []float64, M, K, N int) []float64 {
 	bF32 := toFloat32(b)
 	cF32 := make([]float32, M*N)
 
-	C.metal_matmul(
+	rc := C.metal_matmul(
 		(*C.float)(unsafe.Pointer(&aF32[0])),
 		(*C.float)(unsafe.Pointer(&bF32[0])),
 		(*C.float)(unsafe.Pointer(&cF32[0])),
 		C.int(M), C.int(K), C.int(N),
 	)
+
+	if rc != 0 {
+		panic(fmt.Sprintf("metal_matmul failed (rc=%d)", rc))
+	}
 
 	return toFloat64(cF32)
 }

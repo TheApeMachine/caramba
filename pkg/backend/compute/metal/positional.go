@@ -86,7 +86,11 @@ func (m *MetalPositional) RoPEForward(base float64, shape []int, data ...[]float
 // Forward dispatches RoPE with the universal signature.
 // shape=[batch, num_heads, seq_len, head_dim]; uses default base=10000.
 func (m *MetalPositional) Forward(shape []int, data ...[]float64) []float64 {
-	out, _ := m.RoPEForward(10000.0, shape, data...)
+	out, err := m.RoPEForward(10000.0, shape, data...)
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 

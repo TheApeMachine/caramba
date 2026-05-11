@@ -7,15 +7,12 @@ package xla
 // Build requirements:
 //   - XLA headers on the include path (set XLA_INCLUDE via CGO_CPPFLAGS)
 //   - PJRT plugin shared library for your platform on LD_LIBRARY_PATH / DYLD_LIBRARY_PATH
-//   - Compile activation_xla.cc alongside this package (CGo picks it up automatically)
+//   - Compile _activation_xla.cpp alongside this package (CGo picks it up automatically)
 //
 // Example build:
 //   CGO_CPPFLAGS="-I/path/to/xla" \
-//   CGO_LDFLAGS="-ldl -lstdc++" \
-//   go build -tags "cgo xla" ./backend/compute/xla/
+//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
 
-// #cgo CXXFLAGS: -std=c++17
-// #cgo LDFLAGS: -ldl -lstdc++
 // #include <stdlib.h>
 // #include "activation.h"
 import "C"
@@ -35,6 +32,10 @@ type XLAActivation struct {
 
 // New initialises the PJRT client for the given platform ("cpu" or "gpu").
 func New(platform string) (*XLAActivation, error) {
+	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+		return nil, err
+	}
+
 	cp := C.CString(platform)
 	defer C.free(unsafe.Pointer(cp))
 
@@ -60,7 +61,11 @@ func (x *XLAActivation) ensureCompiled(n int) error {
 // Forward dispatches to ReLU with the new universal signature.
 // shape is metadata only; data[0] is the primary input buffer.
 func (x *XLAActivation) Forward(shape []int, data ...[]float64) []float64 {
-	out, _ := x.ReLU(data[0])
+	out, err := x.ReLU(data[0])
+	if err != nil {
+		panic(err)
+	}
+
 	return out
 }
 
