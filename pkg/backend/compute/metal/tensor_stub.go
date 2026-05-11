@@ -19,20 +19,20 @@ type TensorBackend struct{}
 NewTensorBackend creates a Metal tensor backend stub.
 */
 func NewTensorBackend() (*TensorBackend, error) {
-	return nil, fmt.Errorf("metal tensor: build on darwin with cgo")
+	return &TensorBackend{}, fmt.Errorf("metal tensor: build on darwin with cgo")
 }
 
 /*
 Location identifies the intended Metal storage location.
 */
-func (tensorBackend *TensorBackend) Location() computetensor.Location {
+func (*TensorBackend) Location() computetensor.Location {
 	return computetensor.Metal
 }
 
 /*
 UploadFloat64 rejects uploads when Metal support is not built in.
 */
-func (tensorBackend *TensorBackend) UploadFloat64(
+func (*TensorBackend) UploadFloat64(
 	shape computetensor.Shape, values []float64,
 ) (computetensor.Float64Tensor, error) {
 	return nil, fmt.Errorf("metal tensor: build on darwin with cgo")
@@ -41,7 +41,7 @@ func (tensorBackend *TensorBackend) UploadFloat64(
 /*
 DownloadFloat64 rejects downloads when Metal support is not built in.
 */
-func (tensorBackend *TensorBackend) DownloadFloat64(
+func (*TensorBackend) DownloadFloat64(
 	input computetensor.Float64Tensor,
 ) ([]float64, error) {
 	return nil, fmt.Errorf("metal tensor: build on darwin with cgo")
@@ -50,6 +50,6 @@ func (tensorBackend *TensorBackend) DownloadFloat64(
 /*
 Close is a no-op for the Metal tensor backend stub.
 */
-func (tensorBackend *TensorBackend) Close() error {
+func (*TensorBackend) Close() error {
 	return nil
 }

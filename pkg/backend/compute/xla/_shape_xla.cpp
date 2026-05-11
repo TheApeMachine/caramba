@@ -12,16 +12,10 @@
 #include <string>
 #include <sstream>
 
-// Pull in the shared globals from activation_xla.cc via extern declarations.
-// They are defined there and linked together by the Go build system.
+// g_api / g_client / set_single_device_compile_options come from amalgamated
+// _activation_xla.cpp (included earlier in xla_sources.cpp).
+
 #include "xla/pjrt/c/pjrt_c_api.h"
-
-extern const PJRT_Api* g_api;
-extern PJRT_Client*    g_client;
-
-// ---------------------------------------------------------------------------
-// Shared compile helper (mirrors activation_xla.cc compile_stablehlo).
-// ---------------------------------------------------------------------------
 
 static PJRT_LoadedExecutable* compile_shape_stablehlo(const std::string& mlir_text) {
     PJRT_Program prog{};

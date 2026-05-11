@@ -33,7 +33,7 @@ func NewMathOps(metallib string) (*MathOps, error) {
 // Matmul — shape=[M,K,N], data[0]=A [M*K], data[1]=B [K*N]
 // ---------------------------------------------------------------------------
 
-func (m *MathOps) Matmul(shape []int, data ...[]float64) []float64 {
+func (m *MathOps) Matmul(shape []int, data ...[]float64) ([]float64, error) {
 	M, K, N := shape[0], shape[1], shape[2]
 	A := toFloat32(data[0])
 	B := toFloat32(data[1])
@@ -45,16 +45,16 @@ func (m *MathOps) Matmul(shape []int, data ...[]float64) []float64 {
 		C.int(M), C.int(K), C.int(N),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_matmul failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_matmul failed (rc=%d)", rc)
 	}
-	return toFloat64(C_)
+	return toFloat64(C_), nil
 }
 
 // ---------------------------------------------------------------------------
 // Add
 // ---------------------------------------------------------------------------
 
-func (m *MathOps) Add(shape []int, data ...[]float64) []float64 {
+func (m *MathOps) Add(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	a := toFloat32(data[0])
 	b := toFloat32(data[1])
@@ -66,16 +66,16 @@ func (m *MathOps) Add(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_add failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_add failed (rc=%d)", rc)
 	}
-	return toFloat64(out)
+	return toFloat64(out), nil
 }
 
 // ---------------------------------------------------------------------------
 // Mul
 // ---------------------------------------------------------------------------
 
-func (m *MathOps) Mul(shape []int, data ...[]float64) []float64 {
+func (m *MathOps) Mul(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	a := toFloat32(data[0])
 	b := toFloat32(data[1])
@@ -87,13 +87,14 @@ func (m *MathOps) Mul(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_mul failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_mul failed (rc=%d)", rc)
 	}
-	return toFloat64(out)
+	return toFloat64(out), nil
 }
 
 /*
 AddTensor performs resident Metal elementwise addition.
+Left and right must have identical shapes; broadcasting is not supported.
 */
 func (m *MathOps) AddTensor(
 	left, right computetensor.Float64Tensor,
@@ -103,6 +104,7 @@ func (m *MathOps) AddTensor(
 
 /*
 MulTensor performs resident Metal elementwise multiplication.
+Left and right must have identical shapes; broadcasting is not supported.
 */
 func (m *MathOps) MulTensor(
 	left, right computetensor.Float64Tensor,
@@ -341,7 +343,7 @@ func metalMatmulAddInputs(
 // InvSqrtDimScale — shape[-1] is the dim
 // ---------------------------------------------------------------------------
 
-func (m *MathOps) InvSqrtDimScale(shape []int, data ...[]float64) []float64 {
+func (m *MathOps) InvSqrtDimScale(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	dim := shape[len(shape)-1]
 	src := toFloat32(data[0])
@@ -352,16 +354,16 @@ func (m *MathOps) InvSqrtDimScale(shape []int, data ...[]float64) []float64 {
 		C.int(n), C.int(dim),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_inv_sqrt_dim_scale failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_inv_sqrt_dim_scale failed (rc=%d)", rc)
 	}
-	return toFloat64(dst)
+	return toFloat64(dst), nil
 }
 
 // ---------------------------------------------------------------------------
 // Exp
 // ---------------------------------------------------------------------------
 
-func (m *MathOps) Exp(shape []int, data ...[]float64) []float64 {
+func (m *MathOps) Exp(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	src := toFloat32(data[0])
 	dst := make([]float32, n)
@@ -371,16 +373,16 @@ func (m *MathOps) Exp(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_exp failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_exp failed (rc=%d)", rc)
 	}
-	return toFloat64(dst)
+	return toFloat64(dst), nil
 }
 
 // ---------------------------------------------------------------------------
 // Log
 // ---------------------------------------------------------------------------
 
-func (m *MathOps) Log(shape []int, data ...[]float64) []float64 {
+func (m *MathOps) Log(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	src := toFloat32(data[0])
 	dst := make([]float32, n)
@@ -390,16 +392,16 @@ func (m *MathOps) Log(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_log failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_log failed (rc=%d)", rc)
 	}
-	return toFloat64(dst)
+	return toFloat64(dst), nil
 }
 
 // ---------------------------------------------------------------------------
 // Softmax — shape=[..., dim_size]
 // ---------------------------------------------------------------------------
 
-func (m *MathOps) Softmax(shape []int, data ...[]float64) []float64 {
+func (m *MathOps) Softmax(shape []int, data ...[]float64) ([]float64, error) {
 	dimSize := shape[len(shape)-1]
 	n := len(data[0])
 	numRows := n / dimSize
@@ -411,16 +413,16 @@ func (m *MathOps) Softmax(shape []int, data ...[]float64) []float64 {
 		C.int(numRows), C.int(dimSize),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_softmax failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_softmax failed (rc=%d)", rc)
 	}
-	return toFloat64(dst)
+	return toFloat64(dst), nil
 }
 
 // ---------------------------------------------------------------------------
 // LayerNorm
 // ---------------------------------------------------------------------------
 
-func (m *MathOps) LayerNorm(shape []int, eps float64, weight, bias []float64, data ...[]float64) []float64 {
+func (m *MathOps) LayerNorm(shape []int, eps float64, weight, bias []float64, data ...[]float64) ([]float64, error) {
 	dModel := shape[len(shape)-1]
 	n := len(data[0])
 	numRows := n / dModel
@@ -436,16 +438,16 @@ func (m *MathOps) LayerNorm(shape []int, eps float64, weight, bias []float64, da
 		C.int(numRows), C.int(dModel), C.float(eps),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_layernorm failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_layernorm failed (rc=%d)", rc)
 	}
-	return toFloat64(dst)
+	return toFloat64(dst), nil
 }
 
 // ---------------------------------------------------------------------------
 // RMSNorm
 // ---------------------------------------------------------------------------
 
-func (m *MathOps) RMSNorm(shape []int, eps float64, weight []float64, data ...[]float64) []float64 {
+func (m *MathOps) RMSNorm(shape []int, eps float64, weight []float64, data ...[]float64) ([]float64, error) {
 	dModel := shape[len(shape)-1]
 	n := len(data[0])
 	numRows := n / dModel
@@ -459,13 +461,13 @@ func (m *MathOps) RMSNorm(shape []int, eps float64, weight []float64, data ...[]
 		C.int(numRows), C.int(dModel), C.float(eps),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_rmsnorm failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_rmsnorm failed (rc=%d)", rc)
 	}
-	return toFloat64(dst)
+	return toFloat64(dst), nil
 }
 
 // Sign: elementwise sign
-func (m *MathOps) Sign(shape []int, data ...[]float64) []float64 {
+func (m *MathOps) Sign(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	src := toFloat32(data[0])
 	dst := make([]float32, n)
@@ -475,13 +477,13 @@ func (m *MathOps) Sign(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_sign failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_sign failed (rc=%d)", rc)
 	}
-	return toFloat64(dst)
+	return toFloat64(dst), nil
 }
 
 // Outer: outer product a[M] x b[N] → dst[M*N]
-func (m *MathOps) Outer(shape []int, data ...[]float64) []float64 {
+func (m *MathOps) Outer(shape []int, data ...[]float64) ([]float64, error) {
 	M, N := shape[0], shape[1]
 	a := toFloat32(data[0])
 	b := toFloat32(data[1])
@@ -493,7 +495,7 @@ func (m *MathOps) Outer(shape []int, data ...[]float64) []float64 {
 		C.int(M), C.int(N),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_outer failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_outer failed (rc=%d)", rc)
 	}
-	return toFloat64(dst)
+	return toFloat64(dst), nil
 }

@@ -9,7 +9,6 @@ package xla
 //
 // Required environment when building with -tags "cgo xla":
 //   CGO_CPPFLAGS="-I/path/to/xla"
-//
 
 // #cgo CXXFLAGS: -std=c++17
 // #cgo LDFLAGS: -ldl

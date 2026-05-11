@@ -10,19 +10,34 @@ import (
 
 func TestXLAActivation_ReLU(test *testing.T) {
 	Convey("Given an XLA activation runtime", test, func() {
-		activation := newXLAActivationForTest(test)
+		activation := newXLAActivation(test)
 		defer activation.Shutdown()
 
-		Convey("It should execute ReLU through PJRT", func() {
-			values, err := activation.ReLU([]float64{-2, -0.5, 0, 3})
-			So(err, ShouldBeNil)
-			So(values, ShouldResemble, []float64{0, 0, 0, 3})
-		})
+		cases := []struct {
+			name     string
+			input    []float64
+			expected []float64
+		}{
+			{"all negative", []float64{-3, -1, -0.1}, []float64{0, 0, 0}},
+			{"all positive", []float64{0.1, 1, 5}, []float64{0.1, 1, 5}},
+			{"all zeros", []float64{0, 0, 0}, []float64{0, 0, 0}},
+			{"large magnitude", []float64{-1e6, 1e6}, []float64{0, 1e6}},
+			{"near zero", []float64{-1e-12, 0, 1e-12}, []float64{0, 0, 1e-12}},
+		}
+
+		for _, testcase := range cases {
+			Convey(testcase.name, func() {
+				values, err := activation.ReLU(testcase.input)
+
+				So(err, ShouldBeNil)
+				So(values, ShouldResemble, testcase.expected)
+			})
+		}
 	})
 }
 
 func BenchmarkXLAActivation_ReLU(benchmark *testing.B) {
-	activation := newXLAActivationForBenchmark(benchmark)
+	activation := newXLAActivation(benchmark)
 	defer activation.Shutdown()
 
 	values := make([]float64, 1024)
@@ -40,54 +55,35 @@ func BenchmarkXLAActivation_ReLU(benchmark *testing.B) {
 	}
 }
 
-func newXLAActivationForTest(test *testing.T) *XLAActivation {
-	test.Helper()
+func newXLAActivation(tb testing.TB) *XLAActivation {
+	tb.Helper()
 
-	platform := xlaActivationTestPlatform(test)
+	platform := xlaPJRTAvailablePlatform(tb)
 	activation, err := New(platform)
 
 	if err != nil {
-		test.Skip(err)
+		tb.Skip(err)
 	}
 
 	return activation
 }
 
-func newXLAActivationForBenchmark(benchmark *testing.B) *XLAActivation {
-	benchmark.Helper()
-
-	platform := xlaActivationBenchmarkPlatform(benchmark)
-	activation, err := New(platform)
-
-	if err != nil {
-		benchmark.Skip(err)
-	}
-
-	return activation
-}
-
-func xlaActivationTestPlatform(test *testing.T) string {
-	test.Helper()
+func xlaPJRTAvailablePlatform(tb testing.TB) string {
+	tb.Helper()
 
 	for _, platform := range []string{"cpu", "gpu"} {
-		if NewPJRTConfig(platform).ValidateRuntime() == nil {
+		config, err := NewPJRTConfig(platform)
+
+		if err != nil {
+			continue
+		}
+
+		if config.ValidateRuntime() == nil {
 			return platform
 		}
 	}
 
-	test.Skip("xla activation: no PJRT plugin configured")
-	return ""
-}
+	tb.Skip("xla activation: no PJRT plugin configured")
 
-func xlaActivationBenchmarkPlatform(benchmark *testing.B) string {
-	benchmark.Helper()
-
-	for _, platform := range []string{"cpu", "gpu"} {
-		if NewPJRTConfig(platform).ValidateRuntime() == nil {
-			return platform
-		}
-	}
-
-	benchmark.Skip("xla activation: no PJRT plugin configured")
 	return ""
 }

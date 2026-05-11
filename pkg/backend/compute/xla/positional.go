@@ -11,7 +11,7 @@ package xla
 //
 // Example build:
 //   CGO_CPPFLAGS="-I/path/to/xla" \
-//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
+//   go build -tags "cgo xla" ./pkg/backend/compute/xla
 
 // #include <stdlib.h>
 // #include "positional.h"
@@ -30,7 +30,13 @@ type XLAPositionalOps struct {
 
 // NewPositional initialises the PJRT client for the given platform.
 func NewPositional(platform string) (*XLAPositionalOps, error) {
-	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+	config, err := NewPJRTConfig(platform)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 
@@ -162,11 +168,13 @@ func (x *XLAPositionalOps) RoPEForward(base float64, shape []int, data ...[]floa
 	return dst, nil
 }
 
-// Forward dispatches RoPE with the universal signature.
+// Forward implements cpu/operation.Operation ([]float64 only).
+// On RoPEForward failure it panics with a formatted message (errors cannot be returned on this signature).
 func (x *XLAPositionalOps) Forward(shape []int, data ...[]float64) []float64 {
 	out, err := x.RoPEForward(10000.0, shape, data...)
+
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("xla positional Forward(RoPEForward): %v", err))
 	}
 
 	return out

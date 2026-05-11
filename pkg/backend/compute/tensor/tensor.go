@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 )
 
 const maxInt = int(^uint(0) >> 1)
@@ -176,6 +177,7 @@ type Backend interface {
 HostBackend owns tensors backed by Go heap storage.
 */
 type HostBackend struct {
+	mu     sync.RWMutex
 	closed bool
 }
 
@@ -203,7 +205,10 @@ func (hostBackend *HostBackend) UploadFloat64(
 }
 
 /*
-AdoptFloat64 takes ownership of values without copying.
+AdoptFloat64 forwards values to createFloat64 with copy=false: it takes ownership of the
+provided slice without copying. The caller must not retain the backing array or mutate it
+after AdoptFloat64 returns, or tensor storage will be corrupted. Use UploadFloat64 for a
+copied buffer, or CloneFloat64 on the returned tensor when an independent host slice is needed.
 */
 func (hostBackend *HostBackend) AdoptFloat64(
 	shape Shape, values []float64,
@@ -214,6 +219,9 @@ func (hostBackend *HostBackend) AdoptFloat64(
 func (hostBackend *HostBackend) createFloat64(
 	shape Shape, values []float64, copyValues bool,
 ) (Float64Tensor, error) {
+	hostBackend.mu.Lock()
+	defer hostBackend.mu.Unlock()
+
 	if hostBackend.closed {
 		return nil, errClosedBackend
 	}
@@ -247,10 +255,17 @@ func (hostBackend *HostBackend) createFloat64(
 }
 
 /*
-DownloadFloat64 copies tensor contents back to host memory.
+DownloadFloat64 returns a zero-copy host view for tensors stored on Host.
+
+For *HostTensor this aliases the backing slice (not a clone). Callers that need
+an independent buffer must use Float64Tensor.CloneFloat64 on the tensor first.
 */
 func (hostBackend *HostBackend) DownloadFloat64(tensor Float64Tensor) ([]float64, error) {
-	if hostBackend.closed {
+	hostBackend.mu.RLock()
+	closed := hostBackend.closed
+	hostBackend.mu.RUnlock()
+
+	if closed {
 		return nil, errClosedBackend
 	}
 
@@ -262,13 +277,22 @@ func (hostBackend *HostBackend) DownloadFloat64(tensor Float64Tensor) ([]float64
 		return nil, fmt.Errorf("tensor: host backend cannot download %s tensor", tensor.Location())
 	}
 
-	return tensor.CloneFloat64()
+	hostTensor, ok := tensor.(*HostTensor)
+
+	if !ok {
+		return nil, fmt.Errorf("tensor: host backend expected *HostTensor, got %T", tensor)
+	}
+
+	return hostTensor.Float64()
 }
 
 /*
 Close releases the backend. Existing tensors remain responsible for themselves.
 */
 func (hostBackend *HostBackend) Close() error {
+	hostBackend.mu.Lock()
+	defer hostBackend.mu.Unlock()
+
 	hostBackend.closed = true
 
 	return nil
@@ -278,6 +302,7 @@ func (hostBackend *HostBackend) Close() error {
 HostTensor is persistent tensor storage backed by a Go float64 slice.
 */
 type HostTensor struct {
+	mu     sync.RWMutex
 	bytes  int
 	shape  Shape
 	values []float64
@@ -288,6 +313,9 @@ type HostTensor struct {
 Shape returns validated tensor dimensions.
 */
 func (hostTensor *HostTensor) Shape() Shape {
+	hostTensor.mu.RLock()
+	defer hostTensor.mu.RUnlock()
+
 	return hostTensor.shape
 }
 
@@ -309,6 +337,9 @@ func (hostTensor *HostTensor) Location() Location {
 Len returns the number of tensor elements.
 */
 func (hostTensor *HostTensor) Len() int {
+	hostTensor.mu.RLock()
+	defer hostTensor.mu.RUnlock()
+
 	return hostTensor.shape.Len()
 }
 
@@ -316,13 +347,22 @@ func (hostTensor *HostTensor) Len() int {
 Bytes returns the number of bytes owned by this tensor.
 */
 func (hostTensor *HostTensor) Bytes() int {
+	hostTensor.mu.RLock()
+	defer hostTensor.mu.RUnlock()
+
 	return hostTensor.bytes
 }
 
 /*
 Float64 returns the zero-copy host view for CPU kernels.
+
+The returned slice aliases HostTensor.values: mutating elements changes the
+tensor in place. Copy the slice or use CloneFloat64 when an independent buffer is required.
 */
 func (hostTensor *HostTensor) Float64() ([]float64, error) {
+	hostTensor.mu.RLock()
+	defer hostTensor.mu.RUnlock()
+
 	if hostTensor.closed {
 		return nil, errClosedTensor
 	}
@@ -334,22 +374,31 @@ func (hostTensor *HostTensor) Float64() ([]float64, error) {
 CloneFloat64 returns a host copy suitable for crossing backend boundaries.
 */
 func (hostTensor *HostTensor) CloneFloat64() ([]float64, error) {
-	values, err := hostTensor.Float64()
+	hostTensor.mu.RLock()
+	defer hostTensor.mu.RUnlock()
 
-	if err != nil {
-		return nil, err
+	if hostTensor.closed {
+		return nil, errClosedTensor
 	}
 
-	return slices.Clone(values), nil
+	return slices.Clone(hostTensor.values), nil
 }
 
 /*
-Close releases host tensor storage.
+Close releases host tensor storage. Idempotent: repeated Close calls are safe.
 */
 func (hostTensor *HostTensor) Close() error {
+	hostTensor.mu.Lock()
+	defer hostTensor.mu.Unlock()
+
+	if hostTensor.closed {
+		return nil
+	}
+
+	hostTensor.closed = true
 	hostTensor.bytes = 0
 	hostTensor.values = nil
-	hostTensor.closed = true
+	hostTensor.shape = Shape{}
 
 	return nil
 }

@@ -24,8 +24,6 @@ static const PJRT_Api*  g_mask_api    = nullptr;
 static PJRT_Client*     g_mask_client = nullptr;
 
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_mask_execs;
-static int gm_compiled_causal_n = 0;
-static int gm_compiled_apply_n  = 0;
 
 // ---------------------------------------------------------------------------
 // Helpers (duplicated from activation_xla.cc to keep files independent)
@@ -249,25 +247,17 @@ int xla_masking_init(const char* platform) {
 }
 
 int xla_causal_mask(double* out, int seq_len) {
-    if (!g_mask_client) return -1;
+    if (!g_mask_client || !out) return -1;
     int n2 = seq_len * seq_len;
 
     // CausalMask takes no inputs — we pass a dummy 1-element input.
     // The module @main has no arguments but PJRT execute needs >=0 inputs.
     // We compile/cache keyed on seq_len.
     std::string key = "causal_mask_" + std::to_string(seq_len);
-    if (g_mask_execs.find(key) == g_mask_execs.end() || gm_compiled_causal_n != seq_len) {
-        if (g_mask_execs.count(key)) {
-            PJRT_LoadedExecutable_Destroy_Args da{};
-            da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
-            da.executable  = g_mask_execs[key];
-            g_mask_api->PJRT_LoadedExecutable_Destroy(&da);
-            g_mask_execs.erase(key);
-        }
+    if (!g_mask_execs.count(key)) {
         auto* exec = gm_compile(build_causal_mask(seq_len));
         if (!exec) return -1;
         g_mask_execs[key] = exec;
-        gm_compiled_causal_n = seq_len;
     }
 
     // Execute with no input buffer: use a dummy empty double.
@@ -324,20 +314,13 @@ int xla_causal_mask(double* out, int seq_len) {
 
 int xla_apply_mask(const double* scores, const double* mask, double* out, int n) {
     if (!g_mask_client) return -1;
+    if (!scores || !mask || !out) return -1;
 
     std::string key = "apply_mask_" + std::to_string(n);
-    if (g_mask_execs.find(key) == g_mask_execs.end() || gm_compiled_apply_n != n) {
-        if (g_mask_execs.count(key)) {
-            PJRT_LoadedExecutable_Destroy_Args da{};
-            da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
-            da.executable  = g_mask_execs[key];
-            g_mask_api->PJRT_LoadedExecutable_Destroy(&da);
-            g_mask_execs.erase(key);
-        }
+    if (!g_mask_execs.count(key)) {
         auto* exec = gm_compile(build_apply_mask(n));
         if (!exec) return -1;
         g_mask_execs[key] = exec;
-        gm_compiled_apply_n = n;
     }
 
     // Pack scores and mask into a single [2*n] buffer for the module.

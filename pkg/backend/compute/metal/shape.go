@@ -62,18 +62,14 @@ func (m *MetalShapeOps) Transpose(shape []int, dim0, dim1 int, data []float64) (
 	return toFloat64(dst32), nil
 }
 
-// Forward dispatches to Transpose using shape metadata from the shape slice.
-// Expects: data[0]=input, shape=tensor shape; Dim0 and Dim1 encoded at
-// positions shape[len(shape)-2] and shape[len(shape)-1] is NOT the pattern —
-// use the Transpose method directly for full control.
-// This satisfies the universal Forward interface as a no-op copy fallback.
-func (m *MetalShapeOps) Forward(shape []int, data ...[]float64) []float64 {
-	out, err := m.Copy(data[0])
-	if err != nil {
-		panic(err)
+// Forward satisfies the universal Forward signature as a no-op copy fallback.
+// shape is metadata only; data[0] supplies the buffer to copy.
+func (m *MetalShapeOps) Forward(_ []int, data ...[]float64) ([]float64, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("metal shape Forward: missing data argument")
 	}
 
-	return out
+	return m.Copy(data[0])
 }
 
 // ---------------------------------------------------------------------------

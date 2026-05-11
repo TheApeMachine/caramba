@@ -25,18 +25,41 @@ func NewCUDAEmbedding(vocabSize, dModel int) *CUDAEmbedding {
 
 // Forward performs token embedding lookup.
 //
-//	shape   = [batch, seq_len]
+//	metadata shape = [batch, seq_len] when provided; product(shape) must equal len(data[0])
 //	data[0] = flat float64 token IDs, length batch*seq_len
 //	data[1] = flat float64 weight table, length VocabSize*DModel
 //
 // Returns []float64 of length batch*seq_len*DModel.
-func (c *CUDAEmbedding) Forward(shape []int, data ...[]float64) []float64 {
-	out, err := c.TokenEmbedding(data[0], data[1])
-	if err != nil {
-		panic(err)
+func (c *CUDAEmbedding) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf(
+			"cuda embedding: Forward requires token IDs (data[0]) and weight table (data[1])",
+		)
 	}
 
-	return out
+	tokens := data[0]
+	weights := data[1]
+
+	if len(shape) > 0 {
+		product := 1
+
+		for _, dimension := range shape {
+			if dimension < 0 {
+				return nil, fmt.Errorf("cuda embedding: negative shape dimension %d", dimension)
+			}
+
+			product *= dimension
+		}
+
+		if product != len(tokens) {
+			return nil, fmt.Errorf(
+				"cuda embedding: shape product %d does not match len(tokens)=%d",
+				product, len(tokens),
+			)
+		}
+	}
+
+	return c.TokenEmbedding(tokens, weights)
 }
 
 // TokenEmbedding performs the lookup given token IDs and the weight table.

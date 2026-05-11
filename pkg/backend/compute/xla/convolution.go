@@ -23,7 +23,13 @@ type XLAConvolution struct {
 
 // NewXLAConvolution initialises the PJRT client for the given platform.
 func NewXLAConvolution(platform string) (*XLAConvolution, error) {
-	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+	config, err := NewPJRTConfig(platform)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 

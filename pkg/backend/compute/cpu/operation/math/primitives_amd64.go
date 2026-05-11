@@ -2,14 +2,16 @@
 
 package math
 
-import "golang.org/x/sys/cpu"
+import (
+	"math"
+
+	"golang.org/x/sys/cpu"
+)
 
 var useAVX2 bool
-var useFMA bool
 
 func init() {
 	useAVX2 = cpu.X86.HasAVX2
-	useFMA = cpu.X86.HasFMA
 }
 
 //go:noescape
@@ -73,9 +75,11 @@ func reduceSum(a []float64) float64 {
 	return sum
 }
 
+// reduceMax returns the largest element of a.
+// For an empty slice it returns -math.MaxFloat64 (identity for max reductions).
 func reduceMax(a []float64) float64 {
 	if len(a) == 0 {
-		return 0
+		return -math.MaxFloat64
 	}
 
 	limit := alignedLen(len(a))
@@ -290,7 +294,9 @@ func sqrtVec(dst, src []float64) {
 		sqrtVecSSE2(dst[:limit], src[:limit])
 	}
 
-	scalarSqrtTail(dst, src, limit)
+	for index := limit; index < len(src); index++ {
+		dst[index] = math.Sqrt(src[index])
+	}
 }
 
 // addScalarVec: dst[i] += scalar

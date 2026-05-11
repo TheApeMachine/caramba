@@ -5,7 +5,7 @@
 // per (shape) configuration and cached for reuse.
 
 #include "attention.h"
-#include "activation.h"  // for g_api / g_client shared state
+#include "activation.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -16,16 +16,7 @@
 
 #include "xla/pjrt/c/pjrt_c_api.h"
 
-// ---------------------------------------------------------------------------
-// Shared PJRT globals (defined in activation_xla.cc; declared extern here)
-// ---------------------------------------------------------------------------
-
-extern const PJRT_Api*  g_api;
-extern PJRT_Client*     g_client;
-
-// ---------------------------------------------------------------------------
-// Attention executable cache keyed by a string encoding the call parameters.
-// ---------------------------------------------------------------------------
+// Shared PJRT state comes from amalgamated _activation_xla.cpp (included earlier).
 
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_attn_execs;
 
@@ -57,12 +48,14 @@ static bool attn_check(PJRT_Error* err, const char* ctx) {
 
 // Compile a StableHLO module string; returns nullptr on failure.
 static PJRT_LoadedExecutable* attn_compile(const std::string& mlir) {
+    static const char kMlirProgramFormat[] = "mlir";
+
     PJRT_Program prog{};
     prog.struct_size = PJRT_Program_STRUCT_SIZE;
     prog.code        = const_cast<char*>(mlir.c_str());
     prog.code_size   = mlir.size();
-    prog.format      = "mlir";
-    prog.format_size = 4;
+    prog.format      = kMlirProgramFormat;
+    prog.format_size = sizeof(kMlirProgramFormat) - 1;
 
     PJRT_Client_Compile_Args ca{};
     ca.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;

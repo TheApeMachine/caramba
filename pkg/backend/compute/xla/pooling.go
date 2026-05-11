@@ -25,7 +25,13 @@ type XLAPooling struct {
 // NewXLAPooling initialises the PJRT client for pooling.
 // Call after (or instead of) NewXLAActivation — they share the same PJRT client.
 func NewXLAPooling(platform string) (*XLAPooling, error) {
-	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+	config, err := NewPJRTConfig(platform)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 
@@ -177,17 +183,25 @@ func (x *XLAPooling) AdaptiveMaxPool2d(shape []int, outH, outW int, data []float
 	return dst, nil
 }
 
-// Forward implements the universal operation interface using MaxPool2d.
+// Forward implements cpu/operation.Operation ([]float64 only).
+// On MaxPool2d failure it panics with a formatted message so callers can validate inputs.
+// Empty data yields an empty slice (no pooling call).
 func (x *XLAPooling) Forward(shape []int, data ...[]float64) []float64 {
+	if len(data) == 0 {
+		return []float64{}
+	}
+
 	p := XLAMaxPool2dParams{
 		KernelH: 3, KernelW: 3,
 		StrideH: 1, StrideW: 1,
 		PadH: 0, PadW: 0,
 		DilationH: 1, DilationW: 1,
 	}
+
 	out, err := x.MaxPool2d(shape, p, data[0])
+
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("xla pooling Forward(MaxPool2d): %v", err))
 	}
 
 	return out

@@ -121,17 +121,17 @@ static void commit_wait(id<MTLCommandBuffer> cb) {
 
 static int dispatch_binary_tensor(
     id<MTLComputePipelineState> pso,
-    void* a,
-    void* b,
+    const void* a,
+    const void* b,
     void* out,
     int n)
 {
     @autoreleasepool {
         if (!gMQueue || !pso || !a || !b || !out) return -1;
 
-        id<MTLBuffer> bufA = (id<MTLBuffer>)a;
-        id<MTLBuffer> bufB = (id<MTLBuffer>)b;
-        id<MTLBuffer> bufOut = (id<MTLBuffer>)out;
+        id<MTLBuffer> bufA = (__bridge id)((void*)a);
+        id<MTLBuffer> bufB = (__bridge id)((void*)b);
+        id<MTLBuffer> bufOut = (__bridge id)out;
 
         id<MTLCommandBuffer> cb = begin_cb();
         id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
@@ -149,6 +149,39 @@ static int dispatch_binary_tensor(
     }
 }
 
+// Shared tiled matmul encode/submit for resident buffers (also used after host uploads).
+static int dispatch_matmul_buffers(
+    id<MTLBuffer> bufA,
+    id<MTLBuffer> bufB,
+    id<MTLBuffer> bufC,
+    int M, int K, int N)
+{
+    if (!gMQueue || !gPSO_matmul || !bufA || !bufB || !bufC) return -1;
+
+    unsigned int dims[3] = { (unsigned int)M, (unsigned int)K, (unsigned int)N };
+    id<MTLBuffer> bufDims = [gMDevice newBufferWithBytes:dims length:sizeof(dims)
+                                                 options:MTLResourceStorageModeShared];
+    if (!bufDims) return -1;
+
+    id<MTLCommandBuffer> cmdBuf = begin_cb();
+    id<MTLComputeCommandEncoder> enc = [cmdBuf computeCommandEncoder];
+    [enc setComputePipelineState:gPSO_matmul];
+    [enc setBuffer:bufA   offset:0 atIndex:0];
+    [enc setBuffer:bufB   offset:0 atIndex:1];
+    [enc setBuffer:bufC   offset:0 atIndex:2];
+    [enc setBuffer:bufDims offset:0 atIndex:3];
+
+    NSUInteger ts = 16;
+    MTLSize tg   = MTLSizeMake(ts, ts, 1);
+    MTLSize grid = MTLSizeMake(((NSUInteger)N+ts-1)/ts * ts,
+                               ((NSUInteger)M+ts-1)/ts * ts, 1);
+    [enc dispatchThreads:grid threadsPerThreadgroup:tg];
+    [enc endEncoding];
+    commit_wait(cmdBuf);
+
+    return 0;
+}
+
 // ---------------------------------------------------------------------------
 
 int metal_matmul(const float* A, const float* B, float* C, int M, int K, int N) {
@@ -162,25 +195,10 @@ int metal_matmul(const float* A, const float* B, float* C, int M, int K, int N) 
         id<MTLBuffer> bufC = make_buf_rw(gMDevice, C, cb);
         if (!bufA || !bufB || !bufC) return -1;
 
-        unsigned int dims[3] = { (unsigned int)M, (unsigned int)K, (unsigned int)N };
-        id<MTLBuffer> bufDims = [gMDevice newBufferWithBytes:dims length:sizeof(dims)
-                                                     options:MTLResourceStorageModeShared];
+        int rc = dispatch_matmul_buffers(bufA, bufB, bufC, M, K, N);
 
-        id<MTLCommandBuffer> cmdBuf = begin_cb();
-        id<MTLComputeCommandEncoder> enc = [cmdBuf computeCommandEncoder];
-        [enc setComputePipelineState:gPSO_matmul];
-        [enc setBuffer:bufA   offset:0 atIndex:0];
-        [enc setBuffer:bufB   offset:0 atIndex:1];
-        [enc setBuffer:bufC   offset:0 atIndex:2];
-        [enc setBuffer:bufDims offset:0 atIndex:3];
+        if (rc != 0) return rc;
 
-        NSUInteger ts = 16;
-        MTLSize tg   = MTLSizeMake(ts, ts, 1);
-        MTLSize grid = MTLSizeMake(((NSUInteger)N+ts-1)/ts * ts,
-                                   ((NSUInteger)M+ts-1)/ts * ts, 1);
-        [enc dispatchThreads:grid threadsPerThreadgroup:tg];
-        [enc endEncoding];
-        commit_wait(cmdBuf);
         copy_back_if_needed(bufC, C, cb);
         return 0;
     }
@@ -234,59 +252,42 @@ int metal_mul(const float* a, const float* b, float* out, int n) {
     }
 }
 
-int metal_matmul_tensor(void* A, void* B, void* C, int M, int K, int N) {
+int metal_matmul_tensor(const void* A, const void* B, void* C, int M, int K, int N) {
     @autoreleasepool {
-        if (!gMQueue || !gPSO_matmul || !A || !B || !C) return -1;
+        if (!A || !B || !C) return -1;
 
-        id<MTLBuffer> bufA = (id<MTLBuffer>)A;
-        id<MTLBuffer> bufB = (id<MTLBuffer>)B;
-        id<MTLBuffer> bufC = (id<MTLBuffer>)C;
+        id<MTLBuffer> bufA = (__bridge id)((void*)A);
+        id<MTLBuffer> bufB = (__bridge id)((void*)B);
+        id<MTLBuffer> bufC = (__bridge id)C;
 
-        unsigned int dims[3] = { (unsigned int)M, (unsigned int)K, (unsigned int)N };
-        id<MTLBuffer> bufDims = [gMDevice newBufferWithBytes:dims length:sizeof(dims)
-                                                     options:MTLResourceStorageModeShared];
-
-        id<MTLCommandBuffer> cmdBuf = begin_cb();
-        id<MTLComputeCommandEncoder> enc = [cmdBuf computeCommandEncoder];
-        [enc setComputePipelineState:gPSO_matmul];
-        [enc setBuffer:bufA offset:0 atIndex:0];
-        [enc setBuffer:bufB offset:0 atIndex:1];
-        [enc setBuffer:bufC offset:0 atIndex:2];
-        [enc setBuffer:bufDims offset:0 atIndex:3];
-
-        NSUInteger ts = 16;
-        MTLSize tg = MTLSizeMake(ts, ts, 1);
-        MTLSize grid = MTLSizeMake(((NSUInteger)N+ts-1)/ts * ts,
-                                   ((NSUInteger)M+ts-1)/ts * ts, 1);
-        [enc dispatchThreads:grid threadsPerThreadgroup:tg];
-        [enc endEncoding];
-        commit_wait(cmdBuf);
-
-        return 0;
+        return dispatch_matmul_buffers(bufA, bufB, bufC, M, K, N);
     }
 }
 
-int metal_add_tensor(void* a, void* b, void* out, int n) {
+int metal_add_tensor(const void* a, const void* b, void* out, int n) {
     return dispatch_binary_tensor(gPSO_add, a, b, out, n);
 }
 
-int metal_mul_tensor(void* a, void* b, void* out, int n) {
+int metal_mul_tensor(const void* a, const void* b, void* out, int n) {
     return dispatch_binary_tensor(gPSO_mul, a, b, out, n);
 }
 
 int metal_matmul_add_tensor(
-    void* A, void* B, void* bias, void* C,
+    const void* A, const void* B, const void* bias, void* C,
     int M, int K, int N, int bias_n, int gelu)
 {
     @autoreleasepool {
         id<MTLComputePipelineState> pso = gelu ? gPSO_matmul_add_gelu : gPSO_matmul_add;
         if (!gMQueue || !pso || !A || !B || !bias || !C) return -1;
+        if (M <= 0 || K <= 0 || N <= 0) return -1;
+        if (bias_n <= 0) return -1;
         if (bias_n != N && bias_n != M * N) return -1;
+        if (gelu != 0 && gelu != 1) return -1;
 
-        id<MTLBuffer> bufA = (id<MTLBuffer>)A;
-        id<MTLBuffer> bufB = (id<MTLBuffer>)B;
-        id<MTLBuffer> bufBias = (id<MTLBuffer>)bias;
-        id<MTLBuffer> bufC = (id<MTLBuffer>)C;
+        id<MTLBuffer> bufA = (__bridge id)((void*)A);
+        id<MTLBuffer> bufB = (__bridge id)((void*)B);
+        id<MTLBuffer> bufBias = (__bridge id)((void*)bias);
+        id<MTLBuffer> bufC = (__bridge id)C;
 
         unsigned int dims[4] = {
             (unsigned int)M,
@@ -296,6 +297,7 @@ int metal_matmul_add_tensor(
         };
         id<MTLBuffer> bufDims = [gMDevice newBufferWithBytes:dims length:sizeof(dims)
                                                      options:MTLResourceStorageModeShared];
+        if (!bufDims) return -1;
 
         id<MTLCommandBuffer> cmdBuf = begin_cb();
         id<MTLComputeCommandEncoder> enc = [cmdBuf computeCommandEncoder];

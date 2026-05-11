@@ -21,15 +21,38 @@ func New() *CUDAActivation {
 	return &CUDAActivation{}
 }
 
-// Forward dispatches to ReLU with the new universal signature.
-// shape is metadata only; data[0] is the primary input buffer.
-func (c *CUDAActivation) Forward(shape []int, data ...[]float64) []float64 {
-	out, err := c.ReLU(data[0])
-	if err != nil {
-		panic(err)
+// Forward dispatches to ReLU using the universal Operation signature.
+//
+// shape is optional metadata: when non-empty, the product of dimensions must equal len(data[0]);
+// when empty, only len(data[0]) is used (caller must keep shape consistent elsewhere).
+// Returns an error if data is missing or shape does not match the flattened input length.
+func (c *CUDAActivation) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("cuda activation: Forward requires at least one input slice")
 	}
 
-	return out
+	input := data[0]
+
+	if len(shape) > 0 {
+		product := 1
+
+		for _, dimension := range shape {
+			if dimension < 0 {
+				return nil, fmt.Errorf("cuda activation: negative shape dimension %d", dimension)
+			}
+
+			product *= dimension
+		}
+
+		if product != len(input) {
+			return nil, fmt.Errorf(
+				"cuda activation: shape product %d does not match len(data[0])=%d",
+				product, len(input),
+			)
+		}
+	}
+
+	return c.ReLU(input)
 }
 
 // ReLU computes max(x, 0) element-wise.

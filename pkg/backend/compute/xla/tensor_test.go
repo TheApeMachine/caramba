@@ -137,7 +137,7 @@ func BenchmarkTensorBackend_MatmulAddGELU(benchmark *testing.B) {
 func newXLATensorBackendForTest(t *testing.T) *TensorBackend {
 	t.Helper()
 
-	platform := xlaTensorTestPlatform(t)
+	platform := xlaTensorPlatform(t)
 	tensorBackend, err := NewTensorBackend(platform)
 
 	if err != nil {
@@ -150,7 +150,7 @@ func newXLATensorBackendForTest(t *testing.T) *TensorBackend {
 func newXLATensorBackendForBenchmark(benchmark *testing.B) *TensorBackend {
 	benchmark.Helper()
 
-	platform := xlaTensorBenchmarkPlatform(benchmark)
+	platform := xlaTensorPlatform(benchmark)
 	tensorBackend, err := NewTensorBackend(platform)
 
 	if err != nil {
@@ -160,29 +160,23 @@ func newXLATensorBackendForBenchmark(benchmark *testing.B) *TensorBackend {
 	return tensorBackend
 }
 
-func xlaTensorTestPlatform(t *testing.T) string {
-	t.Helper()
+func xlaTensorPlatform(tb testing.TB) string {
+	tb.Helper()
 
 	for _, platform := range []string{"cpu", "gpu"} {
-		if NewPJRTConfig(platform).ValidateRuntime() == nil {
+		config, err := NewPJRTConfig(platform)
+
+		if err != nil {
+			continue
+		}
+
+		if config.ValidateRuntime() == nil {
 			return platform
 		}
 	}
 
-	t.Skip("xla tensor: no PJRT plugin configured")
-	return ""
-}
+	tb.Skip("xla tensor: no PJRT plugin configured")
 
-func xlaTensorBenchmarkPlatform(benchmark *testing.B) string {
-	benchmark.Helper()
-
-	for _, platform := range []string{"cpu", "gpu"} {
-		if NewPJRTConfig(platform).ValidateRuntime() == nil {
-			return platform
-		}
-	}
-
-	benchmark.Skip("xla tensor: no PJRT plugin configured")
 	return ""
 }
 
@@ -193,7 +187,10 @@ func uploadXLATensor(
 
 	shape := mustXLAShape(t, dims)
 	input, err := tensorBackend.UploadFloat64(shape, values)
-	So(err, ShouldBeNil)
+
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	return input
 }
@@ -222,7 +219,10 @@ func mustXLAShape(t *testing.T, dims []int) computetensor.Shape {
 	t.Helper()
 
 	shape, err := computetensor.NewShape(dims)
-	So(err, ShouldBeNil)
+
+	if err != nil {
+		t.Fatalf("NewShape(%v): %v", dims, err)
+	}
 
 	return shape
 }

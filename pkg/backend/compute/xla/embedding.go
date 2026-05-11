@@ -11,7 +11,7 @@ package xla
 //
 // Example build:
 //   CGO_CPPFLAGS="-I/path/to/xla" \
-//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
+//   go build -tags "cgo xla" ./pkg/backend/compute/xla
 
 // #include <stdlib.h>
 // #include "embedding.h"
@@ -32,7 +32,13 @@ type XLAEmbedding struct {
 // NewXLAEmbedding initialises the PJRT client for the given platform
 // ("cpu" or "gpu") and stores the embedding dimensions.
 func NewXLAEmbedding(platform string, vocabSize, dModel int) (*XLAEmbedding, error) {
-	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+	config, err := NewPJRTConfig(platform)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 
@@ -40,7 +46,7 @@ func NewXLAEmbedding(platform string, vocabSize, dModel int) (*XLAEmbedding, err
 	defer C.free(unsafe.Pointer(cp))
 
 	if rc := C.xla_embedding_init(cp); rc != 0 {
-		return nil, fmt.Errorf("xla_embedding_init failed for platform %q", platform)
+		return nil, fmt.Errorf("xla_embedding_init failed for platform %q: rc=%d", platform, rc)
 	}
 	return &XLAEmbedding{platform: platform, vocabSize: vocabSize, dModel: dModel}, nil
 }
@@ -57,13 +63,41 @@ func (x *XLAEmbedding) Shutdown() {
 //	data[1] = flat float64 weight table, length VocabSize*DModel
 //
 // Returns []float64 of length batch*seq_len*DModel.
-func (x *XLAEmbedding) Forward(shape []int, data ...[]float64) []float64 {
-	out, err := x.TokenEmbedding(data[0], data[1])
-	if err != nil {
-		panic(err)
+func (x *XLAEmbedding) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf(
+			"xla embedding Forward: expected tokens and weights (2 buffers), got %d",
+			len(data),
+		)
 	}
 
-	return out
+	if len(shape) != 2 {
+		return nil, fmt.Errorf(
+			"xla embedding Forward: expected shape [batch, seq_len], got %v",
+			shape,
+		)
+	}
+
+	batch, seqLen := shape[0], shape[1]
+	wantTokens := batch * seqLen
+
+	if len(data[0]) != wantTokens {
+		return nil, fmt.Errorf(
+			"xla embedding Forward: len(tokens)=%d, expected batch*seq_len=%d*%d=%d",
+			len(data[0]), batch, seqLen, wantTokens,
+		)
+	}
+
+	wantWeights := x.vocabSize * x.dModel
+
+	if len(data[1]) != wantWeights {
+		return nil, fmt.Errorf(
+			"xla embedding Forward: len(weights)=%d, expected vocab*d_model=%d*%d=%d",
+			len(data[1]), x.vocabSize, x.dModel, wantWeights,
+		)
+	}
+
+	return x.TokenEmbedding(data[0], data[1])
 }
 
 // TokenEmbedding performs the lookup given token IDs and the weight table.

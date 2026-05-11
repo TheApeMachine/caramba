@@ -1,5 +1,6 @@
 #include <cuda_runtime.h>
 #include <math.h>
+#include <stdint.h>
 #include "math.h"
 
 #define TILE_SIZE 16
@@ -16,6 +17,35 @@
 // ---------------------------------------------------------------------------
 // matmul_kernel: tiled [M,K]x[K,N]->[M,N]
 // ---------------------------------------------------------------------------
+__device__ double tiled_matmul_accumulate(
+    const double* __restrict__ A,
+    const double* __restrict__ B,
+    double (* __restrict__ tA)[TILE_SIZE],
+    double (* __restrict__ tB)[TILE_SIZE],
+    int M, int K, int N,
+    int row, int col,
+    int tx, int ty)
+{
+    double acc = 0.0;
+    int numTiles = (K + TILE_SIZE - 1) / TILE_SIZE;
+
+    for (int t = 0; t < numTiles; t++) {
+        int aCol = t * TILE_SIZE + tx;
+        int bRow = t * TILE_SIZE + ty;
+        tA[ty][tx] = (row < M && aCol < K) ? A[row * K + aCol] : 0.0;
+        tB[ty][tx] = (bRow < K && col < N) ? B[bRow * N + col] : 0.0;
+        __syncthreads();
+
+        for (int i = 0; i < TILE_SIZE; i++) {
+            acc += tA[ty][i] * tB[i][tx];
+        }
+
+        __syncthreads();
+    }
+
+    return acc;
+}
+
 __global__ void matmul_kernel(const double* __restrict__ A,
                                const double* __restrict__ B,
                                double* __restrict__ C,
@@ -26,19 +56,14 @@ __global__ void matmul_kernel(const double* __restrict__ A,
 
     int row = blockIdx.y * TILE_SIZE + threadIdx.y;
     int col = blockIdx.x * TILE_SIZE + threadIdx.x;
-    double acc = 0.0;
 
-    int numTiles = (K + TILE_SIZE - 1) / TILE_SIZE;
-    for (int t = 0; t < numTiles; t++) {
-        int aCol = t * TILE_SIZE + threadIdx.x;
-        int bRow = t * TILE_SIZE + threadIdx.y;
-        tA[threadIdx.y][threadIdx.x] = (row < M && aCol < K) ? A[row * K + aCol] : 0.0;
-        tB[threadIdx.y][threadIdx.x] = (bRow < K && col < N) ? B[bRow * N + col] : 0.0;
-        __syncthreads();
-        for (int i = 0; i < TILE_SIZE; i++) acc += tA[threadIdx.y][i] * tB[i][threadIdx.x];
-        __syncthreads();
+    double acc = tiled_matmul_accumulate(
+        A, B, tA, tB, M, K, N, row, col,
+        threadIdx.x, threadIdx.y);
+
+    if (row < M && col < N) {
+        C[row * N + col] = acc;
     }
-    if (row < M && col < N) C[row * N + col] = acc;
 }
 
 __device__ double gelu_device(double x) {
@@ -59,18 +84,10 @@ __global__ void matmul_add_kernel(const double* __restrict__ A,
 
     int row = blockIdx.y * TILE_SIZE + threadIdx.y;
     int col = blockIdx.x * TILE_SIZE + threadIdx.x;
-    double acc = 0.0;
 
-    int numTiles = (K + TILE_SIZE - 1) / TILE_SIZE;
-    for (int t = 0; t < numTiles; t++) {
-        int aCol = t * TILE_SIZE + threadIdx.x;
-        int bRow = t * TILE_SIZE + threadIdx.y;
-        tA[threadIdx.y][threadIdx.x] = (row < M && aCol < K) ? A[row * K + aCol] : 0.0;
-        tB[threadIdx.y][threadIdx.x] = (bRow < K && col < N) ? B[bRow * N + col] : 0.0;
-        __syncthreads();
-        for (int i = 0; i < TILE_SIZE; i++) acc += tA[threadIdx.y][i] * tB[i][threadIdx.x];
-        __syncthreads();
-    }
+    double acc = tiled_matmul_accumulate(
+        A, B, tA, tB, M, K, N, row, col,
+        threadIdx.x, threadIdx.y);
 
     if (row < M && col < N) {
         if (bias_n == N) {
@@ -309,36 +326,36 @@ int cuda_mul(const double* a, const double* b, double* out, int n) {
     return 0;
 }
 
-int cuda_matmul_device(const void* A, const void* B, void* C, int M, int K, int N) {
+int cuda_matmul_device(const double* A, const double* B, double* C, int M, int K, int N) {
     if (M == 0 || K == 0 || N == 0) return 0;
     if (!A || !B || !C) return -1;
 
     dim3 block(TILE_SIZE, TILE_SIZE);
     dim3 grid((N+TILE_SIZE-1)/TILE_SIZE, (M+TILE_SIZE-1)/TILE_SIZE);
-    matmul_kernel<<<grid, block>>>((const double*)A, (const double*)B, (double*)C, M, K, N);
+    matmul_kernel<<<grid, block>>>(A, B, C, M, K, N);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
     return 0;
 }
 
-int cuda_add_device(const void* a, const void* b, void* out, int n) {
+int cuda_add_device(const double* a, const double* b, double* out, int n) {
     if (n == 0) return 0;
     if (!a || !b || !out) return -1;
 
     add_kernel<<<(n+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(
-        (const double*)a, (const double*)b, (double*)out, n
+        a, b, out, n
     );
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
     return 0;
 }
 
-int cuda_mul_device(const void* a, const void* b, void* out, int n) {
+int cuda_mul_device(const double* a, const double* b, double* out, int n) {
     if (n == 0) return 0;
     if (!a || !b || !out) return -1;
 
     mul_kernel<<<(n+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(
-        (const double*)a, (const double*)b, (double*)out, n
+        a, b, out, n
     );
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
@@ -346,21 +363,28 @@ int cuda_mul_device(const void* a, const void* b, void* out, int n) {
 }
 
 int cuda_matmul_add_device(
-    const void* A, const void* B, const void* bias, void* C,
-    int M, int K, int N, int bias_n, int gelu
+    const double* A, const double* B, const double* bias, double* C,
+    int M, int K, int N, int bias_n, int apply_gelu, int sync_device
 ) {
     if (M == 0 || K == 0 || N == 0) return 0;
     if (!A || !B || !bias || !C) return -1;
-    if (bias_n != N && bias_n != M*N) return -1;
+
+    uint64_t mn = (uint64_t)M * (uint64_t)N;
+
+    if ((uint64_t)bias_n != (uint64_t)N && (uint64_t)bias_n != mn) return -1;
 
     dim3 block(TILE_SIZE, TILE_SIZE);
     dim3 grid((N+TILE_SIZE-1)/TILE_SIZE, (M+TILE_SIZE-1)/TILE_SIZE);
     matmul_add_kernel<<<grid, block>>>(
-        (const double*)A, (const double*)B, (const double*)bias, (double*)C,
-        M, K, N, bias_n, gelu
+        A, B, bias, C,
+        M, K, N, bias_n, apply_gelu
     );
     CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaDeviceSynchronize());
+
+    if (sync_device) {
+        CUDA_CHECK(cudaDeviceSynchronize());
+    }
+
     return 0;
 }
 

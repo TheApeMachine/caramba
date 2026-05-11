@@ -64,7 +64,8 @@ static const int BLOCK = 256;
 static inline int blocks(int n) { return (n + BLOCK - 1) / BLOCK; }
 
 static int synchronize_launch() {
-    if (cudaGetLastError() != cudaSuccess) return -1;
+    cudaError_t launch_err = cudaGetLastError();
+    if (launch_err != cudaSuccess) return -1;
     if (cudaDeviceSynchronize() != cudaSuccess) return -1;
     return 0;
 }
@@ -222,51 +223,59 @@ fail:
     return -1;
 }
 
-int cuda_relu_device(const void* src, void* dst, int n) {
+int cuda_relu_device(const double* src, double* dst, int n) {
     if (n == 0) return 0;
+    if (n < 0) return -1;
     if (!src || !dst) return -1;
 
-    relu_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, n);
+    relu_kernel<<<blocks(n), BLOCK>>>(src, dst, n);
     return synchronize_launch();
 }
 
-int cuda_leaky_relu_device(const void* src, void* dst, double alpha, int n) {
+int cuda_leaky_relu_device(const double* src, double* dst, double alpha, int n) {
     if (n == 0) return 0;
+    if (n < 0) return -1;
     if (!src || !dst) return -1;
 
-    leaky_relu_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, alpha, n);
+    leaky_relu_kernel<<<blocks(n), BLOCK>>>(src, dst, alpha, n);
     return synchronize_launch();
 }
 
-int cuda_gelu_device(const void* src, void* dst, int n) {
+int cuda_gelu_device(const double* src, double* dst, int n) {
     if (n == 0) return 0;
+    if (n < 0) return -1;
     if (!src || !dst) return -1;
 
-    gelu_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, n);
+    gelu_kernel<<<blocks(n), BLOCK>>>(src, dst, n);
     return synchronize_launch();
 }
 
-int cuda_tanh_device(const void* src, void* dst, int n) {
+int cuda_tanh_device(const double* src, double* dst, int n) {
     if (n == 0) return 0;
+    if (n < 0) return -1;
     if (!src || !dst) return -1;
 
-    tanh_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, n);
+    tanh_kernel<<<blocks(n), BLOCK>>>(src, dst, n);
     return synchronize_launch();
 }
 
-int cuda_sigmoid_device(const void* src, void* dst, int n) {
+int cuda_sigmoid_device(const double* src, double* dst, int n) {
     if (n == 0) return 0;
+    if (n < 0) return -1;
     if (!src || !dst) return -1;
 
-    sigmoid_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, n);
+    sigmoid_kernel<<<blocks(n), BLOCK>>>(src, dst, n);
     return synchronize_launch();
 }
 
-int cuda_swiglu_device(const void* src, void* dst, int n) {
+// cuda_swiglu_device: src must hold at least 2*n doubles (gates [0..n-1], values [n..2n-1]);
+// see swiglu_kernel indexing src[i] and src[n+i].
+int cuda_swiglu_device(const double* src, double* dst, int n) {
     if (n == 0) return 0;
+    if (n < 0) return -1;
     if (!src || !dst) return -1;
 
-    swiglu_kernel<<<blocks(n), BLOCK>>>((const double*)src, (double*)dst, n);
+    swiglu_kernel<<<blocks(n), BLOCK>>>(src, dst, n);
     return synchronize_launch();
 }
 

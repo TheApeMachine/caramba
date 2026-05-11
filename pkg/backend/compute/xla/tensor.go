@@ -10,6 +10,8 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"slices"
+	"sync/atomic"
 	"unsafe"
 
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
@@ -24,14 +26,20 @@ TensorBackend owns PJRT buffers for resident XLA execution.
 */
 type TensorBackend struct {
 	platform string
-	closed   bool
+	closed   atomic.Uint32
 }
 
 /*
 NewTensorBackend creates an XLA/PJRT resident tensor backend.
 */
 func NewTensorBackend(platform string) (*TensorBackend, error) {
-	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+	config, err := NewPJRTConfig(platform)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 
@@ -58,7 +66,7 @@ UploadFloat64 copies host values into a resident PJRT buffer.
 func (tensorBackend *TensorBackend) UploadFloat64(
 	shape computetensor.Shape, values []float64,
 ) (computetensor.Float64Tensor, error) {
-	if tensorBackend.closed {
+	if tensorBackend.closed.Load() != 0 {
 		return nil, errors.New("xla tensor: backend is closed")
 	}
 
@@ -92,9 +100,16 @@ func (tensorBackend *TensorBackend) UploadFloat64(
 		valuesPointer = (*C.double)(unsafe.Pointer(&values[0]))
 	}
 
-	handle := C.xla_tensor_upload_f64(valuesPointer, cDimsPointer, C.int(len(cDims)))
+	var handle *C.XLA_Tensor
 
-	if handle == nil {
+	rc := C.xla_tensor_upload_f64(
+		valuesPointer,
+		cDimsPointer,
+		C.int(len(cDims)),
+		(**C.XLA_Tensor)(unsafe.Pointer(&handle)),
+	)
+
+	if rc != 0 || handle == nil {
 		return nil, fmt.Errorf("xla tensor: upload failed")
 	}
 
@@ -111,7 +126,7 @@ DownloadFloat64 copies a resident PJRT buffer back into host memory.
 func (tensorBackend *TensorBackend) DownloadFloat64(
 	input computetensor.Float64Tensor,
 ) ([]float64, error) {
-	if tensorBackend.closed {
+	if tensorBackend.closed.Load() != 0 {
 		return nil, errors.New("xla tensor: backend is closed")
 	}
 
@@ -128,11 +143,10 @@ func (tensorBackend *TensorBackend) DownloadFloat64(
 Close releases the backend executable cache.
 */
 func (tensorBackend *TensorBackend) Close() error {
-	if tensorBackend.closed {
+	if !tensorBackend.closed.CompareAndSwap(0, 1) {
 		return nil
 	}
 
-	tensorBackend.closed = true
 	C.xla_tensor_shutdown()
 
 	return nil
@@ -283,7 +297,7 @@ func (tensorBackend *TensorBackend) unary(
 	case "relu":
 		rc = C.xla_tensor_relu(xlaInput.handle, &output)
 	case "leaky_relu":
-		rc = C.xla_tensor_leaky_relu(xlaInput.handle, &output, C.double(alpha))
+		rc = C.xla_tensor_leaky_relu(xlaInput.handle, C.double(alpha), &output)
 	case "gelu":
 		rc = C.xla_tensor_gelu(xlaInput.handle, &output)
 	case "tanh":
@@ -364,12 +378,6 @@ func (tensorBackend *TensorBackend) matmulAdd(
 		)
 	}
 
-	applyGELU := C.int(0)
-
-	if gelu {
-		applyGELU = 1
-	}
-
 	var output *C.XLA_Tensor
 
 	rc := C.xla_tensor_matmul_add(
@@ -377,7 +385,7 @@ func (tensorBackend *TensorBackend) matmulAdd(
 		xlaRight.handle,
 		xlaBias.handle,
 		&output,
-		applyGELU,
+		C.bool(gelu),
 	)
 
 	if rc != 0 || output == nil {
@@ -428,7 +436,7 @@ func (tensorBackend *TensorBackend) matmulInputs(
 func (tensorBackend *TensorBackend) require(
 	input computetensor.Float64Tensor,
 ) (*Tensor, error) {
-	if tensorBackend.closed {
+	if tensorBackend.closed.Load() != 0 {
 		return nil, errors.New("xla tensor: backend is closed")
 	}
 
@@ -446,7 +454,7 @@ func (tensorBackend *TensorBackend) require(
 		return nil, fmt.Errorf("xla tensor: input is not owned by XLA backend")
 	}
 
-	if xlaInput.closed {
+	if xlaInput.closed.Load() != 0 {
 		return nil, errors.New("xla tensor: input is closed")
 	}
 
@@ -481,21 +489,21 @@ func cShapeDims(shape computetensor.Shape) []C.int64_t {
 }
 
 func xlaSwiGLUOutputShape(shape computetensor.Shape) (computetensor.Shape, error) {
-	dims := shape.Dims()
+	dimsCopy := slices.Clone(shape.Dims())
 
-	if len(dims) == 0 {
+	if len(dimsCopy) == 0 {
 		return computetensor.Shape{}, fmt.Errorf("xla tensor: swiglu requires at least one dimension")
 	}
 
-	lastDimensionIndex := len(dims) - 1
+	lastDimensionIndex := len(dimsCopy) - 1
 
-	if dims[lastDimensionIndex]%2 != 0 {
+	if dimsCopy[lastDimensionIndex]%2 != 0 {
 		return computetensor.Shape{}, fmt.Errorf("xla tensor: swiglu final dimension must be even")
 	}
 
-	dims[lastDimensionIndex] /= 2
+	dimsCopy[lastDimensionIndex] /= 2
 
-	return computetensor.NewShape(dims)
+	return computetensor.NewShape(dimsCopy)
 }
 
 /*
@@ -505,7 +513,7 @@ type Tensor struct {
 	bytes  int
 	shape  computetensor.Shape
 	handle *C.XLA_Tensor
-	closed bool
+	closed atomic.Uint32
 }
 
 /*
@@ -547,7 +555,7 @@ func (tensor *Tensor) Bytes() int {
 CloneFloat64 downloads tensor contents into a fresh host slice.
 */
 func (tensor *Tensor) CloneFloat64() ([]float64, error) {
-	if tensor.closed {
+	if tensor.closed.Load() != 0 {
 		return nil, errors.New("xla tensor: tensor is closed")
 	}
 
@@ -560,7 +568,7 @@ func (tensor *Tensor) CloneFloat64() ([]float64, error) {
 	rc := C.xla_tensor_download_f64(
 		tensor.handle,
 		(*C.double)(unsafe.Pointer(&values[0])),
-		C.int(len(values)),
+		C.int64_t(len(values)),
 	)
 
 	if rc != 0 {
@@ -574,11 +582,9 @@ func (tensor *Tensor) CloneFloat64() ([]float64, error) {
 Close releases the PJRT buffer.
 */
 func (tensor *Tensor) Close() error {
-	if tensor.closed {
+	if !tensor.closed.CompareAndSwap(0, 1) {
 		return nil
 	}
-
-	tensor.closed = true
 
 	if tensor.handle == nil {
 		return nil

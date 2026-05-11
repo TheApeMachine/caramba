@@ -9,8 +9,7 @@
 
 #ifdef __XLA_BUILD__
 
-// activation_xla.cpp defines the shared globals g_api and g_client.
-// All other units reference them via extern declarations.
+// PJRT client/API/static helpers live in _activation_xla.cpp (included first).
 #include "_activation_xla.cpp"
 #include "_tensor_xla.cpp"
 #include "_shape_xla.cpp"

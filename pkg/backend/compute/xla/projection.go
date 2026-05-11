@@ -6,7 +6,7 @@ package xla
 //
 // Build requirements (same as activation.go):
 //   CGO_CPPFLAGS="-I/path/to/xla"
-//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
+//   go build -tags "cgo xla" ./pkg/backend/compute/xla
 
 // #include <stdlib.h>
 // #include "projection.h"
@@ -27,7 +27,13 @@ type XLAProjection struct {
 // NewXLAProjection initialises the PJRT projection client.
 // Call xla.New(platform) for the activation client first; this reuses globals.
 func NewXLAProjection(platform string) (*XLAProjection, error) {
-	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+	config, err := NewPJRTConfig(platform)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 
@@ -95,15 +101,24 @@ func (x *XLAProjection) Linear(shape []int, weight, bias []float64, data ...[]fl
 	return dst, nil
 }
 
-// Forward dispatches Linear. data[0]=x, data[1]=weight, data[2]=bias (optional).
+// Forward implements cpu/operation.Operation ([]float64 only).
+// Requires data[0]=x and data[1]=weight; data[2]=bias optional.
+// On Linear failure it panics with a formatted message.
 func (x *XLAProjection) Forward(shape []int, data ...[]float64) []float64 {
+	if len(data) < 2 {
+		panic(fmt.Sprintf("xla projection Forward: need x and weight (got %d buffers)", len(data)))
+	}
+
 	var bias []float64
+
 	if len(data) >= 3 {
 		bias = data[2]
 	}
+
 	out, err := x.Linear(shape, data[1], bias, data[0])
+
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("xla projection Forward(Linear): %v", err))
 	}
 
 	return out

@@ -66,7 +66,9 @@ func (tensorBackend *TensorBackend) UploadFloat64(
 }
 
 /*
-DownloadFloat64 copies resident host storage into a fresh host slice.
+DownloadFloat64 returns resident host tensor data via HostBackend (zero-copy slice alias).
+
+Independent buffers require CloneFloat64 on the tensor.
 */
 func (tensorBackend *TensorBackend) DownloadFloat64(
 	tensor computetensor.Float64Tensor,
@@ -175,6 +177,10 @@ Matmul performs row-major matrix multiplication without leaving the host backend
 func (tensorBackend *TensorBackend) Matmul(
 	left, right computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {
+	if left == nil || right == nil {
+		return nil, fmt.Errorf("cpu tensor: matmul requires non-nil tensors")
+	}
+
 	leftShape := left.Shape()
 	rightShape := right.Shape()
 	leftDims := leftShape.Dims()
@@ -255,6 +261,10 @@ func (tensorBackend *TensorBackend) unary(
 func (tensorBackend *TensorBackend) binary(
 	left, right computetensor.Float64Tensor, kernel unaryFloat64Kernel,
 ) (computetensor.Float64Tensor, error) {
+	if left == nil || right == nil {
+		return nil, fmt.Errorf("cpu tensor: binary operation requires non-nil tensors")
+	}
+
 	if !left.Shape().Equal(right.Shape()) {
 		return nil, fmt.Errorf("cpu tensor: binary operation shape mismatch")
 	}
@@ -335,6 +345,11 @@ func (tensorBackend *TensorBackend) matmulAdd(
 func (tensorBackend *TensorBackend) matmulAddInputs(
 	left, right, bias computetensor.Float64Tensor,
 ) ([]float64, []float64, []float64, computetensor.Shape, error) {
+	if left == nil || right == nil || bias == nil {
+		return nil, nil, nil, computetensor.Shape{},
+			fmt.Errorf("cpu tensor: fused matmul requires non-nil tensors")
+	}
+
 	leftDims := left.Shape().Dims()
 	rightDims := right.Shape().Dims()
 
@@ -410,23 +425,23 @@ func geluValue(value float64) float64 {
 }
 
 func swigluOutputShape(shape computetensor.Shape) (computetensor.Shape, error) {
-	dims := shape.Dims()
+	dimsCopy := append([]int(nil), shape.Dims()...)
 
 	if shape.Len()%2 != 0 {
 		return computetensor.Shape{}, fmt.Errorf("cpu tensor: swiglu input length must be even")
 	}
 
-	if len(dims) == 0 {
+	if len(dimsCopy) == 0 {
 		return computetensor.NewShape([]int{shape.Len() / 2})
 	}
 
-	lastIndex := len(dims) - 1
+	lastIndex := len(dimsCopy) - 1
 
-	if dims[lastIndex]%2 != 0 {
+	if dimsCopy[lastIndex]%2 != 0 {
 		return computetensor.Shape{}, fmt.Errorf("cpu tensor: swiglu final dimension must be even")
 	}
 
-	dims[lastIndex] /= 2
+	dimsCopy[lastIndex] /= 2
 
-	return computetensor.NewShape(dims)
+	return computetensor.NewShape(dimsCopy)
 }

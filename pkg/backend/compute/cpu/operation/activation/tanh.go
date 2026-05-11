@@ -8,8 +8,13 @@ func NewTanh() *Tanh {
 }
 
 func (tan *Tanh) Forward(shape []int, data ...[]float64) []float64 {
+	if len(data) == 0 || len(data[0]) == 0 {
+		return []float64{}
+	}
+
 	input := data[0]
 	out := make([]float64, len(input))
 	applyTanh(out, input)
+
 	return out
 }

@@ -21,12 +21,26 @@ int metal_add(const float* a, const float* b, float* out, int n);
 // Elementwise multiply: out[i] = a[i] * b[i].
 int metal_mul(const float* a, const float* b, float* out, int n);
 
-// Resident MTLBuffer variants. Handles are produced by metal_tensor_*.
-int metal_matmul_tensor(void* A, void* B, void* C, int M, int K, int N);
-int metal_add_tensor(void* a, void* b, void* out, int n);
-int metal_mul_tensor(void* a, void* b, void* out, int n);
+// Resident matmul: A,B,C are MTLBuffer handles (metal_tensor_*). Row-major float32.
+// A is [M×K], B is [K×N], C receives [M×N]. Returns 0 on success, -1 on failure.
+int metal_matmul_tensor(const void* A, const void* B, void* C, int M, int K, int N);
+
+// Resident elementwise add/mul on length-n float buffers (MTLBuffer handles).
+// out[i] = a[i] + b[i] or a[i] * b[i]. Returns 0 on success, -1 on failure.
+int metal_add_tensor(const void* a, const void* b, void* out, int n);
+int metal_mul_tensor(const void* a, const void* b, void* out, int n);
+
+/*
+Resident fused matmul + bias (+ optional GELU).
+  A, B, bias — read-only device buffers (row-major float32).
+  C — output [M×N] device buffer (written).
+  M, K, N — positive matmul dimensions.
+  bias_n — bias length: must be N (broadcast per column) or M*N (full).
+  gelu — 0 means write matmul+bias only; 1 means apply GELU to each output element.
+Returns 0 on success, -1 on invalid arguments or launch failure.
+*/
 int metal_matmul_add_tensor(
-    void* A, void* B, void* bias, void* C,
+    const void* A, const void* B, const void* bias, void* C,
     int M, int K, int N, int bias_n, int gelu
 );
 

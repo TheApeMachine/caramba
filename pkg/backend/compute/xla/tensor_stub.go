@@ -15,9 +15,13 @@ type TensorBackend struct{}
 
 /*
 NewTensorBackend reports that resident XLA tensors require cgo and xla.
+
+platform is accepted so call signatures match the cgo+xla implementation (PJRT plugin selection).
 */
 func NewTensorBackend(platform string) (*TensorBackend, error) {
-	return nil, fmt.Errorf("xla tensor: unavailable without cgo and xla build tags")
+	_ = platform
+
+	return &TensorBackend{}, fmt.Errorf("xla tensor: unavailable without cgo and xla build tags")
 }
 
 func (tensorBackend *TensorBackend) Location() computetensor.Location {

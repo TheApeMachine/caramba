@@ -17,16 +17,8 @@
 
 #include "xla/pjrt/c/pjrt_c_api.h"
 
-// ---------------------------------------------------------------------------
-// Shared globals (defined in activation_xla.cc; declared extern here).
-// If this file is compiled standalone, they would need to be defined here.
-// We declare them extern so the linker resolves them from activation_xla.cc.
-// ---------------------------------------------------------------------------
+// Shared PJRT state from amalgamated _activation_xla.cpp.
 
-extern const PJRT_Api* g_api;
-extern PJRT_Client*    g_client;
-
-// Projection-specific executable cache: keyed by "op_M_K_N".
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_proj_execs;
 
 // ---------------------------------------------------------------------------

@@ -44,45 +44,37 @@ func NewAttention(metallib string) (*MetalAttention, error) {
 //
 //   - len(shape)==5: [batch, num_heads, num_kv_heads, seq_len, head_dim]
 //     data[0]=Q, data[1]=K, data[2]=V — GQA.
-func (m *MetalAttention) Forward(shape []int, data ...[]float64) []float64 {
+func (m *MetalAttention) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) < 3 {
+		return nil, fmt.Errorf(
+			"metal attention Forward: expected Q, K, V in data[0..2], got %d slices", len(data),
+		)
+	}
+
 	switch len(shape) {
 	case 5:
-		// GQA: [batch, num_heads, num_kv_heads, seq_len, head_dim]
 		batch, numHeads, numKVHeads, seqLen, headDim :=
 			shape[0], shape[1], shape[2], shape[3], shape[4]
-		out, err := m.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
-		if err != nil {
-			panic(err)
-		}
-		return out
 
-	default:
-		// len(shape)==4: [batch, num_heads, seq_len, head_dim]
+		return m.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
+
+	case 4:
 		batch, numHeads, seqLen, headDim := shape[0], shape[1], shape[2], shape[3]
 
-		// Detect MQA: K has batch*1*seq_len*head_dim elements.
 		kvSize := batch * 1 * seqLen * headDim
+
 		if len(data[1]) == kvSize {
-			out, err := m.MQA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
-			if err != nil {
-				panic(err)
-			}
-			return out
+			return m.MQA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
 		}
 
 		if m.Window > 0 {
-			out, err := m.SlidingWindow(data[0], data[1], data[2], batch, numHeads, seqLen, headDim, m.Window)
-			if err != nil {
-				panic(err)
-			}
-			return out
+			return m.SlidingWindow(data[0], data[1], data[2], batch, numHeads, seqLen, headDim, m.Window)
 		}
 
-		out, err := m.SDPA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
-		if err != nil {
-			panic(err)
-		}
-		return out
+		return m.SDPA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
+
+	default:
+		return nil, fmt.Errorf("metal attention Forward: unsupported shape rank %d (want 4 or 5)", len(shape))
 	}
 }
 

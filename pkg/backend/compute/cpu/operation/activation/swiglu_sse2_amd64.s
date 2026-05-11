@@ -46,6 +46,8 @@ loop:
 	MULPD  X4, X6
 	MOVAPD X6, X7
 	DIVPD  X5, X7
+	// Clamp rational sigmoid approximation to (-1,+1) before +1 and *0.5 so lane values
+	// stay in range when polynomial coefficients introduce slight overshoot.
 	MINPD  X13, X7
 	MAXPD  X14, X7
 	ADDPD  X13, X7

@@ -93,18 +93,21 @@ func (p *ProjectionOps) Linear(shape []int, weight, bias []float64, data ...[]fl
 
 // Forward dispatches Linear with default Kaiming weights (for interface compliance).
 // For production use, call Linear directly.
-func (p *ProjectionOps) Forward(shape []int, data ...[]float64) []float64 {
-	// shape = [M, K]; data[0]=x, data[1]=weight (flattened), data[2]=bias (optional)
+func (p *ProjectionOps) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf(
+			"metal projection Forward: insufficient input vectors (need data[0]=x, data[1]=weight; got %d slices)",
+			len(data),
+		)
+	}
+
 	var bias []float64
+
 	if len(data) >= 3 {
 		bias = data[2]
 	}
-	out, err := p.Linear(shape, data[1], bias, data[0])
-	if err != nil {
-		panic(err)
-	}
 
-	return out
+	return p.Linear(shape, data[1], bias, data[0])
 }
 
 // ---------------------------------------------------------------------------

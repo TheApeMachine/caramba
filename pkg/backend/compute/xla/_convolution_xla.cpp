@@ -17,26 +17,14 @@
 #include "xla/pjrt/c/pjrt_c_api.h"
 
 // ---------------------------------------------------------------------------
-// Reuse the same globals as activation_xla.cc if linked into the same
-// translation unit.  If compiled separately, we redeclare them as extern.
+// PJRT client/API (defined in amalgamated _activation_xla.cpp above).
 // ---------------------------------------------------------------------------
 
-extern const PJRT_Api*  g_api;
-extern PJRT_Client*     g_client;
+extern void set_single_device_compile_options(PJRT_Client_Compile_Args* args);
+extern PJRT_ExecuteOptions single_device_execute_options(void);
+extern std::string pjrt_plugin_path(const char* platform);
 
-// Local executable cache for convolution ops.
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_conv_execs;
-
-// ---------------------------------------------------------------------------
-// Forward declarations of helpers defined in activation_xla.cc
-// ---------------------------------------------------------------------------
-
-extern bool check(const PJRT_Api* api, PJRT_Error* err, const char* ctx);
-extern int  run_executable(PJRT_LoadedExecutable* exec,
-                           const double* src, int src_n,
-                           double* dst,       int dst_n);
-// Two-input variant for conv (x + packed weights+bias concatenated).
-// We define our own two-input runner below.
 
 // ---------------------------------------------------------------------------
 // Helpers

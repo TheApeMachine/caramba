@@ -6,6 +6,36 @@ using namespace metal;
 
 #define TILE_SIZE 16
 
+// Shared tiled matmul accumulation (K dimension tiled).
+static inline float compute_matmul_tile_accum(
+    device const float* A,
+    device const float* B,
+    uint M, uint K, uint N,
+    uint row, uint col,
+    uint2 lid,
+    threadgroup float tA[TILE_SIZE][TILE_SIZE],
+    threadgroup float tB[TILE_SIZE][TILE_SIZE])
+{
+    float acc = 0.0f;
+    uint numTiles = (K + TILE_SIZE - 1) / TILE_SIZE;
+
+    for (uint t = 0; t < numTiles; t++) {
+        uint aCol = t * TILE_SIZE + lid.x;
+        uint bRow = t * TILE_SIZE + lid.y;
+
+        tA[lid.y][lid.x] = (row < M && aCol < K) ? A[row * K + aCol] : 0.0f;
+        tB[lid.y][lid.x] = (bRow < K && col < N) ? B[bRow * N + col] : 0.0f;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        for (uint i = 0; i < TILE_SIZE; i++) {
+            acc += tA[lid.y][i] * tB[i][lid.x];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    return acc;
+}
+
 // ---------------------------------------------------------------------------
 // matmul_kernel: tiled [M,K] x [K,N] -> [M,N]
 // Launched as 2D grid: threads_per_group = (TILE_SIZE, TILE_SIZE),
@@ -28,22 +58,7 @@ kernel void matmul_kernel(
     threadgroup float tA[TILE_SIZE][TILE_SIZE];
     threadgroup float tB[TILE_SIZE][TILE_SIZE];
 
-    float acc = 0.0f;
-    uint numTiles = (K + TILE_SIZE - 1) / TILE_SIZE;
-
-    for (uint t = 0; t < numTiles; t++) {
-        uint aCol = t * TILE_SIZE + lid.x;
-        uint bRow = t * TILE_SIZE + lid.y;
-
-        tA[lid.y][lid.x] = (row < M && aCol < K) ? A[row * K + aCol] : 0.0f;
-        tB[lid.y][lid.x] = (bRow < K && col < N) ? B[bRow * N + col] : 0.0f;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-
-        for (uint i = 0; i < TILE_SIZE; i++) {
-            acc += tA[lid.y][i] * tB[i][lid.x];
-        }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
+    float acc = compute_matmul_tile_accum(A, B, M, K, N, row, col, lid, tA, tB);
 
     if (row < M && col < N) {
         C[row * N + col] = acc;
@@ -72,22 +87,7 @@ kernel void matmul_add_kernel(
     threadgroup float tA[TILE_SIZE][TILE_SIZE];
     threadgroup float tB[TILE_SIZE][TILE_SIZE];
 
-    float acc = 0.0f;
-    uint numTiles = (K + TILE_SIZE - 1) / TILE_SIZE;
-
-    for (uint t = 0; t < numTiles; t++) {
-        uint aCol = t * TILE_SIZE + lid.x;
-        uint bRow = t * TILE_SIZE + lid.y;
-
-        tA[lid.y][lid.x] = (row < M && aCol < K) ? A[row * K + aCol] : 0.0f;
-        tB[lid.y][lid.x] = (bRow < K && col < N) ? B[bRow * N + col] : 0.0f;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-
-        for (uint i = 0; i < TILE_SIZE; i++) {
-            acc += tA[lid.y][i] * tB[i][lid.x];
-        }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
+    float acc = compute_matmul_tile_accum(A, B, M, K, N, row, col, lid, tA, tB);
 
     if (row < M && col < N) {
         acc += biasN == N ? bias[col] : bias[row * N + col];
@@ -111,22 +111,7 @@ kernel void matmul_add_gelu_kernel(
     threadgroup float tA[TILE_SIZE][TILE_SIZE];
     threadgroup float tB[TILE_SIZE][TILE_SIZE];
 
-    float acc = 0.0f;
-    uint numTiles = (K + TILE_SIZE - 1) / TILE_SIZE;
-
-    for (uint t = 0; t < numTiles; t++) {
-        uint aCol = t * TILE_SIZE + lid.x;
-        uint bRow = t * TILE_SIZE + lid.y;
-
-        tA[lid.y][lid.x] = (row < M && aCol < K) ? A[row * K + aCol] : 0.0f;
-        tB[lid.y][lid.x] = (bRow < K && col < N) ? B[bRow * N + col] : 0.0f;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-
-        for (uint i = 0; i < TILE_SIZE; i++) {
-            acc += tA[lid.y][i] * tB[i][lid.x];
-        }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
+    float acc = compute_matmul_tile_accum(A, B, M, K, N, row, col, lid, tA, tB);
 
     if (row < M && col < N) {
         acc += biasN == N ? bias[col] : bias[row * N + col];

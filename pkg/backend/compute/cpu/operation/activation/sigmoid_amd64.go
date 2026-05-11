@@ -9,25 +9,25 @@ func SigmoidAVX2(dst, src []float64)
 func SigmoidSSE2(dst, src []float64)
 
 func applySigmoid(dst, src []float64) {
+	elementCount := len(src)
+
+	if len(dst) < elementCount {
+		elementCount = len(dst)
+	}
+
 	width := 2
+	vectorSigmoid := SigmoidSSE2
 
 	if useAVX2 {
 		width = 4
-		limit := len(src) / width * width
-
-		if limit > 0 {
-			SigmoidAVX2(dst[:limit], src[:limit])
-		}
-
-		scalarSigmoid(dst[limit:], src[limit:])
-		return
+		vectorSigmoid = SigmoidAVX2
 	}
 
-	limit := len(src) / width * width
+	limit := elementCount / width * width
 
 	if limit > 0 {
-		SigmoidSSE2(dst[:limit], src[:limit])
+		vectorSigmoid(dst[:limit], src[:limit])
 	}
 
-	scalarSigmoid(dst[limit:], src[limit:])
+	scalarSigmoid(dst[limit:elementCount], src[limit:elementCount])
 }

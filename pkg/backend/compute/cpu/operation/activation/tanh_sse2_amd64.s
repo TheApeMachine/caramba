@@ -31,6 +31,8 @@ loop:
 	MULPD  X0, X2
 	MOVAPD X2, X4
 	DIVPD  X3, X4
+	// Clamp rational tanh approximation into [-1,+1]: X12 holds +1, X13 holds -1 (see MOVDDUP above).
+	// MINPD/MAXPD keep lane values inside the interval when the polynomial slightly overshoots.
 	MINPD  X12, X4
 	MAXPD  X13, X4
 	MOVUPD X4, (AX)

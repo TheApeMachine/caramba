@@ -8,6 +8,7 @@ import "C"
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 
 	cpumodel "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/model"
@@ -59,7 +60,32 @@ func (xlaModel *XLAModelOps) NewFreeze(source, pattern, except string, frozen bo
 xlaMatMul dispatches a row-major matmul via xla_matmul (PJRT C API).
 a [M×K], b [K×N] → c [M×N], all row-major float64 (double).
 */
-func xlaMatMul(a, b []float64, M, K, N int) []float64 {
+func xlaMatMul(a, b []float64, M, K, N int) ([]float64, error) {
+	if M <= 0 || K <= 0 || N <= 0 {
+		return nil, fmt.Errorf("xla: xlaMatMul requires M, K, N > 0")
+	}
+
+	if M != 0 && N > math.MaxInt/M {
+		return nil, fmt.Errorf("xla: xlaMatMul: M×N overflows int")
+	}
+
+	needA := int64(M) * int64(K)
+	needB := int64(K) * int64(N)
+
+	if int64(len(a)) < needA {
+		return nil, fmt.Errorf(
+			"xla: xlaMatMul: len(a)=%d < M×K=%d×%d=%d",
+			len(a), M, K, needA,
+		)
+	}
+
+	if int64(len(b)) < needB {
+		return nil, fmt.Errorf(
+			"xla: xlaMatMul: len(b)=%d < K×N=%d×%d=%d",
+			len(b), K, N, needB,
+		)
+	}
+
 	c := make([]float64, M*N)
 
 	rc := C.xla_matmul(
@@ -70,8 +96,8 @@ func xlaMatMul(a, b []float64, M, K, N int) []float64 {
 	)
 
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_matmul failed (rc=%d)", rc))
+		return nil, fmt.Errorf("xla_matmul failed (rc=%d) for dims M=%d K=%d N=%d", rc, M, K, N)
 	}
 
-	return c
+	return c, nil
 }

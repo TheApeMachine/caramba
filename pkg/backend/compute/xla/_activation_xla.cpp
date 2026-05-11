@@ -11,6 +11,7 @@
 
 #include "activation.h"
 
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -23,13 +24,16 @@
 #include "xla/pjrt/c/pjrt_c_api.h"
 
 // ---------------------------------------------------------------------------
-// Globals
+// Globals (internal linkage — single amalgamation TU in xla_sources.cpp)
 // ---------------------------------------------------------------------------
 
-const PJRT_Api*        g_api     = nullptr;
-PJRT_Client*           g_client  = nullptr;
-PJRT_Device*           g_device  = nullptr;
-PJRT_Memory*           g_memory  = nullptr;
+static const PJRT_Api* g_api     = nullptr;
+static PJRT_Client*    g_client  = nullptr;
+static PJRT_Device*    g_device  = nullptr;
+static PJRT_Memory*    g_memory  = nullptr;
+
+// Normalized platform string from the successful xla_init ("cpu", "gpu", …).
+static std::string g_xla_platform;
 
 // one cached dlopen handle for the PJRT plugin (closed in xla_shutdown).
 static void* g_plugin_handle = nullptr;
@@ -68,24 +72,26 @@ static bool check(const PJRT_Api* api, PJRT_Error* err, const char* ctx) {
 // Compile options
 // ---------------------------------------------------------------------------
 
+// Serialized xla::CompileOptionsProto (proto3 wire format):
+//   Field 3 (ExecutableBuildOptions executable_build_options) = submessage:
+//     Field 4 (int32 num_replicas)   = 1  (varint 0x20 0x01)
+//     Field 5 (int32 num_partitions) = 1  (varint 0x28 0x01)
+// Hex: 1a 04 20 01 28 01 — outer tag 1a = field 3, length 4.
+//
+// Regenerate if xla CompileOptionsProto schema changes (field numbers / nesting):
+// link against libprotobuf + xla headers and SerializeAsString(
+//   CompileOptionsProto with executable_build_options set), or run a small
+// proto encode helper in your XLA checkout and paste the bytes here.
 static const char k_single_device_compile_options[] = {
-    // CompileOptionsProto.executable_build_options = {
-    //   num_replicas = 1,
-    //   num_partitions = 1,
-    // }
-    //
-    // PJRT_Client_Compile expects a serialized xla.CompileOptionsProto. The
-    // proto3 zero value decodes to zero replicas and zero partitions, which
-    // makes the CPU plugin abort while building its default device assignment.
     0x1a, 0x04, 0x20, 0x01, 0x28, 0x01,
 };
 
-static void set_single_device_compile_options(PJRT_Client_Compile_Args* args) {
+void set_single_device_compile_options(PJRT_Client_Compile_Args* args) {
     args->compile_options = k_single_device_compile_options;
     args->compile_options_size = sizeof(k_single_device_compile_options);
 }
 
-static PJRT_ExecuteOptions single_device_execute_options() {
+PJRT_ExecuteOptions single_device_execute_options() {
     PJRT_ExecuteOptions options{};
     options.struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
     options.use_major_to_minor_data_layout_for_callbacks = true;
@@ -145,13 +151,9 @@ static bool pjrt_contains_path(const std::vector<std::string>& paths, const std:
     return false;
 }
 
-static char pjrt_path_separator() {
-#ifdef _WIN32
-    return ';';
-#else
-    return ':';
-#endif
-}
+// ':' separates entries in LD_LIBRARY_PATH / DYLD_LIBRARY_PATH. Loader is Unix-only
+// (.so/.dylib via dlopen); Windows PATH-style ';' is intentionally unsupported here.
+static constexpr char kPathSeparator = ':';
 
 static void pjrt_append_library_dirs(std::vector<std::string>& dirs, const char* env_name) {
     const char* raw_value = std::getenv(env_name);
@@ -160,7 +162,7 @@ static void pjrt_append_library_dirs(std::vector<std::string>& dirs, const char*
 
     std::string value(raw_value);
     size_t start = 0;
-    char separator = pjrt_path_separator();
+    char separator = kPathSeparator;
 
     while (start <= value.size()) {
         size_t end = value.find(separator, start);
@@ -207,7 +209,7 @@ static std::string pjrt_join_path(const std::string& dir, const std::string& fil
     return dir + "/" + file;
 }
 
-static std::string pjrt_plugin_path(const char* platform) {
+std::string pjrt_plugin_path(const char* platform) {
     const char* platform_path = std::getenv(pjrt_platform_plugin_env(platform));
     if (platform_path && platform_path[0] != '\0') {
         return std::string(platform_path);
@@ -296,10 +298,11 @@ static const PJRT_Api* load_pjrt_plugin(const char* platform) {
 // ---------------------------------------------------------------------------
 
 static PJRT_LoadedExecutable* compile_stablehlo(const std::string& mlir_text) {
+    std::string mlir_owned(mlir_text);
     PJRT_Program prog{};
     prog.struct_size = PJRT_Program_STRUCT_SIZE;
-    prog.code        = const_cast<char*>(mlir_text.c_str());
-    prog.code_size   = mlir_text.size();
+    prog.code        = mlir_owned.empty() ? nullptr : mlir_owned.data();
+    prog.code_size   = mlir_owned.size();
     prog.format      = "mlir";
     prog.format_size = 4;
 
@@ -423,32 +426,51 @@ static std::string build_swiglu(int n) {
 }
 
 // ---------------------------------------------------------------------------
-// Execute a compiled executable: copy host→device, run, copy device→host.
+// Execute a compiled executable: host→device, run, device→host.
+//
+// Input staging:
+// - borrow_host_input_until_transfer_complete == false: copy into a local vector and use
+//   PJRT_HostBufferSemantics_kImmutableOnlyDuringCall (safe if src is only immutable for
+//   the PJRT_Client_BufferFromHostBuffer call).
+// - borrow_host_input_until_transfer_complete == true: pass src through with
+//   PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes (caller guarantees src stays
+//   valid and unmodified until transfer completes). Synchronous xla_* wrappers satisfy this
+//   and avoid doubling activation buffer memory.
 // ---------------------------------------------------------------------------
 
 static int run_executable(
     PJRT_LoadedExecutable* exec,
     const double* src, int src_n,
-    double* dst,       int dst_n)
+    double* dst,       int dst_n,
+    bool borrow_host_input_until_transfer_complete)
 {
-    std::vector<double> host_values;
+    std::vector<double> host_copy;
+    const double* host_ptr = nullptr;
+    PJRT_HostBufferSemantics host_semantics = PJRT_HostBufferSemantics_kImmutableOnlyDuringCall;
 
     if (src_n > 0) {
         if (!src) return -1;
 
-        host_values.assign(src, src + src_n);
+        if (borrow_host_input_until_transfer_complete) {
+            host_ptr = src;
+            host_semantics = PJRT_HostBufferSemantics_kImmutableUntilTransferCompletes;
+        } else {
+            host_copy.assign(src, src + src_n);
+            host_ptr = host_copy.data();
+            host_semantics = PJRT_HostBufferSemantics_kImmutableOnlyDuringCall;
+        }
     }
 
     // --- Create input buffer ---
     PJRT_Client_BufferFromHostBuffer_Args ba{};
     ba.struct_size = PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE;
     ba.client      = g_client;
-    ba.data        = host_values.empty() ? nullptr : host_values.data();
+    ba.data        = host_ptr ? const_cast<double*>(host_ptr) : nullptr;
     ba.type        = PJRT_Buffer_Type_F64;
     int64_t dims[1] = { (int64_t)src_n };
     ba.dims        = dims;
     ba.num_dims    = 1;
-    ba.host_buffer_semantics = PJRT_HostBufferSemantics_kImmutableOnlyDuringCall;
+    ba.host_buffer_semantics = host_semantics;
     ba.device      = g_device;
     ba.memory      = g_memory;
 
@@ -550,6 +572,24 @@ static int run_executable(
     return 0;
 }
 
+static std::string xla_normalize_platform(const char* platform) {
+    if (!platform || platform[0] == '\0') {
+        return "cpu";
+    }
+
+    std::string normalized(platform);
+
+    for (char& character : normalized) {
+        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    }
+
+    if (normalized == "cuda") {
+        return "gpu";
+    }
+
+    return normalized;
+}
+
 // ---------------------------------------------------------------------------
 // Public C API
 // ---------------------------------------------------------------------------
@@ -557,7 +597,18 @@ static int run_executable(
 extern "C" {
 
 int xla_init(const char* platform) {
-    if (g_client) return 0;
+    std::string requested = xla_normalize_platform(platform);
+
+    if (g_client) {
+        if (g_xla_platform != requested) {
+            fprintf(stderr,
+                    "XLA: xla_init refused platform %s (already initialized as %s)\n",
+                    requested.c_str(), g_xla_platform.c_str());
+            return -1;
+        }
+
+        return 0;
+    }
 
     g_api = load_pjrt_plugin(platform);
     if (!g_api) return -1;
@@ -590,6 +641,8 @@ int xla_init(const char* platform) {
     if (ma.num_addressable_memories > 0 && ma.addressable_memories) {
         g_memory = ma.addressable_memories[0];
     }
+
+    g_xla_platform = requested;
 
     return 0;
 }
@@ -641,7 +694,7 @@ int xla_compile_activations(int n) {
 
 int xla_relu(const double* src, double* dst, int n) {
     if (g_compiled_n != n && xla_compile_activations(n) != 0) return -1;
-    return run_executable(g_execs["relu"], src, n, dst, n);
+    return run_executable(g_execs["relu"], src, n, dst, n, true);
 }
 
 int xla_leaky_relu(const double* src, double* dst, double alpha, int n) {
@@ -649,7 +702,7 @@ int xla_leaky_relu(const double* src, double* dst, double alpha, int n) {
     std::string mlir = build_leaky_relu(n, alpha);
     PJRT_LoadedExecutable* exec = compile_stablehlo(mlir);
     if (!exec) return -1;
-    int rc = run_executable(exec, src, n, dst, n);
+    int rc = run_executable(exec, src, n, dst, n, true);
     PJRT_LoadedExecutable_Destroy_Args da{};
     da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
     da.executable  = exec;
@@ -659,22 +712,22 @@ int xla_leaky_relu(const double* src, double* dst, double alpha, int n) {
 
 int xla_gelu(const double* src, double* dst, int n) {
     if (g_compiled_n != n && xla_compile_activations(n) != 0) return -1;
-    return run_executable(g_execs["gelu"], src, n, dst, n);
+    return run_executable(g_execs["gelu"], src, n, dst, n, true);
 }
 
 int xla_tanh_act(const double* src, double* dst, int n) {
     if (g_compiled_n != n && xla_compile_activations(n) != 0) return -1;
-    return run_executable(g_execs["tanh_act"], src, n, dst, n);
+    return run_executable(g_execs["tanh_act"], src, n, dst, n, true);
 }
 
 int xla_sigmoid(const double* src, double* dst, int n) {
     if (g_compiled_n != n && xla_compile_activations(n) != 0) return -1;
-    return run_executable(g_execs["sigmoid"], src, n, dst, n);
+    return run_executable(g_execs["sigmoid"], src, n, dst, n, true);
 }
 
 int xla_swiglu(const double* src, double* dst, int n) {
     if (g_compiled_n != n && xla_compile_activations(n) != 0) return -1;
-    return run_executable(g_execs["swiglu"], src, 2*n, dst, n);
+    return run_executable(g_execs["swiglu"], src, 2*n, dst, n, true);
 }
 
 void xla_shutdown(void) {
@@ -698,6 +751,7 @@ void xla_shutdown(void) {
     g_api        = nullptr;
     g_device     = nullptr;
     g_memory     = nullptr;
+    g_xla_platform.clear();
 
     if (g_plugin_handle) {
         dlclose(g_plugin_handle);

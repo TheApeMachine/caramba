@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"math"
 	"sort"
 )
@@ -102,11 +103,20 @@ func (adapter *Adapter) Forward(_ []int, data ...[]float64) []float64 {
 		bottleneck := max(1, dim/adapter.reduction)
 
 		// h = W_down · x  →  [bottleneck × dim] · [dim × 1] = [bottleneck × 1]
-		h := adapter.matmul(wDown, x, bottleneck, dim, 1)
+		h, err := adapter.matmul(wDown, x, bottleneck, dim, 1)
+
+		if err != nil {
+			panic(fmt.Errorf("adapter: W_down matmul: %w", err))
+		}
+
 		reluInPlace(h)
 
 		// out = W_up · h + x  →  [dim × bottleneck] · [bottleneck × 1] = [dim × 1]
-		projected := adapter.matmul(wUp, h, dim, bottleneck, 1)
+		projected, err := adapter.matmul(wUp, h, dim, bottleneck, 1)
+
+		if err != nil {
+			panic(fmt.Errorf("adapter: W_up matmul: %w", err))
+		}
 
 		out = make([]float64, dim)
 

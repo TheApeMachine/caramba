@@ -5,10 +5,13 @@
 
 #include "tensor.h"
 
+#include <cinttypes>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -22,18 +25,32 @@ struct XLA_Tensor {
 };
 
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_tensor_execs;
+static std::mutex                                       g_tensor_execs_mutex;
 
 static bool tensor_debug_enabled() {
     const char* debug = std::getenv("CARAMBA_XLA_DEBUG");
     return debug && debug[0] != '\0';
 }
 
+/*
+tensor_count_elements returns the product of dims, or 0 if any dimension is 0.
+Returns -1 if the product overflows int64_t (callers must abort / fail the operation).
+*/
 static int64_t tensor_count_elements(const int64_t* dims, int rank) {
     int64_t elements = 1;
 
     for (int dimension_index = 0; dimension_index < rank; dimension_index++) {
-        if (dims[dimension_index] == 0) return 0;
-        elements *= dims[dimension_index];
+        int64_t dimension = dims[dimension_index];
+
+        if (dimension == 0) {
+            return 0;
+        }
+
+        if (dimension != 0 && elements > INT64_MAX / dimension) {
+            return -1;
+        }
+
+        elements *= dimension;
     }
 
     return elements;
@@ -81,10 +98,18 @@ static bool tensor_same_shape(const XLA_Tensor* left, const XLA_Tensor* right) {
 static XLA_Tensor* tensor_wrap(PJRT_Buffer* buffer, const std::vector<int64_t>& dims) {
     if (!buffer) return nullptr;
 
+    int64_t elements = tensor_count_elements(dims.data(), (int)dims.size());
+
+    if (elements < 0) {
+        tensor_destroy_buffer(buffer);
+
+        return nullptr;
+    }
+
     auto* tensor = new XLA_Tensor{};
     tensor->buffer = buffer;
     tensor->dims = dims;
-    tensor->elements = tensor_count_elements(dims.data(), (int)dims.size());
+    tensor->elements = elements;
 
     return tensor;
 }
@@ -102,6 +127,8 @@ static int tensor_destroy_buffer(PJRT_Buffer* buffer) {
 }
 
 static bool tensor_await_and_destroy(PJRT_Event* event, const char* context) {
+    if (!g_api) return false;
+
     if (!event) return true;
 
     PJRT_Event_Await_Args await_args{};
@@ -120,6 +147,8 @@ static bool tensor_await_and_destroy(PJRT_Event* event, const char* context) {
 }
 
 static bool tensor_await_ready(PJRT_Buffer* buffer, const char* context) {
+    if (!g_api || !buffer) return false;
+
     PJRT_Buffer_ReadyEvent_Args ready_args{};
     ready_args.struct_size = PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE;
     ready_args.buffer = buffer;
@@ -133,6 +162,8 @@ static bool tensor_await_ready(PJRT_Buffer* buffer, const char* context) {
 static PJRT_LoadedExecutable* tensor_compile(
     const std::string& key, const std::string& mlir_text
 ) {
+    std::lock_guard<std::mutex> guard(g_tensor_execs_mutex);
+
     auto existing = g_tensor_execs.find(key);
 
     if (existing != g_tensor_execs.end()) {
@@ -269,6 +300,11 @@ static std::string tensor_build_swiglu(const XLA_Tensor* input) {
     output_dims[last] /= 2;
 
     int64_t output_elements = tensor_count_elements(output_dims.data(), (int)output_dims.size());
+
+    if (output_elements < 0 || input->elements < 0) {
+        return "";
+    }
+
     std::string input_type = tensor_type(input->dims, "f64");
     std::string output_type = tensor_type(output_dims, "f64");
     std::string input_flat_type = tensor_flat_type(input->elements);
@@ -359,19 +395,20 @@ static std::string tensor_build_matmul_add(
         body += "    %biased = stablehlo.add %product, %bias : " + output_type + "\n";
     }
 
+    std::string return_ssa;
+
     if (apply_gelu) {
         body += tensor_gelu_body(output_type, "%biased");
+        return_ssa = "%out";
     } else {
-        body +=
-            "    %zero = stablehlo.constant dense<0.0> : " + output_type + "\n"
-            "    %out = stablehlo.add %biased, %zero : " + output_type + "\n";
+        return_ssa = "%biased";
     }
 
     return
         "module @tensor_matmul_add {\n"
         "  func.func @main(%left: " + left_type + ", %right: " + right_type + ", %bias: " + bias_type + ") -> " + output_type + " {\n" +
         body +
-        "    return %out : " + output_type + "\n"
+        "    return " + return_ssa + " : " + output_type + "\n"
         "  }\n"
         "}\n";
 }
@@ -421,6 +458,8 @@ int xla_tensor_init(const char* platform) {
 }
 
 void xla_tensor_shutdown(void) {
+    std::lock_guard<std::mutex> guard(g_tensor_execs_mutex);
+
     if (!g_api) {
         g_tensor_execs.clear();
         return;
@@ -436,8 +475,12 @@ void xla_tensor_shutdown(void) {
     g_tensor_execs.clear();
 }
 
-XLA_Tensor* xla_tensor_upload_f64(const double* src, const int64_t* dims, int rank) {
-    if (!g_client || rank < 0) return nullptr;
+int xla_tensor_upload_f64(const double* src, const int64_t* dims, int rank, XLA_Tensor** out) {
+    if (!out) return -1;
+
+    *out = nullptr;
+
+    if (!g_client || rank < 0) return -1;
 
     std::vector<int64_t> owned_dims;
 
@@ -446,10 +489,13 @@ XLA_Tensor* xla_tensor_upload_f64(const double* src, const int64_t* dims, int ra
     }
 
     int64_t elements = tensor_count_elements(owned_dims.data(), (int)owned_dims.size());
+
+    if (elements < 0) return -1;
+
     std::vector<double> host_values;
 
     if (elements > 0) {
-        if (!src) return nullptr;
+        if (!src) return -1;
 
         host_values.assign(src, src + elements);
     }
@@ -467,7 +513,7 @@ XLA_Tensor* xla_tensor_upload_f64(const double* src, const int64_t* dims, int ra
 
     if (tensor_debug_enabled()) {
         fprintf(stderr,
-                "XLA tensor upload: api=%p client=%p device=%p memory=%p data=%p dims=%p rank=%d elements=%lld type=%d semantics=%d\n",
+                "XLA tensor upload: api=%p client=%p device=%p memory=%p data=%p dims=%p rank=%d elements=%" PRId64 " type=%d semantics=%d\n",
                 (const void*)g_api,
                 (void*)g_client,
                 (void*)g_device,
@@ -475,7 +521,7 @@ XLA_Tensor* xla_tensor_upload_f64(const double* src, const int64_t* dims, int ra
                 args.data,
                 (const void*)args.dims,
                 rank,
-                (long long)elements,
+                (int64_t)elements,
                 (int)args.type,
                 (int)args.host_buffer_semantics);
     }
@@ -483,30 +529,36 @@ XLA_Tensor* xla_tensor_upload_f64(const double* src, const int64_t* dims, int ra
     PJRT_Error* err = g_api->PJRT_Client_BufferFromHostBuffer(&args);
 
     if (!check(g_api, err, "PJRT_Client_BufferFromHostBuffer(tensor)")) {
-        return nullptr;
+        return -1;
     }
 
     if (!tensor_await_and_destroy(args.done_with_host_buffer, "Event_Await(upload host buffer)")) {
         tensor_destroy_buffer(args.buffer);
-        return nullptr;
+        return -1;
     }
 
     if (!tensor_await_ready(args.buffer, "ReadyEvent(upload tensor)")) {
         tensor_destroy_buffer(args.buffer);
-        return nullptr;
+        return -1;
     }
 
-    return tensor_wrap(args.buffer, owned_dims);
+    XLA_Tensor* wrapped = tensor_wrap(args.buffer, owned_dims);
+
+    if (!wrapped) return -1;
+
+    *out = wrapped;
+
+    return 0;
 }
 
-int xla_tensor_download_f64(const XLA_Tensor* tensor, double* dst, int n) {
-    if (!tensor || !tensor->buffer || tensor->elements != n) return -1;
+int xla_tensor_download_f64(const XLA_Tensor* tensor, double* dst, int64_t n_elements) {
+    if (!tensor || !tensor->buffer || n_elements < 0 || tensor->elements != n_elements) return -1;
 
     PJRT_Buffer_ToHostBuffer_Args args{};
     args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
     args.src = tensor->buffer;
     args.dst = dst;
-    args.dst_size = (size_t)n * sizeof(double);
+    args.dst_size = (size_t)n_elements * sizeof(double);
 
     PJRT_Error* err = g_api->PJRT_Buffer_ToHostBuffer(&args);
 
@@ -533,7 +585,7 @@ int xla_tensor_relu(const XLA_Tensor* input, XLA_Tensor** output) {
     return tensor_unary(input, output, "relu", tensor_build_relu(input->dims));
 }
 
-int xla_tensor_leaky_relu(const XLA_Tensor* input, XLA_Tensor** output, double alpha) {
+int xla_tensor_leaky_relu(const XLA_Tensor* input, double alpha, XLA_Tensor** output) {
     if (!input || !output) return -1;
 
     char alpha_text[64];
@@ -630,7 +682,7 @@ int xla_tensor_matmul_add(
     const XLA_Tensor* right,
     const XLA_Tensor* bias,
     XLA_Tensor** output,
-    int apply_gelu
+    bool apply_gelu
 ) {
     if (!left || !right || !bias || !output || left->dims.size() != 2 || right->dims.size() != 2) {
         return -1;
@@ -649,9 +701,9 @@ int xla_tensor_matmul_add(
         tensor_dims_key(left->dims) + ":" +
         tensor_dims_key(right->dims) + ":" +
         tensor_dims_key(bias->dims) + ":" +
-        std::to_string(apply_gelu);
+        std::to_string((int)apply_gelu);
     PJRT_LoadedExecutable* executable = tensor_compile(
-        key, tensor_build_matmul_add(left, right, bias, apply_gelu != 0)
+        key, tensor_build_matmul_add(left, right, bias, apply_gelu)
     );
     XLA_Tensor* result = tensor_execute(executable, { left, right, bias }, output_dims);
 

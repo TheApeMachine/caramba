@@ -9,6 +9,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"unsafe"
 
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
@@ -20,7 +21,7 @@ var _ computetensor.Backend = (*TensorBackend)(nil)
 TensorBackend owns Metal MTLBuffer tensors.
 */
 type TensorBackend struct {
-	closed bool
+	closed atomic.Uint32
 }
 
 /*
@@ -28,7 +29,7 @@ NewTensorBackend creates a Metal resident tensor backend.
 */
 func NewTensorBackend() (*TensorBackend, error) {
 	if rc := C.metal_tensor_init(); rc != 0 {
-		return nil, fmt.Errorf("metal tensor: initialization failed")
+		return nil, fmt.Errorf("metal tensor: initialization failed (rc=%d)", rc)
 	}
 
 	return &TensorBackend{}, nil
@@ -47,7 +48,7 @@ UploadFloat64 converts host float64 values into resident Metal float32 storage.
 func (tensorBackend *TensorBackend) UploadFloat64(
 	shape computetensor.Shape, values []float64,
 ) (computetensor.Float64Tensor, error) {
-	if tensorBackend.closed {
+	if tensorBackend.closed.Load() != 0 {
 		return nil, errors.New("metal tensor: backend is closed")
 	}
 
@@ -74,7 +75,7 @@ func (tensorBackend *TensorBackend) UploadFloat64(
 	if len(float32Values) > 0 {
 		buffer = C.metal_tensor_upload_float32(
 			(*C.float)(unsafe.Pointer(&float32Values[0])),
-			C.int(len(float32Values)),
+			C.size_t(len(float32Values)),
 		)
 
 		if buffer == nil {
@@ -95,7 +96,7 @@ DownloadFloat64 copies resident Metal storage back to host float64 values.
 func (tensorBackend *TensorBackend) DownloadFloat64(
 	input computetensor.Float64Tensor,
 ) ([]float64, error) {
-	if tensorBackend.closed {
+	if tensorBackend.closed.Load() != 0 {
 		return nil, errors.New("metal tensor: backend is closed")
 	}
 
@@ -114,7 +115,7 @@ func (tensorBackend *TensorBackend) DownloadFloat64(
 Close releases the backend.
 */
 func (tensorBackend *TensorBackend) Close() error {
-	tensorBackend.closed = true
+	tensorBackend.closed.Store(1)
 
 	return nil
 }
@@ -188,6 +189,10 @@ func (metalActivation *MetalActivation) SwiGLUTensor(
 		return nil, err
 	}
 
+	if outputShape.Len() == 0 {
+		return output, nil
+	}
+
 	rc := C.metal_swiglu_tensor(metalInput.buffer, output.buffer, C.int(outputShape.Len()))
 
 	if rc != 0 {
@@ -254,7 +259,7 @@ func newMetalTensor(shape computetensor.Shape) (*Tensor, error) {
 	var buffer unsafe.Pointer
 
 	if shape.Len() > 0 {
-		buffer = C.metal_tensor_empty_float32(C.int(shape.Len()))
+		buffer = C.metal_tensor_empty_float32(C.size_t(shape.Len()))
 
 		if buffer == nil {
 			return nil, fmt.Errorf("metal tensor: allocation of %d bytes failed", bytes)
@@ -283,7 +288,7 @@ func requireMetalTensor(input computetensor.Float64Tensor) (*Tensor, error) {
 		return nil, fmt.Errorf("metal tensor: input is not owned by Metal backend")
 	}
 
-	if metalInput.closed {
+	if metalInput.closed.Load() != 0 {
 		return nil, errors.New("metal tensor: input is closed")
 	}
 
@@ -297,7 +302,7 @@ type Tensor struct {
 	bytes  int
 	shape  computetensor.Shape
 	buffer unsafe.Pointer
-	closed bool
+	closed atomic.Uint32
 }
 
 /*
@@ -339,7 +344,7 @@ func (tensor *Tensor) Bytes() int {
 CloneFloat64 downloads Metal float32 storage into host float64 values.
 */
 func (tensor *Tensor) CloneFloat64() ([]float64, error) {
-	if tensor.closed {
+	if tensor.closed.Load() != 0 {
 		return nil, errors.New("metal tensor: tensor is closed")
 	}
 
@@ -352,11 +357,11 @@ func (tensor *Tensor) CloneFloat64() ([]float64, error) {
 	rc := C.metal_tensor_download_float32(
 		tensor.buffer,
 		(*C.float)(unsafe.Pointer(&values[0])),
-		C.int(len(values)),
+		C.size_t(len(values)),
 	)
 
 	if rc != 0 {
-		return nil, fmt.Errorf("metal tensor: download failed")
+		return nil, fmt.Errorf("metal tensor: download failed (rc=%d)", rc)
 	}
 
 	return toFloat64(values), nil
@@ -366,40 +371,45 @@ func (tensor *Tensor) CloneFloat64() ([]float64, error) {
 Close releases the MTLBuffer.
 */
 func (tensor *Tensor) Close() error {
-	if tensor.closed {
+	if !tensor.closed.CompareAndSwap(0, 1) {
 		return nil
 	}
 
-	rc := C.metal_tensor_free(tensor.buffer)
+	bufferPtr := tensor.buffer
 	tensor.bytes = 0
 	tensor.buffer = nil
-	tensor.closed = true
+
+	var rc C.int
+
+	if bufferPtr != nil {
+		rc = C.metal_tensor_free(bufferPtr)
+	}
 
 	if rc != 0 {
-		return fmt.Errorf("metal tensor: free failed")
+		return fmt.Errorf("metal tensor: free failed (rc=%d)", rc)
 	}
 
 	return nil
 }
 
 func metalSwiGLUOutputShape(shape computetensor.Shape) (computetensor.Shape, error) {
-	dims := shape.Dims()
+	dimsCopy := append([]int(nil), shape.Dims()...)
 
 	if shape.Len()%2 != 0 {
 		return computetensor.Shape{}, fmt.Errorf("metal tensor: swiglu input length must be even")
 	}
 
-	if len(dims) == 0 {
+	if len(dimsCopy) == 0 {
 		return computetensor.NewShape([]int{shape.Len() / 2})
 	}
 
-	lastIndex := len(dims) - 1
+	lastIndex := len(dimsCopy) - 1
 
-	if dims[lastIndex]%2 != 0 {
+	if dimsCopy[lastIndex]%2 != 0 {
 		return computetensor.Shape{}, fmt.Errorf("metal tensor: swiglu final dimension must be even")
 	}
 
-	dims[lastIndex] /= 2
+	dimsCopy[lastIndex] /= 2
 
-	return computetensor.NewShape(dims)
+	return computetensor.NewShape(dimsCopy)
 }

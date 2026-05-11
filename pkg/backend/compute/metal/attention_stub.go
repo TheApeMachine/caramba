@@ -12,8 +12,8 @@ func NewAttention(metallib string) (*MetalAttention, error) {
 	return nil, errMetalUnavailable
 }
 
-func (m *MetalAttention) Forward(shape []int, data ...[]float64) []float64 {
-	panic(errMetalUnavailable)
+func (m *MetalAttention) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	return nil, errMetalUnavailable
 }
 
 func (m *MetalAttention) SDPA(q, k, v []float64, batch, numHeads, seqLen, headDim int) ([]float64, error) {

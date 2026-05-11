@@ -74,17 +74,18 @@ func (c *CUDAProjection) Linear(shape []int, weight, bias []float64, data ...[]f
 }
 
 // Forward dispatches Linear. data[0]=x, data[1]=weight, data[2]=bias (optional).
-func (c *CUDAProjection) Forward(shape []int, data ...[]float64) []float64 {
+func (c *CUDAProjection) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf("cuda projection: Forward requires input (data[0]) and weight (data[1])")
+	}
+
 	var bias []float64
+
 	if len(data) >= 3 {
 		bias = data[2]
 	}
-	out, err := c.Linear(shape, data[1], bias, data[0])
-	if err != nil {
-		panic(err)
-	}
 
-	return out
+	return c.Linear(shape, data[1], bias, data[0])
 }
 
 // ---------------------------------------------------------------------------

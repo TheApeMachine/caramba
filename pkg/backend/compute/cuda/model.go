@@ -8,6 +8,7 @@ import "C"
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 
 	cpumodel "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/model"
@@ -59,7 +60,29 @@ func (cudaModel *CUDAModelOps) NewFreeze(source, pattern, except string, frozen 
 cudaMatMul dispatches a row-major matmul to the GPU via cuda_matmul.
 a [M×K], b [K×N] → c [M×N], all row-major float64 (double).
 */
-func cudaMatMul(a, b []float64, M, K, N int) []float64 {
+func cudaMatMul(a, b []float64, M, K, N int) ([]float64, error) {
+	if M <= 0 || K <= 0 || N <= 0 {
+		return nil, fmt.Errorf("cuda: cudaMatMul requires M, K, N > 0")
+	}
+
+	if K != 0 && len(a)/K < M {
+		return nil, fmt.Errorf(
+			"cuda: cudaMatMul: len(a) too short for M×K (M=%d K=%d len(a)=%d)",
+			M, K, len(a),
+		)
+	}
+
+	if N != 0 && len(b)/N < K {
+		return nil, fmt.Errorf(
+			"cuda: cudaMatMul: len(b) too short for K×N (K=%d N=%d len(b)=%d)",
+			K, N, len(b),
+		)
+	}
+
+	if M != 0 && N > math.MaxInt/M {
+		return nil, fmt.Errorf("cuda: cudaMatMul: M×N overflows int")
+	}
+
 	c := make([]float64, M*N)
 
 	rc := C.cuda_matmul(
@@ -70,8 +93,8 @@ func cudaMatMul(a, b []float64, M, K, N int) []float64 {
 	)
 
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_matmul failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_matmul failed rc=%d for dims M=%d K=%d N=%d", rc, M, K, N)
 	}
 
-	return c
+	return c, nil
 }

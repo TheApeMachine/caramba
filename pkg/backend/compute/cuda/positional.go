@@ -108,13 +108,12 @@ func (c *CUDAPositionalOps) RoPEForward(base float64, shape []int, data ...[]flo
 }
 
 // Forward dispatches RoPE with the universal signature.
-func (c *CUDAPositionalOps) Forward(shape []int, data ...[]float64) []float64 {
-	out, err := c.RoPEForward(10000.0, shape, data...)
-	if err != nil {
-		panic(err)
+func (c *CUDAPositionalOps) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("cuda positional: Forward requires data[0]")
 	}
 
-	return out
+	return c.RoPEForward(10000.0, shape, data...)
 }
 
 // ---------------------------------------------------------------------------

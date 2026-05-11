@@ -1,5 +1,7 @@
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
+#import <dispatch/dispatch.h>
+#include <limits.h>
 #include "activation.h"
 #include <string.h>
 
@@ -137,16 +139,42 @@ static int dispatch_tensor_2buf(
     void* src,
     void* dst,
     const void* scalar, NSUInteger scalar_bytes,
-    int grid_n)
+    int grid_n,
+    NSUInteger min_src_bytes,
+    NSUInteger min_dst_bytes)
 {
     @autoreleasepool {
         if (!gQueue || !pso || !src || !dst) return -1;
 
-        id<MTLBuffer> bufSrc = (id<MTLBuffer>)src;
-        id<MTLBuffer> bufDst = (id<MTLBuffer>)dst;
+        if (grid_n <= 0) {
+            return 0;
+        }
+
+        id srcObj = (__bridge id)(void*)src;
+        id dstObj = (__bridge id)(void*)dst;
+
+        if (![srcObj respondsToSelector:@selector(length)] ||
+            ![dstObj respondsToSelector:@selector(length)]) {
+            return -1;
+        }
+
+        NSUInteger srcLen = [(id<MTLBuffer>)srcObj length];
+        NSUInteger dstLen = [(id<MTLBuffer>)dstObj length];
+
+        if (srcLen < min_src_bytes || dstLen < min_dst_bytes) {
+            return -1;
+        }
+
+        id<MTLBuffer> bufSrc = (id<MTLBuffer>)srcObj;
+        id<MTLBuffer> bufDst = (id<MTLBuffer>)dstObj;
 
         id<MTLCommandBuffer> cb = [gQueue commandBuffer];
+
+        if (!cb) return -1;
+
         id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+
+        if (!enc) return -1;
 
         [enc setComputePipelineState:pso];
         [enc setBuffer:bufSrc offset:0 atIndex:0];
@@ -162,10 +190,25 @@ static int dispatch_tensor_2buf(
 
         [enc dispatchThreads:threads threadsPerThreadgroup:threadgroup];
         [enc endEncoding];
-        [cb commit];
-        [cb waitUntilCompleted];
 
-        return 0;
+        __block int gpuOk = 1;
+        dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+
+        if (!sem) {
+            return -1;
+        }
+
+        [cb addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+            if (completed.status != MTLCommandBufferStatusCompleted) {
+                gpuOk = 0;
+            }
+
+            dispatch_semaphore_signal(sem);
+        }];
+        [cb commit];
+        dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+
+        return gpuOk ? 0 : -1;
     }
 }
 
@@ -197,27 +240,77 @@ int metal_swiglu(const float* src, float* dst, int n) {
     return dispatch_2buf(gPSO_swiglu, src, 2*n, dst, n, &un, sizeof(unsigned int), n);
 }
 
-int metal_relu_tensor(void* src, void* dst, int n) {
-    return dispatch_tensor_2buf(gPSO_relu, src, dst, NULL, 0, n);
+int metal_relu_tensor(const void* src, void* dst, int n) {
+    if (n < 0) return -1;
+
+    if (n == 0) return 0;
+
+    if ((NSUInteger)n > ULONG_MAX / sizeof(float)) return -1;
+
+    NSUInteger minB = (NSUInteger)n * sizeof(float);
+
+    return dispatch_tensor_2buf(gPSO_relu, (void*)src, dst, NULL, 0, n, minB, minB);
 }
 
-int metal_leaky_relu_tensor(void* src, void* dst, float alpha, int n) {
-    return dispatch_tensor_2buf(gPSO_leaky, src, dst, &alpha, sizeof(float), n);
+int metal_leaky_relu_tensor(const void* src, void* dst, float alpha, int n) {
+    if (n < 0) return -1;
+
+    if (n == 0) return 0;
+
+    if ((NSUInteger)n > ULONG_MAX / sizeof(float)) return -1;
+
+    NSUInteger minB = (NSUInteger)n * sizeof(float);
+
+    return dispatch_tensor_2buf(gPSO_leaky, (void*)src, dst, &alpha, sizeof(float), n, minB, minB);
 }
 
-int metal_gelu_tensor(void* src, void* dst, int n) {
-    return dispatch_tensor_2buf(gPSO_gelu, src, dst, NULL, 0, n);
+int metal_gelu_tensor(const void* src, void* dst, int n) {
+    if (n < 0) return -1;
+
+    if (n == 0) return 0;
+
+    if ((NSUInteger)n > ULONG_MAX / sizeof(float)) return -1;
+
+    NSUInteger minB = (NSUInteger)n * sizeof(float);
+
+    return dispatch_tensor_2buf(gPSO_gelu, (void*)src, dst, NULL, 0, n, minB, minB);
 }
 
-int metal_tanh_tensor(void* src, void* dst, int n) {
-    return dispatch_tensor_2buf(gPSO_tanh, src, dst, NULL, 0, n);
+int metal_tanh_tensor(const void* src, void* dst, int n) {
+    if (n < 0) return -1;
+
+    if (n == 0) return 0;
+
+    if ((NSUInteger)n > ULONG_MAX / sizeof(float)) return -1;
+
+    NSUInteger minB = (NSUInteger)n * sizeof(float);
+
+    return dispatch_tensor_2buf(gPSO_tanh, (void*)src, dst, NULL, 0, n, minB, minB);
 }
 
-int metal_sigmoid_tensor(void* src, void* dst, int n) {
-    return dispatch_tensor_2buf(gPSO_sigmoid, src, dst, NULL, 0, n);
+int metal_sigmoid_tensor(const void* src, void* dst, int n) {
+    if (n < 0) return -1;
+
+    if (n == 0) return 0;
+
+    if ((NSUInteger)n > ULONG_MAX / sizeof(float)) return -1;
+
+    NSUInteger minB = (NSUInteger)n * sizeof(float);
+
+    return dispatch_tensor_2buf(gPSO_sigmoid, (void*)src, dst, NULL, 0, n, minB, minB);
 }
 
-int metal_swiglu_tensor(void* src, void* dst, int n) {
+int metal_swiglu_tensor(const void* src, void* dst, int n) {
+    if (n <= 0) return -1;
+
+    if (n > INT_MAX / 2) return -1;
+
+    if ((NSUInteger)n > ULONG_MAX / (2 * sizeof(float))) return -1;
+
+    NSUInteger minSrc = (NSUInteger)(2 * n) * sizeof(float);
+    NSUInteger minDst = (NSUInteger)n * sizeof(float);
     unsigned int un = (unsigned int)n;
-    return dispatch_tensor_2buf(gPSO_swiglu, src, dst, &un, sizeof(unsigned int), n);
+
+    return dispatch_tensor_2buf(
+        gPSO_swiglu, (void*)src, dst, &un, sizeof(unsigned int), n, minSrc, minDst);
 }

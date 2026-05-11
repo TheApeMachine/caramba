@@ -25,11 +25,17 @@ func NewShapeOps() *XLAShapeOps {
 	return &XLAShapeOps{}
 }
 
-// Forward satisfies the universal operation interface — performs a copy.
+// Forward satisfies cpu/operation.Operation ([]float64 only).
+// Empty data yields an empty slice; Copy failures panic with a formatted message.
 func (x *XLAShapeOps) Forward(shape []int, data ...[]float64) []float64 {
+	if len(data) == 0 {
+		return []float64{}
+	}
+
 	out, err := x.Copy(data[0])
+
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("xla shape Forward(Copy): %v", err))
 	}
 
 	return out

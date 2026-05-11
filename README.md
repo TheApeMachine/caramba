@@ -167,11 +167,25 @@ tensors resident in that backend, and only download through an explicit
 `DownloadFloat64` call at a real boundary. Native CPU execution now exposes a
 resident tensor backend for activation, math, and fused matmul+bias(+GELU)
 kernels. CUDA exposes resident device tensors plus device-to-device activation,
-math, and fused linear launches under the CUDA build tags. Metal exposes
-resident `MTLBuffer` tensors plus tensor activation, math, and fused linear
-dispatch once the Metal pipelines are initialized. This is the path for feature
-parity between native Go, SIMD assembly, Metal, CUDA, and XLA without
-reintroducing per-operation host staging.
+math, and fused linear launches when built with the `cuda` constraint alongside
+CGO on Linux (NVIDIA CUDA toolkit / dev libraries required at compile and link
+time). Metal exposes resident `MTLBuffer` tensors plus tensor activation, math,
+and fused linear dispatch on macOS when CGO is enabled and Metal is available;
+Go sources gate real Metal behind `//go:build darwin && cgo`—there is no
+separate `metal` tag (Darwin plus CGO selects the Metal implementation).
+
+```bash
+# CUDA (Linux, CUDA toolchain installed)
+CGO_ENABLED=1 go build -tags "cgo cuda" ./pkg/backend/compute/cuda
+CGO_ENABLED=1 go test -tags "cgo cuda" ./pkg/backend/compute/cuda
+
+# Metal (macOS, Xcode Command Line Tools / Metal-capable GPU)
+CGO_ENABLED=1 go build -tags cgo ./pkg/backend/compute/metal
+CGO_ENABLED=1 go test -tags cgo ./pkg/backend/compute/metal
+```
+
+This is the path for feature parity between native Go, SIMD assembly, Metal,
+CUDA, and XLA without reintroducing per-operation host staging.
 
 XLA is built through PJRT and requires real headers and a plugin library in the
 build/runtime environment. With those present, `xla.NewTensorBackend(platform)`
@@ -188,8 +202,14 @@ export CARAMBA_PJRT_CPU_PLUGIN=/path/to/pjrt_c_api_cpu_plugin.so
 go test -tags "cgo xla" ./pkg/backend/compute/xla
 ```
 
-For GPU PJRT, set `CARAMBA_PJRT_GPU_PLUGIN` instead. `CARAMBA_PJRT_PLUGIN`
-remains available when one plugin path should be shared by all XLA callers.
+Per-platform lookup checks `CARAMBA_PJRT_CPU_PLUGIN` or
+`CARAMBA_PJRT_GPU_PLUGIN` first (depending on the PJRT platform for that call),
+then falls back to `CARAMBA_PJRT_PLUGIN` (and legacy `PJRT_PLUGIN_PATH`) only if
+the platform-specific variable is unset. You may set CPU and GPU plugin paths
+at the same time so CPU and GPU PJRT clients resolve different backends; use
+`CARAMBA_PJRT_PLUGIN` when one shared plugin path is correct for every platform,
+or when you deliberately omit the platform-specific variables so all callers use
+the same fallback.
 
 ---
 

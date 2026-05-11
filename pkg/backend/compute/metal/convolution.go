@@ -31,9 +31,8 @@ func NewConvolutionOps(metallib string) (*ConvolutionOps, error) {
 
 // Forward dispatches to Conv2d with the universal signature.
 // shape = [N, InC, H, W], data[0] = x, data[1] = weight (flattened), data[2] = bias.
-func (m *ConvolutionOps) Forward(shape []int, data ...[]float64) []float64 {
-	// Minimal dispatch — callers should use the typed methods directly.
-	return nil
+func (m *ConvolutionOps) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	return nil, fmt.Errorf("metal convolution Forward: use Conv1d/Conv2d/Conv3d/ConvTranspose2d")
 }
 
 // Conv1d computes a 1-D convolution.

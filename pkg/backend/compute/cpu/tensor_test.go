@@ -1,6 +1,7 @@
 package cpu
 
 import (
+	"math/rand"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -20,11 +21,13 @@ func TestNewTensorBackend(t *testing.T) {
 func TestTensorBackend_ReLU(t *testing.T) {
 	Convey("Given a resident CPU tensor", t, func() {
 		tensorBackend := NewTensorBackend()
-		input := uploadTestTensor(tensorBackend, []int{4}, []float64{-2, -0, 3, 4})
+		input := uploadTestTensor(tensorBackend, []int{4}, []float64{-2, 0, 3, 4})
+		defer func() { So(input.Close(), ShouldBeNil) }()
 
 		Convey("It should execute ReLU without changing residency", func() {
 			output, err := tensorBackend.ReLU(input)
 			So(err, ShouldBeNil)
+			defer func() { So(output.Close(), ShouldBeNil) }()
 			So(output.Location(), ShouldEqual, computetensor.Host)
 
 			values, err := output.CloneFloat64()
@@ -38,10 +41,12 @@ func TestTensorBackend_LeakyReLU(t *testing.T) {
 	Convey("Given a resident CPU tensor", t, func() {
 		tensorBackend := NewTensorBackend()
 		input := uploadTestTensor(tensorBackend, []int{3}, []float64{-2, 0, 4})
+		defer func() { So(input.Close(), ShouldBeNil) }()
 
 		Convey("It should execute parameterized ReLU", func() {
 			output, err := tensorBackend.LeakyReLU(input, 0.25)
 			So(err, ShouldBeNil)
+			defer func() { So(output.Close(), ShouldBeNil) }()
 
 			values, err := output.CloneFloat64()
 			So(err, ShouldBeNil)
@@ -54,10 +59,12 @@ func TestTensorBackend_Sigmoid(t *testing.T) {
 	Convey("Given a resident CPU tensor", t, func() {
 		tensorBackend := NewTensorBackend()
 		input := uploadTestTensor(tensorBackend, []int{3}, []float64{-1, 0, 1})
+		defer func() { So(input.Close(), ShouldBeNil) }()
 
 		Convey("It should execute sigmoid", func() {
 			output, err := tensorBackend.Sigmoid(input)
 			So(err, ShouldBeNil)
+			defer func() { So(output.Close(), ShouldBeNil) }()
 
 			values, err := output.CloneFloat64()
 			So(err, ShouldBeNil)
@@ -72,10 +79,12 @@ func TestTensorBackend_SwiGLU(t *testing.T) {
 	Convey("Given a resident CPU tensor with doubled final dimension", t, func() {
 		tensorBackend := NewTensorBackend()
 		input := uploadTestTensor(tensorBackend, []int{1, 4}, []float64{0, 1, 2, 4})
+		defer func() { So(input.Close(), ShouldBeNil) }()
 
 		Convey("It should halve the final dimension and stay resident", func() {
 			output, err := tensorBackend.SwiGLU(input)
 			So(err, ShouldBeNil)
+			defer func() { So(output.Close(), ShouldBeNil) }()
 			So(output.Shape().Dims(), ShouldResemble, []int{1, 2})
 			So(output.Location(), ShouldEqual, computetensor.Host)
 
@@ -92,10 +101,13 @@ func TestTensorBackend_Add(t *testing.T) {
 		tensorBackend := NewTensorBackend()
 		left := uploadTestTensor(tensorBackend, []int{3}, []float64{1, 2, 3})
 		right := uploadTestTensor(tensorBackend, []int{3}, []float64{4, 5, 6})
+		defer func() { So(left.Close(), ShouldBeNil) }()
+		defer func() { So(right.Close(), ShouldBeNil) }()
 
 		Convey("It should add without downloading inputs", func() {
 			output, err := tensorBackend.Add(left, right)
 			So(err, ShouldBeNil)
+			defer func() { So(output.Close(), ShouldBeNil) }()
 
 			values, err := output.CloneFloat64()
 			So(err, ShouldBeNil)
@@ -109,10 +121,13 @@ func TestTensorBackend_Mul(t *testing.T) {
 		tensorBackend := NewTensorBackend()
 		left := uploadTestTensor(tensorBackend, []int{3}, []float64{1, 2, 3})
 		right := uploadTestTensor(tensorBackend, []int{3}, []float64{4, 5, 6})
+		defer func() { So(left.Close(), ShouldBeNil) }()
+		defer func() { So(right.Close(), ShouldBeNil) }()
 
 		Convey("It should multiply without downloading inputs", func() {
 			output, err := tensorBackend.Mul(left, right)
 			So(err, ShouldBeNil)
+			defer func() { So(output.Close(), ShouldBeNil) }()
 
 			values, err := output.CloneFloat64()
 			So(err, ShouldBeNil)
@@ -133,10 +148,13 @@ func TestTensorBackend_Matmul(t *testing.T) {
 			9, 10,
 			11, 12,
 		})
+		defer func() { So(left.Close(), ShouldBeNil) }()
+		defer func() { So(right.Close(), ShouldBeNil) }()
 
 		Convey("It should multiply using the CPU matmul kernel", func() {
 			output, err := tensorBackend.Matmul(left, right)
 			So(err, ShouldBeNil)
+			defer func() { So(output.Close(), ShouldBeNil) }()
 			So(output.Shape().Dims(), ShouldResemble, []int{2, 2})
 
 			values, err := output.CloneFloat64()
@@ -159,10 +177,14 @@ func TestTensorBackend_MatmulAdd(t *testing.T) {
 			11, 12,
 		})
 		bias := uploadTestTensor(tensorBackend, []int{2}, []float64{1, -1})
+		defer func() { So(left.Close(), ShouldBeNil) }()
+		defer func() { So(right.Close(), ShouldBeNil) }()
+		defer func() { So(bias.Close(), ShouldBeNil) }()
 
 		Convey("It should fuse matmul and broadcast bias", func() {
 			output, err := tensorBackend.MatmulAdd(left, right, bias)
 			So(err, ShouldBeNil)
+			defer func() { So(output.Close(), ShouldBeNil) }()
 			So(output.Shape().Dims(), ShouldResemble, []int{2, 2})
 
 			values, err := output.CloneFloat64()
@@ -181,10 +203,14 @@ func TestTensorBackend_MatmulAddGELU(t *testing.T) {
 			3, 4,
 		})
 		bias := uploadTestTensor(tensorBackend, []int{2}, []float64{0, 1})
+		defer func() { So(left.Close(), ShouldBeNil) }()
+		defer func() { So(right.Close(), ShouldBeNil) }()
+		defer func() { So(bias.Close(), ShouldBeNil) }()
 
 		Convey("It should fuse matmul, bias, and GELU", func() {
 			output, err := tensorBackend.MatmulAddGELU(left, right, bias)
 			So(err, ShouldBeNil)
+			defer func() { So(output.Close(), ShouldBeNil) }()
 
 			values, err := output.CloneFloat64()
 			So(err, ShouldBeNil)
@@ -212,10 +238,20 @@ func TestTensorBackend_Close(t *testing.T) {
 	})
 }
 
+func fillBenchFloat64(slice []float64, seed int64) {
+	rng := rand.New(rand.NewSource(seed))
+
+	for index := range slice {
+		slice[index] = rng.Float64()*2 + 0.01
+	}
+}
+
 func BenchmarkTensorBackend_Matmul(benchmark *testing.B) {
 	tensorBackend := NewTensorBackend()
 	leftValues := make([]float64, 64*64)
 	rightValues := make([]float64, 64*64)
+	fillBenchFloat64(leftValues, 1)
+	fillBenchFloat64(rightValues, 2)
 
 	left := uploadBenchmarkTensor(benchmark, tensorBackend, []int{64, 64}, leftValues)
 	right := uploadBenchmarkTensor(benchmark, tensorBackend, []int{64, 64}, rightValues)
@@ -240,6 +276,9 @@ func BenchmarkTensorBackend_MatmulAddGELU(benchmark *testing.B) {
 	leftValues := make([]float64, 64*64)
 	rightValues := make([]float64, 64*64)
 	biasValues := make([]float64, 64)
+	fillBenchFloat64(leftValues, 11)
+	fillBenchFloat64(rightValues, 12)
+	fillBenchFloat64(biasValues, 13)
 
 	left := uploadBenchmarkTensor(benchmark, tensorBackend, []int{64, 64}, leftValues)
 	right := uploadBenchmarkTensor(benchmark, tensorBackend, []int{64, 64}, rightValues)
@@ -249,6 +288,75 @@ func BenchmarkTensorBackend_MatmulAddGELU(benchmark *testing.B) {
 
 	for iteration := 0; iteration < benchmark.N; iteration++ {
 		output, err := tensorBackend.MatmulAddGELU(left, right, bias)
+
+		if err != nil {
+			benchmark.Fatal(err)
+		}
+
+		if err := output.Close(); err != nil {
+			benchmark.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkTensorBackend_Add(benchmark *testing.B) {
+	tensorBackend := NewTensorBackend()
+	leftValues := make([]float64, 64*64)
+	rightValues := make([]float64, 64*64)
+	fillBenchFloat64(leftValues, 21)
+	fillBenchFloat64(rightValues, 22)
+
+	left := uploadBenchmarkTensor(benchmark, tensorBackend, []int{64, 64}, leftValues)
+	right := uploadBenchmarkTensor(benchmark, tensorBackend, []int{64, 64}, rightValues)
+
+	benchmark.ResetTimer()
+
+	for iteration := 0; iteration < benchmark.N; iteration++ {
+		output, err := tensorBackend.Add(left, right)
+
+		if err != nil {
+			benchmark.Fatal(err)
+		}
+
+		if err := output.Close(); err != nil {
+			benchmark.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkTensorBackend_ReLU(benchmark *testing.B) {
+	tensorBackend := NewTensorBackend()
+	values := make([]float64, 64*64)
+	fillBenchFloat64(values, 31)
+
+	input := uploadBenchmarkTensor(benchmark, tensorBackend, []int{64, 64}, values)
+
+	benchmark.ResetTimer()
+
+	for iteration := 0; iteration < benchmark.N; iteration++ {
+		output, err := tensorBackend.ReLU(input)
+
+		if err != nil {
+			benchmark.Fatal(err)
+		}
+
+		if err := output.Close(); err != nil {
+			benchmark.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkTensorBackend_Sigmoid(benchmark *testing.B) {
+	tensorBackend := NewTensorBackend()
+	values := make([]float64, 64*64)
+	fillBenchFloat64(values, 41)
+
+	input := uploadBenchmarkTensor(benchmark, tensorBackend, []int{64, 64}, values)
+
+	benchmark.ResetTimer()
+
+	for iteration := 0; iteration < benchmark.N; iteration++ {
+		output, err := tensorBackend.Sigmoid(input)
 
 		if err != nil {
 			benchmark.Fatal(err)

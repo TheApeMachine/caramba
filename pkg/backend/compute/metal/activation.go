@@ -60,13 +60,12 @@ func toFloat64(in []float32) []float64 {
 
 // Forward dispatches to ReLU with the new universal signature.
 // shape is metadata only; data[0] is the primary input buffer.
-func (m *MetalActivation) Forward(shape []int, data ...[]float64) []float64 {
-	out, err := m.ReLU(data[0])
-	if err != nil {
-		panic(err)
+func (m *MetalActivation) Forward(_ []int, data ...[]float64) ([]float64, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("metal activation Forward: missing input data (expected data[0])")
 	}
 
-	return out
+	return m.ReLU(data[0])
 }
 
 // ReLU computes max(x, 0) element-wise.

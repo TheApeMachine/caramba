@@ -9,25 +9,25 @@ func TanhAVX2(dst, src []float64)
 func TanhSSE2(dst, src []float64)
 
 func applyTanh(dst, src []float64) {
+	elementCount := len(src)
+
+	if len(dst) < elementCount {
+		elementCount = len(dst)
+	}
+
 	width := 2
+	vectorTanh := TanhSSE2
 
 	if useAVX2 {
 		width = 4
-		limit := len(src) / width * width
-
-		if limit > 0 {
-			TanhAVX2(dst[:limit], src[:limit])
-		}
-
-		scalarTanh(dst[limit:], src[limit:])
-		return
+		vectorTanh = TanhAVX2
 	}
 
-	limit := len(src) / width * width
+	limit := elementCount / width * width
 
 	if limit > 0 {
-		TanhSSE2(dst[:limit], src[:limit])
+		vectorTanh(dst[:limit], src[:limit])
 	}
 
-	scalarTanh(dst[limit:], src[limit:])
+	scalarTanh(dst[limit:elementCount], src[limit:elementCount])
 }

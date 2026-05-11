@@ -38,15 +38,45 @@ func NewEmbeddingOps(metallib string, vocabSize, dModel int) (*EmbeddingOps, err
 //
 //	shape   = [batch, seq_len]
 //	data[0] = flat float64 token IDs, length batch*seq_len
+//	data[1] = embedding weight table, length vocabSize*dModel
 //
 // Returns []float64 of length batch*seq_len*DModel.
-func (e *EmbeddingOps) Forward(shape []int, data ...[]float64) []float64 {
-	out, err := e.TokenEmbedding(data[0], data[1])
-	if err != nil {
-		panic(err)
+func (e *EmbeddingOps) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf(
+			"metal embedding Forward: expected data[0] tokens and data[1] weights, got %d slices",
+			len(data),
+		)
 	}
 
-	return out
+	if len(shape) < 2 {
+		return nil, fmt.Errorf("metal embedding Forward: shape must be [batch, seq_len], got len %d", len(shape))
+	}
+
+	batch, seqLen := shape[0], shape[1]
+	expectedTok := batch * seqLen
+
+	if expectedTok < 0 {
+		return nil, fmt.Errorf("metal embedding Forward: invalid batch*seq_len")
+	}
+
+	if len(data[0]) != expectedTok {
+		return nil, fmt.Errorf(
+			"metal embedding Forward: token slice length %d != batch*seq_len %d",
+			len(data[0]), expectedTok,
+		)
+	}
+
+	expectedWeight := e.vocabSize * e.dModel
+
+	if len(data[1]) != expectedWeight {
+		return nil, fmt.Errorf(
+			"metal embedding Forward: weight slice length %d != vocabSize*dModel %d",
+			len(data[1]), expectedWeight,
+		)
+	}
+
+	return e.TokenEmbedding(data[0], data[1])
 }
 
 // TokenEmbedding performs the lookup given token IDs and the weight table.

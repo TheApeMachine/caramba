@@ -60,17 +60,17 @@ metalMatMul dispatches a row-major matmul to the GPU via metal_matmul.
 a [M×K], b [K×N] → c [M×N], all row-major float64 converted to float32.
 Note: float64→float32→float64 conversion incurs precision loss (~7 decimal digits).
 */
-func metalMatMul(a, b []float64, M, K, N int) []float64 {
+func metalMatMul(a, b []float64, M, K, N int) ([]float64, error) {
 	if M < 0 || K < 0 || N < 0 {
-		panic("metal: metalMatMul requires M, K, N >= 0")
+		return nil, fmt.Errorf("metal: metalMatMul requires M, K, N >= 0")
 	}
 
 	if M == 0 || N == 0 {
-		return []float64{}
+		return []float64{}, nil
 	}
 
 	if len(a) < M*K || len(b) < K*N {
-		panic("metal: metalMatMul slice lengths too short for given dimensions")
+		return nil, fmt.Errorf("metal: metalMatMul slice lengths too short for given dimensions")
 	}
 
 	aF32 := toFloat32(a)
@@ -85,8 +85,8 @@ func metalMatMul(a, b []float64, M, K, N int) []float64 {
 	)
 
 	if rc != 0 {
-		panic(fmt.Sprintf("metal_matmul failed (rc=%d)", rc))
+		return nil, fmt.Errorf("metal_matmul failed (rc=%d) for M=%d K=%d N=%d", rc, M, K, N)
 	}
 
-	return toFloat64(cF32)
+	return toFloat64(cF32), nil
 }

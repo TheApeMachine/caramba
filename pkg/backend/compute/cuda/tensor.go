@@ -11,6 +11,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"unsafe"
 
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
@@ -24,7 +25,7 @@ var _ computetensor.Float64FusedBackend = (*TensorBackend)(nil)
 TensorBackend owns CUDA device tensors.
 */
 type TensorBackend struct {
-	closed bool
+	closed atomic.Uint32
 }
 
 /*
@@ -47,7 +48,7 @@ UploadFloat64 copies host values into CUDA device memory.
 func (tensorBackend *TensorBackend) UploadFloat64(
 	shape computetensor.Shape, values []float64,
 ) (computetensor.Float64Tensor, error) {
-	if tensorBackend.closed {
+	if tensorBackend.closed.Load() != 0 {
 		return nil, errors.New("cuda tensor: backend is closed")
 	}
 
@@ -75,7 +76,7 @@ func (tensorBackend *TensorBackend) UploadFloat64(
 	rc := C.cuda_tensor_upload_double(
 		deviceTensor.device,
 		(*C.double)(unsafe.Pointer(&values[0])),
-		C.int(len(values)),
+		C.size_t(len(values)),
 	)
 
 	if rc != 0 {
@@ -93,7 +94,7 @@ DownloadFloat64 copies CUDA device memory back into host values.
 func (tensorBackend *TensorBackend) DownloadFloat64(
 	input computetensor.Float64Tensor,
 ) ([]float64, error) {
-	if tensorBackend.closed {
+	if tensorBackend.closed.Load() != 0 {
 		return nil, errors.New("cuda tensor: backend is closed")
 	}
 
@@ -112,7 +113,7 @@ func (tensorBackend *TensorBackend) DownloadFloat64(
 Close releases the backend.
 */
 func (tensorBackend *TensorBackend) Close() error {
-	tensorBackend.closed = true
+	tensorBackend.closed.Store(1)
 
 	return nil
 }
@@ -186,7 +187,7 @@ func (tensorBackend *TensorBackend) SwiGLU(
 		return nil, err
 	}
 
-	rc := C.cuda_swiglu_device(deviceInput.device, output.device, C.int(outputShape.Len()))
+	rc := C.cuda_swiglu_device((*C.double)(deviceInput.device), (*C.double)(output.device), C.int(outputShape.Len()))
 
 	if rc != 0 {
 		_ = output.Close()
@@ -260,9 +261,9 @@ func (tensorBackend *TensorBackend) Matmul(
 	}
 
 	rc := C.cuda_matmul_device(
-		deviceLeft.device,
-		deviceRight.device,
-		output.device,
+		(*C.double)(deviceLeft.device),
+		(*C.double)(deviceRight.device),
+		(*C.double)(output.device),
 		C.int(leftDims[0]),
 		C.int(leftDims[1]),
 		C.int(rightDims[1]),
@@ -314,17 +315,20 @@ func (tensorBackend *TensorBackend) unary(
 
 	switch name {
 	case "relu":
-		rc = C.cuda_relu_device(deviceInput.device, output.device, C.int(deviceInput.Len()))
+		rc = C.cuda_relu_device((*C.double)(deviceInput.device), (*C.double)(output.device), C.int(deviceInput.Len()))
 	case "leaky_relu":
 		rc = C.cuda_leaky_relu_device(
-			deviceInput.device, output.device, C.double(alpha), C.int(deviceInput.Len()),
+			(*C.double)(deviceInput.device),
+			(*C.double)(output.device),
+			C.double(alpha),
+			C.int(deviceInput.Len()),
 		)
 	case "gelu":
-		rc = C.cuda_gelu_device(deviceInput.device, output.device, C.int(deviceInput.Len()))
+		rc = C.cuda_gelu_device((*C.double)(deviceInput.device), (*C.double)(output.device), C.int(deviceInput.Len()))
 	case "tanh":
-		rc = C.cuda_tanh_device(deviceInput.device, output.device, C.int(deviceInput.Len()))
+		rc = C.cuda_tanh_device((*C.double)(deviceInput.device), (*C.double)(output.device), C.int(deviceInput.Len()))
 	case "sigmoid":
-		rc = C.cuda_sigmoid_device(deviceInput.device, output.device, C.int(deviceInput.Len()))
+		rc = C.cuda_sigmoid_device((*C.double)(deviceInput.device), (*C.double)(output.device), C.int(deviceInput.Len()))
 	default:
 		_ = output.Close()
 
@@ -366,15 +370,16 @@ func (tensorBackend *TensorBackend) matmulAdd(
 	}
 
 	rc := C.cuda_matmul_add_device(
-		deviceLeft.device,
-		deviceRight.device,
-		deviceBias.device,
-		output.device,
+		(*C.double)(deviceLeft.device),
+		(*C.double)(deviceRight.device),
+		(*C.double)(deviceBias.device),
+		(*C.double)(output.device),
 		C.int(leftDims[0]),
 		C.int(leftDims[1]),
 		C.int(rightDims[1]),
 		C.int(deviceBias.Len()),
 		C.int(applyGELU),
+		C.int(1), // sync_device: wait for kernel before returning (see cuda_matmul_add_device)
 	)
 
 	if rc != 0 {
@@ -469,9 +474,19 @@ func (tensorBackend *TensorBackend) binary(
 
 	switch name {
 	case "add":
-		rc = C.cuda_add_device(deviceLeft.device, deviceRight.device, output.device, C.int(output.Len()))
+		rc = C.cuda_add_device(
+			(*C.double)(deviceLeft.device),
+			(*C.double)(deviceRight.device),
+			(*C.double)(output.device),
+			C.int(output.Len()),
+		)
 	case "mul":
-		rc = C.cuda_mul_device(deviceLeft.device, deviceRight.device, output.device, C.int(output.Len()))
+		rc = C.cuda_mul_device(
+			(*C.double)(deviceLeft.device),
+			(*C.double)(deviceRight.device),
+			(*C.double)(output.device),
+			C.int(output.Len()),
+		)
 	default:
 		_ = output.Close()
 
@@ -490,7 +505,7 @@ func (tensorBackend *TensorBackend) binary(
 func (tensorBackend *TensorBackend) require(
 	input computetensor.Float64Tensor,
 ) (*Tensor, error) {
-	if tensorBackend.closed {
+	if tensorBackend.closed.Load() != 0 {
 		return nil, errors.New("cuda tensor: backend is closed")
 	}
 
@@ -508,7 +523,7 @@ func (tensorBackend *TensorBackend) require(
 		return nil, fmt.Errorf("cuda tensor: input is not owned by CUDA backend")
 	}
 
-	if deviceInput.closed {
+	if deviceInput.closed.Load() != 0 {
 		return nil, errors.New("cuda tensor: input is closed")
 	}
 
@@ -546,7 +561,7 @@ type Tensor struct {
 	bytes  int
 	shape  computetensor.Shape
 	device unsafe.Pointer
-	closed bool
+	closed atomic.Uint32
 }
 
 /*
@@ -588,7 +603,7 @@ func (tensor *Tensor) Bytes() int {
 CloneFloat64 downloads the CUDA tensor to host memory.
 */
 func (tensor *Tensor) CloneFloat64() ([]float64, error) {
-	if tensor.closed {
+	if tensor.closed.Load() != 0 {
 		return nil, errors.New("cuda tensor: tensor is closed")
 	}
 
@@ -601,7 +616,7 @@ func (tensor *Tensor) CloneFloat64() ([]float64, error) {
 	rc := C.cuda_tensor_download_double(
 		tensor.device,
 		(*C.double)(unsafe.Pointer(&values[0])),
-		C.int(len(values)),
+		C.size_t(len(values)),
 	)
 
 	if rc != 0 {
@@ -615,14 +630,19 @@ func (tensor *Tensor) CloneFloat64() ([]float64, error) {
 Close releases CUDA device memory.
 */
 func (tensor *Tensor) Close() error {
-	if tensor.closed {
+	if !tensor.closed.CompareAndSwap(0, 1) {
 		return nil
 	}
 
-	rc := C.cuda_tensor_free(tensor.device)
+	devicePtr := tensor.device
 	tensor.bytes = 0
 	tensor.device = nil
-	tensor.closed = true
+
+	var rc C.int
+
+	if devicePtr != nil {
+		rc = C.cuda_tensor_free(devicePtr)
+	}
 
 	if rc != 0 {
 		return fmt.Errorf("cuda tensor: free failed")
@@ -632,23 +652,23 @@ func (tensor *Tensor) Close() error {
 }
 
 func cudaSwiGLUOutputShape(shape computetensor.Shape) (computetensor.Shape, error) {
-	dims := shape.Dims()
+	dimsCopy := append([]int(nil), shape.Dims()...)
 
 	if shape.Len()%2 != 0 {
 		return computetensor.Shape{}, fmt.Errorf("cuda tensor: swiglu input length must be even")
 	}
 
-	if len(dims) == 0 {
+	if len(dimsCopy) == 0 {
 		return computetensor.NewShape([]int{shape.Len() / 2})
 	}
 
-	lastIndex := len(dims) - 1
+	lastIndex := len(dimsCopy) - 1
 
-	if dims[lastIndex]%2 != 0 {
+	if dimsCopy[lastIndex]%2 != 0 {
 		return computetensor.Shape{}, fmt.Errorf("cuda tensor: swiglu final dimension must be even")
 	}
 
-	dims[lastIndex] /= 2
+	dimsCopy[lastIndex] /= 2
 
-	return computetensor.NewShape(dims)
+	return computetensor.NewShape(dimsCopy)
 }

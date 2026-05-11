@@ -11,7 +11,7 @@ package xla
 //
 // Example build:
 //   CGO_CPPFLAGS="-I/path/to/xla" \
-//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
+//   go build -tags "cgo xla" ./pkg/backend/compute/xla
 
 // #include <stdlib.h>
 // #include "activation.h"
@@ -35,7 +35,13 @@ type XLAAttention struct {
 // NewAttention initialises a new XLAAttention for the given platform ("cpu" or "gpu").
 // It reuses the shared PJRT client when one already exists.
 func NewAttention(platform string) (*XLAAttention, error) {
-	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+	config, err := NewPJRTConfig(platform)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 
@@ -43,7 +49,7 @@ func NewAttention(platform string) (*XLAAttention, error) {
 	defer func() { C.free(unsafe.Pointer(cp)) }()
 
 	if rc := C.xla_init(cp); rc != 0 {
-		return nil, fmt.Errorf("xla_init failed for platform %q", platform)
+		return nil, fmt.Errorf("xla_init failed for platform %q: rc=%d", platform, rc)
 	}
 
 	return &XLAAttention{platform: platform}, nil

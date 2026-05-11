@@ -3,269 +3,329 @@ package tensor
 import (
 	"testing"
 
-	. "github.com/smartystreets/goconvey/convey"
+	convey "github.com/smartystreets/goconvey/convey"
 )
 
 func TestDType_Size(t *testing.T) {
-	Convey("Given a supported dtype", t, func() {
-		Convey("It should return the scalar byte width", func() {
+	convey.Convey("Given a supported dtype", t, func() {
+		convey.Convey("It should return the scalar byte width", func() {
 			size, err := Float64.Size()
 
-			So(err, ShouldBeNil)
-			So(size, ShouldEqual, 8)
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(size, convey.ShouldEqual, 8)
 		})
 	})
 
-	Convey("Given an unsupported dtype", t, func() {
-		Convey("It should reject the dtype", func() {
+	convey.Convey("Given an unsupported dtype", t, func() {
+		convey.Convey("It should reject the dtype", func() {
 			size, err := DType("complex128").Size()
 
-			So(err, ShouldNotBeNil)
-			So(size, ShouldEqual, 0)
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(size, convey.ShouldEqual, 0)
 		})
 	})
 }
 
 func TestNewShape(t *testing.T) {
-	Convey("Given valid tensor dimensions", t, func() {
+	convey.Convey("Given valid tensor dimensions", t, func() {
 		shape, err := NewShape([]int{2, 3, 4})
 
-		Convey("It should cache the element count", func() {
-			So(err, ShouldBeNil)
-			So(shape.Len(), ShouldEqual, 24)
-			So(shape.Valid(), ShouldBeTrue)
+		convey.Convey("It should cache the element count", func() {
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(shape.Len(), convey.ShouldEqual, 24)
+			convey.So(shape.Valid(), convey.ShouldBeTrue)
 		})
 	})
 
-	Convey("Given a scalar shape", t, func() {
+	convey.Convey("Given a scalar shape", t, func() {
 		shape, err := NewShape(nil)
 
-		Convey("It should represent one scalar element", func() {
-			So(err, ShouldBeNil)
-			So(shape.Len(), ShouldEqual, 1)
+		convey.Convey("It should represent one scalar element", func() {
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(shape.Len(), convey.ShouldEqual, 1)
 		})
 	})
 
-	Convey("Given a zero dimension", t, func() {
+	convey.Convey("Given a zero dimension", t, func() {
 		shape, err := NewShape([]int{4, 0, 8})
 
-		Convey("It should represent an empty tensor", func() {
-			So(err, ShouldBeNil)
-			So(shape.Len(), ShouldEqual, 0)
+		convey.Convey("It should represent an empty tensor", func() {
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(shape.Len(), convey.ShouldEqual, 0)
 		})
 	})
 
-	Convey("Given a negative dimension", t, func() {
+	convey.Convey("Given a negative dimension", t, func() {
 		shape, err := NewShape([]int{2, -1})
 
-		Convey("It should reject the shape", func() {
-			So(err, ShouldNotBeNil)
-			So(shape.Valid(), ShouldBeFalse)
+		convey.Convey("It should reject the shape", func() {
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(shape.Valid(), convey.ShouldBeFalse)
 		})
 	})
 }
 
 func TestShape_Dims(t *testing.T) {
-	Convey("Given a shape", t, func() {
+	convey.Convey("Given a shape", t, func() {
 		shape, err := NewShape([]int{2, 3})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 
-		Convey("It should return a defensive dimension copy", func() {
+		convey.Convey("It should return a defensive dimension copy", func() {
 			dims := shape.Dims()
 			dims[0] = 99
 
-			So(shape.Dims(), ShouldResemble, []int{2, 3})
+			convey.So(shape.Dims(), convey.ShouldResemble, []int{2, 3})
 		})
 	})
 }
 
 func TestShape_Bytes(t *testing.T) {
-	Convey("Given a valid shape and dtype", t, func() {
+	convey.Convey("Given a valid shape and dtype", t, func() {
 		shape, err := NewShape([]int{2, 3})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 
-		Convey("It should calculate storage bytes", func() {
+		convey.Convey("It should calculate storage bytes", func() {
 			bytes, err := shape.Bytes(Float64)
 
-			So(err, ShouldBeNil)
-			So(bytes, ShouldEqual, 48)
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(bytes, convey.ShouldEqual, 48)
 		})
 	})
 
-	Convey("Given an invalid shape", t, func() {
-		Convey("It should reject byte calculation", func() {
+	convey.Convey("Given an invalid shape", t, func() {
+		convey.Convey("It should reject byte calculation", func() {
 			bytes, err := Shape{}.Bytes(Float64)
 
-			So(err, ShouldNotBeNil)
-			So(bytes, ShouldEqual, 0)
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(bytes, convey.ShouldEqual, 0)
 		})
 	})
 }
 
 func TestShape_Equal(t *testing.T) {
-	Convey("Given two equal shapes", t, func() {
+	convey.Convey("Given two equal shapes", t, func() {
 		left, err := NewShape([]int{2, 3})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 
 		right, err := NewShape([]int{2, 3})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 
-		Convey("It should report equality", func() {
-			So(left.Equal(right), ShouldBeTrue)
+		convey.Convey("It should report equality", func() {
+			convey.So(left.Equal(right), convey.ShouldBeTrue)
+		})
+	})
+
+	convey.Convey("Given shapes that differ by dimension order", t, func() {
+		left, err := NewShape([]int{2, 3})
+		convey.So(err, convey.ShouldBeNil)
+
+		right, err := NewShape([]int{3, 2})
+		convey.So(err, convey.ShouldBeNil)
+
+		convey.Convey("It should report inequality", func() {
+			convey.So(left.Equal(right), convey.ShouldBeFalse)
+		})
+	})
+
+	convey.Convey("Given shapes that differ by rank", t, func() {
+		left, err := NewShape([]int{2, 3})
+		convey.So(err, convey.ShouldBeNil)
+
+		right, err := NewShape([]int{2, 3, 1})
+		convey.So(err, convey.ShouldBeNil)
+
+		convey.Convey("It should report inequality", func() {
+			convey.So(left.Equal(right), convey.ShouldBeFalse)
 		})
 	})
 }
 
 func TestNewHostBackend(t *testing.T) {
-	Convey("Given a new host backend", t, func() {
+	convey.Convey("Given a new host backend", t, func() {
 		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
 
-		Convey("It should report host ownership", func() {
-			So(hostBackend.Location(), ShouldEqual, Host)
+		convey.Convey("It should report host ownership", func() {
+			convey.So(hostBackend.Location(), convey.ShouldEqual, Host)
 		})
 	})
 }
 
 func TestHostBackend_UploadFloat64(t *testing.T) {
-	Convey("Given a host backend and valid values", t, func() {
+	convey.Convey("Given a host backend and valid values", t, func() {
 		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
 		shape, err := NewShape([]int{2, 2})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 
 		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2, 3, 4})
 
-		Convey("It should create persistent host storage", func() {
-			So(err, ShouldBeNil)
-			So(uploaded.Location(), ShouldEqual, Host)
-			So(uploaded.DType(), ShouldEqual, Float64)
-			So(uploaded.Len(), ShouldEqual, 4)
-			So(uploaded.Bytes(), ShouldEqual, 32)
+		convey.Convey("It should create persistent host storage", func() {
+			convey.So(err, convey.ShouldBeNil)
+			defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
+
+			convey.So(uploaded.Location(), convey.ShouldEqual, Host)
+			convey.So(uploaded.DType(), convey.ShouldEqual, Float64)
+			convey.So(uploaded.Len(), convey.ShouldEqual, 4)
+			convey.So(uploaded.Bytes(), convey.ShouldEqual, 32)
 		})
 	})
 
-	Convey("Given mismatched shape and values", t, func() {
+	convey.Convey("Given mismatched shape and values", t, func() {
 		hostBackend := NewHostBackend()
-		shape, err := NewShape([]int{2, 3})
-		So(err, ShouldBeNil)
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
 
-		Convey("It should reject the upload", func() {
+		shape, err := NewShape([]int{2, 3})
+		convey.So(err, convey.ShouldBeNil)
+
+		convey.Convey("It should reject the upload", func() {
 			uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2, 3, 4})
 
-			So(err, ShouldNotBeNil)
-			So(uploaded, ShouldBeNil)
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(uploaded, convey.ShouldBeNil)
 		})
 	})
 }
 
 func TestHostBackend_AdoptFloat64(t *testing.T) {
-	Convey("Given fresh output values", t, func() {
+	convey.Convey("Given fresh output values", t, func() {
 		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
 		shape, err := NewShape([]int{2})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 
 		values := []float64{1, 2}
 		uploaded, err := hostBackend.AdoptFloat64(shape, values)
 
-		Convey("It should take ownership without copying", func() {
-			So(err, ShouldBeNil)
+		convey.Convey("It should take ownership without copying", func() {
+			convey.So(err, convey.ShouldBeNil)
+			defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
 
 			values[0] = 9
 			cloned, err := uploaded.CloneFloat64()
 
-			So(err, ShouldBeNil)
-			So(cloned, ShouldResemble, []float64{9, 2})
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(cloned, convey.ShouldResemble, []float64{9, 2})
 		})
 	})
 }
 
 func TestHostBackend_DownloadFloat64(t *testing.T) {
-	Convey("Given a host tensor", t, func() {
+	convey.Convey("Given a host tensor", t, func() {
 		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
 		shape, err := NewShape([]int{3})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 
 		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2, 3})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
+		defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
 
-		Convey("It should return a defensive host copy", func() {
+		convey.Convey("It should return a zero-copy host view", func() {
 			values, err := hostBackend.DownloadFloat64(uploaded)
-			So(err, ShouldBeNil)
+			convey.So(err, convey.ShouldBeNil)
 
 			values[0] = 99
 			again, err := hostBackend.DownloadFloat64(uploaded)
 
-			So(err, ShouldBeNil)
-			So(again, ShouldResemble, []float64{1, 2, 3})
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(again[0], convey.ShouldEqual, 99)
+			convey.So(again, convey.ShouldResemble, []float64{99, 2, 3})
+
+			cloned, err := uploaded.CloneFloat64()
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(cloned, convey.ShouldResemble, []float64{99, 2, 3})
+
+			cloned[0] = 1
+			third, err := hostBackend.DownloadFloat64(uploaded)
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(third[0], convey.ShouldEqual, 99)
 		})
 	})
 }
 
 func TestHostBackend_Close(t *testing.T) {
-	Convey("Given a closed host backend", t, func() {
+	convey.Convey("Given a closed host backend", t, func() {
 		hostBackend := NewHostBackend()
-		err := hostBackend.Close()
-		So(err, ShouldBeNil)
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
 
-		Convey("It should reject future uploads", func() {
+		err := hostBackend.Close()
+		convey.So(err, convey.ShouldBeNil)
+
+		convey.Convey("It should reject future uploads", func() {
 			shape, err := NewShape([]int{1})
-			So(err, ShouldBeNil)
+			convey.So(err, convey.ShouldBeNil)
 
 			uploaded, err := hostBackend.UploadFloat64(shape, []float64{1})
 
-			So(err, ShouldNotBeNil)
-			So(uploaded, ShouldBeNil)
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(uploaded, convey.ShouldBeNil)
 		})
 	})
 }
 
 func TestHostTensor_Float64(t *testing.T) {
-	Convey("Given a host tensor", t, func() {
+	convey.Convey("Given a host tensor", t, func() {
 		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
 		shape, err := NewShape([]int{2})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 
 		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
+		defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
 
 		hostTensor, ok := uploaded.(*HostTensor)
-		So(ok, ShouldBeTrue)
+		convey.So(ok, convey.ShouldBeTrue)
 
-		Convey("It should expose a zero-copy CPU view", func() {
+		convey.Convey("It should expose a zero-copy CPU view", func() {
 			values, err := hostTensor.Float64()
-			So(err, ShouldBeNil)
+			convey.So(err, convey.ShouldBeNil)
 
 			values[0] = 9
 			cloned, err := hostTensor.CloneFloat64()
 
-			So(err, ShouldBeNil)
-			So(cloned, ShouldResemble, []float64{9, 2})
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(cloned, convey.ShouldResemble, []float64{9, 2})
 		})
 	})
 }
 
 func TestHostTensor_Close(t *testing.T) {
-	Convey("Given a closed host tensor", t, func() {
+	convey.Convey("Given a closed host tensor", t, func() {
 		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
 		shape, err := NewShape([]int{1})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 
 		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 
 		err = uploaded.Close()
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 
-		Convey("It should reject host reads", func() {
+		convey.Convey("It should reject host reads", func() {
 			values, err := uploaded.CloneFloat64()
 
-			So(err, ShouldNotBeNil)
-			So(values, ShouldBeNil)
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(values, convey.ShouldBeNil)
+		})
+
+		convey.Convey("Repeated Close should be harmless", func() {
+			convey.So(uploaded.Close(), convey.ShouldBeNil)
 		})
 	})
 }
 
 func BenchmarkHostBackend_UploadFloat64(benchmark *testing.B) {
 	hostBackend := NewHostBackend()
+	defer func() { _ = hostBackend.Close() }()
+
 	shape, err := NewShape([]int{1024})
 
 	if err != nil {
@@ -274,6 +334,8 @@ func BenchmarkHostBackend_UploadFloat64(benchmark *testing.B) {
 
 	values := make([]float64, shape.Len())
 
+	benchmark.ReportAllocs()
+	benchmark.SetBytes(int64(shape.Len() * 8))
 	benchmark.ResetTimer()
 
 	for iteration := 0; iteration < benchmark.N; iteration++ {
@@ -291,6 +353,8 @@ func BenchmarkHostBackend_UploadFloat64(benchmark *testing.B) {
 
 func BenchmarkHostBackend_DownloadFloat64(benchmark *testing.B) {
 	hostBackend := NewHostBackend()
+	defer func() { _ = hostBackend.Close() }()
+
 	shape, err := NewShape([]int{1024})
 
 	if err != nil {
@@ -303,7 +367,11 @@ func BenchmarkHostBackend_DownloadFloat64(benchmark *testing.B) {
 		benchmark.Fatal(err)
 	}
 
+	defer func() { _ = uploaded.Close() }()
+
 	benchmark.ResetTimer()
+	benchmark.ReportAllocs()
+	benchmark.SetBytes(int64(shape.Len() * 8))
 
 	for iteration := 0; iteration < benchmark.N; iteration++ {
 		_, err := hostBackend.DownloadFloat64(uploaded)

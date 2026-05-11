@@ -22,14 +22,22 @@ type PJRTConfig struct {
 
 /*
 NewPJRTConfig reads the environment used by the XLA backend.
+
+Platform must be one of: cpu, gpu, cuda (cuda aliases to gpu). Other values return an error.
 */
-func NewPJRTConfig(platform string) PJRTConfig {
-	return PJRTConfig{
-		Platform:    normalizedPJRTPlatform(platform),
-		IncludeDir:  pjrtIncludeDir(),
-		PluginFile:  pjrtPluginFile(platform),
-		LibraryDirs: pjrtLibraryDirs(),
+func NewPJRTConfig(platform string) (PJRTConfig, error) {
+	normalizedPlatform, err := normalizedPJRTPlatform(platform)
+
+	if err != nil {
+		return PJRTConfig{}, err
 	}
+
+	return PJRTConfig{
+		Platform:    normalizedPlatform,
+		IncludeDir:  pjrtIncludeDir(),
+		PluginFile:  pjrtPluginFile(normalizedPlatform),
+		LibraryDirs: pjrtLibraryDirs(),
+	}, nil
 }
 
 /*
@@ -132,14 +140,29 @@ func (config PJRTConfig) Validate() error {
 	return config.ValidateRuntime()
 }
 
-func normalizedPJRTPlatform(platform string) string {
+/*
+normalizedPJRTPlatform maps user input to "cpu" or "gpu".
+Allowed inputs: "", whitespace (cpu default), cpu, gpu, cuda (cuda → gpu).
+Any other token returns an error so typos are not silently treated as CPU.
+*/
+func normalizedPJRTPlatform(platform string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(platform))
 
-	if normalized == "gpu" || normalized == "cuda" {
-		return "gpu"
+	if normalized == "" {
+		return "cpu", nil
 	}
 
-	return "cpu"
+	switch normalized {
+	case "cpu":
+		return "cpu", nil
+	case "gpu", "cuda":
+		return "gpu", nil
+	default:
+		return "", fmt.Errorf(
+			"xla: unsupported PJRT platform %q (allowed: cpu, gpu, cuda)",
+			platform,
+		)
+	}
 }
 
 func pjrtIncludeDir() string {
@@ -168,10 +191,11 @@ func pjrtIncludeDirFromCGOFlags(cgoFlags string) string {
 	return ""
 }
 
-func pjrtPluginFile(platform string) string {
+// pjrtPluginFile expects normalizedPlatform ("cpu" or "gpu").
+func pjrtPluginFile(normalizedPlatform string) string {
 	platformEnvName := "CARAMBA_PJRT_CPU_PLUGIN"
 
-	if normalizedPJRTPlatform(platform) == "gpu" {
+	if normalizedPlatform == "gpu" {
 		platformEnvName = "CARAMBA_PJRT_GPU_PLUGIN"
 	}
 

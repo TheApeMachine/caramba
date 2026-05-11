@@ -38,6 +38,9 @@ int xla_compile_activations(int n_elements);
 
 // Dispatch functions.  All take host double* pointers; the XLA layer
 // manages device transfers internally.
+// Treat src as immutable until the dispatch returns; implementations may borrow it until
+// host-to-device transfer completes (see run_executable in _activation_xla.cpp).
+// Copy inputs first if they cannot remain stable for the duration of the call.
 // n is the number of *output* elements.
 // Returns 0 on success, -1 on error.
 

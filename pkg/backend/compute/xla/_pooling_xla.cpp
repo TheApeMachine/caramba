@@ -19,13 +19,9 @@
 #include "xla/pjrt/c/pjrt_c_api.h"
 
 // ---------------------------------------------------------------------------
-// Reuse globals declared in activation_xla.cc via extern declarations.
+// Shared PJRT state from amalgamated _activation_xla.cpp.
 // ---------------------------------------------------------------------------
 
-extern const PJRT_Api*  g_api;
-extern PJRT_Client*     g_client;
-
-// Local executable cache keyed by a string encoding the op + dimensions.
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_pool_execs;
 
 // ---------------------------------------------------------------------------

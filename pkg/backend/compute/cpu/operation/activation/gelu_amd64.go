@@ -2,7 +2,11 @@
 
 package activation
 
-import "golang.org/x/sys/cpu"
+import (
+	"fmt"
+
+	"golang.org/x/sys/cpu"
+)
 
 var useAVX2 bool
 
@@ -17,24 +21,22 @@ func GeLUAVX2(dst, x []float64)
 func GeLUSSE2(dst, x []float64)
 
 func applyGeLU(dst, src []float64) {
+	if len(dst) != len(src) {
+		panic(fmt.Sprintf("applyGeLU: dst and src length mismatch: dst=%d src=%d", len(dst), len(src)))
+	}
+
 	width := 2
+	vectorGeLU := GeLUSSE2
 
 	if useAVX2 {
 		width = 4
-		limit := len(src) / width * width
-
-		if limit > 0 {
-			GeLUAVX2(dst[:limit], src[:limit])
-		}
-
-		scalarGeLU(dst[limit:], src[limit:])
-		return
+		vectorGeLU = GeLUAVX2
 	}
 
 	limit := len(src) / width * width
 
 	if limit > 0 {
-		GeLUSSE2(dst[:limit], src[:limit])
+		vectorGeLU(dst[:limit], src[:limit])
 	}
 
 	scalarGeLU(dst[limit:], src[limit:])

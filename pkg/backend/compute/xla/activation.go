@@ -11,7 +11,7 @@ package xla
 //
 // Example build:
 //   CGO_CPPFLAGS="-I/path/to/xla" \
-//   go build -tags "cgo xla" ./pk./pkg/backend/compute/xla
+//   go build -tags "cgo xla" ./pkg/backend/compute/xla
 
 // #include <stdlib.h>
 // #include "activation.h"
@@ -32,7 +32,13 @@ type XLAActivation struct {
 
 // New initialises the PJRT client for the given platform ("cpu" or "gpu").
 func New(platform string) (*XLAActivation, error) {
-	if err := NewPJRTConfig(platform).ValidateRuntime(); err != nil {
+	config, err := NewPJRTConfig(platform)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 
@@ -40,7 +46,7 @@ func New(platform string) (*XLAActivation, error) {
 	defer C.free(unsafe.Pointer(cp))
 
 	if rc := C.xla_init(cp); rc != 0 {
-		return nil, fmt.Errorf("xla_init failed for platform %q", platform)
+		return nil, fmt.Errorf("xla_init failed for platform %q: rc=%d", platform, rc)
 	}
 	return &XLAActivation{platform: platform}, nil
 }
@@ -58,12 +64,21 @@ func (x *XLAActivation) ensureCompiled(n int) error {
 	return nil
 }
 
-// Forward dispatches to ReLU with the new universal signature.
-// shape is metadata only; data[0] is the primary input buffer.
+// Forward dispatches to ReLU with the universal operation signature ([]float64 only —
+// errors surface as panics because cpu/operation.Operation requires this shape).
+//
+// Panics with a formatted message if ReLU fails (compile/runtime).
+//
+// If len(data)==0, returns an empty slice (no PJRT call). Otherwise data[0] must exist.
 func (x *XLAActivation) Forward(shape []int, data ...[]float64) []float64 {
+	if len(data) == 0 {
+		return []float64{}
+	}
+
 	out, err := x.ReLU(data[0])
+
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("xla activation Forward(ReLU): %v", err))
 	}
 
 	return out

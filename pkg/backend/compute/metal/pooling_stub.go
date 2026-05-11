@@ -21,8 +21,8 @@ type AvgPool2dParams struct {
 
 func NewPoolingOps(metallib string) (*PoolingOps, error) { return nil, errMetalUnavailable }
 
-func (m *PoolingOps) Forward(shape []int, data ...[]float64) []float64 {
-	panic(errMetalUnavailable)
+func (m *PoolingOps) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	return nil, errMetalUnavailable
 }
 
 func (m *PoolingOps) MaxPool2d(shape []int, params MaxPool2dParams, data []float64) ([]float64, error) {

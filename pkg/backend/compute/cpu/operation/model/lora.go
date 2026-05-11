@@ -1,6 +1,9 @@
 package model
 
-import "math"
+import (
+	"fmt"
+	"math"
+)
 
 /*
 LoRA overlays low-rank weight decomposition on targeted weight matrices.
@@ -168,7 +171,11 @@ func (lora *LoRA) apply(w, a, b []float64, dims [2]int) []float64 {
 	scale := lora.alpha / float64(lora.rank)
 
 	// delta = B · A  →  [out×rank] · [rank×in] = [out×in]
-	delta := lora.matmul(b, a, out, lora.rank, in)
+	delta, err := lora.matmul(b, a, out, lora.rank, in)
+
+	if err != nil {
+		panic(fmt.Errorf("lora: B·A matmul: %w", err))
+	}
 
 	expected := out * in
 

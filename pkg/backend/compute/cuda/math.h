@@ -18,13 +18,19 @@ int cuda_add(const double* a, const double* b, double* out, int n);
 // Elementwise: out = a * b
 int cuda_mul(const double* a, const double* b, double* out, int n);
 
-// Device-resident variants. All pointers are CUDA device pointers.
-int cuda_matmul_device(const void* A, const void* B, void* C, int M, int K, int N);
-int cuda_add_device(const void* a, const void* b, void* out, int n);
-int cuda_mul_device(const void* a, const void* b, void* out, int n);
+// Device-resident variants (CUDA device pointers to float64 data).
+// Returns 0 on success, -1 on CUDA error.
+
+int cuda_matmul_device(const double* A, const double* B, double* C, int M, int K, int N);
+int cuda_add_device(const double* a, const double* b, double* out, int n);
+int cuda_mul_device(const double* a, const double* b, double* out, int n);
+
+// Fused matmul + bias (+ optional GELU). bias_n may be N (broadcast along rows)
+// or M*N (full matrix bias). apply_gelu: non-zero applies gelu_device to each output.
+// sync_device: non-zero synchronizes the device before return (default); pass 0 to overlap launches (caller must sync later).
 int cuda_matmul_add_device(
-    const void* A, const void* B, const void* bias, void* C,
-    int M, int K, int N, int bias_n, int gelu
+    const double* A, const double* B, const double* bias, double* C,
+    int M, int K, int N, int bias_n, int apply_gelu, int sync_device
 );
 
 // Scale: dst = src * (1/sqrt(dim))

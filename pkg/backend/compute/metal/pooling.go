@@ -182,17 +182,17 @@ func (m *PoolingOps) AdaptiveMaxPool2d(shape []int, outH, outW int, data []float
 
 // Forward implements the universal operation interface using MaxPool2d.
 // shape=[N,Ch,H,W]; data[0]=input.
-func (m *PoolingOps) Forward(shape []int, data ...[]float64) []float64 {
+func (m *PoolingOps) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("metal pooling Forward: missing input data[0]")
+	}
+
 	p := MaxPool2dParams{
 		KernelH: 3, KernelW: 3,
 		StrideH: 1, StrideW: 1,
 		PadH: 0, PadW: 0,
 		DilationH: 1, DilationW: 1,
 	}
-	out, err := m.MaxPool2d(shape, p, data[0])
-	if err != nil {
-		panic(err)
-	}
 
-	return out
+	return m.MaxPool2d(shape, p, data[0])
 }

@@ -18,11 +18,22 @@ func TestNewPJRTConfig(test *testing.T) {
 		test.Setenv("CARAMBA_PJRT_GPU_PLUGIN", pluginFile)
 
 		Convey("It should build a normalized GPU config", func() {
-			config := NewPJRTConfig("cuda")
+			config, err := NewPJRTConfig("cuda")
 
+			So(err, ShouldBeNil)
 			So(config.Platform, ShouldEqual, "gpu")
 			So(config.IncludeDir, ShouldEqual, includeDir)
 			So(config.PluginFile, ShouldEqual, pluginFile)
+		})
+	})
+}
+
+func TestNewPJRTConfig_UnsupportedPlatform(test *testing.T) {
+	Convey("Given an unsupported platform token", test, func() {
+		_, err := NewPJRTConfig("tpu")
+
+		Convey("It should reject the configuration", func() {
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
@@ -182,6 +193,51 @@ func BenchmarkPJRTConfig_ValidateRuntime(benchmark *testing.B) {
 
 	for iteration := 0; iteration < benchmark.N; iteration++ {
 		if err := config.ValidateRuntime(); err != nil {
+			benchmark.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkPJRTConfig_ResolvedPluginFile(benchmark *testing.B) {
+	libraryDir := benchmark.TempDir()
+	pluginFile := filepath.Join(libraryDir, "pjrt_c_api_cpu_plugin.so")
+
+	if err := os.WriteFile(pluginFile, []byte{}, 0o600); err != nil {
+		benchmark.Fatal(err)
+	}
+
+	config := PJRTConfig{
+		Platform:    "cpu",
+		LibraryDirs: []string{libraryDir},
+	}
+
+	benchmark.ResetTimer()
+
+	for iteration := 0; iteration < benchmark.N; iteration++ {
+		if resolved := config.ResolvedPluginFile(); resolved != pluginFile {
+			benchmark.Fatalf("unexpected resolved path %q want %q", resolved, pluginFile)
+		}
+	}
+}
+
+func BenchmarkPJRTConfig_ValidateBuild(benchmark *testing.B) {
+	includeDir := benchmark.TempDir()
+	headerDir := filepath.Join(includeDir, "xla", "pjrt", "c")
+
+	if err := os.MkdirAll(headerDir, 0o755); err != nil {
+		benchmark.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(headerDir, "pjrt_c_api.h"), []byte{}, 0o600); err != nil {
+		benchmark.Fatal(err)
+	}
+
+	config := PJRTConfig{IncludeDir: includeDir}
+
+	benchmark.ResetTimer()
+
+	for iteration := 0; iteration < benchmark.N; iteration++ {
+		if err := config.ValidateBuild(); err != nil {
 			benchmark.Fatal(err)
 		}
 	}

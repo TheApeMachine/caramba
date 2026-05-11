@@ -158,17 +158,17 @@ func (c *CUDAPooling) AdaptiveMaxPool2d(shape []int, outH, outW int, data []floa
 
 // Forward implements the universal operation interface using MaxPool2d.
 // shape=[N,C,H,W]; data[0]=input.
-func (c *CUDAPooling) Forward(shape []int, data ...[]float64) []float64 {
+func (c *CUDAPooling) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("cuda pooling: Forward requires data[0]")
+	}
+
 	p := CUDAMaxPool2dParams{
 		KernelH: 3, KernelW: 3,
 		StrideH: 1, StrideW: 1,
 		PadH: 0, PadW: 0,
 		DilationH: 1, DilationW: 1,
 	}
-	out, err := c.MaxPool2d(shape, p, data[0])
-	if err != nil {
-		panic(err)
-	}
 
-	return out
+	return c.MaxPool2d(shape, p, data[0])
 }

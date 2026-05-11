@@ -13,6 +13,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 
@@ -212,18 +214,20 @@ static std::string unary_module(const std::string& op, int n) {
 }
 
 static std::string scale_module(int n, double scale) {
-    char buf[2048];
     std::string t = "tensor<" + std::to_string(n) + "xf64>";
-    snprintf(buf, sizeof(buf),
+    std::ostringstream scale_stream;
+    scale_stream << std::setprecision(17) << std::defaultfloat << scale;
+    std::string scale_literal = scale_stream.str();
+
+    return
         "module @m {"
-        "  func.func @main(%%x: %s) -> %s {"
-        "    %%s = stablehlo.constant dense<%.17g> : tensor<f64>"
-        "    %%b = stablehlo.broadcast_in_dim %%s, dims=[] : (tensor<f64>) -> %s"
-        "    %%r = stablehlo.multiply %%x, %%b : %s"
-        "    return %%r : %s"
+        "  func.func @main(%x: " + t + ") -> " + t + " {"
+        "    %s = stablehlo.constant dense<" + scale_literal + "> : tensor<f64>"
+        "    %b = stablehlo.broadcast_in_dim %s, dims=[] : (tensor<f64>) -> " + t +
+        "    %r = stablehlo.multiply %x, %b : " + t +
+        "    return %r : " + t +
         "  }"
-        "}", t.c_str(), t.c_str(), scale, t.c_str(), t.c_str(), t.c_str());
-    return buf;
+        "}";
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +327,8 @@ int xla_log(const double* src, double* dst, int n) {
 }
 
 int xla_inv_sqrt_dim_scale(const double* src, double* dst, int n, int dim) {
+    if (dim <= 0) return -1;
+
     double scale = 1.0 / std::sqrt((double)dim);
     std::string key = "isdscale_" + std::to_string(n) + "_" + std::to_string(dim);
     auto* exec = compile_module(key, scale_module(n, scale));
@@ -337,6 +343,8 @@ int xla_inv_sqrt_dim_scale(const double* src, double* dst, int n, int dim) {
 // XLA's value is in large-scale parallelism — small ops fall back gracefully.
 
 int xla_matmul(const double* A, const double* B, double* C, int M, int K, int N) {
+    if (M <= 0 || K <= 0 || N <= 0) return -1;
+
     // Pure C reference implementation as fallback.
     for (int i = 0; i < M; i++) {
         for (int j = 0; j < N; j++) {
@@ -439,6 +447,8 @@ int xla_div_vec(const double* a, const double* b, double* dst, int n) {
 }
 
 int xla_clamp_vec(double* dst, double lo, double hi, int n) {
+    if (lo > hi) return -1;
+
     for (int i = 0; i < n; i++) {
         if (dst[i] < lo) dst[i] = lo;
         else if (dst[i] > hi) dst[i] = hi;
