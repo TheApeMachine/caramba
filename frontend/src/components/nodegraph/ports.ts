@@ -51,6 +51,13 @@ export function registerPorts(config: FlumeConfig): FlumeConfig {
 			],
 		})
 		.addPortType({
+			type: "store_ref",
+			name: "store_ref",
+			label: "Store",
+			color: Colors.green,
+			controls: [],
+		})
+		.addPortType({
 			type: "config_bool",
 			name: "config_bool",
 			label: "Bool",
@@ -71,5 +78,7 @@ portTypeForKind maps a schema kind to the Flume port type used for
 its data-flow inputs and outputs.
 */
 export function portTypeForKind(kind: string): string {
-	return kind === "Optimizer" ? "optimizer_state" : "tensor";
+	if (kind === "Optimizer") return "optimizer_state";
+	if (kind === "Store") return "store_ref";
+	return "tensor";
 }

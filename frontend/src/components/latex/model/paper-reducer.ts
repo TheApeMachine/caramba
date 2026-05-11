@@ -2,12 +2,13 @@ import type { HeadingLevel, PaperBlock } from "#/components/latex/model/types";
 
 export type PaperAction =
 	| { type: "UPDATE_TEXT"; id: string; text: string }
+	| { type: "UPDATE_LATEX"; id: string; latex: string }
 	| { type: "INSERT_AFTER"; afterId: string; block: PaperBlock }
 	| { type: "REMOVE_BLOCK"; id: string }
 	| {
 			type: "SET_BLOCK_KIND";
 			id: string;
-			kind: "paragraph" | "heading";
+			kind: "paragraph" | "heading" | "equation";
 			level?: HeadingLevel;
 	  };
 
@@ -23,6 +24,12 @@ export function paperReducer(
 		case "UPDATE_TEXT":
 			return blocks.map((b) =>
 				b.id === action.id ? { ...b, text: action.text } : b,
+			);
+		case "UPDATE_LATEX":
+			return blocks.map((b) =>
+				b.id === action.id && b.type === "equation"
+					? { ...b, latex: action.latex }
+					: b,
 			);
 		case "INSERT_AFTER": {
 			const i = blocks.findIndex((b) => b.id === action.afterId);
@@ -43,23 +50,14 @@ export function paperReducer(
 		}
 		case "SET_BLOCK_KIND":
 			return blocks.map((b) => {
-				if (b.id !== action.id) {
-					return b;
-				}
+				if (b.id !== action.id) return b;
 				if (action.kind === "heading") {
-					const level: HeadingLevel = action.level ?? 2;
-					return {
-						id: b.id,
-						type: "heading",
-						level,
-						text: b.text,
-					};
+					return { id: b.id, type: "heading", level: action.level ?? 2, text: "text" in b ? b.text : "" };
 				}
-				return {
-					id: b.id,
-					type: "paragraph",
-					text: b.text,
-				};
+				if (action.kind === "equation") {
+					return { id: b.id, type: "equation", latex: "", display: true };
+				}
+				return { id: b.id, type: "paragraph", text: "text" in b ? b.text : "" };
 			});
 		default: {
 			const _exhaustive: never = action;

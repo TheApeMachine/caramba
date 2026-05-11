@@ -21,6 +21,7 @@ import {
 } from "#/service/compute";
 import { registerNodes } from "./nodes";
 import { registerPorts } from "./ports";
+import { STORE_SCHEMAS } from "./stores";
 
 export type NodeGraphProps = {
 	nodes?: NodeMap;
@@ -51,14 +52,16 @@ export const NodeGraph = ({
 
 	const config = useMemo(() => {
 		const cfg = registerPorts(new FlumeConfig());
-		const allSchemas = { ...operations, ...optimizers, ...blocks };
+		const allSchemas = { ...operations, ...optimizers, ...blocks, ...STORE_SCHEMAS };
 		if (operations) registerNodes(cfg, operations, allSchemas);
 		if (optimizers) registerNodes(cfg, optimizers, allSchemas);
 		if (blocks) registerNodes(cfg, blocks, allSchemas);
+		registerNodes(cfg, STORE_SCHEMAS, allSchemas);
 		return cfg;
 	}, [operations, optimizers, blocks]);
 
 	const nodes = loadedArchitecture ?? controlledNodes ?? internalNodes;
+	const editorKey = loadedArchitecture ? `loaded-${loadName}` : `__internal__-${loadName}`;
 
 	const handleChange = useCallback(
 		(next: NodeMap) => {
@@ -165,6 +168,7 @@ export const NodeGraph = ({
 
 			<Flex.Column className="min-h-[55dvh] min-w-0 flex-1" fullHeight fullWidth>
 				<NodeEditor
+					key={editorKey}
 					ref={editorRef}
 					portTypes={config.portTypes}
 					nodeTypes={config.nodeTypes}

@@ -13,7 +13,15 @@ export type PaperParagraphBlock = {
 	text: string;
 };
 
-export type PaperBlock = PaperHeadingBlock | PaperParagraphBlock;
+export type PaperEquationBlock = {
+	id: string;
+	type: "equation";
+	latex: string;
+	label?: string;
+	display: boolean;
+};
+
+export type PaperBlock = PaperHeadingBlock | PaperParagraphBlock | PaperEquationBlock;
 
 export type PaperMetadata = {
 	title: string;

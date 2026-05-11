@@ -1,38 +1,41 @@
-import { ClientOnly, createFileRoute, Link } from "@tanstack/react-router";
-import { z } from "zod";
+import {
+	ClientOnly,
+	createFileRoute,
+	getRouteApi,
+	Link,
+} from "@tanstack/react-router";
 import { NodeGraph } from "#/components/nodegraph/component";
 import { Button } from "#/components/ui/button";
 import { Flex } from "#/components/ui/flex";
 
-const editSearchSchema = z.object({
-	projectId: z.uuid().optional(),
-});
+const researchEditRouteApi = getRouteApi("/research/edit");
 
-function parseEditSearch(
-	raw: Record<string, unknown>,
-): z.infer<typeof editSearchSchema> {
-	const parsed = editSearchSchema.safeParse(raw);
-	return parsed.success ? parsed.data : { projectId: undefined };
-}
-
-export const Route = createFileRoute("/research/edit")({
-	validateSearch: parseEditSearch,
-	component: ResearchEdit,
-});
-
-function ResearchEdit() {
-	const { projectId } = Route.useSearch();
+const ResearchEditArchitecturePanel = () => {
+	const search = researchEditRouteApi.useSearch();
 
 	return (
-		<Flex.Column gap={3} padding={4} className="box-border flex-1" fullHeight>
+		<Flex.Column
+			gap={3}
+			padding={4}
+			className="box-border min-h-0 flex-1"
+			fullHeight
+			fullWidth
+		>
 			<Flex.Row gap={2} className="shrink-0 items-center justify-between gap-2">
 				<Flex.Column gap={1}>
-					<h1 className="font-semibold text-foreground text-lg">
+					<h1
+						className="font-semibold text-foreground text-lg"
+						data-context="Current view"
+					>
 						Research graph
 					</h1>
-					{projectId ? (
-						<p className="font-mono text-muted-foreground text-xs">
-							{projectId}
+					{search.projectId ? (
+						<p
+							className="font-mono text-muted-foreground text-xs"
+							data-context="Project ID"
+							data-context-key="project_id"
+						>
+							{search.projectId}
 						</p>
 					) : (
 						<p className="text-muted-foreground text-sm">
@@ -57,4 +60,8 @@ function ResearchEdit() {
 			</Flex.Column>
 		</Flex.Column>
 	);
-}
+};
+
+export const Route = createFileRoute("/research/edit/")({
+	component: ResearchEditArchitecturePanel,
+});

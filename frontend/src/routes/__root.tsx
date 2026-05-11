@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import type React from "react";
+import { Assistant } from "#/components/assistant/component";
 import { Page } from "#/components/layout/page";
 import { ToastProvider } from "#/components/ui/toast";
 import appCss from "../styles.css?url";
@@ -29,6 +30,7 @@ const RootDocument = ({ children }: { children: React.ReactNode }) => {
 							<Page.Aside></Page.Aside>
 							<Page.Footer />
 						</Page>
+					<Assistant />
 					</ToastProvider>
 					<TanStackDevtools
 						config={{

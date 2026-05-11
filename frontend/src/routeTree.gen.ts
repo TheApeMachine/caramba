@@ -14,9 +14,12 @@ import { Route as ResearchIndexRouteImport } from './routes/research/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as ResearchPaperRouteImport } from './routes/research/paper'
 import { Route as ResearchNewRouteImport } from './routes/research/new'
-import { Route as ResearchEditRouteImport } from './routes/research/edit'
 import { Route as PaperEditRouteImport } from './routes/paper/edit'
 import { Route as ApiAssistantRouteImport } from './routes/api/assistant'
+import { Route as ResearchEditRouteRouteImport } from './routes/research/edit/route'
+import { Route as ResearchEditIndexRouteImport } from './routes/research/edit/index'
+import { Route as ResearchEditResearchPaperRouteImport } from './routes/research/edit/research-paper'
+import { Route as ResearchEditModelScopeRouteImport } from './routes/research/edit/model-scope'
 import { Route as ApiComputeOptimizerRouteImport } from './routes/api/compute/optimizer'
 
 const IndexRoute = IndexRouteImport.update({
@@ -44,11 +47,6 @@ const ResearchNewRoute = ResearchNewRouteImport.update({
   path: '/research/new',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ResearchEditRoute = ResearchEditRouteImport.update({
-  id: '/research/edit',
-  path: '/research/edit',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const PaperEditRoute = PaperEditRouteImport.update({
   id: '/paper/edit',
   path: '/paper/edit',
@@ -59,6 +57,27 @@ const ApiAssistantRoute = ApiAssistantRouteImport.update({
   path: '/api/assistant',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResearchEditRouteRoute = ResearchEditRouteRouteImport.update({
+  id: '/research/edit',
+  path: '/research/edit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResearchEditIndexRoute = ResearchEditIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ResearchEditRouteRoute,
+} as any)
+const ResearchEditResearchPaperRoute =
+  ResearchEditResearchPaperRouteImport.update({
+    id: '/research-paper',
+    path: '/research-paper',
+    getParentRoute: () => ResearchEditRouteRoute,
+  } as any)
+const ResearchEditModelScopeRoute = ResearchEditModelScopeRouteImport.update({
+  id: '/model-scope',
+  path: '/model-scope',
+  getParentRoute: () => ResearchEditRouteRoute,
+} as any)
 const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
   id: '/api/compute/optimizer',
   path: '/api/compute/optimizer',
@@ -67,79 +86,95 @@ const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/research/edit': typeof ResearchEditRouteRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
-  '/research/edit': typeof ResearchEditRoute
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
   '/docs/': typeof DocsIndexRoute
   '/research/': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/research/edit/model-scope': typeof ResearchEditModelScopeRoute
+  '/research/edit/research-paper': typeof ResearchEditResearchPaperRoute
+  '/research/edit/': typeof ResearchEditIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
-  '/research/edit': typeof ResearchEditRoute
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
   '/docs': typeof DocsIndexRoute
   '/research': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/research/edit/model-scope': typeof ResearchEditModelScopeRoute
+  '/research/edit/research-paper': typeof ResearchEditResearchPaperRoute
+  '/research/edit': typeof ResearchEditIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/research/edit': typeof ResearchEditRouteRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
-  '/research/edit': typeof ResearchEditRoute
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
   '/docs/': typeof DocsIndexRoute
   '/research/': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/research/edit/model-scope': typeof ResearchEditModelScopeRoute
+  '/research/edit/research-paper': typeof ResearchEditResearchPaperRoute
+  '/research/edit/': typeof ResearchEditIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/research/edit'
     | '/api/assistant'
     | '/paper/edit'
-    | '/research/edit'
     | '/research/new'
     | '/research/paper'
     | '/docs/'
     | '/research/'
     | '/api/compute/optimizer'
+    | '/research/edit/model-scope'
+    | '/research/edit/research-paper'
+    | '/research/edit/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/api/assistant'
     | '/paper/edit'
-    | '/research/edit'
     | '/research/new'
     | '/research/paper'
     | '/docs'
     | '/research'
     | '/api/compute/optimizer'
+    | '/research/edit/model-scope'
+    | '/research/edit/research-paper'
+    | '/research/edit'
   id:
     | '__root__'
     | '/'
+    | '/research/edit'
     | '/api/assistant'
     | '/paper/edit'
-    | '/research/edit'
     | '/research/new'
     | '/research/paper'
     | '/docs/'
     | '/research/'
     | '/api/compute/optimizer'
+    | '/research/edit/model-scope'
+    | '/research/edit/research-paper'
+    | '/research/edit/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ResearchEditRouteRoute: typeof ResearchEditRouteRouteWithChildren
   ApiAssistantRoute: typeof ApiAssistantRoute
   PaperEditRoute: typeof PaperEditRoute
-  ResearchEditRoute: typeof ResearchEditRoute
   ResearchNewRoute: typeof ResearchNewRoute
   ResearchPaperRoute: typeof ResearchPaperRoute
   DocsIndexRoute: typeof DocsIndexRoute
@@ -184,13 +219,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResearchNewRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/research/edit': {
-      id: '/research/edit'
-      path: '/research/edit'
-      fullPath: '/research/edit'
-      preLoaderRoute: typeof ResearchEditRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/paper/edit': {
       id: '/paper/edit'
       path: '/paper/edit'
@@ -205,6 +233,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAssistantRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/research/edit': {
+      id: '/research/edit'
+      path: '/research/edit'
+      fullPath: '/research/edit'
+      preLoaderRoute: typeof ResearchEditRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/research/edit/': {
+      id: '/research/edit/'
+      path: '/'
+      fullPath: '/research/edit/'
+      preLoaderRoute: typeof ResearchEditIndexRouteImport
+      parentRoute: typeof ResearchEditRouteRoute
+    }
+    '/research/edit/research-paper': {
+      id: '/research/edit/research-paper'
+      path: '/research-paper'
+      fullPath: '/research/edit/research-paper'
+      preLoaderRoute: typeof ResearchEditResearchPaperRouteImport
+      parentRoute: typeof ResearchEditRouteRoute
+    }
+    '/research/edit/model-scope': {
+      id: '/research/edit/model-scope'
+      path: '/model-scope'
+      fullPath: '/research/edit/model-scope'
+      preLoaderRoute: typeof ResearchEditModelScopeRouteImport
+      parentRoute: typeof ResearchEditRouteRoute
+    }
     '/api/compute/optimizer': {
       id: '/api/compute/optimizer'
       path: '/api/compute/optimizer'
@@ -215,11 +271,26 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ResearchEditRouteRouteChildren {
+  ResearchEditModelScopeRoute: typeof ResearchEditModelScopeRoute
+  ResearchEditResearchPaperRoute: typeof ResearchEditResearchPaperRoute
+  ResearchEditIndexRoute: typeof ResearchEditIndexRoute
+}
+
+const ResearchEditRouteRouteChildren: ResearchEditRouteRouteChildren = {
+  ResearchEditModelScopeRoute: ResearchEditModelScopeRoute,
+  ResearchEditResearchPaperRoute: ResearchEditResearchPaperRoute,
+  ResearchEditIndexRoute: ResearchEditIndexRoute,
+}
+
+const ResearchEditRouteRouteWithChildren =
+  ResearchEditRouteRoute._addFileChildren(ResearchEditRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ResearchEditRouteRoute: ResearchEditRouteRouteWithChildren,
   ApiAssistantRoute: ApiAssistantRoute,
   PaperEditRoute: PaperEditRoute,
-  ResearchEditRoute: ResearchEditRoute,
   ResearchNewRoute: ResearchNewRoute,
   ResearchPaperRoute: ResearchPaperRoute,
   DocsIndexRoute: DocsIndexRoute,

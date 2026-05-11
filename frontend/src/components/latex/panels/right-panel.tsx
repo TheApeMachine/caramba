@@ -7,7 +7,7 @@ import {
 	type PaperMetadataFormApi,
 } from "#/components/latex/panels/metadata-tab";
 import { Flex } from "#/components/ui/flex";
-import { Tabs, TabsList, TabsPanel, TabsTab } from "#/components/ui/tabs";
+import { Tabs } from "#/components/ui/tabs";
 import { Typography } from "#/components/ui/typography";
 
 export function RightPanel({ form }: { form: PaperMetadataFormApi }) {
@@ -26,25 +26,25 @@ export function RightPanel({ form }: { form: PaperMetadataFormApi }) {
 				<Typography.H3 variant="sectionHeading">Paper details</Typography.H3>
 			</Flex.Row>
 			<Tabs className="min-h-0 flex-1 gap-0" defaultValue="metadata">
-				<TabsList
+				<Tabs.List
 					className="w-full shrink-0 justify-start rounded-none border-border border-b bg-transparent px-2"
 					variant="underline"
 				>
-					<TabsTab value="metadata">Metadata</TabsTab>
-					<TabsTab value="export">Export</TabsTab>
-				</TabsList>
-				<TabsPanel
+					<Tabs.Tab value="metadata">Metadata</Tabs.Tab>
+					<Tabs.Tab value="export">Export</Tabs.Tab>
+				</Tabs.List>
+				<Tabs.Panel
 					className="min-h-0 flex-1 data-[orientation=horizontal]:pb-0"
 					value="metadata"
 				>
 					<MetadataTab form={form} />
-				</TabsPanel>
-				<TabsPanel
+				</Tabs.Panel>
+				<Tabs.Panel
 					className="flex min-h-0 flex-1 flex-col data-[orientation=horizontal]:pb-0"
 					value="export"
 				>
 					<ExportTab form={form} />
-				</TabsPanel>
+				</Tabs.Panel>
 			</Tabs>
 		</Flex.Column>
 	);

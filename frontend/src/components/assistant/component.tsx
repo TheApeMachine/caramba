@@ -1,190 +1,291 @@
-// components/Chat.tsx
+import type { UIMessage } from "@tanstack/ai-client";
+import { Bot, Maximize2, Minimize2, Plus, Send, Settings, Square, Trash2, X } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Button } from "#/components/ui/button";
+import { Input } from "#/components/ui/input";
+import { Tabs } from "#/components/ui/tabs";
+import { cn } from "@/lib/utils";
+import { MessageFeed } from "./panels/messages";
+import { SettingsPanel } from "./panels/settings";
+import { usePageContext } from "./use-page-context";
+import { useSession } from "./use-session";
+import { useTeamChat } from "./use-team-chat";
 
-import type { MessagePart } from "@tanstack/ai-client";
-import { fetchServerSentEvents, useChat } from "@tanstack/ai-react";
-import { useState } from "react";
+function useInput() {
+	const [value, setValue] = useState("");
 
-/*
-messagePartsWithStableKeys derives list keys aligned with TanStack stream behavior:
-tool parts use canonical ids; each text/thinking occurrence gets a stable slot key
-without using the array index as the React key.
-*/
-function messagePartsWithStableKeys(
-	messageId: string,
-	parts: ReadonlyArray<MessagePart>,
-): Array<{ stableKey: string; part: MessagePart }> {
-	let textOccurrence = 0;
-	let thinkingFallbackOccurrence = 0;
-	const otherOccurrenceByType = new Map<string, number>();
-	const keyed: Array<{ stableKey: string; part: MessagePart }> = [];
+	const clear = useCallback(() => setValue(""), []);
 
-	for (const part of parts) {
-		switch (part.type) {
-			case "tool-call": {
-				keyed.push({
-					stableKey: `${messageId}:tool-call:${part.id}`,
-					part,
-				});
-				break;
-			}
-
-			case "tool-result": {
-				keyed.push({
-					stableKey: `${messageId}:tool-result:${part.toolCallId}`,
-					part,
-				});
-				break;
-			}
-
-			case "text": {
-				keyed.push({
-					stableKey: `${messageId}:text:${textOccurrence}`,
-					part,
-				});
-				textOccurrence += 1;
-				break;
-			}
-
-			case "thinking": {
-				const thinkingPart = part as MessagePart & { stepId?: string };
-				const hasStepId =
-					typeof thinkingPart.stepId === "string" && thinkingPart.stepId !== "";
-
-				const fallbackId = `slot-${thinkingFallbackOccurrence}`;
-				thinkingFallbackOccurrence += 1;
-				const discriminator = hasStepId ? thinkingPart.stepId : fallbackId;
-
-				keyed.push({
-					stableKey: `${messageId}:thinking:${discriminator}`,
-					part,
-				});
-				break;
-			}
-
-			default: {
-				const next = otherOccurrenceByType.get(part.type) ?? 0;
-				otherOccurrenceByType.set(part.type, next + 1);
-				keyed.push({
-					stableKey: `${messageId}:${part.type}:${next}`,
-					part,
-				});
-			}
-		}
-	}
-
-	return keyed;
+	return { value, setValue, clear };
 }
 
-export function Chat() {
-	const [input, setInput] = useState("");
+/*
+buildUserMessage prepends a page context block when available so agents always
+know what the user is looking at without the user having to explain it.
+*/
+function buildUserMessage(text: string, pageContext: string): UIMessage {
+	const content = pageContext ? `${pageContext}\n\n---\n\n${text}` : text;
+	return {
+		id: crypto.randomUUID(),
+		role: "user",
+		parts: [{ type: "text", content }],
+		createdAt: new Date(),
+	};
+}
 
-	const { messages, sendMessage, isLoading } = useChat({
-		connection: fetchServerSentEvents("/api/assistant"),
-	});
+/* ── Mini panel (compact, bottom-right) ──────────────────────────────────── */
 
-	const handleSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		if (input.trim() && !isLoading) {
-			sendMessage(input);
-			setInput("");
-		}
+function MiniPanel({
+	onExpand,
+	onClose,
+}: {
+	onExpand: () => void;
+	onClose: () => void;
+}) {
+	const { session, appendMessages } = useSession();
+	const input = useInput();
+	const { capture } = usePageContext();
+
+	const { send, stop, status, streamingPersonaId } = useTeamChat(session, appendMessages);
+
+	const busy = status === "running";
+
+	const handleSubmit = (e: React.SubmitEvent<HTMLFormElement>) => {
+		e.preventDefault();
+		if (!input.value.trim() || busy) return;
+		const msg = buildUserMessage(input.value.trim(), capture());
+		input.clear();
+		send(msg);
 	};
 
 	return (
-		<div className="flex flex-col h-screen">
-			{/* Messages */}
-			<div className="flex-1 overflow-y-auto p-4">
-				{messages.map((message) => (
-					<div
-						key={message.id}
-						className={`mb-4 ${
-							message.role === "assistant" ? "text-blue-600" : "text-gray-800"
-						}`}
-					>
-						<div className="font-semibold mb-1">
-							{message.role === "assistant" ? "Assistant" : "You"}
-						</div>
-						<div>
-							{messagePartsWithStableKeys(message.id, message.parts).map(
-								({ stableKey, part }) => {
-									if (part.type === "thinking") {
-										return (
-											<div
-												key={stableKey}
-												className="text-sm text-gray-500 italic mb-2"
-											>
-												💭 Thinking: {part.content}
-											</div>
-										);
-									}
-
-									if (part.type === "text") {
-										return <div key={stableKey}>{part.content}</div>;
-									}
-
-									if (part.type === "tool-call") {
-										return (
-											<div
-												key={stableKey}
-												className="text-xs rounded border border-blue-100 bg-blue-50 text-blue-900 p-3 mb-2"
-											>
-												<p className="font-semibold">Tool • {part.name}</p>
-												<pre className="mt-1 whitespace-pre-wrap wrap-break-word">
-													{part.arguments}
-												</pre>
-											</div>
-										);
-									}
-
-									if (part.type === "tool-result") {
-										return (
-											<div
-												key={stableKey}
-												className="text-xs rounded border border-emerald-100 bg-emerald-50 text-emerald-900 p-3 mb-2"
-											>
-												<p className="font-semibold">Tool result</p>
-												<p className="text-[11px] uppercase tracking-wide text-emerald-700">
-													{part.state}
-												</p>
-												<pre className="mt-1 whitespace-pre-wrap wrap-break-word">
-													{part.error ?? part.content}
-												</pre>
-											</div>
-										);
-									}
-
-									return null;
-								},
-							)}
-						</div>
-					</div>
-				))}
+		<div className="flex flex-col w-80 rounded-2xl border bg-background shadow-2xl overflow-hidden">
+			<div className="flex items-center justify-between px-4 py-3 border-b bg-muted/40 shrink-0">
+				<div className="flex items-center gap-2">
+					<Bot className="size-4 text-muted-foreground" />
+					<span className="text-sm font-medium">
+						{session.personas.length > 1
+							? `Research team (${session.personas.length})`
+							: (session.personas[0]?.name ?? "Assistant")}
+					</span>
+				</div>
+				<div className="flex items-center gap-1">
+					<Button size="icon-xs" variant="ghost" onClick={onExpand} aria-label="Expand">
+						<Maximize2 />
+					</Button>
+					<Button size="icon-xs" variant="ghost" onClick={onClose} aria-label="Close">
+						<X />
+					</Button>
+				</div>
 			</div>
 
-			{/* Input */}
-			<form onSubmit={handleSubmit} className="p-4 border-t">
-				<div className="flex gap-2">
-					<label htmlFor="assistant-message-input" className="sr-only">
-						Message input
-					</label>
-					<input
-						id="assistant-message-input"
-						type="text"
-						value={input}
-						onChange={(e) => setInput(e.target.value)}
-						placeholder="Type a message..."
-						className="flex-1 px-4 py-2 border rounded-lg"
-						disabled={isLoading}
-					/>
-					<button
-						type="submit"
-						disabled={!input.trim() || isLoading}
-						className="px-6 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
-					>
-						Send
-					</button>
-				</div>
+			<MessageFeed
+				messages={session.messages}
+				streamingPersonaId={streamingPersonaId}
+				isSubmitted={busy}
+				compact
+			/>
+
+			<form onSubmit={handleSubmit} className="flex gap-2 px-3 py-3 border-t shrink-0">
+				<Input
+					value={input.value}
+					onChange={(e) => input.setValue(e.target.value)}
+					placeholder="Message…"
+					disabled={busy}
+					className="h-8 text-sm"
+				/>
+				{busy ? (
+					<Button type="button" size="icon-sm" variant="outline" onClick={stop}>
+						<Square />
+					</Button>
+				) : (
+					<Button type="submit" size="icon-sm" disabled={!input.value.trim()}>
+						<Send />
+					</Button>
+				)}
 			</form>
 		</div>
+	);
+}
+
+/* ── Full overlay ─────────────────────────────────────────────────────────── */
+
+function FullOverlay({ onCollapse }: { onCollapse: () => void }) {
+	const {
+		sessions,
+		session,
+		setActive,
+		createSession,
+		deleteSession,
+		appendMessages,
+		updatePersona,
+		addPersona,
+		removePersona,
+		setWindowSize,
+	} = useSession();
+
+	const input = useInput();
+	const { capture } = usePageContext();
+	const [tab, setTab] = useState<string>("chat");
+
+	const { send, stop, status, streamingPersonaId } = useTeamChat(session, appendMessages);
+
+	const busy = status === "running";
+
+	const handleSubmit = (e: React.SubmitEvent<HTMLFormElement>) => {
+		e.preventDefault();
+		if (!input.value.trim() || busy) return;
+		const msg = buildUserMessage(input.value.trim(), capture());
+		input.clear();
+		send(msg);
+	};
+
+	return (
+		<div className="fixed inset-4 z-50 flex rounded-2xl border bg-background shadow-2xl overflow-hidden">
+			{/* Sidebar — session list */}
+			<aside className="w-52 shrink-0 border-r flex flex-col bg-muted/20">
+				<div className="flex items-center justify-between px-3 py-3 border-b">
+					<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+						Sessions
+					</span>
+					<Button size="icon-xs" variant="ghost" onClick={createSession} aria-label="New session">
+						<Plus />
+					</Button>
+				</div>
+				<div className="flex-1 overflow-y-auto py-1">
+					{sessions.map((s) => (
+						<div key={s.id} className="group flex items-center gap-1 mx-1">
+							<button
+								type="button"
+								className={cn(
+									"flex-1 flex items-center gap-1 px-3 py-2 rounded-lg text-left text-xs truncate",
+									s.id === session.id
+										? "bg-accent text-accent-foreground"
+										: "hover:bg-accent/50 text-muted-foreground",
+								)}
+								onClick={() => setActive(s.id)}
+							>
+								{s.title}
+							</button>
+							{sessions.length > 1 && (
+								<Button
+									size="icon-xs"
+									variant="ghost"
+									className="opacity-0 group-hover:opacity-100 shrink-0"
+									onClick={() => deleteSession(s.id)}
+								>
+									<Trash2 />
+								</Button>
+							)}
+						</div>
+					))}
+				</div>
+			</aside>
+
+			{/* Main area */}
+			<div className="flex flex-col flex-1 min-w-0">
+				{/* Header */}
+				<div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+					<Tabs value={tab} onValueChange={setTab}>
+						<Tabs.List>
+							<Tabs.Tab value="chat">Chat</Tabs.Tab>
+							<Tabs.Tab value="settings">
+								<Settings className="size-3.5 mr-1" />
+								Team
+							</Tabs.Tab>
+						</Tabs.List>
+					</Tabs>
+					<Button size="icon-xs" variant="ghost" onClick={onCollapse} aria-label="Collapse">
+						<Minimize2 />
+					</Button>
+				</div>
+
+				{tab === "chat" && (
+					<>
+						<MessageFeed
+							messages={session.messages}
+							streamingPersonaId={streamingPersonaId}
+							isSubmitted={busy}
+						/>
+
+						<form
+							onSubmit={handleSubmit}
+							className="flex gap-2 px-4 py-4 border-t shrink-0"
+						>
+							<Input
+								value={input.value}
+								onChange={(e) => input.setValue(e.target.value)}
+								placeholder={
+									session.personas.length > 1
+										? `Message your team (${session.personas.map((p) => p.name).join(", ")})…`
+										: "Message…"
+								}
+								disabled={busy}
+								className="text-sm"
+							/>
+							{busy ? (
+								<Button type="button" variant="outline" onClick={stop}>
+									<Square />
+									Stop
+								</Button>
+							) : (
+								<Button type="submit" disabled={!input.value.trim()}>
+									<Send />
+									Send
+								</Button>
+							)}
+						</form>
+					</>
+				)}
+
+				{tab === "settings" && (
+					<SettingsPanel
+						session={session}
+						onUpdatePersona={updatePersona}
+						onAddPersona={addPersona}
+						onRemovePersona={removePersona}
+						onWindowSizeChange={setWindowSize}
+					/>
+				)}
+			</div>
+		</div>
+	);
+}
+
+/* ── Root ─────────────────────────────────────────────────────────────────── */
+
+export function Assistant() {
+	const [state, setState] = useState<"closed" | "mini" | "full">("closed");
+
+	return (
+		<>
+			{state === "full" && (
+				<FullOverlay onCollapse={() => setState("mini")} />
+			)}
+
+			<div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+				{state === "mini" && (
+					<div
+						className="transition-all duration-300 origin-bottom-right"
+						style={{ maxHeight: "520px" }}
+					>
+						<MiniPanel
+							onExpand={() => setState("full")}
+							onClose={() => setState("closed")}
+						/>
+					</div>
+				)}
+
+				<Button
+					size="icon-xl"
+					variant={state !== "closed" ? "outline" : "default"}
+					className="rounded-full shadow-lg"
+					onClick={() => setState((s) => s === "closed" ? "mini" : "closed")}
+					aria-label="Toggle assistant"
+				>
+					<Bot />
+				</Button>
+			</div>
+		</>
 	);
 }

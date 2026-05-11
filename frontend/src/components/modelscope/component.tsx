@@ -25,7 +25,7 @@ import {
 	indexTextureSize,
 	type NodeMetrics,
 } from "./utils/texture-generators";
-import "../node-graph/styles/slider-styles.css";
+import "./styles/slider-styles.css";
 import { Camera } from "./core/camera";
 import {
 	createLayoutTextureGenerators,
@@ -40,7 +40,7 @@ const LAYOUT_STORAGE_KEY = "caramba.nodeGraphLegacy.layout";
 const CAMERA_AUTOFIT_STORAGE_KEY = "caramba.nodeGraphLegacy.camera.autoFit";
 
 const loadFontTexture = async (): Promise<THREE.Texture> => {
-	return new Promise((resolve, reject) => {
+	return new Promise((resolve) => {
 		const loader = new THREE.TextureLoader();
 		loader.load(
 			"/fonts/UbuntuMono.png",
@@ -54,8 +54,8 @@ const loadFontTexture = async (): Promise<THREE.Texture> => {
 			},
 			undefined,
 			(error: unknown) => {
-				console.error("[Font] Failed to load font texture:", error);
-				reject(error instanceof Error ? error : new Error(String(error)));
+				console.warn("[Font] Failed to load font texture, labels disabled:", error);
+				resolve(new THREE.Texture());
 			},
 		);
 	});

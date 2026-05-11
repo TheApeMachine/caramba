@@ -6,3 +6,5 @@ caramba
 *.air
 .vscode/
 frontend/node_modules/
+.env
+models/

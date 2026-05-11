@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/timeout"
 	"github.com/theapemachine/caramba/pkg/backend/architecture"
 	"github.com/theapemachine/caramba/pkg/backend/compute"
+	"github.com/theapemachine/caramba/pkg/backend/modelscope"
 )
 
 /*
@@ -20,6 +21,7 @@ type Server struct {
 	app          *fiber.App
 	compute      *compute.Service
 	architecture *architecture.Service
+	modelscope   *modelscope.Service
 }
 
 /*
@@ -35,6 +37,7 @@ func NewServer() *Server {
 		}),
 		compute:      compute.NewService(),
 		architecture: architecture.NewService(),
+		modelscope:   modelscope.NewService(),
 	}
 }
 
@@ -53,7 +56,14 @@ func (server *Server) Up() error {
 		return timeout.New(h, timeout.Config{Timeout: 2 * time.Second})
 	}
 
+	wrapSlow := func(h func(fiber.Ctx) error) fiber.Handler {
+		return timeout.New(h, timeout.Config{Timeout: 30 * time.Second})
+	}
+
 	server.app.Get("/backend/compute/:kind", wrap(server.compute.Request))
+
+	server.app.Get("/backend/modelscope", wrap(server.modelscope.List))
+	server.app.Get("/backend/modelscope/inspect", wrapSlow(server.modelscope.Inspect))
 
 	server.app.Get("/backend/architecture", wrap(server.architecture.List))
 	server.app.Get("/backend/architecture/:name", wrap(server.architecture.Load))
