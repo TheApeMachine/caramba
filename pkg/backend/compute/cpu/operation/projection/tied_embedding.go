@@ -20,6 +20,14 @@ weight must already be initialised (shared with the token embedding table),
 layout [VocabSize × DModel] row-major.
 */
 func NewTiedEmbedding(weight []float64, vocabSize, dModel int) *TiedEmbedding {
+	if vocabSize <= 0 || dModel <= 0 {
+		panic("projection: NewTiedEmbedding requires vocabSize > 0 and dModel > 0")
+	}
+
+	if len(weight) < vocabSize*dModel {
+		panic("projection: NewTiedEmbedding: weight slice too short")
+	}
+
 	return &TiedEmbedding{
 		WeightT:   transposeF64(weight, vocabSize, dModel),
 		VocabSize: vocabSize,
@@ -34,6 +42,10 @@ data[0] = flattened hidden states [M * DModel].
 Returns [M * VocabSize].
 */
 func (te *TiedEmbedding) Forward(shape []int, data ...[]float64) []float64 {
+	if len(shape) < 1 || len(data) < 1 {
+		panic("projection: TiedEmbedding.Forward: invalid shape or data")
+	}
+
 	M := 1
 	for i := 0; i < len(shape)-1; i++ {
 		M *= shape[i]

@@ -70,6 +70,7 @@ func (adapter *Adapter) Forward(_ []int, data ...[]float64) []float64 {
 
 	x := data[0]
 	var out []float64
+	changed := false
 
 	for key := range selected {
 		downKey := key + ".adapter.down"
@@ -82,6 +83,7 @@ func (adapter *Adapter) Forward(_ []int, data ...[]float64) []float64 {
 			adapter.insertMatrices(weights, key, len(x))
 			wDown = weights[downKey]
 			wUp = weights[upKey]
+			changed = true
 		}
 
 		dim := len(x)
@@ -99,9 +101,14 @@ func (adapter *Adapter) Forward(_ []int, data ...[]float64) []float64 {
 		for idx := range projected {
 			out[idx] = projected[idx] + x[idx]
 		}
+
+		// chain: next layer receives this layer's output as residual
+		x = out
 	}
 
-	globalRegistry.store(adapter.source, weights)
+	if changed {
+		globalRegistry.store(adapter.source, weights)
+	}
 
 	if out == nil {
 		return data[0]

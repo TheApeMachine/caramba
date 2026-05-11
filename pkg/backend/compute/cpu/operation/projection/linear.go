@@ -6,9 +6,9 @@ import (
 )
 
 /*
-Linear applies a learnable affine transformation: output = x @ Weight^T + bias.
+Linear applies a learnable affine transformation: output = x @ WeightT + bias.
 
-WeightT is stored in transposed form [InFeatures × OutFeatures] so Forward
+WeightT is stored pre-transposed [InFeatures × OutFeatures] so Forward
 does a single matmul with no per-call allocation.
 */
 type Linear struct {
@@ -52,6 +52,10 @@ data[0] = flattened input x.
 Returns [M * OutFeatures].
 */
 func (linear *Linear) Forward(shape []int, data ...[]float64) []float64 {
+	if len(shape) < 1 || len(data) < 1 || len(data[0]) < shape[0]*linear.InFeatures {
+		panic("projection: Linear.Forward: invalid shape or data")
+	}
+
 	M := shape[0]
 	K := linear.InFeatures
 	N := linear.OutFeatures

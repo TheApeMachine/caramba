@@ -3,6 +3,7 @@ package projection
 import (
 	"math"
 	"math/rand"
+	"time"
 )
 
 /*
@@ -24,19 +25,20 @@ type FusedQKV struct {
 NewFusedQKV creates a FusedQKV layer with Kaiming uniform weight init.
 */
 func NewFusedQKV(dIn, dQ, dK, dV int) *FusedQKV {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	outDim := dQ + dK + dV
 	bound := math.Sqrt(2.0 / float64(dIn))
 	weight := make([]float64, outDim*dIn)
 
 	for i := range weight {
-		weight[i] = (rand.Float64()*2 - 1) * bound
+		weight[i] = (rng.Float64()*2 - 1) * bound
 	}
 
 	biasBound := 1.0 / math.Sqrt(float64(dIn))
 	bias := make([]float64, outDim)
 
 	for i := range bias {
-		bias[i] = (rand.Float64()*2 - 1) * biasBound
+		bias[i] = (rng.Float64()*2 - 1) * biasBound
 	}
 
 	return &FusedQKV{
@@ -54,6 +56,10 @@ Forward computes output = x @ WeightT [+ bias].
 Returns flat [M*(DQ+DK+DV)]; caller splits by DQ, DK, DV.
 */
 func (fqkv *FusedQKV) Forward(shape []int, data ...[]float64) []float64 {
+	if len(shape) < 1 || len(data) < 1 || len(data[0]) < shape[0]*fqkv.DIn {
+		panic("projection: FusedQKV.Forward: invalid shape or data")
+	}
+
 	M := shape[0]
 	K := fqkv.DIn
 	N := fqkv.DQ + fqkv.DK + fqkv.DV

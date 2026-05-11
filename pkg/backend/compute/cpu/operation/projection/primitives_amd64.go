@@ -19,6 +19,7 @@ func projMatmulAVX2(dst, a, b []float64, M, K, N int)
 func projMatmulSSE2(dst, a, b []float64, M, K, N int)
 
 func applyMatmul(dst, a, b []float64, M, K, N int) {
+	// projMatmulAVX2 uses VFMADD231PD; both AVX2 and FMA extensions required.
 	if useAVX2 && useFMA {
 		projMatmulAVX2(dst, a, b, M, K, N)
 	} else {

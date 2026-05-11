@@ -9,9 +9,9 @@ func NewPositional(metallib string) (*MetalPositional, error) { return &MetalPos
 func (m *MetalPositional) Forward(shape []int, data ...[]float64) []float64 { panic(errMetalUnavailable) }
 
 func (m *MetalPositional) RoPEForward(base float64, shape []int, data ...[]float64) ([]float64, error) {
-	return data[0], nil
+	panic(errMetalUnavailable)
 }
 
 func (m *MetalPositional) ALiBiForward(shape []int) ([]float64, error) {
-	return []float64{}, nil
+	panic(errMetalUnavailable)
 }

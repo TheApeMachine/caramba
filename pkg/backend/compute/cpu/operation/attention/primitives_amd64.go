@@ -43,6 +43,7 @@ func divScalarAVX2(dst []float64, s float64)
 func divScalarSSE2(dst []float64, s float64)
 
 func dotProduct(a, b []float64) float64 {
+	// dotProductAVX2 uses VFMADD231PD; FMA required alongside AVX2.
 	if useAVX2 && useFMA {
 		return dotProductAVX2(a, b)
 	}
@@ -50,6 +51,7 @@ func dotProduct(a, b []float64) float64 {
 }
 
 func scaledAdd(dst, src []float64, scale float64) {
+	// scaledAddAVX2 uses VFMADD231PD; FMA required alongside AVX2.
 	if useAVX2 && useFMA {
 		scaledAddAVX2(dst, src, scale)
 	} else {

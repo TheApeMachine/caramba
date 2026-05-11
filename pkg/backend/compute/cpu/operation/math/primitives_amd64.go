@@ -5,7 +5,7 @@ package math
 import "golang.org/x/sys/cpu"
 
 var useAVX2 bool
-var useFMA bool
+var useFMA bool // TODO: reserved for future FMA paths (e.g. fused matmul variants)
 
 func init() {
 	useAVX2 = cpu.X86.HasAVX2

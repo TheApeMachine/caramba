@@ -368,7 +368,7 @@ __global__ void sign_kernel(const double* src, double* dst, int n) {
 __global__ void outer_kernel(const double* a, const double* b, double* dst, int M, int N) {
     int row = blockIdx.y;   // grid.y = M, one block per row
     int col = blockIdx.x * BLOCK_SIZE + threadIdx.x;
-    if (row < M && col < N) dst[row * N + col] = a[row] * b[col];
+    if (col < N) dst[row * N + col] = a[row] * b[col];
 }
 
 extern "C" {

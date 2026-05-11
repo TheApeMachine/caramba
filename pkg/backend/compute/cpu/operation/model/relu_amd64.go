@@ -17,11 +17,9 @@ func reluAVX2(dst []float64)
 func reluSSE2(dst []float64)
 
 func reluInPlace(x []float64) {
-	n := len(x)
-
 	if useAVX2 {
-		reluAVX2(x[:n])
+		reluAVX2(x)
 	} else {
-		reluSSE2(x[:n])
+		reluSSE2(x)
 	}
 }

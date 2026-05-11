@@ -57,8 +57,21 @@ func (metalModel *ModelOps) NewFreeze(source, pattern, except string, frozen boo
 /*
 metalMatMul dispatches a row-major matmul to the GPU via metal_matmul.
 a [M×K], b [K×N] → c [M×N], all row-major float64 converted to float32.
+Note: float64→float32→float64 conversion incurs precision loss (~7 decimal digits).
 */
 func metalMatMul(a, b []float64, M, K, N int) []float64 {
+	if M < 0 || K < 0 || N < 0 {
+		panic("metal: metalMatMul requires M, K, N >= 0")
+	}
+
+	if M == 0 || N == 0 {
+		return []float64{}
+	}
+
+	if len(a) < M*K || len(b) < K*N {
+		panic("metal: metalMatMul slice lengths too short for given dimensions")
+	}
+
 	aF32 := toFloat32(a)
 	bF32 := toFloat32(b)
 	cF32 := make([]float32, M*N)

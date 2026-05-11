@@ -86,6 +86,10 @@ func (g *CrossEntropyGrad) Forward(_ []int, data ...[]float64) []float64 {
 }
 
 func softmax(xs []float64) []float64 {
+	if len(xs) == 0 {
+		return nil
+	}
+
 	out := make([]float64, len(xs))
 	copy(out, xs)
 	cpumath.SoftmaxSlice(out)

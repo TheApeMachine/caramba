@@ -120,6 +120,10 @@ func (lora *LoRA) ensureMatrices(key string, w []float64) {
 	n := len(w)
 	dims, hasDims := lora.dims[key]
 
+	if hasDims && dims[0]*dims[1] != n {
+		panic("lora: registered dims do not match weight length")
+	}
+
 	if !hasDims {
 		// Best-effort square factoring.
 		out := sqrtInt(n)
@@ -147,6 +151,9 @@ correctly shaped A and B matrices. Must be called before the first Forward
 for any non-square weight matrix.
 */
 func (lora *LoRA) SetDims(key string, out, in int) {
+	if out <= 0 || in <= 0 {
+		panic("lora: SetDims requires out > 0 and in > 0")
+	}
 	lora.dims[key] = [2]int{out, in}
 }
 
@@ -163,8 +170,9 @@ func (lora *LoRA) apply(w, a, b []float64, dims [2]int) []float64 {
 	delta := lora.matmul(b, a, out, lora.rank, in)
 
 	result := make([]float64, out*in)
+	n := min(len(w), min(len(delta), len(result)))
 
-	for idx := range w {
+	for idx := range n {
 		result[idx] = w[idx] + delta[idx]*scale
 	}
 
@@ -192,7 +200,7 @@ func presetsFor(preset string) []string {
 }
 
 func sqrtInt(n int) int {
-	r := 1
+	r := int(math.Sqrt(float64(n)))
 	for r*r < n {
 		r++
 	}

@@ -24,8 +24,7 @@ tail1:
 	JLE  done
 
 	VMOVSD (AX), X0
-	VXORPD X15, X15, X15
-	VMAXSD X15, X0, X0
+	VMAXSD X14, X0, X0   // X14 is already zero (lower 128b of Y14)
 	VMOVSD X0, (AX)
 	ADDQ   $8, AX
 	DECQ   BX
@@ -58,8 +57,7 @@ tail2:
 	JLE  done2
 
 	MOVSD (AX), X0
-	XORPD X15, X15
-	MAXSD X15, X0
+	MAXSD X14, X0   // X14 is already zero
 	MOVSD X0, (AX)
 	ADDQ  $8, AX
 	DECQ  BX

@@ -93,6 +93,7 @@ func (c *Conv3d) Forward(shape []int, data ...[]float64) []float64 {
 	n, inC, d, h, w := shape[0], shape[1], shape[2], shape[3], shape[4]
 	x := data[0]
 
+	// Fast path: no padding or dilation means contiguous memory access; skip the general im2col path.
 	if c.DilationD == 1 && c.DilationH == 1 && c.DilationW == 1 &&
 		c.PadD == 0 && c.PadH == 0 && c.PadW == 0 {
 		return conv3dForwardFast(x, n, inC, d, h, w,

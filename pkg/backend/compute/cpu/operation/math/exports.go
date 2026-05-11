@@ -34,7 +34,14 @@ func MulVec(dst, a, b []float64) { mulVec(dst, a, b) }
 func ScaleVec(dst []float64, s float64) { mulScalar(dst, s) }
 
 // MatMul: C = A [M×K] · B [K×N], row-major, dispatched to AVX2/NEON/SSE2.
-func MatMul(dst, a, b []float64, M, K, N int) { applyMatmul(dst, a, b, M, K, N) }
+// Requires len(dst) >= M*N, len(a) >= M*K, len(b) >= K*N; violations panic with out-of-bounds access.
+func MatMul(dst, a, b []float64, M, K, N int) { applyMatMul(dst, a, b, M, K, N) }
 
-// SoftmaxSlice: in-place softmax over a flat slice (single row).
-func SoftmaxSlice(row []float64) { softmaxRow(row) }
+// SoftmaxSlice: in-place softmax on a single flat row. No-op for empty slice.
+// Numerically stable via max subtraction before exp.
+func SoftmaxSlice(row []float64) {
+	if len(row) == 0 {
+		return
+	}
+	softmaxRow(row)
+}

@@ -20,13 +20,16 @@ __global__ void leaky_relu_kernel(const double* src, double* dst, double alpha, 
     dst[i] = x >= 0.0 ? x : alpha * x;
 }
 
+static const double kGeluSqrt2OverPi = 0.7978845608028654;
+static const double kGeluCoeff       = 0.044715;
+
 __global__ void gelu_kernel(const double* src, double* dst, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
     // Tanh-approx GELU matches CPU/Metal/XLA semantics.
     double x = src[i];
     double x3 = x * x * x;
-    double inner = 0.7978845608028654 * (x + 0.044715 * x3);
+    double inner = kGeluSqrt2OverPi * (x + kGeluCoeff * x3);
     dst[i] = 0.5 * x * (1.0 + tanh(inner));
 }
 

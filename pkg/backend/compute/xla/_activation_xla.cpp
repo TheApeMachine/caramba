@@ -84,9 +84,18 @@ static const PJRT_Api* load_pjrt_plugin(const char* platform) {
     auto get_api = (GetPjrtApiFn)dlsym(handle, "GetPjrtApi");
     if (!get_api) {
         fprintf(stderr, "XLA: GetPjrtApi not found in %s\n", path);
+        dlclose(handle);
         return nullptr;
     }
-    return get_api();
+
+    const PJRT_Api* api = get_api();
+    if (!api) {
+        fprintf(stderr, "XLA: GetPjrtApi returned null\n");
+        dlclose(handle);
+        return nullptr;
+    }
+
+    return api;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,16 +104,17 @@ static const PJRT_Api* load_pjrt_plugin(const char* platform) {
 // ---------------------------------------------------------------------------
 
 static PJRT_LoadedExecutable* compile_stablehlo(const std::string& mlir_text) {
+    PJRT_Program prog{};
+    prog.struct_size = PJRT_Program_STRUCT_SIZE;
+    prog.code        = mlir_text.c_str();
+    prog.code_size   = mlir_text.size();
+    prog.format      = "mlir";
+    prog.format_size = 4;
+
     PJRT_Client_Compile_Args ca{};
     ca.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
     ca.client      = g_client;
-    ca.program      = &(PJRT_Program{
-        .struct_size = PJRT_Program_STRUCT_SIZE,
-        .code        = mlir_text.c_str(),
-        .code_size   = mlir_text.size(),
-        .format      = "mlir",
-        .format_size = 4,
-    });
+    ca.program     = &prog;
     // Compile options: leave as default (no serialized options).
     ca.compile_options      = nullptr;
     ca.compile_options_size = 0;
@@ -266,16 +276,25 @@ static int run_executable(
         g_api->PJRT_Event_Destroy(&eda);
     }
 
+    // --- Cleanup helper (defined early so all error paths can use it) ---
+    auto destroy_buf = [&](PJRT_Buffer* b) {
+        if (!b) return;
+        PJRT_Buffer_Destroy_Args da{};
+        da.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
+        da.buffer = b;
+        g_api->PJRT_Buffer_Destroy(&da);
+    };
+
     // --- Execute ---
-    PJRT_Buffer*  in_list[1]  = { in_buf };
-    PJRT_Buffer** out_list[1] = { nullptr };
-    PJRT_Buffer*  out_buf_storage = nullptr;
-    out_list[0] = &out_buf_storage;
+    PJRT_Buffer*  in_arr[1]        = { in_buf };
+    PJRT_Buffer** in_lists[1]      = { in_arr };
+    PJRT_Buffer*  out_buf_storage  = nullptr;
+    PJRT_Buffer** out_list[1]      = { &out_buf_storage };
 
     PJRT_LoadedExecutable_Execute_Args ea{};
     ea.struct_size        = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
     ea.executable         = exec;
-    ea.argument_lists     = (PJRT_Buffer***)&in_list;
+    ea.argument_lists     = in_lists;
     ea.num_devices        = 1;
     ea.num_args           = 1;
     ea.output_lists       = out_list;
@@ -283,6 +302,7 @@ static int run_executable(
 
     err = g_api->PJRT_LoadedExecutable_Execute(&ea);
     if (!check(g_api, err, "Execute")) {
+        destroy_buf(in_buf);
         return -1;
     }
 
@@ -296,7 +316,11 @@ static int run_executable(
     tha.dst_size    = (size_t)dst_n * sizeof(double);
 
     err = g_api->PJRT_Buffer_ToHostBuffer(&tha);
-    if (!check(g_api, err, "ToHostBuffer")) return -1;
+    if (!check(g_api, err, "ToHostBuffer")) {
+        destroy_buf(in_buf);
+        destroy_buf(out_buf);
+        return -1;
+    }
 
     // Await transfer event.
     {
@@ -312,12 +336,6 @@ static int run_executable(
     }
 
     // --- Cleanup buffers ---
-    auto destroy_buf = [&](PJRT_Buffer* b) {
-        PJRT_Buffer_Destroy_Args da{};
-        da.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
-        da.buffer = b;
-        g_api->PJRT_Buffer_Destroy(&da);
-    };
     destroy_buf(in_buf);
     destroy_buf(out_buf);
 
@@ -368,12 +386,23 @@ int xla_compile_activations(int n) {
         { "swiglu",     build_swiglu(n)       },
     };
 
+    std::unordered_map<std::string, PJRT_LoadedExecutable*> tmp;
     for (auto& op : ops) {
         PJRT_LoadedExecutable* exec = compile_stablehlo(op.mlir);
-        if (!exec) return -1;
-        g_execs[op.name] = exec;
+        if (!exec) {
+            // Destroy anything compiled so far.
+            for (auto& kv : tmp) {
+                PJRT_LoadedExecutable_Destroy_Args da{};
+                da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
+                da.executable  = kv.second;
+                g_api->PJRT_LoadedExecutable_Destroy(&da);
+            }
+            return -1;
+        }
+        tmp[op.name] = exec;
     }
 
+    g_execs = std::move(tmp);
     g_compiled_n = n;
     return 0;
 }
@@ -432,6 +461,9 @@ void xla_shutdown(void) {
         g_api->PJRT_Client_Destroy(&da);
         g_client = nullptr;
     }
+
+    g_compiled_n = 0;
+    g_api        = nullptr;
 }
 
 } // extern "C"
