@@ -20,8 +20,8 @@ __global__ void leaky_relu_kernel(const double* src, double* dst, double alpha, 
     dst[i] = x >= 0.0 ? x : alpha * x;
 }
 
-static const double kGeluSqrt2OverPi = 0.7978845608028654;
-static const double kGeluCoeff       = 0.044715;
+static constexpr double kGeluSqrt2OverPi = 0.7978845608028654;
+static constexpr double kGeluCoeff       = 0.044715;
 
 __global__ void gelu_kernel(const double* src, double* dst, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;

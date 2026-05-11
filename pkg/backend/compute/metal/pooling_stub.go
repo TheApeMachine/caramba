@@ -21,7 +21,15 @@ type AvgPool2dParams struct {
 
 func NewPoolingOps(metallib string) (*PoolingOps, error) { return &PoolingOps{}, nil }
 
-func (m *PoolingOps) Forward(shape []int, data ...[]float64) []float64 { return data[0] }
+// Forward is a stub when Metal is unavailable: returns the first input unchanged (passthrough)
+// so graphs can load without Metal. Use the darwin+cgo build for real pooling.
+func (m *PoolingOps) Forward(shape []int, data ...[]float64) []float64 {
+	if len(data) == 0 {
+		return nil
+	}
+
+	return data[0]
+}
 
 func (m *PoolingOps) MaxPool2d(shape []int, params MaxPool2dParams, data []float64) ([]float64, error) {
 	return data, nil

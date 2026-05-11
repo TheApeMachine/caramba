@@ -1,6 +1,12 @@
 package model
 
-import cpumath "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+import (
+	"fmt"
+	"math"
+	"strconv"
+
+	cpumath "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+)
 
 /*
 MatMulFn computes C = A · B where A is [M×K] and B is [K×N], both stored
@@ -22,8 +28,22 @@ func CPUMatMul(a, b []float64, M, K, N int) []float64 {
 		panic("model: CPUMatMul requires M, K, N > 0")
 	}
 
-	if len(a) < M*K || len(b) < K*N {
-		panic("model: CPUMatMul slice lengths too short for given dimensions")
+	if K != 0 && len(a)/K < M {
+		panic(fmt.Sprintf(
+			"model: CPUMatMul: len(a) too short for M×K (M=%s K=%s len(a)=%s)",
+			strconv.Itoa(M), strconv.Itoa(K), strconv.Itoa(len(a)),
+		))
+	}
+
+	if N != 0 && len(b)/N < K {
+		panic(fmt.Sprintf(
+			"model: CPUMatMul: len(b) too short for K×N (K=%s N=%s len(b)=%s)",
+			strconv.Itoa(K), strconv.Itoa(N), strconv.Itoa(len(b)),
+		))
+	}
+
+	if M != 0 && N > math.MaxInt/M {
+		panic("model: CPUMatMul: M×N overflows int")
 	}
 
 	c := make([]float64, M*N)
@@ -37,6 +57,28 @@ CPUMatMulInto writes C = A · B into the provided dst slice (avoids allocation).
 Requires len(dst) >= M*N, len(a) >= M*K, len(b) >= K*N.
 */
 func CPUMatMulInto(dst, a, b []float64, M, K, N int) {
+	if M <= 0 || K <= 0 || N <= 0 {
+		panic("model: CPUMatMulInto requires M, K, N > 0")
+	}
+
+	if K != 0 && len(a)/K < M {
+		panic(fmt.Sprintf(
+			"model: CPUMatMulInto: len(a) too short for M×K (M=%s K=%s len(a)=%s)",
+			strconv.Itoa(M), strconv.Itoa(K), strconv.Itoa(len(a)),
+		))
+	}
+
+	if N != 0 && len(b)/N < K {
+		panic(fmt.Sprintf(
+			"model: CPUMatMulInto: len(b) too short for K×N (K=%s N=%s len(b)=%s)",
+			strconv.Itoa(K), strconv.Itoa(N), strconv.Itoa(len(b)),
+		))
+	}
+
+	if M != 0 && N > math.MaxInt/M {
+		panic("model: CPUMatMulInto: M×N overflows int")
+	}
+
 	if len(dst) < M*N {
 		panic("model: CPUMatMulInto: dst too short")
 	}

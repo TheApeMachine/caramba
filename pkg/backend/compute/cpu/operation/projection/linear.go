@@ -1,6 +1,7 @@
 package projection
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 )
@@ -52,11 +53,70 @@ data[0] = flattened input x.
 Returns [M * OutFeatures].
 */
 func (linear *Linear) Forward(shape []int, data ...[]float64) []float64 {
-	if len(shape) < 1 || len(data) < 1 || len(data[0]) < shape[0]*linear.InFeatures {
-		panic("projection: Linear.Forward: invalid shape or data")
+	if len(shape) < 1 {
+		panic("projection: Linear.Forward: empty shape")
 	}
 
 	M := shape[0]
+
+	if M < 0 {
+		panic(fmt.Sprintf("projection: Linear.Forward: shape[0]=%d must be >= 0", M))
+	}
+
+	if len(data) < 1 || data[0] == nil {
+		panic("projection: Linear.Forward: empty data")
+	}
+
+	if linear.InFeatures <= 0 {
+		panic(fmt.Sprintf("projection: Linear.Forward: InFeatures=%d must be > 0", linear.InFeatures))
+	}
+
+	if M > len(data[0])/linear.InFeatures {
+		panic(fmt.Sprintf(
+			"projection: Linear.Forward: insufficient data length: len(data[0])=%d for shape[0]=%d and InFeatures=%d (need len(data[0]) >= shape[0]*InFeatures)",
+			len(data[0]), M, linear.InFeatures,
+		))
+	}
+
+	if linear.OutFeatures <= 0 {
+		panic(fmt.Sprintf("projection: Linear.Forward: OutFeatures=%d must be > 0", linear.OutFeatures))
+	}
+
+	wantW := int64(linear.InFeatures) * int64(linear.OutFeatures)
+
+	if wantW < 0 || wantW > int64(math.MaxInt) {
+		panic(fmt.Sprintf(
+			"projection: Linear.Forward: InFeatures*OutFeatures overflows int (InFeatures=%d OutFeatures=%d)",
+			linear.InFeatures, linear.OutFeatures,
+		))
+	}
+
+	if len(linear.WeightT) != int(wantW) {
+		panic(fmt.Sprintf(
+			"projection: Linear.Forward: len(WeightT)=%d, want InFeatures*OutFeatures=%d",
+			len(linear.WeightT), int(wantW),
+		))
+	}
+
+	if linear.Bias != nil && len(linear.Bias) != linear.OutFeatures {
+		panic(fmt.Sprintf(
+			"projection: Linear.Forward: len(Bias)=%d, want OutFeatures=%d",
+			len(linear.Bias), linear.OutFeatures,
+		))
+	}
+
+	if M == 0 {
+		return []float64{}
+	}
+
+	if int64(M)*int64(linear.OutFeatures) < 0 ||
+		int64(M)*int64(linear.OutFeatures) > int64(math.MaxInt) {
+		panic(fmt.Sprintf(
+			"projection: Linear.Forward: M*OutFeatures overflows int (M=%d OutFeatures=%d)",
+			M, linear.OutFeatures,
+		))
+	}
+
 	K := linear.InFeatures
 	N := linear.OutFeatures
 	out := make([]float64, M*N)

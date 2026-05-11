@@ -76,6 +76,11 @@ func NewCrossEntropyGrad() *CrossEntropyGrad { return &CrossEntropyGrad{} }
 
 func (g *CrossEntropyGrad) Forward(_ []int, data ...[]float64) []float64 {
 	logits, targets := data[0], data[1]
+
+	if len(logits) == 0 {
+		return []float64{}
+	}
+
 	probs := softmax(logits)
 
 	for idx := range probs {
@@ -87,7 +92,7 @@ func (g *CrossEntropyGrad) Forward(_ []int, data ...[]float64) []float64 {
 
 func softmax(xs []float64) []float64 {
 	if len(xs) == 0 {
-		return nil
+		return []float64{}
 	}
 
 	out := make([]float64, len(xs))

@@ -28,6 +28,9 @@
 const PJRT_Api*        g_api     = nullptr;
 PJRT_Client*           g_client  = nullptr;
 
+// one cached dlopen handle for the PJRT plugin (closed in xla_shutdown).
+static void* g_plugin_handle = nullptr;
+
 // One cached executable per activation name.
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_execs;
 
@@ -95,6 +98,10 @@ static const PJRT_Api* load_pjrt_plugin(const char* platform) {
         return nullptr;
     }
 
+    if (g_plugin_handle) {
+        dlclose(g_plugin_handle);
+    }
+    g_plugin_handle = handle;
     return api;
 }
 
@@ -257,13 +264,24 @@ static int run_executable(
 
     PJRT_Buffer* in_buf = ba.buffer;
 
+    auto destroy_buf = [&](PJRT_Buffer* b) {
+        if (!b) return;
+        PJRT_Buffer_Destroy_Args da{};
+        da.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
+        da.buffer = b;
+        g_api->PJRT_Buffer_Destroy(&da);
+    };
+
     // Wait for transfer to complete.
     {
         PJRT_Buffer_ReadyEvent_Args re{};
         re.struct_size = PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE;
         re.buffer = in_buf;
         err = g_api->PJRT_Buffer_ReadyEvent(&re);
-        if (!check(g_api, err, "ReadyEvent(in)")) { return -1; }
+        if (!check(g_api, err, "ReadyEvent(in)")) {
+            destroy_buf(in_buf);
+            return -1;
+        }
         // Wait on the event.
         PJRT_Event_Await_Args ea{};
         ea.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
@@ -275,15 +293,6 @@ static int run_executable(
         eda.event = re.event;
         g_api->PJRT_Event_Destroy(&eda);
     }
-
-    // --- Cleanup helper (defined early so all error paths can use it) ---
-    auto destroy_buf = [&](PJRT_Buffer* b) {
-        if (!b) return;
-        PJRT_Buffer_Destroy_Args da{};
-        da.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
-        da.buffer = b;
-        g_api->PJRT_Buffer_Destroy(&da);
-    };
 
     // --- Execute ---
     PJRT_Buffer*  in_arr[1]        = { in_buf };
@@ -464,6 +473,11 @@ void xla_shutdown(void) {
 
     g_compiled_n = 0;
     g_api        = nullptr;
+
+    if (g_plugin_handle) {
+        dlclose(g_plugin_handle);
+        g_plugin_handle = nullptr;
+    }
 }
 
 } // extern "C"

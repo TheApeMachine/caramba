@@ -1,18 +1,22 @@
 package model
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 /*
 Adapter inserts a bottleneck adapter in series at a targeted layer.
 Forward pass: out = W_up · relu(W_down · x) + x
 
-  W_down: [bottleneck × dim]  — compresses input
-  W_up:   [dim × bottleneck]  — projects back to original dimension
-  residual connection preserves representation at init (W_up is zero-init)
+	W_down: [bottleneck × dim]  — compresses input
+	W_up:   [dim × bottleneck]  — projects back to original dimension
+	residual connection preserves representation at init (W_up is zero-init)
 
 Weights are stored in the WeightMap as:
-  <layer>.adapter.down  [bottleneck × dim]
-  <layer>.adapter.up    [dim × bottleneck]
+
+	<layer>.adapter.down  [bottleneck × dim]
+	<layer>.adapter.up    [dim × bottleneck]
 
 The matmul is injected so Metal/CUDA/XLA supply their kernels.
 */
@@ -45,8 +49,8 @@ func NewAdapterWithMatMul(source, at string, reduction int, matmul MatMulFn) *Ad
 Forward initialises adapter weight matrices on first call, then computes
 the full bottleneck forward pass for each matched layer:
 
-  h   = relu(W_down · x)   [bottleneck]
-  out = W_up · h + x       [dim]
+	h   = relu(W_down · x)   [bottleneck]
+	out = W_up · h + x       [dim]
 
 Input: data[0] = the activation tensor for the matched layer (flat [dim]).
 Output: the adapted activation (flat [dim]).
@@ -72,7 +76,15 @@ func (adapter *Adapter) Forward(_ []int, data ...[]float64) []float64 {
 	var out []float64
 	changed := false
 
+	keys := make([]string, 0, len(selected))
+
 	for key := range selected {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	for _, key := range keys {
 		downKey := key + ".adapter.down"
 		upKey := key + ".adapter.up"
 

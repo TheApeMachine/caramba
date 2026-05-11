@@ -6,15 +6,16 @@ import "math"
 LoRA overlays low-rank weight decomposition on targeted weight matrices.
 Standard decomposition: W' = W + (B·A) * (alpha/rank)
 
-  W: [out × in]  — original weight matrix (flat row-major)
-  A: [rank × in] — random gaussian init, projects down to rank
-  B: [out × rank] — zero init, so adapter is identity at start
-  W': W + B·A·scale  where scale = alpha/rank
+	W: [out × in]  — original weight matrix (flat row-major)
+	A: [rank × in] — random gaussian init, projects down to rank
+	B: [out × rank] — zero init, so adapter is identity at start
+	W': W + B·A·scale  where scale = alpha/rank
 
 Two modes:
-  preset: qv   — targets **.attn.q and **.attn.v
-  preset: full — targets all attn and MLP projections
-  targets: [...] — explicit glob list
+
+	preset: qv   — targets **.attn.q and **.attn.v
+	preset: full — targets all attn and MLP projections
+	targets: [...] — explicit glob list
 
 The matmul is injected so accelerated backends (Metal, CUDA, XLA) can
 supply their own kernel without duplicating this logic.
@@ -99,10 +100,10 @@ func (lora *LoRA) Forward(_ []int, data ...[]float64) []float64 {
 StepA / StepB / UpdateA / UpdateB expose the low-rank matrices for
 gradient-based training of the LoRA parameters.
 */
-func (lora *LoRA) StepA(key string) []float64       { return lora.matA[key] }
-func (lora *LoRA) StepB(key string) []float64       { return lora.matB[key] }
-func (lora *LoRA) UpdateA(key string, a []float64)  { lora.matA[key] = a }
-func (lora *LoRA) UpdateB(key string, b []float64)  { lora.matB[key] = b }
+func (lora *LoRA) StepA(key string) []float64      { return lora.matA[key] }
+func (lora *LoRA) StepB(key string) []float64      { return lora.matB[key] }
+func (lora *LoRA) UpdateA(key string, a []float64) { lora.matA[key] = a }
+func (lora *LoRA) UpdateB(key string, b []float64) { lora.matB[key] = b }
 
 func (lora *LoRA) ensureMatrices(key string, w []float64) {
 	if _, exists := lora.matA[key]; exists {
@@ -169,10 +170,15 @@ func (lora *LoRA) apply(w, a, b []float64, dims [2]int) []float64 {
 	// delta = B · A  →  [out×rank] · [rank×in] = [out×in]
 	delta := lora.matmul(b, a, out, lora.rank, in)
 
-	result := make([]float64, out*in)
-	n := min(len(w), min(len(delta), len(result)))
+	expected := out * in
 
-	for idx := range n {
+	if len(w) != expected || len(delta) != expected {
+		panic("lora: apply: len(w), len(delta) must equal out*in")
+	}
+
+	result := make([]float64, expected)
+
+	for idx := range result {
 		result[idx] = w[idx] + delta[idx]*scale
 	}
 
