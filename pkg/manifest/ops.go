@@ -3,36 +3,48 @@ package manifest
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/activation"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/active_inference"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/attention"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/bench"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/causal"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/convolution"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/data"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/predictive_coding"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/embedding"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/hawkes"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/markov_blanket"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/masking"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/model"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/pooling"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/positional"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/projection"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/shape"
-	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/model"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/train"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/vsa"
 )
 
 func init() {
 	registerActivation()
+	registerActiveInference()
 	registerAttention()
 	registerBench()
+	registerCausal()
 	registerConvolution()
 	registerData()
-	registerModel()
+	registerPredictiveCoding()
 	registerEmbedding()
+	registerHawkes()
+	registerMarkovBlanket()
 	registerMasking()
 	registerMath()
+	registerModel()
 	registerPooling()
 	registerPositional()
 	registerProjection()
 	registerShape()
 	registerTrain()
+	registerVSA()
 }
 
 func registerActivation() {
@@ -547,6 +559,108 @@ func registerModel() {
 		frozen := boolParamDefault(config, "frozen", true)
 
 		return model.NewFreeze(source, pattern, except, frozen), nil
+	})
+}
+
+func registerVSA() {
+	Register("vsa.bind", func(_ map[string]any) (operation.Operation, error) {
+		return vsa.NewBind(), nil
+	})
+	Register("vsa.bundle", func(_ map[string]any) (operation.Operation, error) {
+		return vsa.NewBundle(), nil
+	})
+	Register("vsa.similarity", func(_ map[string]any) (operation.Operation, error) {
+		return vsa.NewSimilarity(), nil
+	})
+	Register("vsa.permute", func(config map[string]any) (operation.Operation, error) {
+		return vsa.NewPermute(intParam(config, "k")), nil
+	})
+	Register("vsa.inverse_permute", func(config map[string]any) (operation.Operation, error) {
+		return vsa.NewInversePermute(intParam(config, "k")), nil
+	})
+}
+
+func registerPredictiveCoding() {
+	Register("predictive_coding.prediction", func(_ map[string]any) (operation.Operation, error) {
+		return predictive_coding.NewPrediction(), nil
+	})
+	Register("predictive_coding.prediction_error", func(_ map[string]any) (operation.Operation, error) {
+		return predictive_coding.NewPredictionError(), nil
+	})
+	Register("predictive_coding.update_representation", func(_ map[string]any) (operation.Operation, error) {
+		return predictive_coding.NewUpdateRepresentation(), nil
+	})
+	Register("predictive_coding.update_weights", func(_ map[string]any) (operation.Operation, error) {
+		return predictive_coding.NewUpdateWeights(), nil
+	})
+}
+
+func registerActiveInference() {
+	Register("active_inference.free_energy", func(_ map[string]any) (operation.Operation, error) {
+		return active_inference.NewFreeEnergy(), nil
+	})
+	Register("active_inference.belief_update", func(_ map[string]any) (operation.Operation, error) {
+		return active_inference.NewBeliefUpdate(), nil
+	})
+	Register("active_inference.precision_weight", func(_ map[string]any) (operation.Operation, error) {
+		return active_inference.NewPrecisionWeight(), nil
+	})
+	Register("active_inference.expected_free_energy", func(_ map[string]any) (operation.Operation, error) {
+		return active_inference.NewExpectedFreeEnergy(), nil
+	})
+}
+
+func registerMarkovBlanket() {
+	Register("markov_blanket.partition", func(_ map[string]any) (operation.Operation, error) {
+		return markov_blanket.NewPartition(), nil
+	})
+	Register("markov_blanket.flow_internal", func(_ map[string]any) (operation.Operation, error) {
+		return markov_blanket.NewFlowInternal(), nil
+	})
+	Register("markov_blanket.flow_active", func(_ map[string]any) (operation.Operation, error) {
+		return markov_blanket.NewFlowActive(), nil
+	})
+	Register("markov_blanket.mutual_information", func(_ map[string]any) (operation.Operation, error) {
+		return markov_blanket.NewMutualInformation(), nil
+	})
+}
+
+func registerHawkes() {
+	Register("hawkes.intensity", func(_ map[string]any) (operation.Operation, error) {
+		return hawkes.NewIntensity(), nil
+	})
+	Register("hawkes.kernel_matrix", func(_ map[string]any) (operation.Operation, error) {
+		return hawkes.NewKernelMatrix(), nil
+	})
+	Register("hawkes.log_likelihood", func(_ map[string]any) (operation.Operation, error) {
+		return hawkes.NewLogLikelihood(), nil
+	})
+	Register("hawkes.simulate", func(_ map[string]any) (operation.Operation, error) {
+		return hawkes.NewSimulate(), nil
+	})
+}
+
+func registerCausal() {
+	Register("causal.do_calculus", func(_ map[string]any) (operation.Operation, error) {
+		return causal.NewDoCalculus(), nil
+	})
+	Register("causal.backdoor_adjustment", func(_ map[string]any) (operation.Operation, error) {
+		return causal.NewBackdoorAdjustment(), nil
+	})
+	Register("causal.frontdoor_adjustment", func(_ map[string]any) (operation.Operation, error) {
+		return causal.NewFrontdoorAdjustment(), nil
+	})
+	Register("causal.counterfactual", func(_ map[string]any) (operation.Operation, error) {
+		return causal.NewCounterfactual(), nil
+	})
+	Register("causal.iv_estimate", func(_ map[string]any) (operation.Operation, error) {
+		return causal.NewIVEstimate(), nil
+	})
+	Register("causal.cate", func(_ map[string]any) (operation.Operation, error) {
+		return causal.NewCATE(), nil
+	})
+	Register("causal.dag_markov_factorization", func(_ map[string]any) (operation.Operation, error) {
+		return causal.NewDAGMarkovFactorization(), nil
 	})
 }
 
