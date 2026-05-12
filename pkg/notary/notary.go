@@ -17,15 +17,23 @@ It maintains the Ledger, verifies identities, and processes transactions
 when compute jobs are successfully completed across the network.
 */
 type Notary struct {
-	ledger *Ledger
+	identity *Identity
+	ledger   *Ledger
 }
 
 /*
 NewNotary creates a new Notary instance with an empty ledger.
 */
 func NewNotary() *Notary {
+	identity, err := NewIdentity()
+
+	if err != nil {
+		panic(fmt.Errorf("notary: failed to create mint authority: %w", err))
+	}
+
 	return &Notary{
-		ledger: NewLedger(),
+		identity: identity,
+		ledger:   NewLedger(identity.Address()),
 	}
 }
 
@@ -34,6 +42,17 @@ Ledger returns a reference to the Notary's underlying ledger.
 */
 func (n *Notary) Ledger() *Ledger {
 	return n.ledger
+}
+
+/*
+MintCredits signs and records a controlled credit issuance.
+*/
+func (n *Notary) MintCredits(recipientAddress string, amount int64) error {
+	nonce := n.ledger.MintNonce() + 1
+	payload := MintPayload(n.identity.Address(), recipientAddress, amount, nonce)
+	signature := n.identity.Sign(payload)
+
+	return n.ledger.Mint(n.identity.Address(), recipientAddress, amount, signature)
 }
 
 /*

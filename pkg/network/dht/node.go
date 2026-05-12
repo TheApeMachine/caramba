@@ -3,6 +3,9 @@ package dht
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/notary"
 )
 
 /*
@@ -34,18 +37,44 @@ type ComputeProfile struct {
 Node represents a participant in the Caramba distributed research grid.
 */
 type Node struct {
-	ID      NodeID
-	Address string
-	Profile ComputeProfile
+	ID              NodeID
+	Address         string
+	IdentityAddress string
+	Profile         ComputeProfile
 }
 
 /*
-NewNode instantiates a new local node. In a full system, the ID would be
-cryptographically tied to the user's wallet/credits.
+NewNode instantiates a new local node whose Kademlia ID is derived from the
+ledger identity public key.
 */
-func NewNode(address string, profile ComputeProfile) (*Node, error) {
+func NewNode(address string, identityAddress string, profile ComputeProfile) (*Node, error) {
+	if address == "" {
+		return nil, fmt.Errorf("dht: node address is required")
+	}
+
+	if _, err := notary.PublicKeyFromAddress(identityAddress); err != nil {
+		return nil, err
+	}
+
 	return &Node{
-		ID:      NewNodeID(address), // Naive ID generation for now
+		ID:              NewNodeID(identityAddress),
+		Address:         address,
+		IdentityAddress: identityAddress,
+		Profile:         profile,
+	}, nil
+}
+
+/*
+NewObservedNode records a peer announced over the wire after its NodeID bytes
+have already passed transport-level validation.
+*/
+func NewObservedNode(address string, id NodeID, profile ComputeProfile) (*Node, error) {
+	if address == "" {
+		return nil, fmt.Errorf("dht: node address is required")
+	}
+
+	return &Node{
+		ID:      id,
 		Address: address,
 		Profile: profile,
 	}, nil

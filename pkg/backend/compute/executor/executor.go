@@ -19,6 +19,11 @@ type Backend interface {
 	tensor.Float64ActivationBackend
 	tensor.Float64MathBackend
 	tensor.Float64FusedBackend
+	Apply(
+		ctx context.Context,
+		node NodeSpec,
+		inputs []tensor.Float64Tensor,
+	) (tensor.Float64Tensor, error)
 }
 
 type TensorSpec struct {
@@ -38,28 +43,18 @@ type NodeSpec struct {
 }
 
 type Executor struct {
-	backend  Backend
-	registry *Registry
-	values   map[string]tensor.Float64Tensor
-	nodes    map[string]NodeSpec
-	states   map[string]int
+	backend Backend
+	values  map[string]tensor.Float64Tensor
+	nodes   map[string]NodeSpec
+	states  map[string]int
 }
 
 func New(backend Backend) *Executor {
-	return NewWithRegistry(backend, NewTensorRegistry())
-}
-
-func NewWithRegistry(backend Backend, registry *Registry) *Executor {
-	if registry == nil {
-		registry = NewTensorRegistry()
-	}
-
 	return &Executor{
-		backend:  backend,
-		registry: registry,
-		values:   make(map[string]tensor.Float64Tensor),
-		nodes:    make(map[string]NodeSpec),
-		states:   make(map[string]int),
+		backend: backend,
+		values:  make(map[string]tensor.Float64Tensor),
+		nodes:   make(map[string]NodeSpec),
+		states:  make(map[string]int),
 	}
 }
 
@@ -180,12 +175,7 @@ func (executor *Executor) evaluate(ctx context.Context, id string) (tensor.Float
 func (executor *Executor) apply(
 	ctx context.Context, node NodeSpec, inputs []tensor.Float64Tensor,
 ) (tensor.Float64Tensor, error) {
-	handler, ok := executor.registry.Handler(node.Op)
-	if !ok {
-		return nil, fmt.Errorf("executor: unsupported operation %q", node.Op)
-	}
-
-	return handler(ctx, executor.backend, node, inputs)
+	return executor.backend.Apply(ctx, node, inputs)
 }
 
 func (executor *Executor) download(

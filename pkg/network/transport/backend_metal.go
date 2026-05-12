@@ -3,6 +3,10 @@
 package transport
 
 import (
+	"context"
+	"fmt"
+	"strings"
+
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	computemetal "github.com/theapemachine/caramba/pkg/backend/compute/metal"
@@ -47,7 +51,7 @@ func NewMetalStreamBackend() (StreamComputeBackend, error) {
 		return nil, err
 	}
 
-	activation, err := computemetal.New(computeConfig.Metal.ActivationMetallib)
+	activation, err := computemetal.New(computeConfig.Metal.Metallib("activation.metallib"))
 	if err != nil {
 		_ = tensorBackend.Close()
 
@@ -55,7 +59,7 @@ func NewMetalStreamBackend() (StreamComputeBackend, error) {
 	}
 
 	activeInferenceOps, err := computemetal.NewActiveInferenceOps(
-		computeConfig.Metal.ActiveInferenceMetallib,
+		computeConfig.Metal.Metallib("active_inference.metallib"),
 	)
 	if err != nil {
 		_ = tensorBackend.Close()
@@ -63,14 +67,18 @@ func NewMetalStreamBackend() (StreamComputeBackend, error) {
 		return nil, err
 	}
 
-	attentionOps, err := computemetal.NewAttention(computeConfig.Metal.AttentionMetallib)
+	attentionOps, err := computemetal.NewAttention(
+		computeConfig.Metal.Metallib("attention.metallib"),
+	)
 	if err != nil {
 		_ = tensorBackend.Close()
 
 		return nil, err
 	}
 
-	causalOps, err := computemetal.NewCausalOps(computeConfig.Metal.CausalMetallib)
+	causalOps, err := computemetal.NewCausalOps(
+		computeConfig.Metal.Metallib("causal.metallib"),
+	)
 	if err != nil {
 		_ = tensorBackend.Close()
 
@@ -78,7 +86,7 @@ func NewMetalStreamBackend() (StreamComputeBackend, error) {
 	}
 
 	convolutionOps, err := computemetal.NewConvolutionOps(
-		computeConfig.Metal.ConvolutionMetallib,
+		computeConfig.Metal.Metallib("convolution.metallib"),
 	)
 	if err != nil {
 		_ = tensorBackend.Close()
@@ -86,7 +94,9 @@ func NewMetalStreamBackend() (StreamComputeBackend, error) {
 		return nil, err
 	}
 
-	hawkesOps, err := computemetal.NewHawkes(computeConfig.Metal.HawkesMetallib)
+	hawkesOps, err := computemetal.NewHawkes(
+		computeConfig.Metal.Metallib("hawkes.metallib"),
+	)
 	if err != nil {
 		_ = tensorBackend.Close()
 
@@ -94,7 +104,7 @@ func NewMetalStreamBackend() (StreamComputeBackend, error) {
 	}
 
 	markovBlanketOps, err := computemetal.NewMarkovBlanket(
-		computeConfig.Metal.MarkovBlanketMetallib,
+		computeConfig.Metal.Metallib("markov_blanket.metallib"),
 	)
 	if err != nil {
 		_ = tensorBackend.Close()
@@ -102,28 +112,34 @@ func NewMetalStreamBackend() (StreamComputeBackend, error) {
 		return nil, err
 	}
 
-	maskingOps, err := computemetal.NewMasking(computeConfig.Metal.MaskingMetallib)
+	maskingOps, err := computemetal.NewMasking(
+		computeConfig.Metal.Metallib("masking.metallib"),
+	)
 	if err != nil {
 		_ = tensorBackend.Close()
 
 		return nil, err
 	}
 
-	mathOps, err := computemetal.NewMathOps(computeConfig.Metal.MathMetallib)
+	mathOps, err := computemetal.NewMathOps(computeConfig.Metal.Metallib("math.metallib"))
 	if err != nil {
 		_ = tensorBackend.Close()
 
 		return nil, err
 	}
 
-	poolingOps, err := computemetal.NewPoolingOps(computeConfig.Metal.PoolingMetallib)
+	poolingOps, err := computemetal.NewPoolingOps(
+		computeConfig.Metal.Metallib("pooling.metallib"),
+	)
 	if err != nil {
 		_ = tensorBackend.Close()
 
 		return nil, err
 	}
 
-	positionalOps, err := computemetal.NewPositional(computeConfig.Metal.PositionalMetallib)
+	positionalOps, err := computemetal.NewPositional(
+		computeConfig.Metal.Metallib("positional.metallib"),
+	)
 	if err != nil {
 		_ = tensorBackend.Close()
 
@@ -131,7 +147,7 @@ func NewMetalStreamBackend() (StreamComputeBackend, error) {
 	}
 
 	predictiveCodingOps, err := computemetal.NewPredictiveCodingOps(
-		computeConfig.Metal.PredictiveCodingMetallib,
+		computeConfig.Metal.Metallib("predictive_coding.metallib"),
 	)
 	if err != nil {
 		_ = tensorBackend.Close()
@@ -140,7 +156,7 @@ func NewMetalStreamBackend() (StreamComputeBackend, error) {
 	}
 
 	projectionOps, err := computemetal.NewProjectionOps(
-		computeConfig.Metal.ProjectionMetallib,
+		computeConfig.Metal.Metallib("projection.metallib"),
 	)
 	if err != nil {
 		_ = tensorBackend.Close()
@@ -148,14 +164,16 @@ func NewMetalStreamBackend() (StreamComputeBackend, error) {
 		return nil, err
 	}
 
-	shapeOps, err := computemetal.NewShapeOps(computeConfig.Metal.ShapeMetallib)
+	shapeOps, err := computemetal.NewShapeOps(
+		computeConfig.Metal.Metallib("shape.metallib"),
+	)
 	if err != nil {
 		_ = tensorBackend.Close()
 
 		return nil, err
 	}
 
-	vsaOps, err := computemetal.NewVSAOps(computeConfig.Metal.VSAMetallib)
+	vsaOps, err := computemetal.NewVSAOps(computeConfig.Metal.Metallib("vsa.metallib"))
 	if err != nil {
 		_ = tensorBackend.Close()
 
@@ -209,58 +227,167 @@ func (backend *MetalStreamBackend) Close() error {
 	return backend.tensors.Close()
 }
 
-func (backend *MetalStreamBackend) OperationRegistry() *executor.Registry {
-	registry := executor.NewTensorRegistry()
-	registry.Register(ir.OpType("active_inference.belief_update"), executor.ErrorOperationHandler(backend.activeInference.BeliefUpdate))
-	registry.Register(ir.OpType("active_inference.expected_free_energy"), executor.ErrorOperationHandler(backend.activeInference.ExpectedFreeEnergy))
-	registry.Register(ir.OpType("active_inference.free_energy"), executor.ErrorOperationHandler(backend.activeInference.FreeEnergy))
-	registry.Register(ir.OpType("active_inference.precision_weight"), executor.ErrorOperationHandler(backend.activeInference.PrecisionWeight))
-	registry.Register(ir.OpType("attention.sdpa"), executor.ErrorOperationHandler(backend.attention.Forward))
-	registry.Register(ir.OpType("attention.mqa"), executor.ErrorOperationHandler(backend.attention.Forward))
-	registry.Register(ir.OpType("attention.gqa"), executor.ErrorOperationHandler(backend.attention.Forward))
-	registry.Register(ir.OpType("attention.sliding_window"), executor.ErrorOperationHandler(backend.attention.Forward))
-	registry.Register(ir.OpType("causal.backdoor_adjustment"), executor.ErrorOperationHandler(backend.causal.BackdoorAdjustment))
-	registry.Register(ir.OpType("causal.cate"), executor.ErrorOperationHandler(backend.causal.CATE))
-	registry.Register(ir.OpType("causal.dag_markov_factorization"), executor.ErrorOperationHandler(backend.causal.DAGMarkovFactorization))
-	registry.Register(ir.OpType("causal.do_calculus"), executor.ErrorOperationHandler(backend.causal.DoCalculus))
-	registry.Register(ir.OpType("causal.iv_estimate"), executor.ErrorOperationHandler(backend.causal.IVEstimate))
-	registry.Register(ir.OpType("convolution.conv1d"), executor.ErrorOperationHandler(backend.convolution.Forward))
-	registry.Register(ir.OpType("convolution.conv2d"), executor.ErrorOperationHandler(backend.convolution.Forward))
-	registry.Register(ir.OpType("convolution.conv3d"), executor.ErrorOperationHandler(backend.convolution.Forward))
-	registry.Register(ir.OpType("convolution.conv_transpose2d"), executor.ErrorOperationHandler(backend.convolution.Forward))
-	registry.Register(ir.OpType("hawkes.intensity"), executor.ErrorOperationHandler(backend.hawkes.Intensity))
-	registry.Register(ir.OpType("hawkes.kernel_matrix"), executor.ErrorOperationHandler(backend.hawkes.KernelMatrix))
-	registry.Register(ir.OpType("hawkes.log_likelihood"), executor.ErrorOperationHandler(backend.hawkes.LogLikelihood))
-	registry.Register(ir.OpType("hawkes.simulate"), executor.ErrorOperationHandler(backend.hawkes.Simulate))
-	registry.Register(ir.OpType("markov_blanket.flow_active"), executor.ErrorOperationHandler(backend.markovBlanket.FlowActive))
-	registry.Register(ir.OpType("markov_blanket.flow_internal"), executor.ErrorOperationHandler(backend.markovBlanket.FlowInternal))
-	registry.Register(ir.OpType("markov_blanket.mutual_information"), executor.ErrorOperationHandler(backend.markovBlanket.MutualInformation))
-	registry.Register(ir.OpType("markov_blanket.partition"), executor.ErrorOperationHandler(backend.markovBlanket.Partition))
-	registry.Register(ir.OpType("masking.apply"), executor.OperationHandler(backend.masking.NewApplyMask()))
-	registry.Register(ir.OpType("masking.causal"), executor.OperationHandler(backend.masking.NewCausalMask()))
-	registry.Register(ir.OpType("pooling.adaptive_avg_pool2d"), executor.ErrorOperationHandler(backend.pooling.Forward))
-	registry.Register(ir.OpType("pooling.adaptive_max_pool2d"), executor.ErrorOperationHandler(backend.pooling.Forward))
-	registry.Register(ir.OpType("pooling.avg_pool2d"), executor.ErrorOperationHandler(backend.pooling.Forward))
-	registry.Register(ir.OpType("pooling.max_pool2d"), executor.ErrorOperationHandler(backend.pooling.Forward))
-	registry.Register(ir.OpType("positional.alibi"), executor.ErrorOperationHandler(backend.positional.Forward))
-	registry.Register(ir.OpType("positional.rope"), executor.ErrorOperationHandler(backend.positional.Forward))
-	registry.Register(ir.OpType("predictive_coding.prediction"), executor.ErrorOperationHandler(backend.predictiveCoding.Prediction))
-	registry.Register(ir.OpType("predictive_coding.prediction_error"), executor.ErrorOperationHandler(backend.predictiveCoding.PredictionError))
-	registry.Register(ir.OpType("predictive_coding.update_representation"), executor.ErrorOperationHandler(backend.predictiveCoding.UpdateRepresentation))
-	registry.Register(ir.OpType("predictive_coding.update_weights"), executor.ErrorOperationHandler(backend.predictiveCoding.UpdateWeights))
-	registry.Register(ir.OpType("projection.fused_qkv"), executor.ErrorOperationHandler(backend.projection.Forward))
-	registry.Register(ir.OpType("projection.linear"), executor.ErrorOperationHandler(backend.projection.Forward))
-	registry.Register(ir.OpType("shape.concat"), executor.ErrorOperationHandler(backend.shape.Forward))
-	registry.Register(ir.OpType("shape.merge_heads"), executor.ErrorOperationHandler(backend.shape.Forward))
-	registry.Register(ir.OpType("shape.reshape"), executor.ErrorOperationHandler(backend.shape.Forward))
-	registry.Register(ir.OpType("shape.split"), executor.ErrorOperationHandler(backend.shape.Forward))
-	registry.Register(ir.OpType("shape.transpose"), executor.ErrorOperationHandler(backend.shape.Forward))
-	registry.Register(ir.OpType("shape.view_as_heads"), executor.ErrorOperationHandler(backend.shape.Forward))
-	registry.Register(ir.OpType("vsa.bind"), executor.ErrorOperationHandler(backend.vsa.Bind))
-	registry.Register(ir.OpType("vsa.bundle"), executor.ErrorOperationHandler(backend.vsa.Bundle))
-	registry.Register(ir.OpType("vsa.similarity"), executor.ErrorOperationHandler(backend.vsa.Similarity))
+func (backend *MetalStreamBackend) Apply(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
-	return registry
+	switch executor.NormalizeOperation(node.Op) {
+	case ir.OpInput:
+		return nil, fmt.Errorf("metal tensor: input node %q was not materialized", node.ID)
+	case ir.OpAdd:
+		return requireMetalInputs(node, inputs, 2, backend.Add)
+	case ir.OpMul:
+		return requireMetalInputs(node, inputs, 2, backend.Mul)
+	case ir.OpMatmul:
+		return requireMetalInputs(node, inputs, 2, backend.Matmul)
+	case ir.OpReLU:
+		return requireMetalInputs(node, inputs, 1, func(
+			input, _ computetensor.Float64Tensor,
+		) (computetensor.Float64Tensor, error) {
+			return backend.ReLU(input)
+		})
+	case ir.OpLeakyReLU:
+		return requireMetalInputs(node, inputs, 1, func(
+			input, _ computetensor.Float64Tensor,
+		) (computetensor.Float64Tensor, error) {
+			return backend.LeakyReLU(input, 0.01)
+		})
+	case ir.OpGELU:
+		return requireMetalInputs(node, inputs, 1, func(
+			input, _ computetensor.Float64Tensor,
+		) (computetensor.Float64Tensor, error) {
+			return backend.GELU(input)
+		})
+	case ir.OpTanh:
+		return requireMetalInputs(node, inputs, 1, func(
+			input, _ computetensor.Float64Tensor,
+		) (computetensor.Float64Tensor, error) {
+			return backend.Tanh(input)
+		})
+	case ir.OpSigmoid:
+		return requireMetalInputs(node, inputs, 1, func(
+			input, _ computetensor.Float64Tensor,
+		) (computetensor.Float64Tensor, error) {
+			return backend.Sigmoid(input)
+		})
+	case ir.OpSwiGLU:
+		return requireMetalInputs(node, inputs, 1, func(
+			input, _ computetensor.Float64Tensor,
+		) (computetensor.Float64Tensor, error) {
+			return backend.SwiGLU(input)
+		})
+	case ir.OpFused:
+		if len(inputs) != 3 {
+			return nil, fmt.Errorf("metal tensor: Fused node %q requires 3 inputs", node.ID)
+		}
+
+		activation, _ := node.Metadata["activation"].(string)
+		if strings.EqualFold(activation, string(ir.OpGELU)) {
+			return backend.MatmulAddGELU(inputs[0], inputs[1], inputs[2])
+		}
+
+		return backend.MatmulAdd(inputs[0], inputs[1], inputs[2])
+	default:
+		return backend.applyOperation(ctx, node, inputs)
+	}
+}
+
+func (backend *MetalStreamBackend) applyOperation(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	switch strings.ToLower(string(node.Op)) {
+	case "active_inference.belief_update":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.activeInference.BeliefUpdate)
+	case "active_inference.expected_free_energy":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.activeInference.ExpectedFreeEnergy)
+	case "active_inference.free_energy":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.activeInference.FreeEnergy)
+	case "active_inference.precision_weight":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.activeInference.PrecisionWeight)
+	case "attention.sdpa", "attention.mqa", "attention.gqa", "attention.sliding_window":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.attention.Forward)
+	case "causal.backdoor_adjustment":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.causal.BackdoorAdjustment)
+	case "causal.cate":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.causal.CATE)
+	case "causal.dag_markov_factorization":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.causal.DAGMarkovFactorization)
+	case "causal.do_calculus":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.causal.DoCalculus)
+	case "causal.iv_estimate":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.causal.IVEstimate)
+	case "convolution.conv1d", "convolution.conv2d", "convolution.conv3d", "convolution.conv_transpose2d":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.convolution.Forward)
+	case "hawkes.intensity":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.hawkes.Intensity)
+	case "hawkes.kernel_matrix":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.hawkes.KernelMatrix)
+	case "hawkes.log_likelihood":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.hawkes.LogLikelihood)
+	case "hawkes.simulate":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.hawkes.Simulate)
+	case "markov_blanket.flow_active":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.markovBlanket.FlowActive)
+	case "markov_blanket.flow_internal":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.markovBlanket.FlowInternal)
+	case "markov_blanket.mutual_information":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.markovBlanket.MutualInformation)
+	case "markov_blanket.partition":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.markovBlanket.Partition)
+	case "masking.apply":
+		return executor.RunOperation(ctx, backend, node, inputs, backend.masking.NewApplyMask())
+	case "masking.causal":
+		return executor.RunOperation(ctx, backend, node, inputs, backend.masking.NewCausalMask())
+	case "pooling.adaptive_avg_pool2d", "pooling.adaptive_max_pool2d", "pooling.avg_pool2d", "pooling.max_pool2d":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.pooling.Forward)
+	case "positional.alibi", "positional.rope":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.positional.Forward)
+	case "predictive_coding.prediction":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.predictiveCoding.Prediction)
+	case "predictive_coding.prediction_error":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.predictiveCoding.PredictionError)
+	case "predictive_coding.update_representation":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.predictiveCoding.UpdateRepresentation)
+	case "predictive_coding.update_weights":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.predictiveCoding.UpdateWeights)
+	case "projection.fused_qkv", "projection.linear":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.projection.Forward)
+	case "shape.concat", "shape.merge_heads", "shape.reshape", "shape.split", "shape.transpose", "shape.view_as_heads":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.shape.Forward)
+	case "vsa.bind":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.vsa.Bind)
+	case "vsa.bundle":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.vsa.Bundle)
+	case "vsa.similarity":
+		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.vsa.Similarity)
+	default:
+		return nil, fmt.Errorf("metal tensor: unsupported operation %q", node.Op)
+	}
+}
+
+func requireMetalInputs(
+	node executor.NodeSpec,
+	inputs []computetensor.Float64Tensor,
+	count int,
+	apply func(computetensor.Float64Tensor, computetensor.Float64Tensor) (computetensor.Float64Tensor, error),
+) (computetensor.Float64Tensor, error) {
+	if len(inputs) != count {
+		return nil, fmt.Errorf("metal tensor: %s node %q requires %d inputs", node.Op, node.ID, count)
+	}
+
+	var second computetensor.Float64Tensor
+	if len(inputs) > 1 {
+		second = inputs[1]
+	}
+
+	return apply(inputs[0], second)
 }
 
 func (backend *MetalStreamBackend) ReLU(

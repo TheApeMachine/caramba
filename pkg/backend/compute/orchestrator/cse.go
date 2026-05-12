@@ -27,8 +27,31 @@ func NewCSEOptimizer() *CSEOptimizer {
 Optimize detects structural equivalence and eliminates redundant calculations.
 */
 func (optimizer *CSEOptimizer) Optimize(graph *ir.Graph) (*ir.Graph, error) {
+	optimizedGraph, _, err := optimizer.optimize(graph)
+
+	return optimizedGraph, err
+}
+
+/*
+OptimizeWithTargets returns an optimized graph and remaps the requested targets
+to their post-CSE representatives.
+*/
+func (optimizer *CSEOptimizer) OptimizeWithTargets(
+	graph *ir.Graph,
+	targets []*ir.Node,
+) (*ir.Graph, []*ir.Node, error) {
+	optimizedGraph, replacements, err := optimizer.optimize(graph)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return optimizedGraph, remapTargets(targets, replacements), nil
+}
+
+func (optimizer *CSEOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[string]*ir.Node, error) {
 	if graph == nil {
-		return nil, fmt.Errorf("cse optimizer: nil graph")
+		return nil, nil, fmt.Errorf("cse optimizer: nil graph")
 	}
 
 	optimizedGraph := ir.NewGraph()
@@ -39,7 +62,7 @@ func (optimizer *CSEOptimizer) Optimize(graph *ir.Graph) (*ir.Graph, error) {
 
 	layers, err := graph.TopologyLayers()
 	if err != nil {
-		return nil, fmt.Errorf("cse optimizer could not sort graph: %w", err)
+		return nil, nil, fmt.Errorf("cse optimizer could not sort graph: %w", err)
 	}
 
 	for _, layer := range layers {
@@ -83,7 +106,7 @@ func (optimizer *CSEOptimizer) Optimize(graph *ir.Graph) (*ir.Graph, error) {
 		}
 	}
 
-	return optimizedGraph, nil
+	return optimizedGraph, replacements, nil
 }
 
 func generateSignature(node *ir.Node, replacements map[string]*ir.Node) string {

@@ -12,10 +12,13 @@ import (
 
 type MockRunner struct {
 	executed atomic.Bool
+	targets  atomic.Pointer[[]*ir.Node]
 }
 
 func (m *MockRunner) Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Float64Tensor, error) {
 	m.executed.Store(true)
+	m.targets.Store(&targets)
+
 	return make(map[string]tensor.Float64Tensor), nil
 }
 
@@ -54,6 +57,35 @@ func TestScheduler(t *testing.T) {
 
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "no runner registered")
+		})
+
+		Convey("It should remap explicit targets after fusion", func() {
+			shape, err := tensor.NewShape([]int{1, 1})
+			So(err, ShouldBeNil)
+
+			graph := ir.NewGraph()
+			left := ir.NewNode("left", ir.OpInput, shape)
+			right := ir.NewNode("right", ir.OpInput, shape)
+			matmul := ir.NewNode("matmul", ir.OpMatmul, shape)
+			matmul.AddInput(left)
+			matmul.AddInput(right)
+			relu := ir.NewNode("relu", ir.OpReLU, shape)
+			relu.AddInput(matmul)
+			dead := ir.NewNode("dead", ir.OpGELU, shape)
+			dead.AddInput(left)
+			graph.AddNode(left)
+			graph.AddNode(right)
+			graph.AddNode(matmul)
+			graph.AddNode(relu)
+			graph.AddNode(dead)
+
+			_, err = scheduler.Execute(ctx, graph, []*ir.Node{relu}, tensor.Host)
+
+			So(err, ShouldBeNil)
+			executedTargets := mockRunner.targets.Load()
+			So(executedTargets, ShouldNotBeNil)
+			So(*executedTargets, ShouldHaveLength, 1)
+			So((*executedTargets)[0].OpType(), ShouldEqual, ir.OpFused)
 		})
 	})
 }

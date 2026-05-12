@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/notary"
 )
 
 func TestDHTRouting(t *testing.T) {
@@ -13,9 +14,12 @@ func TestDHTRouting(t *testing.T) {
 			AvailableRunners: []string{"cpu"},
 			RAMBytes:         8 * 1024 * 1024 * 1024,
 		}
-		localNode, err := NewNode("127.0.0.1:8000", localProfile)
+		localIdentity, err := notary.NewIdentity()
+		So(err, ShouldBeNil)
+		localNode, err := NewNode("127.0.0.1:8000", localIdentity.Address(), localProfile)
 		So(err, ShouldBeNil)
 		So(localNode, ShouldNotBeNil)
+		So(localNode.ID, ShouldEqual, NewNodeID(localIdentity.Address()))
 
 		dhtInstance := NewDHT(localNode, func(ctx context.Context, target *Node) bool { return true })
 
@@ -35,13 +39,20 @@ func TestDHTRouting(t *testing.T) {
 		})
 
 		Convey("When adding remote nodes to the DHT", func() {
-			remote1, _ := NewNode("10.0.0.1:8001", ComputeProfile{
+			remoteIdentity1, err := notary.NewIdentity()
+			So(err, ShouldBeNil)
+			remoteIdentity2, err := notary.NewIdentity()
+			So(err, ShouldBeNil)
+			remoteIdentity3, err := notary.NewIdentity()
+			So(err, ShouldBeNil)
+
+			remote1, _ := NewNode("10.0.0.1:8001", remoteIdentity1.Address(), ComputeProfile{
 				AvailableRunners: []string{"cuda", "cpu"},
 			})
-			remote2, _ := NewNode("10.0.0.2:8002", ComputeProfile{
+			remote2, _ := NewNode("10.0.0.2:8002", remoteIdentity2.Address(), ComputeProfile{
 				AvailableRunners: []string{"metal", "cpu"},
 			})
-			remote3, _ := NewNode("10.0.0.3:8003", ComputeProfile{
+			remote3, _ := NewNode("10.0.0.3:8003", remoteIdentity3.Address(), ComputeProfile{
 				AvailableRunners: []string{"xla"},
 			})
 

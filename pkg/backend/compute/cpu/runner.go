@@ -43,10 +43,7 @@ func (runner *Runner) Execute(ctx context.Context, graph *ir.Graph, targets []*i
 		return nil, err
 	}
 
-	outputs, err := executor.NewWithRegistry(
-		runner.backend,
-		NewOperationRegistry(),
-	).Execute(ctx, nodes, tensors)
+	outputs, err := executor.New(runner.backend).Execute(ctx, nodes, tensors)
 
 	if err != nil {
 		return nil, err

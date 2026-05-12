@@ -33,22 +33,7 @@ devteam:
 
 compute:
   metal:
-    activation_metallib: ${CARAMBA_METAL_ACTIVATION_METALLIB}
-    active_inference_metallib: ${CARAMBA_METAL_ACTIVE_INFERENCE_METALLIB}
-    attention_metallib: ${CARAMBA_METAL_ATTENTION_METALLIB}
-    causal_metallib: ${CARAMBA_METAL_CAUSAL_METALLIB}
-    convolution_metallib: ${CARAMBA_METAL_CONVOLUTION_METALLIB}
-    embedding_metallib: ${CARAMBA_METAL_EMBEDDING_METALLIB}
-    hawkes_metallib: ${CARAMBA_METAL_HAWKES_METALLIB}
-    markov_blanket_metallib: ${CARAMBA_METAL_MARKOV_BLANKET_METALLIB}
-    masking_metallib: ${CARAMBA_METAL_MASKING_METALLIB}
-    math_metallib: ${CARAMBA_METAL_MATH_METALLIB}
-    pooling_metallib: ${CARAMBA_METAL_POOLING_METALLIB}
-    positional_metallib: ${CARAMBA_METAL_POSITIONAL_METALLIB}
-    predictive_coding_metallib: ${CARAMBA_METAL_PREDICTIVE_CODING_METALLIB}
-    projection_metallib: ${CARAMBA_METAL_PROJECTION_METALLIB}
-    shape_metallib: ${CARAMBA_METAL_SHAPE_METALLIB}
-    vsa_metallib: ${CARAMBA_METAL_VSA_METALLIB}
+    metallib_directory: ${CARAMBA_METAL_METALLIB_DIRECTORY}
 
 errnie:
   level: debug

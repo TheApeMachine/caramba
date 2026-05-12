@@ -24,8 +24,31 @@ func NewFusionOptimizer() *FusionOptimizer {
 Optimize traverses the graph and replaces fuseable node chains with a fused node.
 */
 func (optimizer *FusionOptimizer) Optimize(graph *ir.Graph) (*ir.Graph, error) {
+	optimizedGraph, _, err := optimizer.optimize(graph)
+
+	return optimizedGraph, err
+}
+
+/*
+OptimizeWithTargets returns an optimized graph and remaps requested targets
+through any fused kernels that replaced them.
+*/
+func (optimizer *FusionOptimizer) OptimizeWithTargets(
+	graph *ir.Graph,
+	targets []*ir.Node,
+) (*ir.Graph, []*ir.Node, error) {
+	optimizedGraph, replacements, err := optimizer.optimize(graph)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return optimizedGraph, remapTargets(targets, replacements), nil
+}
+
+func (optimizer *FusionOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[string]*ir.Node, error) {
 	if graph == nil {
-		return nil, fmt.Errorf("fusion optimizer: nil graph")
+		return nil, nil, fmt.Errorf("fusion optimizer: nil graph")
 	}
 
 	optimizedGraph := ir.NewGraph()
@@ -85,6 +108,7 @@ func (optimizer *FusionOptimizer) Optimize(graph *ir.Graph) (*ir.Graph, error) {
 			fusedNode.SetMetadata("base_op", string(inputNode.OpType()))
 			fusedNode.SetMetadata("activation", string(node.OpType()))
 
+			replacements[inputNode.ID()] = fusedNode
 			replacements[node.ID()] = fusedNode
 			optimizedGraph.AddNode(fusedNode)
 			continue
@@ -108,5 +132,5 @@ func (optimizer *FusionOptimizer) Optimize(graph *ir.Graph) (*ir.Graph, error) {
 		optimizedGraph.AddNode(newNode)
 	}
 
-	return optimizedGraph, nil
+	return optimizedGraph, replacements, nil
 }

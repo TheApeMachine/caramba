@@ -1,6 +1,8 @@
 package notary
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"sync"
 )
@@ -8,6 +10,8 @@ import (
 var (
 	ErrInsufficientFunds = errors.New("notary: insufficient credits")
 	ErrAccountNotFound   = errors.New("notary: account not found")
+	ErrUnauthorizedMint  = errors.New("notary: unauthorized mint")
+	ErrInvalidAmount     = errors.New("notary: amount must be positive")
 )
 
 /*
@@ -16,8 +20,10 @@ It tracks the credit balances of nodes (identified by their public key addresses
 and the hashes of approved Models/Manifests.
 */
 type Ledger struct {
-	mu       sync.RWMutex
-	balances map[string]int64
+	mu            sync.RWMutex
+	mintAuthority string
+	nonce         uint64
+	balances      map[string]int64
 
 	// provenance tracks verified and approved artifacts (models, manifests)
 	// Key: Artifact Hash, Value: Owner Address
@@ -27,10 +33,11 @@ type Ledger struct {
 /*
 NewLedger initializes an empty ledger.
 */
-func NewLedger() *Ledger {
+func NewLedger(mintAuthority string) *Ledger {
 	return &Ledger{
-		balances:   make(map[string]int64),
-		provenance: make(map[string]string),
+		mintAuthority: mintAuthority,
+		balances:      make(map[string]int64),
+		provenance:    make(map[string]string),
 	}
 }
 
@@ -44,13 +51,36 @@ func (ledger *Ledger) BalanceOf(address string) int64 {
 }
 
 /*
-Mint creates new credits out of thin air and assigns them to an address.
-In a real decentralized system, this would be strictly controlled by consensus.
+Mint assigns new credits after verifying the mint authority signature.
 */
-func (ledger *Ledger) Mint(address string, amount int64) {
+func (ledger *Ledger) Mint(
+	authorityAddress string,
+	recipientAddress string,
+	amount int64,
+	signature []byte,
+) error {
+	if amount <= 0 {
+		return ErrInvalidAmount
+	}
+
 	ledger.mu.Lock()
 	defer ledger.mu.Unlock()
-	ledger.balances[address] += amount
+
+	if authorityAddress != ledger.mintAuthority {
+		return ErrUnauthorizedMint
+	}
+
+	nextNonce := ledger.nonce + 1
+	payload := MintPayload(authorityAddress, recipientAddress, amount, nextNonce)
+
+	if !Verify(authorityAddress, payload, signature) {
+		return ErrInvalidSignature
+	}
+
+	ledger.nonce = nextNonce
+	ledger.balances[recipientAddress] += amount
+
+	return nil
 }
 
 /*
@@ -58,6 +88,10 @@ Transfer moves credits from the sender to the recipient.
 Returns an error if the sender lacks sufficient funds.
 */
 func (ledger *Ledger) Transfer(sender, recipient string, amount int64) error {
+	if amount <= 0 {
+		return ErrInvalidAmount
+	}
+
 	ledger.mu.Lock()
 	defer ledger.mu.Unlock()
 
@@ -69,6 +103,42 @@ func (ledger *Ledger) Transfer(sender, recipient string, amount int64) error {
 	ledger.balances[sender] -= amount
 	ledger.balances[recipient] += amount
 	return nil
+}
+
+/*
+MintPayload creates the canonical bytes the mint authority signs.
+*/
+func MintPayload(authorityAddress string, recipientAddress string, amount int64, nonce uint64) []byte {
+	hash := sha256.New()
+	hash.Write([]byte("caramba:notary:mint:v1"))
+	hash.Write([]byte(authorityAddress))
+	hash.Write([]byte{0})
+	hash.Write([]byte(recipientAddress))
+	hash.Write([]byte{0})
+
+	var amountData [8]byte
+	binary.BigEndian.PutUint64(amountData[:], uint64(amount))
+	hash.Write(amountData[:])
+
+	var nonceData [8]byte
+	binary.BigEndian.PutUint64(nonceData[:], nonce)
+	hash.Write(nonceData[:])
+
+	return hash.Sum(nil)
+}
+
+func (ledger *Ledger) MintAuthority() string {
+	ledger.mu.RLock()
+	defer ledger.mu.RUnlock()
+
+	return ledger.mintAuthority
+}
+
+func (ledger *Ledger) MintNonce() uint64 {
+	ledger.mu.RLock()
+	defer ledger.mu.RUnlock()
+
+	return ledger.nonce
 }
 
 /*

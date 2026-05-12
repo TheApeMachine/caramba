@@ -26,10 +26,6 @@ type StreamComputeBackend = executor.Backend
 
 type StreamBackendFactory func() (StreamComputeBackend, error)
 
-type operationRegistryProvider interface {
-	OperationRegistry() *executor.Registry
-}
-
 type StreamBackendRegistry struct {
 	factories map[string]StreamBackendFactory
 }
@@ -371,15 +367,7 @@ func (s *ComputeStreamServer) execute(ctx context.Context) ([]streamTensor, erro
 		return nil, err
 	}
 
-	registry := executor.NewTensorRegistry()
-	if provider, ok := backend.(operationRegistryProvider); ok {
-		registry.Merge(provider.OperationRegistry())
-	}
-
-	outputs, err := executor.NewWithRegistry(
-		backend,
-		registry,
-	).Execute(ctx, nodeSpecs(nodes), tensorSpecs(tensors))
+	outputs, err := executor.New(backend).Execute(ctx, nodeSpecs(nodes), tensorSpecs(tensors))
 
 	if err != nil {
 		return nil, err
@@ -633,13 +621,12 @@ func (s *PeerServer) rememberSender(sender schema.NodeInfo) error {
 		return err
 	}
 
-	node, err := dht.NewNode(address, dht.ComputeProfile{})
+	node, err := dht.NewObservedNode(address, id, dht.ComputeProfile{})
 
 	if err != nil {
 		return err
 	}
 
-	node.ID = id
 	s.DHT.AddNode(node)
 
 	return nil

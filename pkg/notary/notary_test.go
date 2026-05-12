@@ -17,9 +17,8 @@ func TestNotary(t *testing.T) {
 		userB, err := NewIdentity()
 		So(err, ShouldBeNil)
 
-		// Mint some initial credits to the users and escrow
-		notary.Ledger().Mint(userA.Address(), 1000)
-		notary.Ledger().Mint("escrow", 0)
+		err = notary.MintCredits(userA.Address(), 1000)
+		So(err, ShouldBeNil)
 
 		Convey("When a user submits a manifest with a valid signature and funds", func() {
 			manifestData := []byte("compute intensive manifest")
@@ -68,15 +67,29 @@ func TestNotary(t *testing.T) {
 			})
 		})
 
+		Convey("When credits are minted without the notary authority", func() {
+			attacker, err := NewIdentity()
+			So(err, ShouldBeNil)
+			payload := MintPayload(attacker.Address(), userB.Address(), 100, notary.Ledger().MintNonce()+1)
+			signature := attacker.Sign(payload)
+
+			err = notary.Ledger().Mint(attacker.Address(), userB.Address(), 100, signature)
+
+			Convey("It should reject the mint", func() {
+				So(err, ShouldEqual, ErrUnauthorizedMint)
+				So(notary.Ledger().BalanceOf(userB.Address()), ShouldEqual, 0)
+			})
+		})
+
 		Convey("When a compute job is settled successfully", func() {
-			// First, user A escrows 50 credits
-			notary.Ledger().Mint("escrow", 50)
+			err := notary.MintCredits("escrow", 50)
+			So(err, ShouldBeNil)
 
 			resultData := []byte("tensor output")
 			workerSignature := userB.Sign(resultData)
 			payout := int64(50)
 
-			err := notary.SettleCompute(userA.Address(), userB, resultData, workerSignature, payout)
+			err = notary.SettleCompute(userA.Address(), userB, resultData, workerSignature, payout)
 
 			Convey("It should transfer funds from escrow to the worker and record provenance", func() {
 				So(err, ShouldBeNil)

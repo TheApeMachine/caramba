@@ -7,6 +7,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	computecpu "github.com/theapemachine/caramba/pkg/backend/compute/cpu"
+	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/network/dht"
@@ -108,6 +109,14 @@ func (backend *fakeCUDAStreamBackend) MatmulAddGELU(
 	return backend.backend.MatmulAddGELU(left, right, bias)
 }
 
+func (backend *fakeCUDAStreamBackend) Apply(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	return backend.backend.Apply(ctx, node, inputs)
+}
+
 func TestNetworkRunner(t *testing.T) {
 	Convey("Given a NetworkRunner and a functioning network ecosystem", t, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -117,11 +126,13 @@ func TestNetworkRunner(t *testing.T) {
 		ntry := notary.NewNotary()
 		localId, err := notary.NewIdentity()
 		So(err, ShouldBeNil)
-		ntry.Ledger().Mint(localId.Address(), 1000)
-		ntry.Ledger().Mint("escrow", 0)
+		err = ntry.MintCredits(localId.Address(), 1000)
+		So(err, ShouldBeNil)
 
 		// 2. Setup DHT for Remote
-		remoteNode, err := dht.NewNode("127.0.0.1:0", dht.ComputeProfile{
+		remoteIdentity, err := notary.NewIdentity()
+		So(err, ShouldBeNil)
+		remoteNode, err := dht.NewNode("127.0.0.1:0", remoteIdentity.Address(), dht.ComputeProfile{
 			AvailableRunners: []string{"cuda"},
 		})
 		So(err, ShouldBeNil)
@@ -136,13 +147,13 @@ func TestNetworkRunner(t *testing.T) {
 		defer remoteTransport.Close()
 
 		// 3. Setup DHT for Local
-		localNode, err := dht.NewNode("127.0.0.1:0", dht.ComputeProfile{})
+		localNode, err := dht.NewNode("127.0.0.1:0", localId.Address(), dht.ComputeProfile{})
 		So(err, ShouldBeNil)
 		localDHT := dht.NewDHT(localNode, nil)
 
 		// Register the actual bound address of the remote node
 		actualRemoteAddr := remoteTransport.Address()
-		knownRemoteNode, err := dht.NewNode(actualRemoteAddr, dht.ComputeProfile{
+		knownRemoteNode, err := dht.NewNode(actualRemoteAddr, remoteIdentity.Address(), dht.ComputeProfile{
 			AvailableRunners: []string{"cuda"},
 		})
 		So(err, ShouldBeNil)

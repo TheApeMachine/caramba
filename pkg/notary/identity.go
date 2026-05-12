@@ -41,6 +41,23 @@ func (id *Identity) Address() string {
 }
 
 /*
+PublicKeyFromAddress decodes a ledger address into an Ed25519 public key.
+*/
+func PublicKeyFromAddress(address string) (ed25519.PublicKey, error) {
+	publicKeyBytes, err := hex.DecodeString(address)
+
+	if err != nil {
+		return nil, fmt.Errorf("notary: address must be hex encoded: %w", err)
+	}
+
+	if len(publicKeyBytes) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("notary: address must contain an Ed25519 public key")
+	}
+
+	return ed25519.PublicKey(publicKeyBytes), nil
+}
+
+/*
 Sign creates a cryptographic signature of the given payload.
 */
 func (id *Identity) Sign(payload []byte) []byte {
@@ -52,10 +69,11 @@ Verify checks if the provided signature for the payload is valid
 for the given public key address.
 */
 func Verify(address string, payload, signature []byte) bool {
-	pubKeyBytes, err := hex.DecodeString(address)
-	if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
+	publicKey, err := PublicKeyFromAddress(address)
+
+	if err != nil {
 		return false
 	}
 
-	return ed25519.Verify(ed25519.PublicKey(pubKeyBytes), payload, signature)
+	return ed25519.Verify(publicKey, payload, signature)
 }

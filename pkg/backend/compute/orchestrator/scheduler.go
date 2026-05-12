@@ -65,30 +65,31 @@ func (scheduler *Scheduler) Execute(
 		return nil, fmt.Errorf("scheduler: no runner registered for location %q", location)
 	}
 
-	optimizedGraph, err := scheduler.cse.Optimize(graph)
-	if err != nil {
-		return nil, err
-	}
-
-	optimizedGraph, err = scheduler.fusion.Optimize(optimizedGraph)
-	if err != nil {
-		return nil, err
-	}
-
 	if len(targets) == 0 {
-		targets = optimizedGraph.Sinks()
+		targets = graph.Sinks()
 	}
 
-	optimizedGraph, err = scheduler.dce.Optimize(ctx, optimizedGraph, targets)
+	optimizedGraph, optimizedTargets, err := scheduler.cse.OptimizeWithTargets(graph, targets)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(optimizedGraph.Sinks()) != len(targets) {
-		// Just a simple safety check. A real mapping across CSE/Fusion/DCE is more involved.
-		// For now we assume sinks represent what we wanted.
+	optimizedGraph, optimizedTargets, err = scheduler.fusion.OptimizeWithTargets(
+		optimizedGraph,
+		optimizedTargets,
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	// We simply ask the runner to compute everything that reaches a sink
-	return r.Execute(ctx, optimizedGraph, optimizedGraph.Sinks())
+	optimizedGraph, err = scheduler.dce.Optimize(ctx, optimizedGraph, optimizedTargets)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateTargets(optimizedGraph, optimizedTargets); err != nil {
+		return nil, err
+	}
+
+	return r.Execute(ctx, optimizedGraph, optimizedTargets)
 }

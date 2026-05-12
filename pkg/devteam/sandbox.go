@@ -33,10 +33,11 @@ SandboxConfig holds everything the sandbox needs to bootstrap the repository
 inside the container.
 */
 type SandboxConfig struct {
-	Image        string
-	GitHubToken  string
-	GitHubOwner  string
-	GitHubRepo   string
+	AgentID       string
+	Image         string
+	GitHubToken   string
+	GitHubOwner   string
+	GitHubRepo    string
 	FeatureBranch string
 }
 
@@ -87,7 +88,7 @@ func (sandbox *Sandbox) Start() error {
 
 	for _, cmd := range setup {
 		if _, err := sandbox.Exec(cmd); err != nil {
-			return fmt.Errorf("sandbox: setup %q: %w", cmd[:min(40, len(cmd))], err)
+			return fmt.Errorf("sandbox: setup %q: %w", truncate(cmd, 40), err)
 		}
 	}
 
@@ -271,18 +272,27 @@ func (sandbox *Sandbox) createContainer() error {
 	return nil
 }
 
+/*
+PatchFile applies a unified diff (produced by diff -u or git diff) to the
+given path inside /workspace. The diff is written to a temp file and applied
+with patch -p1 so relative paths strip the a/ b/ prefixes automatically.
+*/
+func (sandbox *Sandbox) PatchFile(unifiedDiff string) error {
+	escaped := strings.ReplaceAll(unifiedDiff, "'", `'\''`)
+	cmd := fmt.Sprintf(
+		`printf '%%s' '%s' | patch -p1 --no-backup-if-mismatch -d /workspace`,
+		escaped,
+	)
+
+	_, err := sandbox.Exec(cmd)
+
+	return err
+}
+
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
 
 	return s[:n] + "…"
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-
-	return b
 }

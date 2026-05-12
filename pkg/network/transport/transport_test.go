@@ -8,6 +8,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/network/dht"
 	"github.com/theapemachine/caramba/pkg/network/schema"
+	"github.com/theapemachine/caramba/pkg/notary"
 )
 
 func TestNewNodeTransport(t *testing.T) {
@@ -46,7 +47,9 @@ func TestNodeTransport(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		localNode, _ := dht.NewNode("127.0.0.1:0", dht.ComputeProfile{})
+		localIdentity, err := notary.NewIdentity()
+		So(err, ShouldBeNil)
+		localNode, _ := dht.NewNode("127.0.0.1:0", localIdentity.Address(), dht.ComputeProfile{})
 		localDHT := dht.NewDHT(localNode, nil)
 		localTransport, err := NewNodeTransport("127.0.0.1:0", localDHT)
 		So(err, ShouldBeNil)
@@ -54,7 +57,9 @@ func TestNodeTransport(t *testing.T) {
 		So(err, ShouldBeNil)
 		defer localTransport.Close()
 
-		remoteNode, _ := dht.NewNode("127.0.0.1:0", dht.ComputeProfile{})
+		remoteIdentity, err := notary.NewIdentity()
+		So(err, ShouldBeNil)
+		remoteNode, _ := dht.NewNode("127.0.0.1:0", remoteIdentity.Address(), dht.ComputeProfile{})
 		remoteDHT := dht.NewDHT(remoteNode, nil)
 		remoteTransport, err := NewNodeTransport("127.0.0.1:0", remoteDHT)
 		So(err, ShouldBeNil)
