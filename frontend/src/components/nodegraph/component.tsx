@@ -19,7 +19,7 @@ import {
 	useOptimizers,
 	useSaveArchitecture,
 } from "#/service/compute";
-import { registerNodes } from "./nodes";
+import { buildSubGraph, registerNodes } from "./nodes";
 import { registerPorts } from "./ports";
 import { STORE_SCHEMAS } from "./stores";
 
@@ -50,6 +50,15 @@ export const NodeGraph = ({
 	const { data: loadedArchitecture } = useLoadArchitecture(loadName);
 	const saveArchitecture = useSaveArchitecture();
 
+	const modelNames = useMemo(() => {
+		if (!blocks) return [];
+		return Object.keys(blocks).filter(k => k.startsWith("block.model."));
+	}, [blocks]);
+
+	const allLoadableNames = useMemo(() => {
+		return [...architectureNames, ...modelNames];
+	}, [architectureNames, modelNames]);
+
 	const config = useMemo(() => {
 		const cfg = registerPorts(new FlumeConfig());
 		const allSchemas = { ...operations, ...optimizers, ...blocks, ...STORE_SCHEMAS };
@@ -60,7 +69,15 @@ export const NodeGraph = ({
 		return cfg;
 	}, [operations, optimizers, blocks]);
 
-	const nodes = loadedArchitecture ?? controlledNodes ?? internalNodes;
+	const allSchemas = useMemo(() => ({ ...(operations || {}), ...(optimizers || {}), ...(blocks || {}), ...STORE_SCHEMAS }), [operations, optimizers, blocks]);
+
+	const nodes = useMemo(() => {
+		if (loadedArchitecture) return loadedArchitecture;
+		if (loadName && blocks?.[loadName]?.system?.topology?.nodes) {
+			return buildSubGraph(blocks[loadName].system.topology.nodes, allSchemas);
+		}
+		return controlledNodes ?? internalNodes;
+	}, [loadedArchitecture, loadName, blocks, allSchemas, controlledNodes, internalNodes]);
 	const editorKey = loadedArchitecture ? `loaded-${loadName}` : `__internal__-${loadName}`;
 
 	const handleChange = useCallback(
@@ -145,7 +162,7 @@ export const NodeGraph = ({
 							<SelectValue placeholder="Architecture…" />
 						</SelectTrigger>
 						<SelectPopup>
-							{architectureNames.map((n) => (
+							{allLoadableNames.map((n) => (
 								<SelectItem key={n} value={n}>{n}</SelectItem>
 							))}
 						</SelectPopup>

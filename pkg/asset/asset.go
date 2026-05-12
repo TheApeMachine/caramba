@@ -35,10 +35,14 @@ type ConfigParam struct {
 TopologyNode describes a single operation node inside a block's internal wiring.
 */
 type TopologyNode struct {
-	ID  string   `yaml:"id"  json:"id"`
-	Op  string   `yaml:"op"  json:"op"`
-	In  []string `yaml:"in"  json:"in"`
-	Out []string `yaml:"out" json:"out"`
+	ID       string         `yaml:"id,omitempty"       json:"id,omitempty"`
+	Op       string         `yaml:"op,omitempty"       json:"op,omitempty"`
+	In       []string       `yaml:"in,omitempty"       json:"in,omitempty"`
+	Out      []string       `yaml:"out,omitempty"      json:"out,omitempty"`
+	Config   map[string]any `yaml:"config,omitempty"   json:"config,omitempty"`
+	Repeat   int            `yaml:"repeat,omitempty"   json:"repeat,omitempty"`
+	Index    string         `yaml:"index,omitempty"    json:"index,omitempty"`
+	Template []TopologyNode `yaml:"template,omitempty" json:"template,omitempty"`
 }
 
 /*

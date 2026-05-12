@@ -80,7 +80,7 @@ export function useLoadArchitecture(name: string) {
 		queryKey: ["architecture", name],
 		queryFn: () =>
 			fetch(`${BASE}/backend/architecture/${name}`).then((res) => res.json()),
-		enabled: Boolean(name),
+		enabled: Boolean(name) && !name.startsWith("block.model."),
 	});
 }
 

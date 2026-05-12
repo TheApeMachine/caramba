@@ -11,7 +11,7 @@ buildSubGraph converts a block's topology node list into a fully wired Flume
 NodeMap. Layout is left-to-right by topological rank. Connections use the
 actual schema port names resolved positionally from the `in`/`out` arrays.
 */
-function buildSubGraph(
+export function buildSubGraph(
 	topologyNodes: TopologyNode[],
 	schemas: Record<string, Schema>,
 ): NodeMap {

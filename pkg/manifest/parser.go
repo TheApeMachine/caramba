@@ -183,6 +183,9 @@ func (parser *Parser) resolveNode(yamlNode *yaml.Node) (any, error) {
 		if dotPath, vars, ok := parser.extractIncludeMapping(yamlNode); ok {
 			return parser.loadIncludeTarget(dotPath, vars)
 		}
+		if count, indexVar, templateNode, ok := parser.extractRepeatMapping(yamlNode); ok {
+			return parser.expandRepeat(count, indexVar, templateNode)
+		}
 	}
 
 	switch yamlNode.Kind {
@@ -203,16 +206,25 @@ func (parser *Parser) resolveNode(yamlNode *yaml.Node) (any, error) {
 		return mapping, nil
 
 	case yaml.SequenceNode:
-		sequence := make([]any, len(yamlNode.Content))
+		var sequence []any
 
-		for entryIndex, child := range yamlNode.Content {
+		for _, child := range yamlNode.Content {
 			element, err := parser.resolveNode(child)
 
 			if err != nil {
 				return nil, err
 			}
 
-			sequence[entryIndex] = element
+			if child.Kind == yaml.MappingNode {
+				if _, _, _, ok := parser.extractRepeatMapping(child); ok {
+					if expSeq, ok := element.([]any); ok {
+						sequence = append(sequence, expSeq...)
+						continue
+					}
+				}
+			}
+
+			sequence = append(sequence, element)
 		}
 
 		return sequence, nil
@@ -285,6 +297,97 @@ func (parser *Parser) extractIncludeMapping(
 	maps.Copy(vars, varMap)
 
 	return dotPath, vars, true
+}
+
+/*
+extractRepeatMapping detects a repeat mapping of the form:
+
+	repeat: 16
+	index: i
+	template:
+	  - id: node_${i}
+
+Returns the count, index variable name, template node, and true when found.
+*/
+func (parser *Parser) extractRepeatMapping(
+	yamlNode *yaml.Node,
+) (count int, indexVar string, templateNode *yaml.Node, ok bool) {
+	rawMap := make(map[string]*yaml.Node, len(yamlNode.Content)/2)
+
+	for pairIndex := 0; pairIndex < len(yamlNode.Content)-1; pairIndex += 2 {
+		key := yamlNode.Content[pairIndex].Value
+		rawMap[key] = yamlNode.Content[pairIndex+1]
+	}
+
+	repeatNode, hasRepeat := rawMap["repeat"]
+
+	if !hasRepeat {
+		return 0, "", nil, false
+	}
+
+	templateNode, hasTemplate := rawMap["template"]
+
+	if !hasTemplate {
+		return 0, "", nil, false
+	}
+
+	resolvedCount, err := parser.resolveNode(repeatNode)
+
+	if err != nil {
+		return 0, "", nil, false
+	}
+
+	switch v := resolvedCount.(type) {
+	case int:
+		count = v
+	case float64:
+		count = int(v)
+	case string:
+		fmt.Sscanf(v, "%d", &count)
+	}
+
+	indexNode, hasIndex := rawMap["index"]
+
+	if hasIndex && indexNode.Kind == yaml.ScalarNode {
+		indexVar = indexNode.Value
+	} else {
+		indexVar = "i"
+	}
+
+	return count, indexVar, templateNode, true
+}
+
+/*
+expandRepeat evaluates the template node 'count' times, injecting the current
+iteration index into the parser variables under 'indexVar'.
+*/
+func (parser *Parser) expandRepeat(count int, indexVar string, templateNode *yaml.Node) (any, error) {
+	var result []any
+
+	for i := 0; i < count; i++ {
+		child := &Parser{
+			root: parser.root,
+			vars: make(map[string]any, len(parser.vars)+2),
+		}
+
+		maps.Copy(child.vars, parser.vars)
+		child.vars[indexVar] = i
+		child.vars["next_"+indexVar] = i + 1
+
+		resolved, err := child.resolveNode(templateNode)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if seq, ok := resolved.([]any); ok {
+			result = append(result, seq...)
+		} else {
+			result = append(result, resolved)
+		}
+	}
+
+	return result, nil
 }
 
 /*
@@ -386,4 +489,30 @@ func (parser *Parser) mergeVars(variablesField any) error {
 	maps.Copy(parser.vars, rawMap)
 
 	return nil
+}
+
+/*
+ParseBytes parses a manifest from raw bytes instead of a file.
+*/
+func (parser *Parser) ParseBytes(data []byte) (map[string]any, error) {
+	var documentNode yaml.Node
+	if err := yaml.Unmarshal(data, &documentNode); err != nil {
+		return nil, err
+	}
+
+	rawDocument, err := parser.nodeToAny(&documentNode)
+	if err != nil {
+		return nil, err
+	}
+
+	if document, ok := rawDocument.(map[string]any); ok {
+		if variablesField, present := document["variables"]; present {
+			if err := parser.mergeVars(variablesField); err != nil {
+				return nil, err
+			}
+		}
+		return document, nil
+	}
+
+	return nil, fmt.Errorf("manifest: root must be a mapping")
 }
