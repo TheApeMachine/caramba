@@ -6,15 +6,37 @@ TEXT ·reduceSumNEON(SB), NOSPLIT, $0-32
 	MOVD   a+0(FP), R0
 	MOVD   a_len+8(FP), R1
 	FMOVD  $0.0, F0
+	FMOVD  $0.0, F5
+	LSR    $2, R1, R2
+	CBZ    R2, try_pair_rs
+loop_quad_rs:
+	FMOVD.P 8(R0), F1
+	FADDD   F1, F0, F0
+	FMOVD.P 8(R0), F2
+	FADDD   F2, F5, F5
+	FMOVD.P 8(R0), F3
+	FADDD   F3, F0, F0
+	FMOVD.P 8(R0), F4
+	FADDD   F4, F5, F5
+	SUBS $1, R2, R2
+	BNE  loop_quad_rs
+try_pair_rs:
+	AND    $3, R1, R1
 	LSR    $1, R1, R2
-	CBZ    R2, done_rs
+	CBZ    R2, tail_rs
 loop_rs:
 	FMOVD.P 8(R0), F1
 	FADDD   F1, F0, F0
 	FMOVD.P 8(R0), F2
-	FADDD   F2, F0, F0
+	FADDD   F2, F5, F5
 	SUBS $1, R2, R2
 	BNE  loop_rs
+tail_rs:
+	FADDD F5, F0, F0
+	TST $1, R1
+	BEQ done_rs
+	FMOVD.P 8(R0), F1
+	FADDD F1, F0, F0
 done_rs:
 	FMOVD F0, ret+24(FP)
 	RET
@@ -132,15 +154,37 @@ TEXT ·reduceSumSqNEON(SB), NOSPLIT, $0-32
 	MOVD   a+0(FP), R0
 	MOVD   a_len+8(FP), R1
 	FMOVD  $0.0, F0
+	FMOVD  $0.0, F5
+	LSR    $2, R1, R2
+	CBZ    R2, try_pair_ssq
+loop_quad_ssq:
+	FMOVD.P 8(R0), F1
+	FMADDD  F1, F0, F1, F0
+	FMOVD.P 8(R0), F2
+	FMADDD  F2, F5, F2, F5
+	FMOVD.P 8(R0), F3
+	FMADDD  F3, F0, F3, F0
+	FMOVD.P 8(R0), F4
+	FMADDD  F4, F5, F4, F5
+	SUBS $1, R2, R2
+	BNE  loop_quad_ssq
+try_pair_ssq:
+	AND    $3, R1, R1
 	LSR    $1, R1, R2
-	CBZ    R2, done_ssq
+	CBZ    R2, tail_ssq
 loop_ssq:
 	FMOVD.P 8(R0), F1
 	FMADDD  F1, F0, F1, F0
 	FMOVD.P 8(R0), F2
-	FMADDD  F2, F0, F2, F0
+	FMADDD  F2, F5, F2, F5
 	SUBS $1, R2, R2
 	BNE  loop_ssq
+tail_ssq:
+	FADDD F5, F0, F0
+	TST $1, R1
+	BEQ done_ssq
+	FMOVD.P 8(R0), F1
+	FMADDD F1, F0, F1, F0
 done_ssq:
 	FMOVD F0, ret+24(FP)
 	RET

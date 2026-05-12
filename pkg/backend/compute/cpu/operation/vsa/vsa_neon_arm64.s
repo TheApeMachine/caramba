@@ -33,8 +33,32 @@ TEXT ·dotReduceNEON(SB), NOSPLIT, $0-56
 	MOVD  a_len+8(FP), R1
 	MOVD  b+24(FP), R2
 	FMOVD $0.0, F0
+	FMOVD $0.0, F5
+	LSR   $2, R1, R3
+	CBZ   R3, try_pair_dn
+loop_quad_dn:
+	FMOVD.P 8(R0), F1
+	FMOVD.P 8(R2), F3
+	FMULD   F3, F1, F1
+	FADDD   F1, F0, F0
+	FMOVD.P 8(R0), F2
+	FMOVD.P 8(R2), F4
+	FMULD   F4, F2, F2
+	FADDD   F2, F5, F5
+	FMOVD.P 8(R0), F6
+	FMOVD.P 8(R2), F7
+	FMULD   F7, F6, F6
+	FADDD   F6, F0, F0
+	FMOVD.P 8(R0), F8
+	FMOVD.P 8(R2), F9
+	FMULD   F9, F8, F8
+	FADDD   F8, F5, F5
+	SUBS $1, R3, R3
+	BNE  loop_quad_dn
+try_pair_dn:
+	AND   $3, R1, R1
 	LSR   $1, R1, R3
-	CBZ   R3, done_dn
+	CBZ   R3, tail_dn
 loop_dn:
 	FMOVD.P 8(R0), F1
 	FMOVD.P 8(R2), F3
@@ -43,9 +67,11 @@ loop_dn:
 	FMOVD.P 8(R0), F2
 	FMOVD.P 8(R2), F4
 	FMULD   F4, F2, F2
-	FADDD   F2, F0, F0
+	FADDD   F2, F5, F5
 	SUBS $1, R3, R3
 	BNE  loop_dn
+tail_dn:
+	FADDD F5, F0, F0
 done_dn:
 	FMOVD F0, ret+48(FP)
 	RET
@@ -98,17 +124,39 @@ TEXT ·reduceSumSqNEON(SB), NOSPLIT, $0-32
 	MOVD  a+0(FP), R0
 	MOVD  a_len+8(FP), R1
 	FMOVD $0.0, F0
+	FMOVD $0.0, F5
+	LSR   $2, R1, R2
+	CBZ   R2, try_pair_rssn
+loop_quad_rssn:
+	FMOVD.P 8(R0), F1
+	FMULD   F1, F1, F1
+	FADDD   F1, F0, F0
+	FMOVD.P 8(R0), F2
+	FMULD   F2, F2, F2
+	FADDD   F2, F5, F5
+	FMOVD.P 8(R0), F3
+	FMULD   F3, F3, F3
+	FADDD   F3, F0, F0
+	FMOVD.P 8(R0), F4
+	FMULD   F4, F4, F4
+	FADDD   F4, F5, F5
+	SUBS $1, R2, R2
+	BNE  loop_quad_rssn
+try_pair_rssn:
+	AND   $3, R1, R1
 	LSR   $1, R1, R2
-	CBZ   R2, done_rssn
+	CBZ   R2, tail_rssn
 loop_rssn:
 	FMOVD.P 8(R0), F1
 	FMULD   F1, F1, F1
 	FADDD   F1, F0, F0
 	FMOVD.P 8(R0), F2
 	FMULD   F2, F2, F2
-	FADDD   F2, F0, F0
+	FADDD   F2, F5, F5
 	SUBS $1, R2, R2
 	BNE  loop_rssn
+tail_rssn:
+	FADDD F5, F0, F0
 done_rssn:
 	FMOVD F0, ret+24(FP)
 	RET

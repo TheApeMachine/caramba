@@ -31,8 +31,26 @@ TEXT ·dotReduceAVX2(SB), NOSPLIT, $0-56
 	MOVQ   a_len+8(FP), BX
 	MOVQ   b+24(FP), DI
 	VXORPD Y0, Y0, Y0
+	VXORPD Y5, Y5, Y5
+	CMPQ   BX, $8
+	JL     try_4_da
+loop_8_da:
+	VMOVUPD (AX), Y1
+	VMOVUPD (DI), Y2
+	VMULPD  Y2, Y1, Y1
+	VADDPD  Y1, Y0, Y0
+	VMOVUPD 32(AX), Y3
+	VMOVUPD 32(DI), Y4
+	VMULPD  Y4, Y3, Y3
+	VADDPD  Y3, Y5, Y5
+	ADDQ $64, AX
+	ADDQ $64, DI
+	SUBQ $8, BX
+	CMPQ BX, $8
+	JGE  loop_8_da
+try_4_da:
 	CMPQ   BX, $4
-	JL     done_da
+	JL     tail_da
 loop_da:
 	VMOVUPD (AX), Y1
 	VMOVUPD (DI), Y2
@@ -43,7 +61,8 @@ loop_da:
 	SUBQ $4, BX
 	CMPQ BX, $4
 	JGE  loop_da
-done_da:
+tail_da:
+	VADDPD Y5, Y0, Y0
 	VEXTRACTF128 $1, Y0, X1
 	VADDPD X1, X0, X0
 	VHADDPD X0, X0, X0
@@ -99,8 +118,23 @@ TEXT ·reduceSumSqAVX2(SB), NOSPLIT, $0-32
 	MOVQ   a+0(FP), AX
 	MOVQ   a_len+8(FP), BX
 	VXORPD Y0, Y0, Y0
+	VXORPD Y5, Y5, Y5
+	CMPQ   BX, $8
+	JL     try_4_rss
+loop_8_rss:
+	VMOVUPD (AX), Y1
+	VMULPD  Y1, Y1, Y1
+	VADDPD  Y1, Y0, Y0
+	VMOVUPD 32(AX), Y2
+	VMULPD  Y2, Y2, Y2
+	VADDPD  Y2, Y5, Y5
+	ADDQ $64, AX
+	SUBQ $8, BX
+	CMPQ BX, $8
+	JGE  loop_8_rss
+try_4_rss:
 	CMPQ   BX, $4
-	JL     done_rss
+	JL     tail_rss
 loop_rss:
 	VMOVUPD (AX), Y1
 	VMULPD  Y1, Y1, Y1
@@ -109,7 +143,8 @@ loop_rss:
 	SUBQ $4, BX
 	CMPQ BX, $4
 	JGE  loop_rss
-done_rss:
+tail_rss:
+	VADDPD Y5, Y0, Y0
 	VEXTRACTF128 $1, Y0, X1
 	VADDPD X1, X0, X0
 	VHADDPD X0, X0, X0

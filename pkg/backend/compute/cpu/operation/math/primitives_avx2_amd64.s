@@ -6,6 +6,19 @@ TEXT ·reduceSumAVX2(SB), NOSPLIT, $0-32
 	MOVQ   a+0(FP), AX
 	MOVQ   a_len+8(FP), BX
 	VXORPD Y0, Y0, Y0
+	VXORPD Y5, Y5, Y5
+	CMPQ   BX, $8
+	JL     try_4_rs
+loop_8_rs:
+	VMOVUPD (AX), Y1
+	VADDPD  Y1, Y0, Y0
+	VMOVUPD 32(AX), Y2
+	VADDPD  Y2, Y5, Y5
+	ADDQ $64, AX
+	SUBQ $8, BX
+	CMPQ BX, $8
+	JGE  loop_8_rs
+try_4_rs:
 	CMPQ   BX, $4
 	JL     done_rs
 loop_rs:
@@ -16,6 +29,7 @@ loop_rs:
 	CMPQ BX, $4
 	JGE  loop_rs
 done_rs:
+	VADDPD Y5, Y0, Y0
 	VEXTRACTF128 $1, Y0, X1
 	VADDPD X1, X0, X0
 	VHADDPD X0, X0, X0
@@ -269,6 +283,19 @@ TEXT ·reduceSumSqAVX2(SB), NOSPLIT, $0-32
 	MOVQ   a+0(FP), AX
 	MOVQ   a_len+8(FP), BX
 	VXORPD Y0, Y0, Y0
+	VXORPD Y5, Y5, Y5
+	CMPQ   BX, $8
+	JL     try_4_ssq
+loop_8_ssq:
+	VMOVUPD (AX), Y1
+	VFMADD231PD Y1, Y1, Y0
+	VMOVUPD 32(AX), Y2
+	VFMADD231PD Y2, Y2, Y5
+	ADDQ $64, AX
+	SUBQ $8, BX
+	CMPQ BX, $8
+	JGE  loop_8_ssq
+try_4_ssq:
 	CMPQ   BX, $4
 	JL     done_ssq
 loop_ssq:
@@ -279,6 +306,7 @@ loop_ssq:
 	CMPQ BX, $4
 	JGE  loop_ssq
 done_ssq:
+	VADDPD Y5, Y0, Y0
 	VEXTRACTF128 $1, Y0, X1
 	VADDPD X1, X0, X0
 	VHADDPD X0, X0, X0
