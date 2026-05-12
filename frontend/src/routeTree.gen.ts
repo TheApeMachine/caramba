@@ -27,6 +27,7 @@ import { Route as ResearchEditResearchPaperRouteImport } from './routes/research
 import { Route as ResearchEditModelScopeRouteImport } from './routes/research/edit/model-scope'
 import { Route as KanbanProjectProjectIdRouteImport } from './routes/kanban/project.$projectId'
 import { Route as KanbanOrgOrganizationSlugRouteImport } from './routes/kanban/org.$organizationSlug'
+import { Route as ApiShapeResearchProjectsRouteImport } from './routes/api/shape/research-projects'
 import { Route as ApiComputeOptimizerRouteImport } from './routes/api/compute/optimizer'
 
 const SignUpRoute = SignUpRouteImport.update({
@@ -121,6 +122,12 @@ const KanbanOrgOrganizationSlugRoute =
     path: '/kanban/org/$organizationSlug',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiShapeResearchProjectsRoute =
+  ApiShapeResearchProjectsRouteImport.update({
+    id: '/api/shape/research-projects',
+    path: '/api/shape/research-projects',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
   id: '/api/compute/optimizer',
   path: '/api/compute/optimizer',
@@ -142,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/kanban/': typeof KanbanIndexRoute
   '/research/': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
   '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
   '/research/edit/model-scope': typeof ResearchEditModelScopeRoute
@@ -162,6 +170,7 @@ export interface FileRoutesByTo {
   '/kanban': typeof KanbanIndexRoute
   '/research': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
   '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
   '/research/edit/model-scope': typeof ResearchEditModelScopeRoute
@@ -184,6 +193,7 @@ export interface FileRoutesById {
   '/kanban/': typeof KanbanIndexRoute
   '/research/': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
   '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
   '/research/edit/model-scope': typeof ResearchEditModelScopeRoute
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/kanban/'
     | '/research/'
     | '/api/compute/optimizer'
+    | '/api/shape/research-projects'
     | '/kanban/org/$organizationSlug'
     | '/kanban/project/$projectId'
     | '/research/edit/model-scope'
@@ -227,6 +238,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/research'
     | '/api/compute/optimizer'
+    | '/api/shape/research-projects'
     | '/kanban/org/$organizationSlug'
     | '/kanban/project/$projectId'
     | '/research/edit/model-scope'
@@ -248,6 +260,7 @@ export interface FileRouteTypes {
     | '/kanban/'
     | '/research/'
     | '/api/compute/optimizer'
+    | '/api/shape/research-projects'
     | '/kanban/org/$organizationSlug'
     | '/kanban/project/$projectId'
     | '/research/edit/model-scope'
@@ -270,6 +283,7 @@ export interface RootRouteChildren {
   KanbanIndexRoute: typeof KanbanIndexRoute
   ResearchIndexRoute: typeof ResearchIndexRoute
   ApiComputeOptimizerRoute: typeof ApiComputeOptimizerRoute
+  ApiShapeResearchProjectsRoute: typeof ApiShapeResearchProjectsRoute
   KanbanOrgOrganizationSlugRoute: typeof KanbanOrgOrganizationSlugRoute
   KanbanProjectProjectIdRoute: typeof KanbanProjectProjectIdRoute
 }
@@ -402,6 +416,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof KanbanOrgOrganizationSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/shape/research-projects': {
+      id: '/api/shape/research-projects'
+      path: '/api/shape/research-projects'
+      fullPath: '/api/shape/research-projects'
+      preLoaderRoute: typeof ApiShapeResearchProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/compute/optimizer': {
       id: '/api/compute/optimizer'
       path: '/api/compute/optimizer'
@@ -442,6 +463,7 @@ const rootRouteChildren: RootRouteChildren = {
   KanbanIndexRoute: KanbanIndexRoute,
   ResearchIndexRoute: ResearchIndexRoute,
   ApiComputeOptimizerRoute: ApiComputeOptimizerRoute,
+  ApiShapeResearchProjectsRoute: ApiShapeResearchProjectsRoute,
   KanbanOrgOrganizationSlugRoute: KanbanOrgOrganizationSlugRoute,
   KanbanProjectProjectIdRoute: KanbanProjectProjectIdRoute,
 }

@@ -1,13 +1,13 @@
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { researchProjectCollection } from "#/collections/research_project";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Button } from "#/components/ui/button";
 import { Field } from "#/components/ui/field";
 import { Flex } from "#/components/ui/flex";
 import { Input } from "#/components/ui/input";
 import { Textarea } from "#/components/ui/textarea";
-import { researchProjectsCollection } from "#/lib/research-projects-collection";
 
 const RouteComponent = () => {
 	const navigate = useNavigate();
@@ -22,11 +22,11 @@ const RouteComponent = () => {
 			setPersistError(null);
 			try {
 				const id = crypto.randomUUID();
-				const tx = researchProjectsCollection.insert({
+				const tx = researchProjectCollection.insert({
 					id,
 					name: value.name.trim(),
 					description: value.description.trim(),
-					organization_slug: "server-derived",
+					organization_slug: "",
 					created_at: new Date(),
 					updated_at: new Date(),
 				});

@@ -1,6 +1,8 @@
 package bench
 
-import "math"
+import (
+	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+)
 
 /*
 Accuracy accumulates per-sample argmax accuracy.
@@ -39,17 +41,23 @@ func NewPerplexity() *Perplexity { return &Perplexity{} }
 func (px *Perplexity) Forward(_ []int, data ...[]float64) []float64 {
 	px.total++
 
-	var ce float64
+	n := len(data[0])
+	probs := make([]float64, n)
+	copy(probs, data[0])
+	mathops.AddScalarVec(probs, 1e-9)
 
-	for idx, prob := range data[0] {
-		if data[1][idx] > 0 {
-			ce -= data[1][idx] * math.Log(prob+1e-9)
-		}
-	}
+	logp := make([]float64, n)
+	mathops.LogVec(logp, probs)
+	mathops.MulVec(logp, logp, data[1])
+	ce := -mathops.ReduceSum(logp)
 
 	px.sumCE += ce
 
-	return []float64{math.Exp(px.sumCE / float64(px.total))}
+	// Single scalar exp via the SIMD primitive (1-element slice).
+	avg := []float64{px.sumCE / float64(px.total)}
+	mathops.ExpVec(avg, avg)
+
+	return avg
 }
 
 /*
@@ -97,3 +105,4 @@ func argmax(xs []float64) int {
 
 	return best
 }
+

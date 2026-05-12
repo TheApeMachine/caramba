@@ -240,10 +240,12 @@ ctA_fma_tail:
 	ADDQ $16, DI; ADDQ $16, SI; SUBQ $2, CX
 ctA_fma_scalar:
 	CMPQ CX, $0; JLE ctA_kh_next
-	VMOVSD ctAXVAL(SP), X14s
-	MOVSD (SI), X1
-	MULSD X14s, X1
-	ADDSD X1, (DI)
+	VMOVSD ctAXVAL(SP), X14
+	MOVSD  (SI), X1
+	MULSD  X14, X1
+	MOVSD  (DI), X2
+	ADDSD  X2, X1
+	MOVSD  X1, (DI)
 ctA_kh_next:
 	VZEROUPPER
 	MOVQ ctAKH_I(SP), AX; INCQ AX; MOVQ AX, ctAKH_I(SP); JMP ctA_kh
@@ -359,7 +361,7 @@ ctS_inner:
 	ADDQ $16, DI; ADDQ $16, SI; SUBQ $2, CX; JMP ctS_inner
 ctS_scalar:
 	CMPQ CX, $0; JLE ctS_kh_next
-	MOVSD ctAXVAL(SP), X13s; MOVSD (SI), X1; MULSD X13s, X1; ADDSD X1, (DI)
+	MOVSD ctAXVAL(SP), X13; MOVSD (SI), X1; MULSD X13, X1; MOVSD (DI), X2; ADDSD X2, X1; MOVSD X1, (DI)
 ctS_kh_next:
 	MOVQ ctAKH_I(SP), AX; INCQ AX; MOVQ AX, ctAKH_I(SP); JMP ctS_kh
 ctS_next_oc:

@@ -2,6 +2,7 @@
 
 import { useLiveQuery } from "@tanstack/react-db";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { researchProjectCollection } from "#/collections/research_project";
 import { KanbanColumnView } from "#/components/kanban/column";
 import { BoardContext } from "#/components/kanban/context";
 import type { KanbanBoard as KanbanBoardState } from "#/components/kanban/model";
@@ -15,7 +16,6 @@ import {
 } from "#/lib/kanban-board-from-rows";
 import { kanbanColumnKeySchema } from "#/lib/kanban-card-schema";
 import { kanbanCardsCollection } from "#/lib/kanban-cards-collection";
-import { researchProjectsCollection } from "#/lib/research-projects-collection";
 import {
 	deleteKanbanCard,
 	patchKanbanCard,
@@ -51,7 +51,7 @@ export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
 
 	const projectsQuery = useLiveQuery((query) =>
 		query
-			.from({ project: researchProjectsCollection })
+			.from({ project: researchProjectCollection })
 			.select(({ project }) => ({
 				id: project.id,
 				name: project.name,

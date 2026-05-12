@@ -3,6 +3,8 @@ package causal
 import (
 	"fmt"
 	"math"
+
+	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
 )
 
 /*
@@ -149,7 +151,16 @@ func (dagMarkov *DAGMarkovFactorization) Forward(shape []int, data ...[]float64)
 		}
 	}
 
-	// Compute log P(x^t) = Σ_i log P(x_i^t | x_{PA_i}^t) for each observation.
+	// Precompute -0.5*log(2π σ²_i) per node via SIMD (one log call total instead of t·n).
+	logNorm := make([]float64, n)
+
+	for nodeIdx := 0; nodeIdx < n; nodeIdx++ {
+		logNorm[nodeIdx] = 2 * math.Pi * nodeSigma2[nodeIdx]
+	}
+
+	mathops.LogVec(logNorm, logNorm)
+	mathops.ScaleVec(logNorm, -0.5)
+
 	logProb := make([]float64, t)
 
 	for obsIdx := 0; obsIdx < t; obsIdx++ {
@@ -164,7 +175,6 @@ func (dagMarkov *DAGMarkovFactorization) Forward(shape []int, data ...[]float64)
 			var predicted float64
 
 			if np == 0 {
-				// Root node: mean is stored in beta[0].
 				predicted = nodeBetas[nodeIdx][0]
 			} else {
 				parentRow := make([]float64, np)
@@ -176,9 +186,8 @@ func (dagMarkov *DAGMarkovFactorization) Forward(shape []int, data ...[]float64)
 				predicted = nodeBetas[nodeIdx][0] + applyDotProduct(nodeBetas[nodeIdx][1:], parentRow)
 			}
 
-			// log N(xVal; predicted, sigma2) = -0.5*log(2*pi*sigma2) - 0.5*(xVal-predicted)^2/sigma2
 			diff := xVal - predicted
-			logP += -0.5*math.Log(2*math.Pi*sigma2) - 0.5*diff*diff/sigma2
+			logP += logNorm[nodeIdx] - 0.5*diff*diff/sigma2
 		}
 
 		logProb[obsIdx] = logP

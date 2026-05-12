@@ -1,14 +1,8 @@
 package sgd
 
-import prim "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
-
 /*
-SGD implements stochastic gradient descent with optional momentum and Nesterov correction.
-
-Update rules:
-  vanilla:   p -= lr * (g + wd*p)
-  momentum:  v = μ*v - lr*g;  p += v
-  nesterov:  v = μ*v - lr*g;  p += μ*v - lr*g
+SGD implements stochastic gradient descent with optional momentum and Nesterov
+correction. The full update is executed entirely by AVX2/SSE2/NEON kernels.
 */
 type SGD struct {
 	LR       float64
@@ -23,31 +17,19 @@ func NewSGD(lr, momentum, wd float64, nesterov bool) *SGD {
 }
 
 func (sgd *SGD) Step(params, grads []float64) []float64 {
-	out := make([]float64, len(params))
-	copy(out, params)
-
-	if sgd.WD != 0 {
-		prim.AddScaledVec(out, params, -sgd.LR*sgd.WD)
-	}
+	n := len(params)
+	out := make([]float64, n)
 
 	if sgd.Momentum == 0 {
-		prim.AddScaledVec(out, grads, -sgd.LR)
+		sgdVanilla(out, params, grads, sgd.LR, sgd.WD)
 		return out
 	}
 
 	if sgd.velocity == nil {
-		sgd.velocity = make([]float64, len(params))
+		sgd.velocity = make([]float64, n)
 	}
 
-	prim.ScaleVec(sgd.velocity, sgd.Momentum)
-	prim.AddScaledVec(sgd.velocity, grads, -sgd.LR)
-
-	if sgd.Nesterov {
-		prim.AddScaledVec(out, grads, -sgd.LR)
-		prim.AddScaledVec(out, sgd.velocity, sgd.Momentum)
-	} else {
-		prim.AddVec(out, sgd.velocity)
-	}
+	sgdMomentum(out, params, grads, sgd.velocity, sgd.LR, sgd.WD, sgd.Momentum, sgd.Nesterov)
 
 	return out
 }

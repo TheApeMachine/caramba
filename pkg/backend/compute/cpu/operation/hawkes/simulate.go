@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+
+	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
 )
 
 const lambdaStarEpsilon = 1e-12
@@ -83,14 +85,32 @@ func (op *Simulate) Forward(shape []int, data ...[]float64) []float64 {
 // ogataThinningSingle runs Ogata's thinning for a single Hawkes process.
 func ogataThinningSingle(mu, alpha, beta, tMax float64, maxSteps int) []float64 {
 	events := make([]float64, 0, maxSteps)
+	scratch := make([]float64, 0, maxSteps)
+	expBuf := make([]float64, 0, maxSteps)
 	t := 0.0
 
-	for t < tMax && len(events) < maxSteps {
-		lambdaStar := mu
+	excitation := func(now float64) float64 {
+		n := len(events)
 
-		for _, prevT := range events {
-			lambdaStar += alpha * math.Exp(-beta*(t-prevT))
+		if n == 0 {
+			return 0
 		}
+
+		scratch = scratch[:n]
+		expBuf = expBuf[:n]
+
+		for idx, prev := range events {
+			scratch[idx] = now - prev
+		}
+
+		mathops.ScaleVec(scratch, -beta)
+		mathops.ExpVec(expBuf, scratch)
+
+		return alpha * mathops.ReduceSum(expBuf)
+	}
+
+	for t < tMax && len(events) < maxSteps {
+		lambdaStar := mu + excitation(t)
 
 		if lambdaStar < lambdaStarEpsilon {
 			lambdaStar = lambdaStarEpsilon
@@ -109,11 +129,7 @@ func ogataThinningSingle(mu, alpha, beta, tMax float64, maxSteps int) []float64 
 			break
 		}
 
-		lambdaT := mu
-
-		for _, prevT := range events {
-			lambdaT += alpha * math.Exp(-beta*(t-prevT))
-		}
+		lambdaT := mu + excitation(t)
 
 		if lambdaT < 0 {
 			lambdaT = 0

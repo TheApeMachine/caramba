@@ -3,9 +3,9 @@
 package hawkes
 
 import (
-	"math"
-
 	"golang.org/x/sys/cpu"
+
+	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
 )
 
 var (
@@ -32,6 +32,7 @@ func subVecSSE2(dst, a, b []float64)
 
 func applyIntensity(out, times, alpha, beta, mu []float64, t float64, K, T int) {
 	cutoff := 0
+
 	for cutoff < T && times[cutoff] < t {
 		cutoff++
 	}
@@ -40,19 +41,22 @@ func applyIntensity(out, times, alpha, beta, mu []float64, t float64, K, T int) 
 	n := len(validTimes)
 
 	if n == 0 {
-		for k := 0; k < K; k++ {
-			out[k] = mu[k]
-		}
+		copy(out[:K], mu[:K])
 		return
 	}
 
 	expBuf := make([]float64, n)
+	scratch := make([]float64, n)
 
 	for k := 0; k < K; k++ {
 		bk := beta[k]
+
 		for i := 0; i < n; i++ {
-			expBuf[i] = math.Exp(-bk * (t - validTimes[i]))
+			scratch[i] = t - validTimes[i]
 		}
+
+		mathops.ScaleVec(scratch, -bk)
+		mathops.ExpVec(expBuf, scratch)
 
 		var sum float64
 		if useAVX2 {
@@ -71,6 +75,7 @@ func applyKernelMatrix(out, times []float64, alpha, beta float64, T int) {
 	}
 
 	tmp := make([]float64, T)
+	expOut := make([]float64, T)
 
 	for row := 0; row < T; row++ {
 		ti := times[row]
@@ -82,14 +87,13 @@ func applyKernelMatrix(out, times []float64, alpha, beta float64, T int) {
 		}
 
 		tmpSlice := tmp[:rowLen]
-
-		for idx := 0; idx < rowLen; idx++ {
-			tmpSlice[idx] = rowSlice[idx] - ti
-		}
-
-		for idx := 0; idx < rowLen; idx++ {
-			out[row*T+(row+1+idx)] = alpha * math.Exp(-beta*tmpSlice[idx])
-		}
+		expSlice := expOut[:rowLen]
+		copy(tmpSlice, rowSlice[:rowLen])
+		mathops.AddScalarVec(tmpSlice, -ti)
+		mathops.ScaleVec(tmpSlice, -beta)
+		mathops.ExpVec(expSlice, tmpSlice)
+		mathops.ScaleVec(expSlice, alpha)
+		copy(out[row*T+row+1:row*T+row+1+rowLen], expSlice)
 	}
 }
 

@@ -1,8 +1,8 @@
 import { useAuth } from "@clerk/tanstack-react-start";
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
+import { researchProjectCollection } from "#/collections/research_project";
 import { CollectionTable } from "#/components/ui/datatable/component";
 import { Spinner } from "#/components/ui/spinner";
-import { researchProjectsCollection } from "#/lib/research-projects-collection";
 
 function ResearchIndexInner() {
 	const { orgSlug } = useAuth();
@@ -15,7 +15,7 @@ function ResearchIndexInner() {
 		<CollectionTable
 			query={(q) =>
 				q
-					.from({ project: researchProjectsCollection(orgSlug) })
+					.from({ project: researchProjectCollection })
 					.select(({ project }) => ({
 						id: project.id,
 						name: project.name,

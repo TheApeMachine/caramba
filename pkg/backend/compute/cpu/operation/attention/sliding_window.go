@@ -1,6 +1,10 @@
 package attention
 
-import "math"
+import (
+	"math"
+
+	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+)
 
 // SlidingWindow implements sliding-window attention (local attention).
 // Each position i can only attend to positions in [i-Window, i].
@@ -30,7 +34,6 @@ func (sw *SlidingWindow) Forward(shape []int, data ...[]float64) []float64 {
 
 	window := sw.Window
 	maskFn := func(i, j int) bool {
-		// mask out positions outside [i-window, i]
 		return j > i || j < i-window
 	}
 
@@ -46,6 +49,7 @@ func (sw *SlidingWindow) Forward(shape []int, data ...[]float64) []float64 {
 			)
 		}
 	}
+
 	return out
 }
 
@@ -53,6 +57,7 @@ func (sw *SlidingWindow) Forward(shape []int, data ...[]float64) []float64 {
 func sdpaHeadWithInf(out, q, k, v []float64, seqLen, headDim int, maskFn func(i, j int) bool) {
 	scale := 1.0 / math.Sqrt(float64(headDim))
 	scores := make([]float64, seqLen)
+	validMask := make([]float64, seqLen)
 
 	for i := range seqLen {
 		qRow := q[i*headDim : (i+1)*headDim]
@@ -60,37 +65,40 @@ func sdpaHeadWithInf(out, q, k, v []float64, seqLen, headDim int, maskFn func(i,
 		for j := range seqLen {
 			if maskFn(i, j) {
 				scores[j] = math.Inf(-1)
-			} else {
-				kRow := k[j*headDim : (j+1)*headDim]
-				scores[j] = dotProduct(qRow, kRow) * scale
+				validMask[j] = 0
+				continue
 			}
+
+			kRow := k[j*headDim : (j+1)*headDim]
+			scores[j] = dotProduct(qRow, kRow) * scale
+			validMask[j] = 1
 		}
 
-		// softmax with -inf handling: find finite max
-		max := math.Inf(-1)
-
-		for _, s := range scores {
-			if s > max {
-				max = s
-			}
-		}
-
-		var sum float64
-
+		// finite max over valid scores
+		mx := math.Inf(-1)
 		for j, s := range scores {
-			if math.IsInf(s, -1) {
+			if validMask[j] != 0 && s > mx {
+				mx = s
+			}
+		}
+
+		// scores[j] := exp(scores[j] - max) for valid; 0 for masked
+		// First zero out -Inf entries so ExpVec doesn't get NaN, then shift.
+		for j, s := range scores {
+			if validMask[j] == 0 {
 				scores[j] = 0
 			} else {
-				e := math.Exp(s - max)
-				scores[j] = e
-				sum += e
+				scores[j] = s - mx
 			}
 		}
 
+		mathops.ExpVec(scores, scores)
+		mathops.MulVec(scores, scores, validMask)
+
+		sum := mathops.ReduceSum(scores)
+
 		if sum > 0 {
-			for j := range scores {
-				scores[j] /= sum
-			}
+			mathops.ScaleVec(scores, 1.0/sum)
 		}
 
 		outRow := out[i*headDim : (i+1)*headDim]

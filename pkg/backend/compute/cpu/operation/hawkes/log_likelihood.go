@@ -3,6 +3,8 @@ package hawkes
 import (
 	"fmt"
 	"math"
+
+	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
 )
 
 /*
@@ -63,11 +65,19 @@ func (op *LogLikelihood) Forward(shape []int, data ...[]float64) []float64 {
 }
 
 func applyLogLikelihood(intensities []float64, integral float64, T int) float64 {
-	sumLog := applyLogLikelihoodScalar(intensities, T)
-
-	if math.IsNaN(sumLog) {
-		return math.NaN()
+	if T == 0 {
+		return -integral
 	}
+
+	for idx := 0; idx < T; idx++ {
+		if intensities[idx] <= 0 {
+			return math.NaN()
+		}
+	}
+
+	logs := make([]float64, T)
+	mathops.LogVec(logs, intensities[:T])
+	sumLog := mathops.ReduceSum(logs)
 
 	return sumLog - integral
 }

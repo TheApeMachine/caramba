@@ -1,0 +1,542 @@
+#include "textflag.h"
+
+// rmspropCenteredAVX2(out, v, gAvg, params, grads []float64,
+//                     lr, alpha, oneMinusAlpha, eps, wd float64)
+//   geff = g + wd*p
+//   v    = α*v + (1-α)*geff²
+//   gAvg = α*gAvg + (1-α)*geff
+//   denom = sqrt(v - gAvg²) + eps
+//   out = p - lr * geff / denom
+TEXT ·rmspropCenteredAVX2(SB), NOSPLIT, $0-160
+	MOVQ out+0(FP), AX
+	MOVQ v+24(FP), R8
+	MOVQ gAvg+48(FP), R11
+	MOVQ params+72(FP), R9
+	MOVQ grads+96(FP), R10
+	MOVQ out_len+8(FP), CX
+
+	VBROADCASTSD lr+120(FP), Y8
+	VBROADCASTSD alpha+128(FP), Y9
+	VBROADCASTSD oneMinusAlpha+136(FP), Y10
+	VBROADCASTSD eps+144(FP), Y11
+	VBROADCASTSD wd+152(FP), Y12
+
+	CMPQ CX, $4
+	JL   rmspc_avx2_tail
+rmspc_avx2_loop:
+	VMOVUPD (R8), Y0                            // v
+	VMOVUPD (R11), Y1                           // gAvg
+	VMOVUPD (R9), Y2                            // params
+	VMOVUPD (R10), Y3                           // grads
+
+	// geff = g + wd*p
+	VMOVAPD     Y3, Y4
+	VFMADD231PD Y12, Y2, Y4
+
+	// v = α*v + (1-α)*geff²
+	VMULPD      Y4, Y4, Y5
+	VMULPD      Y9, Y0, Y0
+	VFMADD231PD Y10, Y5, Y0
+	VMOVUPD     Y0, (R8)
+
+	// gAvg = α*gAvg + (1-α)*geff
+	VMULPD      Y9, Y1, Y1
+	VFMADD231PD Y10, Y4, Y1
+	VMOVUPD     Y1, (R11)
+
+	// denom = sqrt(v - gAvg²) + eps
+	VMULPD       Y1, Y1, Y6
+	VSUBPD       Y6, Y0, Y6
+	VSQRTPD      Y6, Y6
+	VADDPD       Y11, Y6, Y6
+	VDIVPD       Y6, Y4, Y7
+	VFNMADD231PD Y8, Y7, Y2
+	VMOVUPD      Y2, (AX)
+
+	ADDQ $32, AX
+	ADDQ $32, R8
+	ADDQ $32, R11
+	ADDQ $32, R9
+	ADDQ $32, R10
+	SUBQ $4, CX
+	CMPQ CX, $4
+	JGE  rmspc_avx2_loop
+
+rmspc_avx2_tail:
+	CMPQ CX, $2
+	JL   rmspc_avx2_scalar
+	MOVUPD (R8), X0
+	MOVUPD (R11), X1
+	MOVUPD (R9), X2
+	MOVUPD (R10), X3
+
+	MOVSD lr+120(FP), X8
+	SHUFPD $0, X8, X8
+	MOVSD alpha+128(FP), X9
+	SHUFPD $0, X9, X9
+	MOVSD oneMinusAlpha+136(FP), X10
+	SHUFPD $0, X10, X10
+	MOVSD eps+144(FP), X11
+	SHUFPD $0, X11, X11
+	MOVSD wd+152(FP), X12
+	SHUFPD $0, X12, X12
+
+	MOVAPD X3, X4
+	MOVAPD X2, X13
+	MULPD X12, X13
+	ADDPD X13, X4
+
+	MOVAPD X4, X5
+	MULPD X5, X5
+	MULPD X9, X0
+	MOVAPD X5, X13
+	MULPD X10, X13
+	ADDPD X13, X0
+	MOVUPD X0, (R8)
+
+	MULPD X9, X1
+	MOVAPD X4, X13
+	MULPD X10, X13
+	ADDPD X13, X1
+	MOVUPD X1, (R11)
+
+	MOVAPD X1, X6
+	MULPD X6, X6
+	MOVAPD X0, X7
+	SUBPD X6, X7
+	SQRTPD X7, X7
+	ADDPD X11, X7
+	MOVAPD X4, X13
+	DIVPD X7, X13
+	MULPD X8, X13
+	SUBPD X13, X2
+	MOVUPD X2, (AX)
+
+	ADDQ $16, AX
+	ADDQ $16, R8
+	ADDQ $16, R11
+	ADDQ $16, R9
+	ADDQ $16, R10
+	SUBQ $2, CX
+
+rmspc_avx2_scalar:
+	CMPQ CX, $0
+	JLE rmspc_avx2_done
+	MOVSD (R8), X0
+	MOVSD (R11), X1
+	MOVSD (R9), X2
+	MOVSD (R10), X3
+
+	MOVSD lr+120(FP), X8
+	MOVSD alpha+128(FP), X9
+	MOVSD oneMinusAlpha+136(FP), X10
+	MOVSD eps+144(FP), X11
+	MOVSD wd+152(FP), X12
+
+	MOVAPD X3, X4
+	MOVAPD X2, X13
+	MULSD X12, X13
+	ADDSD X13, X4
+
+	MOVAPD X4, X5
+	MULSD X5, X5
+	MULSD X9, X0
+	MOVAPD X5, X13
+	MULSD X10, X13
+	ADDSD X13, X0
+	MOVSD X0, (R8)
+
+	MULSD X9, X1
+	MOVAPD X4, X13
+	MULSD X10, X13
+	ADDSD X13, X1
+	MOVSD X1, (R11)
+
+	MOVAPD X1, X6
+	MULSD X6, X6
+	MOVAPD X0, X7
+	SUBSD X6, X7
+	SQRTSD X7, X7
+	ADDSD X11, X7
+	MOVAPD X4, X13
+	DIVSD X7, X13
+	MULSD X8, X13
+	SUBSD X13, X2
+	MOVSD X2, (AX)
+
+rmspc_avx2_done:
+	VZEROUPPER
+	RET
+
+TEXT ·rmspropCenteredSSE2(SB), NOSPLIT, $0-160
+	MOVQ out+0(FP), AX
+	MOVQ v+24(FP), R8
+	MOVQ gAvg+48(FP), R11
+	MOVQ params+72(FP), R9
+	MOVQ grads+96(FP), R10
+	MOVQ out_len+8(FP), CX
+
+	MOVSD lr+120(FP), X8
+	SHUFPD $0, X8, X8
+	MOVSD alpha+128(FP), X9
+	SHUFPD $0, X9, X9
+	MOVSD oneMinusAlpha+136(FP), X10
+	SHUFPD $0, X10, X10
+	MOVSD eps+144(FP), X11
+	SHUFPD $0, X11, X11
+	MOVSD wd+152(FP), X12
+	SHUFPD $0, X12, X12
+
+	CMPQ CX, $2
+	JL   rmspc_sse2_tail
+rmspc_sse2_loop:
+	MOVUPD (R8), X0
+	MOVUPD (R11), X1
+	MOVUPD (R9), X2
+	MOVUPD (R10), X3
+
+	MOVAPD X3, X4
+	MOVAPD X2, X13
+	MULPD X12, X13
+	ADDPD X13, X4
+
+	MOVAPD X4, X5
+	MULPD X5, X5
+	MULPD X9, X0
+	MOVAPD X5, X13
+	MULPD X10, X13
+	ADDPD X13, X0
+	MOVUPD X0, (R8)
+
+	MULPD X9, X1
+	MOVAPD X4, X13
+	MULPD X10, X13
+	ADDPD X13, X1
+	MOVUPD X1, (R11)
+
+	MOVAPD X1, X6
+	MULPD X6, X6
+	MOVAPD X0, X7
+	SUBPD X6, X7
+	SQRTPD X7, X7
+	ADDPD X11, X7
+	MOVAPD X4, X13
+	DIVPD X7, X13
+	MULPD X8, X13
+	SUBPD X13, X2
+	MOVUPD X2, (AX)
+
+	ADDQ $16, AX
+	ADDQ $16, R8
+	ADDQ $16, R11
+	ADDQ $16, R9
+	ADDQ $16, R10
+	SUBQ $2, CX
+	CMPQ CX, $2
+	JGE rmspc_sse2_loop
+
+rmspc_sse2_tail:
+	CMPQ CX, $0
+	JLE rmspc_sse2_done
+	MOVSD (R8), X0
+	MOVSD (R11), X1
+	MOVSD (R9), X2
+	MOVSD (R10), X3
+
+	MOVAPD X3, X4
+	MOVAPD X2, X13
+	MULSD X12, X13
+	ADDSD X13, X4
+
+	MOVAPD X4, X5
+	MULSD X5, X5
+	MULSD X9, X0
+	MOVAPD X5, X13
+	MULSD X10, X13
+	ADDSD X13, X0
+	MOVSD X0, (R8)
+
+	MULSD X9, X1
+	MOVAPD X4, X13
+	MULSD X10, X13
+	ADDSD X13, X1
+	MOVSD X1, (R11)
+
+	MOVAPD X1, X6
+	MULSD X6, X6
+	MOVAPD X0, X7
+	SUBSD X6, X7
+	SQRTSD X7, X7
+	ADDSD X11, X7
+	MOVAPD X4, X13
+	DIVSD X7, X13
+	MULSD X8, X13
+	SUBSD X13, X2
+	MOVSD X2, (AX)
+
+rmspc_sse2_done:
+	RET
+
+// rmspropMomentumAVX2(out, v, buf, params, grads []float64,
+//                     lr, alpha, oneMinusAlpha, eps, momentum, wd float64)
+//   geff = g + wd*p
+//   v   = α*v + (1-α)*geff²
+//   denom = sqrt(v) + eps
+//   buf = μ*buf + lr*geff/denom
+//   out = p - buf
+TEXT ·rmspropMomentumAVX2(SB), NOSPLIT, $0-168
+	MOVQ out+0(FP), AX
+	MOVQ v+24(FP), R8
+	MOVQ buf+48(FP), R11
+	MOVQ params+72(FP), R9
+	MOVQ grads+96(FP), R10
+	MOVQ out_len+8(FP), CX
+
+	VBROADCASTSD lr+120(FP), Y8
+	VBROADCASTSD alpha+128(FP), Y9
+	VBROADCASTSD oneMinusAlpha+136(FP), Y10
+	VBROADCASTSD eps+144(FP), Y11
+	VBROADCASTSD momentum+152(FP), Y12
+	VBROADCASTSD wd+160(FP), Y13
+
+	CMPQ CX, $4
+	JL   rmspm_avx2_tail
+rmspm_avx2_loop:
+	VMOVUPD (R8), Y0
+	VMOVUPD (R11), Y1
+	VMOVUPD (R9), Y2
+	VMOVUPD (R10), Y3
+
+	VMOVAPD     Y3, Y4
+	VFMADD231PD Y13, Y2, Y4
+
+	VMULPD      Y4, Y4, Y5
+	VMULPD      Y9, Y0, Y0
+	VFMADD231PD Y10, Y5, Y0
+	VMOVUPD     Y0, (R8)
+
+	VSQRTPD Y0, Y6
+	VADDPD  Y11, Y6, Y6
+	VDIVPD  Y6, Y4, Y7
+
+	// buf = μ*buf + lr*upd
+	VMULPD      Y12, Y1, Y1
+	VFMADD231PD Y8, Y7, Y1
+	VMOVUPD     Y1, (R11)
+
+	// out = p - buf
+	VSUBPD  Y1, Y2, Y2
+	VMOVUPD Y2, (AX)
+
+	ADDQ $32, AX
+	ADDQ $32, R8
+	ADDQ $32, R11
+	ADDQ $32, R9
+	ADDQ $32, R10
+	SUBQ $4, CX
+	CMPQ CX, $4
+	JGE  rmspm_avx2_loop
+
+rmspm_avx2_tail:
+	CMPQ CX, $2
+	JL rmspm_avx2_scalar
+	MOVUPD (R8), X0
+	MOVUPD (R11), X1
+	MOVUPD (R9), X2
+	MOVUPD (R10), X3
+
+	MOVSD lr+120(FP), X8
+	SHUFPD $0, X8, X8
+	MOVSD alpha+128(FP), X9
+	SHUFPD $0, X9, X9
+	MOVSD oneMinusAlpha+136(FP), X10
+	SHUFPD $0, X10, X10
+	MOVSD eps+144(FP), X11
+	SHUFPD $0, X11, X11
+	MOVSD momentum+152(FP), X12
+	SHUFPD $0, X12, X12
+	MOVSD wd+160(FP), X13
+	SHUFPD $0, X13, X13
+
+	MOVAPD X3, X4
+	MOVAPD X2, X14
+	MULPD X13, X14
+	ADDPD X14, X4
+
+	MOVAPD X4, X5
+	MULPD X5, X5
+	MULPD X9, X0
+	MOVAPD X5, X14
+	MULPD X10, X14
+	ADDPD X14, X0
+	MOVUPD X0, (R8)
+
+	MOVAPD X0, X6
+	SQRTPD X6, X6
+	ADDPD X11, X6
+	MOVAPD X4, X7
+	DIVPD X6, X7
+	MULPD X12, X1
+	MOVAPD X7, X14
+	MULPD X8, X14
+	ADDPD X14, X1
+	MOVUPD X1, (R11)
+
+	SUBPD X1, X2
+	MOVUPD X2, (AX)
+
+	ADDQ $16, AX
+	ADDQ $16, R8
+	ADDQ $16, R11
+	ADDQ $16, R9
+	ADDQ $16, R10
+	SUBQ $2, CX
+
+rmspm_avx2_scalar:
+	CMPQ CX, $0
+	JLE rmspm_avx2_done
+	MOVSD (R8), X0
+	MOVSD (R11), X1
+	MOVSD (R9), X2
+	MOVSD (R10), X3
+
+	MOVSD lr+120(FP), X8
+	MOVSD alpha+128(FP), X9
+	MOVSD oneMinusAlpha+136(FP), X10
+	MOVSD eps+144(FP), X11
+	MOVSD momentum+152(FP), X12
+	MOVSD wd+160(FP), X13
+
+	MOVAPD X3, X4
+	MOVAPD X2, X14
+	MULSD X13, X14
+	ADDSD X14, X4
+
+	MOVAPD X4, X5
+	MULSD X5, X5
+	MULSD X9, X0
+	MOVAPD X5, X14
+	MULSD X10, X14
+	ADDSD X14, X0
+	MOVSD X0, (R8)
+
+	MOVAPD X0, X6
+	SQRTSD X6, X6
+	ADDSD X11, X6
+	MOVAPD X4, X7
+	DIVSD X6, X7
+	MULSD X12, X1
+	MOVAPD X7, X14
+	MULSD X8, X14
+	ADDSD X14, X1
+	MOVSD X1, (R11)
+
+	SUBSD X1, X2
+	MOVSD X2, (AX)
+
+rmspm_avx2_done:
+	VZEROUPPER
+	RET
+
+TEXT ·rmspropMomentumSSE2(SB), NOSPLIT, $0-168
+	MOVQ out+0(FP), AX
+	MOVQ v+24(FP), R8
+	MOVQ buf+48(FP), R11
+	MOVQ params+72(FP), R9
+	MOVQ grads+96(FP), R10
+	MOVQ out_len+8(FP), CX
+
+	MOVSD lr+120(FP), X8
+	SHUFPD $0, X8, X8
+	MOVSD alpha+128(FP), X9
+	SHUFPD $0, X9, X9
+	MOVSD oneMinusAlpha+136(FP), X10
+	SHUFPD $0, X10, X10
+	MOVSD eps+144(FP), X11
+	SHUFPD $0, X11, X11
+	MOVSD momentum+152(FP), X12
+	SHUFPD $0, X12, X12
+	MOVSD wd+160(FP), X13
+	SHUFPD $0, X13, X13
+
+	CMPQ CX, $2
+	JL rmspm_sse2_tail
+rmspm_sse2_loop:
+	MOVUPD (R8), X0
+	MOVUPD (R11), X1
+	MOVUPD (R9), X2
+	MOVUPD (R10), X3
+
+	MOVAPD X3, X4
+	MOVAPD X2, X14
+	MULPD X13, X14
+	ADDPD X14, X4
+
+	MOVAPD X4, X5
+	MULPD X5, X5
+	MULPD X9, X0
+	MOVAPD X5, X14
+	MULPD X10, X14
+	ADDPD X14, X0
+	MOVUPD X0, (R8)
+
+	MOVAPD X0, X6
+	SQRTPD X6, X6
+	ADDPD X11, X6
+	MOVAPD X4, X7
+	DIVPD X6, X7
+	MULPD X12, X1
+	MOVAPD X7, X14
+	MULPD X8, X14
+	ADDPD X14, X1
+	MOVUPD X1, (R11)
+
+	SUBPD X1, X2
+	MOVUPD X2, (AX)
+
+	ADDQ $16, AX
+	ADDQ $16, R8
+	ADDQ $16, R11
+	ADDQ $16, R9
+	ADDQ $16, R10
+	SUBQ $2, CX
+	CMPQ CX, $2
+	JGE rmspm_sse2_loop
+
+rmspm_sse2_tail:
+	CMPQ CX, $0
+	JLE rmspm_sse2_done
+	MOVSD (R8), X0
+	MOVSD (R11), X1
+	MOVSD (R9), X2
+	MOVSD (R10), X3
+
+	MOVAPD X3, X4
+	MOVAPD X2, X14
+	MULSD X13, X14
+	ADDSD X14, X4
+
+	MOVAPD X4, X5
+	MULSD X5, X5
+	MULSD X9, X0
+	MOVAPD X5, X14
+	MULSD X10, X14
+	ADDSD X14, X0
+	MOVSD X0, (R8)
+
+	MOVAPD X0, X6
+	SQRTSD X6, X6
+	ADDSD X11, X6
+	MOVAPD X4, X7
+	DIVSD X6, X7
+	MULSD X12, X1
+	MOVAPD X7, X14
+	MULSD X8, X14
+	ADDSD X14, X1
+	MOVSD X1, (R11)
+
+	SUBSD X1, X2
+	MOVSD X2, (AX)
+
+rmspm_sse2_done:
+	RET

@@ -24,23 +24,13 @@ func mulScalarNEON(dst []float64, s float64)
 func reduceSumSqNEON(a []float64) float64
 
 func reduceSum(a []float64) float64 {
-	n := len(a)
-	sum := reduceSumNEON(a)
-	if n%2 != 0 {
-		sum += a[n-1]
-	}
-	return sum
+	// reduceSumNEON handles the odd tail internally; no extra add here.
+	return reduceSumNEON(a)
 }
 
 func reduceMax(a []float64) float64 {
-	n := len(a)
-	mx := reduceMaxNEON(a)
-	if n%2 != 0 {
-		if a[n-1] > mx {
-			mx = a[n-1]
-		}
-	}
-	return mx
+	// reduceMaxNEON processes every element scalar; no extra compare here.
+	return reduceMaxNEON(a)
 }
 
 func divScalar(dst []float64, s float64) {
@@ -135,12 +125,40 @@ func expVecNEON(dst, src []float64)
 //go:noescape
 func logVecNEON(dst, src []float64)
 
+//go:noescape
+func layerNormRowNEON(out, row, weight, bias []float64, eps float64)
+
+//go:noescape
+func rmsNormRowNEON(out, row, weight []float64, eps float64)
+
+//go:noescape
+func softmaxRowNEON(row []float64)
+
+func softmaxRowSIMD(row []float64) {
+	softmaxRowNEON(row)
+}
+
+//go:noescape
+func logSumExpRowNEON(row []float64) float64
+
+func logSumExpRowSIMD(row []float64) float64 {
+	return logSumExpRowNEON(row)
+}
+
 func expVec(dst, src []float64) {
 	expVecNEON(dst, src)
 }
 
 func logVec(dst, src []float64) {
 	logVecNEON(dst, src)
+}
+
+func layerNormRow(out, row, weight, bias []float64, eps float64) {
+	layerNormRowNEON(out, row, weight, bias, eps)
+}
+
+func rmsNormRow(out, row, weight []float64, eps float64) {
+	rmsNormRowNEON(out, row, weight, eps)
 }
 
 func addScaledVec(dst, src []float64, scale float64) {

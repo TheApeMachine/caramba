@@ -289,6 +289,65 @@ func logVecAVX2(dst, src []float64)
 //go:noescape
 func logVecSSE2(dst, src []float64)
 
+//go:noescape
+func layerNormRowAVX2(out, row, weight, bias []float64, eps float64)
+
+//go:noescape
+func layerNormRowSSE2(out, row, weight, bias []float64, eps float64)
+
+//go:noescape
+func rmsNormRowAVX2(out, row, weight []float64, eps float64)
+
+//go:noescape
+func rmsNormRowSSE2(out, row, weight []float64, eps float64)
+
+//go:noescape
+func softmaxRowAVX2(row []float64)
+
+//go:noescape
+func softmaxRowSSE2(row []float64)
+
+func softmaxRowSIMD(row []float64) {
+	if useAVX2 && useFMA {
+		softmaxRowAVX2(row)
+		return
+	}
+
+	softmaxRowSSE2(row)
+}
+
+//go:noescape
+func logSumExpRowAVX2(row []float64) float64
+
+//go:noescape
+func logSumExpRowSSE2(row []float64) float64
+
+func logSumExpRowSIMD(row []float64) float64 {
+	if useAVX2 && useFMA {
+		return logSumExpRowAVX2(row)
+	}
+
+	return logSumExpRowSSE2(row)
+}
+
+func rmsNormRow(out, row, weight []float64, eps float64) {
+	if useAVX2 && useFMA {
+		rmsNormRowAVX2(out, row, weight, eps)
+		return
+	}
+
+	rmsNormRowSSE2(out, row, weight, eps)
+}
+
+func layerNormRow(out, row, weight, bias []float64, eps float64) {
+	if useAVX2 && useFMA {
+		layerNormRowAVX2(out, row, weight, bias, eps)
+		return
+	}
+
+	layerNormRowSSE2(out, row, weight, bias, eps)
+}
+
 // addScaledVec: dst[i] += scale * src[i]  (AXPY)
 func addScaledVec(dst, src []float64, scale float64) {
 	limit := alignedLen(len(src))

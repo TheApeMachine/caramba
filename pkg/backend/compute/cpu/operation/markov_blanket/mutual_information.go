@@ -3,6 +3,8 @@ package markov_blanket
 import (
 	"fmt"
 	stdmath "math"
+
+	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
 )
 
 /*
@@ -218,12 +220,14 @@ func logDetCholesky(a []float64, n int) float64 {
 		}
 	}
 
-	// log|A| = 2 * sum_i log(L[i,i])
-	logDet := 0.0
+	// log|A| = 2 * sum_i log(L[i,i]) — gather diagonal then SIMD log+sum.
+	diag := make([]float64, n)
 
-	for diag := range n {
-		logDet += stdmath.Log(L[diag*n+diag])
+	for idx := range n {
+		diag[idx] = L[idx*n+idx]
 	}
 
-	return 2.0 * logDet
+	mathops.LogVec(diag, diag)
+
+	return 2.0 * mathops.ReduceSum(diag)
 }

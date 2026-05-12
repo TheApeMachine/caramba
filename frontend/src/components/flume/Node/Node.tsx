@@ -7,16 +7,16 @@ import { createPortal } from "react-dom";
 import { BarVertical } from "#/components/charts/bar-vertical";
 import {
 	calculateEdgePath,
-	collectDomObstacleRects,
 	getPortRect,
 } from "#/components/flume/connectionCalculator";
-import { CONNECTIONS_ID } from "#/components/flume/constants";
+
 import {
 	CacheContext,
-	EditorIdContext,
 	NodeDispatchContext,
+	NodeMapContext,
 	NodeTypesContext,
 	PortTypesContext,
+	RecalculateConnectionsWorkerContext,
 	StageContext,
 	useEdgeRouting,
 } from "#/components/flume/context";
@@ -92,7 +92,8 @@ const Node = ({
 	const nodeTypes = React.useContext(NodeTypesContext) ?? {};
 	const portTypes = React.useContext(PortTypesContext) ?? {};
 	const nodesDispatch = React.useContext(NodeDispatchContext);
-	const editorId = React.useContext(EditorIdContext);
+	const recalculateWorker = React.useContext(RecalculateConnectionsWorkerContext);
+	const nodeMap = React.useContext(NodeMapContext);
 	const stageState = React.useContext(StageContext) ?? {
 		scale: 0,
 		translate: { x: 0, y: 0 },
@@ -162,26 +163,9 @@ const Node = ({
 					x: byScale((toRect?.x ?? 0) - sx + toHalfW - sHw) + tx,
 					y: byScale((toRect?.y ?? 0) - sy - sHh + toHalfH) + ty,
 				};
-				const connStage = document
-					.getElementById(`${CONNECTIONS_ID}${editorId}`)
-					?.getBoundingClientRect();
-				const obstaclesVertical =
-					edgeRouting === "orthogonal" && connStage
-						? collectDomObstacleRects(connStage, stageState.scale, new Set())
-						: undefined;
-				const obstaclesHorizontal =
-					edgeRouting === "orthogonal" && connStage
-						? collectDomObstacleRects(connStage, stageState.scale, new Set([id, output.nodeId]))
-						: undefined;
 				cnx?.setAttribute(
 					"d",
-					calculateEdgePath(
-						edgeRouting,
-						isOutput ? to : from,
-						isOutput ? from : to,
-						obstaclesVertical,
-						obstaclesHorizontal,
-					),
+					calculateEdgePath(edgeRouting, isOutput ? to : from, isOutput ? from : to),
 				);
 			});
 		});
@@ -205,7 +189,11 @@ const Node = ({
 	const handleDrag = ({ x, y }: Coordinate) => {
 		if (nodeWrapper.current) {
 			nodeWrapper.current.style.transform = `translate(${x}px,${y}px)`;
-			updateNodeConnections();
+			if (edgeRouting === "orthogonal" && recalculateWorker) {
+				recalculateWorker(nodeMap);
+			} else {
+				updateNodeConnections();
+			}
 		}
 	};
 

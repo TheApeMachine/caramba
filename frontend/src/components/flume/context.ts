@@ -33,6 +33,19 @@ export const RecalculateStageRectContext = React.createContext<
 >(null);
 export const EditorIdContext = React.createContext<string>("");
 
+import type { FlumeNode, NodeMap } from "#/components/flume/types";
+
+/*
+RecalculateConnectionsWorkerContext is a callback that dispatches a full
+connection-path recalculation to the off-thread Web Worker. Nodes call this
+after each drag move so path math never blocks the main thread.
+*/
+export const NodeMapContext = React.createContext<NodeMap>({});
+
+export const RecalculateConnectionsWorkerContext = React.createContext<
+	((nodes: Record<string, FlumeNode>) => void) | null
+>(null);
+
 /*
 SubGraphContext is set by a block Node when it renders an inline NodeEditor.
 It gives the nested editor a callback to write its NodeMap back into the

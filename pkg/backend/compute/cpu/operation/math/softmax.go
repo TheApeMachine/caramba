@@ -1,7 +1,8 @@
 package math
 
 // Softmax computes softmax over the last dimension of the input.
-// data[0]=x, shape=[..., dim_size]; output has the same shape.
+// Each row passes through a dedicated AVX2/SSE2/NEON kernel that fuses max,
+// exp (polynomial range-reduced), sum, and reciprocal-divide inline.
 type Softmax struct{}
 
 func NewSoftmax() *Softmax { return &Softmax{} }
@@ -21,11 +22,7 @@ func (op *Softmax) Forward(shape []int, data ...[]float64) []float64 {
 	return out
 }
 
-// softmaxRow computes in-place softmax over a single row using SIMD primitives.
+// softmaxRow dispatches to the fused SIMD kernel.
 func softmaxRow(row []float64) {
-	mx := reduceMax(row)
-	addScalarVec(row, -mx)
-	expVec(row, row)
-	sum := reduceSum(row)
-	divScalar(row, sum)
+	softmaxRowSIMD(row)
 }

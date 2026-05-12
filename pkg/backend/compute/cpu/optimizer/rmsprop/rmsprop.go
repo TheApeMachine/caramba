@@ -1,29 +1,19 @@
 package rmsprop
 
-import (
-	stdmath "math"
-
-	prim "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
-)
-
 /*
-RMSProp maintains a running average of squared gradients.
-v  = α*v + (1-α)*g²
-p -= lr * g / (sqrt(v) + ε)
-
-With momentum:
-buf = μ*buf + lr * g / (sqrt(v) + ε)
-p  -= buf
+RMSProp — running average of squared gradients. All four variants (plain,
+centered, momentum, centered-momentum) execute through dedicated AVX2/SSE2/NEON
+kernels with the entire update pipeline fused.
 */
 type RMSProp struct {
 	LR       float64
-	Alpha    float64 // smoothing factor (default 0.99)
+	Alpha    float64
 	Eps      float64
 	Momentum float64
 	WD       float64
-	Centered bool // subtract mean of gradient (centered RMSProp)
+	Centered bool
 	v, buf   []float64
-	grad_avg []float64 // for centered variant
+	gradAvg  []float64
 }
 
 func NewRMSProp(lr, alpha, eps, momentum, wd float64, centered bool) *RMSProp {
@@ -36,53 +26,23 @@ func (rms *RMSProp) Step(params, grads []float64) []float64 {
 	if rms.v == nil {
 		rms.v = make([]float64, n)
 		rms.buf = make([]float64, n)
+
 		if rms.Centered {
-			rms.grad_avg = make([]float64, n)
+			rms.gradAvg = make([]float64, n)
 		}
 	}
-
-	g := grads
-	if rms.WD != 0 {
-		g = make([]float64, n)
-		copy(g, grads)
-		prim.AddScaledVec(g, params, rms.WD)
-	}
-
-	// v = α*v + (1-α)*g²
-	prim.ScaleVec(rms.v, rms.Alpha)
-	g2 := make([]float64, n)
-	prim.MulVec(g2, g, g)
-	prim.AddScaledVec(rms.v, g2, 1-rms.Alpha)
-
-	denom := make([]float64, n)
-	copy(denom, rms.v)
-
-	if rms.Centered {
-		prim.ScaleVec(rms.grad_avg, rms.Alpha)
-		prim.AddScaledVec(rms.grad_avg, g, 1-rms.Alpha)
-		gavg2 := make([]float64, n)
-		prim.MulVec(gavg2, rms.grad_avg, rms.grad_avg)
-		for idx := range denom {
-			denom[idx] -= gavg2[idx]
-		}
-	}
-
-	for idx := range denom {
-		denom[idx] = stdmath.Sqrt(denom[idx]) + rms.Eps
-	}
-
-	update := make([]float64, n)
-	prim.DivVec(update, g, denom)
 
 	out := make([]float64, n)
-	copy(out, params)
 
-	if rms.Momentum != 0 {
-		prim.ScaleVec(rms.buf, rms.Momentum)
-		prim.AddScaledVec(rms.buf, update, rms.LR)
-		prim.AddScaledVec(out, rms.buf, -1)
-	} else {
-		prim.AddScaledVec(out, update, -rms.LR)
+	switch {
+	case rms.Centered && rms.Momentum != 0:
+		rmspropCenteredMomentum(out, rms.v, rms.gradAvg, rms.buf, params, grads, rms.LR, rms.Alpha, rms.Eps, rms.Momentum, rms.WD)
+	case rms.Centered:
+		rmspropCentered(out, rms.v, rms.gradAvg, params, grads, rms.LR, rms.Alpha, rms.Eps, rms.WD)
+	case rms.Momentum != 0:
+		rmspropMomentum(out, rms.v, rms.buf, params, grads, rms.LR, rms.Alpha, rms.Eps, rms.Momentum, rms.WD)
+	default:
+		rmspropPlain(out, rms.v, params, grads, rms.LR, rms.Alpha, rms.Eps, rms.WD)
 	}
 
 	return out

@@ -7,6 +7,11 @@ import {
 	createConnections,
 	type EdgeRoutingMode,
 } from "#/components/flume/connectionCalculator";
+import {
+	ObstacleIndexContext,
+	useConnectionWorker,
+	useObstacleIndex,
+} from "#/components/flume/useObstacleIndex";
 import { DRAG_CONNECTION_ID, STAGE_ID } from "#/components/flume/constants";
 import Node from "#/components/flume/Node/Node";
 import Stage from "#/components/flume/Stage/Stage";
@@ -21,8 +26,10 @@ import {
 	EdgeRoutingContext,
 	EditorIdContext,
 	NodeDispatchContext,
+	NodeMapContext,
 	NodeTypesContext,
 	PortTypesContext,
+	RecalculateConnectionsWorkerContext,
 	RecalculateStageRectContext,
 	StageContext,
 } from "./context";
@@ -103,6 +110,7 @@ export const NodeEditor = React.forwardRef(
 		const editorId = useId() ?? "";
 		const cache = React.useRef(new Cache());
 		const stage = React.useRef<DOMRect | undefined>(undefined);
+		const scaleRef = React.useRef(1);
 
 		const [sideEffectToasts, setSideEffectToasts] =
 			React.useState<ToastAction>();
@@ -143,6 +151,15 @@ export const NodeEditor = React.forwardRef(
 					: 1,
 			translate: { x: 0, y: 0 },
 		});
+
+		scaleRef.current = stageState.scale;
+		const obstacleIndex = useObstacleIndex(editorId, scaleRef);
+		const recalculateWorker = useConnectionWorker(
+			editorId,
+			edgeRoutingMode,
+			obstacleIndex,
+			scaleRef,
+		);
 
 		const recalculateConnections = React.useCallback(() => {
 			createConnections(nodes, stageState, editorId, edgeRoutingMode);
@@ -226,6 +243,9 @@ export const NodeEditor = React.forwardRef(
 				fullHeight
 				fullWidth
 			>
+				<ObstacleIndexContext.Provider value={obstacleIndex}>
+				<RecalculateConnectionsWorkerContext.Provider value={recalculateWorker}>
+				<NodeMapContext.Provider value={nodes}>
 				<EdgeRoutingContext.Provider value={edgeRoutingMode}>
 					<PortTypesContext.Provider value={portTypes}>
 						<NodeTypesContext.Provider value={nodeTypes}>
@@ -321,6 +341,9 @@ export const NodeEditor = React.forwardRef(
 						</NodeTypesContext.Provider>
 					</PortTypesContext.Provider>
 				</EdgeRoutingContext.Provider>
+				</NodeMapContext.Provider>
+				</RecalculateConnectionsWorkerContext.Provider>
+				</ObstacleIndexContext.Provider>
 			</Flex.Column>
 		);
 	},

@@ -1,10 +1,11 @@
+import { useAuth } from "@clerk/tanstack-react-start";
 import { useLiveQuery } from "@tanstack/react-db";
 import { ClientOnly, createFileRoute, Link } from "@tanstack/react-router";
 import { KanbanIcon, LayersIcon } from "lucide-react";
+import { researchProjectCollection } from "#/collections/research_project";
 import { Button } from "#/components/ui/button";
 import { Flex } from "#/components/ui/flex";
 import { Typography } from "#/components/ui/typography";
-import { researchProjectsCollection } from "#/lib/research-projects-collection";
 
 const KanbanHubPending = () => {
 	return (
@@ -17,12 +18,11 @@ const KanbanHubPending = () => {
 };
 
 function KanbanHubContent() {
-	const defaultOrganizationSlug =
-		import.meta.env.VITE_CLERK_ORGANIZATION_SLUG ?? "caramba";
+	const { orgSlug } = useAuth();
 
 	const { data, isLoading, isError } = useLiveQuery((query) =>
 		query
-			.from({ project: researchProjectsCollection })
+			.from({ project: researchProjectCollection })
 			.select(({ project }) => ({
 				id: project.id,
 				name: project.name,
@@ -70,7 +70,7 @@ function KanbanHubContent() {
 					className="justify-start gap-3"
 					render={
 						<Link
-							params={{ organizationSlug: defaultOrganizationSlug }}
+							params={{ organizationSlug: orgSlug }}
 							to="/kanban/org/$organizationSlug"
 						/>
 					}
@@ -79,7 +79,7 @@ function KanbanHubContent() {
 					<KanbanIcon aria-hidden className="size-4 shrink-0" />
 					<Flex.Column className="items-start gap-0.5">
 						<span className="font-medium text-sm">
-							{defaultOrganizationSlug}
+							{orgSlug}
 						</span>
 						<span className="font-normal text-muted-foreground text-xs">
 							All projects with this organization slug

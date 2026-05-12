@@ -3,6 +3,8 @@ package model
 import (
 	"fmt"
 	"math"
+
+	cpumath "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
 )
 
 /*
@@ -184,10 +186,8 @@ func (lora *LoRA) apply(w, a, b []float64, dims [2]int) []float64 {
 	}
 
 	result := make([]float64, expected)
-
-	for idx := range result {
-		result[idx] = w[idx] + delta[idx]*scale
-	}
+	copy(result, w)
+	cpumath.AddScaledVec(result, delta, scale)
 
 	return result
 }

@@ -166,7 +166,9 @@ func TestPrecisionWeight(t *testing.T) {
 				lp := []float64{100.0}
 				want := math.Exp(100.0)
 				out := op.Forward([]int{1}, errVec, lp)
-				So(out[0], ShouldAlmostEqual, want, 1e-6)
+				// SIMD exp uses polynomial range reduction; ~1e-7 relative precision.
+				relErr := math.Abs(out[0]-want) / want
+				So(relErr, ShouldBeLessThan, 1e-6)
 				So(math.IsInf(out[0], 0), ShouldBeFalse)
 			})
 
