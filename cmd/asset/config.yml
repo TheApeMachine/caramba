@@ -1,3 +1,11 @@
 errnie:
   level: debug
-  file: caramba.log
+  file: 
+    active: false
+    path: ${HOME}/go/src/github.com/theapemachine/caramba/caramba.log
+  elasticsearch:
+    active: true
+    url: http://elasticsearch:9200
+    index: caramba
+    username: ${ELASTIC_USERNAME}
+    password: ${ELASTIC_PASSWORD}

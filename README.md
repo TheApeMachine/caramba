@@ -129,26 +129,31 @@ caramba asset list
 The compute layer is organized around explicit tensor ownership and a hardware-agnostic IR. Backend kernels upload values once into a resident tensor store and only download at real boundaries. The IR graph travels through an optimizer pipeline (CSE, DCE, operator fusion) before dispatch.
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                      COMPUTE PIPELINE                            │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   Manifest → Compiler → IR Graph → Optimizer → Runner           │
-│                                                                  │
-│   Runners:                                                       │
-│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
-│   │  CPU     │  │  CUDA    │  │  Metal   │  │  XLA     │        │
-│   │ (Go+SIMD)│  │ (Linux)  │  │ (macOS)  │  │ (PJRT)   │        │
-│   └──────────┘  └──────────┘  └──────────┘  └──────────┘        │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│                      COMPUTE PIPELINE                      │
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│   Manifest → Compiler → IR Graph → Optimizer → Runner      │
+│                                                            │
+│   Runners:                                                 │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
+│   │  CPU     │  │  CUDA    │  │  Metal   │  │  XLA     │   │
+│   │ (Go+SIMD)│  │ (Linux)  │  │ (macOS)  │  │ (PJRT)   │   │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
+│                                                            │
+└────────────────────────────────────────────────────────────┘
 ```
 
 Every backend implements the same `Runner` interface:
 
 ```go
 type Runner interface {
-    Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Float64Tensor, error)
+    Execute(
+      ctx context.Context, 
+      graph *ir.Graph, 
+      targets []*ir.Node,
+    ) (map[string]tensor.Float64Tensor, error)
+    
     Location() tensor.Location
     Close() error
 }

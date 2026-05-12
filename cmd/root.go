@@ -9,6 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/theapemachine/caramba/pkg/config"
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 /*
@@ -67,6 +70,8 @@ initConfig loads config.yml from, in order:
   - embedded cmd/cfg/config.yml
 */
 func initConfig() {
+	defer errnie.Apply(config.NewErrnieConfig())
+
 	viper.SetConfigType("yml")
 
 	tryRead := func(path string) error {

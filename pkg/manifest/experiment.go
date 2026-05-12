@@ -34,6 +34,7 @@ caller has a single object representing the complete research intent.
 type Experiment struct {
 	Datasets   []map[string]any
 	Trainer    map[string]any
+	Tuner      map[string]any
 	Deployment map[string]any
 	Targets    []Target
 }
@@ -53,24 +54,27 @@ func (compiler *Compiler) CompileExperiment(path string) (*Experiment, error) {
 
 	experiment.Datasets = extractDatasets(document)
 	experiment.Trainer = extractOptionalMap(document, "trainer")
+	experiment.Tuner = extractOptionalMap(document, "tuner")
 	experiment.Deployment = extractOptionalMap(document, "deployment")
 
-	rawTargets, _ := document["targets"].([]any)
+	rawTargets, ok := document["targets"].([]any)
 
-	for _, rawTarget := range rawTargets {
-		targetMap, ok := rawTarget.(map[string]any)
+	if ok {
+		for _, rawTarget := range rawTargets {
+			targetMap, ok := rawTarget.(map[string]any)
 
-		if !ok {
-			continue
+			if !ok {
+				continue
+			}
+
+			target, err := compiler.buildTarget(targetMap)
+
+			if err != nil {
+				return nil, err
+			}
+
+			experiment.Targets = append(experiment.Targets, target)
 		}
-
-		target, err := compiler.buildTarget(targetMap)
-
-		if err != nil {
-			return nil, err
-		}
-
-		experiment.Targets = append(experiment.Targets, target)
 	}
 
 	return experiment, nil
@@ -101,16 +105,18 @@ func (compiler *Compiler) buildTarget(targetMap map[string]any) (Target, error) 
 		}
 	}
 
-	rawRuns, _ := targetMap["runs"].([]any)
+	rawRuns, ok := targetMap["runs"].([]any)
 
-	for _, rawRun := range rawRuns {
-		runMap, ok := rawRun.(map[string]any)
+	if ok {
+		for _, rawRun := range rawRuns {
+			runMap, ok := rawRun.(map[string]any)
 
-		if !ok {
-			continue
+			if !ok {
+				continue
+			}
+
+			target.Runs = append(target.Runs, buildRun(runMap))
 		}
-
-		target.Runs = append(target.Runs, buildRun(runMap))
 	}
 
 	return target, nil
@@ -159,13 +165,19 @@ func extractOptionalMap(m map[string]any, key string) map[string]any {
 		return nil
 	}
 
-	result, _ := raw.(map[string]any)
+	result, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
 
 	return result
 }
 
 func stringField(m map[string]any, key string) string {
-	v, _ := m[key].(string)
+	v, ok := m[key].(string)
+	if !ok {
+		return ""
+	}
 
 	return v
 }
