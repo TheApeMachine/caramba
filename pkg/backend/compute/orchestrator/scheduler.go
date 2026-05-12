@@ -69,27 +69,31 @@ func (scheduler *Scheduler) Execute(
 		targets = graph.Sinks()
 	}
 
-	optimizedGraph, optimizedTargets, err := scheduler.cse.OptimizeWithTargets(graph, targets)
-	if err != nil {
-		return nil, err
+	capabilities := CapabilitiesForLocation(location)
+	if provider, ok := r.(CapabilityProvider); ok {
+		capabilities = provider.Capabilities()
 	}
-
-	optimizedGraph, optimizedTargets, err = scheduler.fusion.OptimizeWithTargets(
-		optimizedGraph,
-		optimizedTargets,
+	pipeline := NewPipeline(
+		NewVerifierPass(),
+		NewCanonicalizePass(),
+		scheduler.cse,
+		NewAlgebraicSimplifyPass(),
+		NewFusionOptimizerWithCapabilities(capabilities),
+		scheduler.dce,
+		NewMemoryPlanPass(),
+		NewSchedulePass(capabilities),
+		NewLoweringPass(capabilities),
+		NewVerifierPass(),
 	)
+
+	result, err := pipeline.Run(ctx, graph, targets)
 	if err != nil {
 		return nil, err
 	}
 
-	optimizedGraph, err = scheduler.dce.Optimize(ctx, optimizedGraph, optimizedTargets)
-	if err != nil {
+	if err := validateTargets(result.Graph, result.Targets); err != nil {
 		return nil, err
 	}
 
-	if err := validateTargets(optimizedGraph, optimizedTargets); err != nil {
-		return nil, err
-	}
-
-	return r.Execute(ctx, optimizedGraph, optimizedTargets)
+	return r.Execute(ctx, result.Graph, result.Targets)
 }

@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -21,6 +22,35 @@ NewCSEOptimizer instantiates a new Common Subexpression Elimination optimizer.
 */
 func NewCSEOptimizer() *CSEOptimizer {
 	return &CSEOptimizer{}
+}
+
+func (optimizer *CSEOptimizer) Name() string {
+	return "semantic-cse"
+}
+
+func (optimizer *CSEOptimizer) Run(
+	ctx context.Context,
+	input PassInput,
+) (PassResult, error) {
+	if err := ctx.Err(); err != nil {
+		return PassResult{}, err
+	}
+
+	graph, targets, err := optimizer.OptimizeWithTargets(input.Graph, input.Targets)
+
+	if err != nil {
+		return PassResult{}, err
+	}
+
+	input.Diagnostics.Add(optimizer.Name(), DiagnosticInfo, "deduplicated semantic expressions")
+
+	return PassResult{
+		Graph:       graph,
+		Targets:     targets,
+		TargetMap:   targetMap(targets),
+		Diagnostics: input.Diagnostics,
+		Changed:     true,
+	}, nil
 }
 
 /*
@@ -67,11 +97,18 @@ func (optimizer *CSEOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[string]
 
 	for _, layer := range layers {
 		for _, node := range layer {
-			if node.OpType() == ir.OpInput {
+			if node.OpType() == ir.OpInput || !node.IsPure() {
 				newNode := ir.NewNode(node.ID(), node.OpType(), node.Shape())
 				newNode.SetInPlace(node.InPlace())
+				newNode.SetOperationID(node.OperationID())
+				newNode.SetValueType(node.ValueType())
+				newNode.SetEffect(node.Effect())
+				newNode.SetAlias(node.Alias())
 				for k, v := range node.Metadata() {
 					newNode.SetMetadata(k, v)
+				}
+				for k, v := range node.Attributes() {
+					newNode.SetAttribute(k, v)
 				}
 				replacements[node.ID()] = newNode
 				optimizedGraph.AddNode(newNode)
@@ -87,8 +124,15 @@ func (optimizer *CSEOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[string]
 
 				newNode := ir.NewNode(node.ID(), node.OpType(), node.Shape())
 				newNode.SetInPlace(node.InPlace())
+				newNode.SetOperationID(node.OperationID())
+				newNode.SetValueType(node.ValueType())
+				newNode.SetEffect(node.Effect())
+				newNode.SetAlias(node.Alias())
 				for k, v := range node.Metadata() {
 					newNode.SetMetadata(k, v)
+				}
+				for k, v := range node.Attributes() {
+					newNode.SetAttribute(k, v)
 				}
 
 				// Add remapped inputs
@@ -111,12 +155,11 @@ func (optimizer *CSEOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[string]
 
 func generateSignature(node *ir.Node, replacements map[string]*ir.Node) string {
 	var sb strings.Builder
-	sb.WriteString(string(node.OpType()))
+	sb.WriteString(string(node.OperationID()))
 	sb.WriteString("|")
 
-	// Include shape in signature
-	sb.WriteString(fmt.Sprintf("%v", node.Shape().Dims()))
-	sb.WriteString("|")
+	valueType := node.ValueType()
+	sb.WriteString(fmt.Sprintf("%v|%s|%s|%s|", node.Shape().Dims(), valueType.DType, valueType.Layout, valueType.MemoryClass))
 
 	if node.InPlace() {
 		sb.WriteString("inplace=true|")
@@ -124,28 +167,34 @@ func generateSignature(node *ir.Node, replacements map[string]*ir.Node) string {
 		sb.WriteString("inplace=false|")
 	}
 
-	// Serialize metadata
-	meta := node.Metadata()
-	keys := make([]string, 0, len(meta))
-	for k := range meta {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, k := range keys {
-		sb.WriteString(fmt.Sprintf("%s=%v;", k, meta[k]))
-	}
+	sb.WriteString(node.CanonicalAttributes())
 	sb.WriteString("|")
 
-	for _, in := range node.Inputs() {
-		// Use the replacement ID to ensure transitive redundancy is caught
-		if rep, ok := replacements[in.ID()]; ok {
-			sb.WriteString(rep.ID())
-		} else {
-			sb.WriteString(in.ID())
-		}
+	inputIDs := canonicalInputIDs(node, replacements)
+
+	for _, inputID := range inputIDs {
+		sb.WriteString(inputID)
 		sb.WriteString(",")
 	}
 
 	return sb.String()
+}
+
+func canonicalInputIDs(node *ir.Node, replacements map[string]*ir.Node) []string {
+	inputs := node.Inputs()
+	inputIDs := make([]string, 0, len(inputs))
+
+	for _, in := range node.Inputs() {
+		if rep, ok := replacements[in.ID()]; ok {
+			inputIDs = append(inputIDs, rep.ID())
+		} else {
+			inputIDs = append(inputIDs, in.ID())
+		}
+	}
+
+	if node.OpType() == ir.OpAdd || node.OpType() == ir.OpMul {
+		sort.Strings(inputIDs)
+	}
+
+	return inputIDs
 }

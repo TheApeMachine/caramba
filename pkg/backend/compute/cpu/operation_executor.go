@@ -97,11 +97,28 @@ func (tensorBackend *TensorBackend) applyFused(
 		return nil, err
 	}
 
-	if len(inputs) != 3 {
-		return nil, fmt.Errorf("cpu tensor: Fused node %q requires 3 inputs", node.ID)
+	activation, _ := node.Metadata["activation"].(string)
+	if len(inputs) == 2 {
+		output, err := tensorBackend.Matmul(inputs[0], inputs[1])
+
+		if err != nil {
+			return nil, err
+		}
+
+		switch {
+		case strings.EqualFold(activation, string(ir.OpReLU)):
+			return tensorBackend.ReLU(output)
+		case strings.EqualFold(activation, string(ir.OpGELU)):
+			return tensorBackend.GELU(output)
+		default:
+			return output, nil
+		}
 	}
 
-	activation, _ := node.Metadata["activation"].(string)
+	if len(inputs) != 3 {
+		return nil, fmt.Errorf("cpu tensor: Fused node %q requires 2 or 3 inputs", node.ID)
+	}
+
 	if strings.EqualFold(activation, string(ir.OpGELU)) {
 		return tensorBackend.MatmulAddGELU(inputs[0], inputs[1], inputs[2])
 	}

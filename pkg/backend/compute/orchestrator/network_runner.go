@@ -32,8 +32,11 @@ type NetworkRunner struct {
 }
 
 type networkNodeConfig struct {
-	Target     bool   `json:"target"`
-	Activation string `json:"activation"`
+	Version    int                     `json:"version"`
+	Target     bool                    `json:"target"`
+	Activation string                  `json:"activation"`
+	Operation  string                  `json:"operation"`
+	Attributes map[string]ir.Attribute `json:"attributes"`
 }
 
 /*
@@ -124,7 +127,7 @@ func (runner *NetworkRunner) Execute(ctx context.Context, graph *ir.Graph, targe
 			if err := msgNode.SetId(node.ID()); err != nil {
 				return err
 			}
-			if err := msgNode.SetOp(string(node.OpType())); err != nil {
+			if err := msgNode.SetOp(string(node.OperationID())); err != nil {
 				return err
 			}
 			if err := setNodeInputs(msgNode, node); err != nil {
@@ -132,8 +135,11 @@ func (runner *NetworkRunner) Execute(ctx context.Context, graph *ir.Graph, targe
 			}
 			activation, _ := node.Metadata()["activation"].(string)
 			config, err := json.Marshal(networkNodeConfig{
+				Version:    1,
 				Target:     targetIDs[node.ID()],
 				Activation: activation,
+				Operation:  string(node.OperationID()),
+				Attributes: node.Attributes(),
 			})
 			if err != nil {
 				return err

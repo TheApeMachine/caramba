@@ -134,10 +134,12 @@ func (compiler *Compiler) buildNode(manifest map[string]any) (*Node, error) {
 	}
 
 	return &Node{
-		ID:  nodeID,
-		Op:  operationInstance,
-		In:  inPorts,
-		Out: outPorts,
+		ID:     nodeID,
+		OpID:   opID,
+		Config: config,
+		Op:     operationInstance,
+		In:     inPorts,
+		Out:    outPorts,
 	}, nil
 }
 

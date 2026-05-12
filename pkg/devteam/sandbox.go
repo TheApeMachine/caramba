@@ -82,8 +82,8 @@ func (sandbox *Sandbox) Start() error {
 			sandbox.cfg.GitHubToken, sandbox.cfg.GitHubOwner, sandbox.cfg.GitHubRepo,
 		),
 		fmt.Sprintf(`git -C /workspace checkout -b %s`, sandbox.cfg.FeatureBranch),
-		fmt.Sprintf(`git -C /workspace config user.email "devteam@caramba.ai"`),
-		fmt.Sprintf(`git -C /workspace config user.name "Caramba Dev Team"`),
+		`git -C /workspace config user.email "devteam@caramba.ai"`,
+		`git -C /workspace config user.name "Caramba Dev Team"`,
 	}
 
 	for _, cmd := range setup {

@@ -21,6 +21,32 @@ func NewDCEOptimizer() *DCEOptimizer {
 	return &DCEOptimizer{}
 }
 
+func (optimizer *DCEOptimizer) Name() string {
+	return "dce"
+}
+
+func (optimizer *DCEOptimizer) Run(
+	ctx context.Context,
+	input PassInput,
+) (PassResult, error) {
+	graph, err := optimizer.Optimize(ctx, input.Graph, input.Targets)
+
+	if err != nil {
+		return PassResult{}, err
+	}
+
+	targets := remapTargets(input.Targets, nodesByID(graph))
+	input.Diagnostics.Add(optimizer.Name(), DiagnosticInfo, "removed dead pure nodes")
+
+	return PassResult{
+		Graph:       graph,
+		Targets:     targets,
+		TargetMap:   targetMap(targets),
+		Diagnostics: input.Diagnostics,
+		Changed:     true,
+	}, nil
+}
+
 /*
 Optimize traverses the graph from the target sinks backwards and removes any node
 that cannot be reached, creating a lean execution path.
@@ -39,6 +65,27 @@ func (optimizer *DCEOptimizer) Optimize(ctx context.Context, graph *ir.Graph, ta
 	queue = append(queue, targets...)
 
 	head := 0
+	for head < len(queue) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		current := queue[head]
+		head++
+
+		if !reachable[current.ID()] {
+			reachable[current.ID()] = true
+			queue = append(queue, current.Inputs()...)
+		}
+	}
+
+	for _, node := range graph.Nodes() {
+		if !node.IsPure() {
+			reachable[node.ID()] = true
+			queue = append(queue, node.Inputs()...)
+		}
+	}
+
 	for head < len(queue) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -94,4 +141,15 @@ func (optimizer *DCEOptimizer) Optimize(ctx context.Context, graph *ir.Graph, ta
 	}
 
 	return optimizedGraph, nil
+}
+
+func nodesByID(graph *ir.Graph) map[string]*ir.Node {
+	nodes := graph.Nodes()
+	mapping := make(map[string]*ir.Node, len(nodes))
+
+	for _, node := range nodes {
+		mapping[node.ID()] = node
+	}
+
+	return mapping
 }

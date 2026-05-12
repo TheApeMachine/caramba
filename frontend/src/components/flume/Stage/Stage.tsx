@@ -14,7 +14,6 @@ import { StageActionType } from "#/components/flume/stageReducer";
 import type {
 	Coordinate,
 	SelectOption,
-	StageState,
 	StageTranslate,
 } from "#/components/flume/types";
 import ContextMenu from "../ContextMenu/ContextMenu";
@@ -65,6 +64,9 @@ const Stage = ({
 	});
 	const dragData = React.useRef({ x: 0, y: 0 });
 	const [spaceIsPressed, setSpaceIsPressed] = React.useState(false);
+	const pendingScale = React.useRef<{ scale: number; translate: StageTranslate } | null>(null);
+	const zoomCommitTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+	const scaleWrapper = React.useRef<HTMLDivElement>(null);
 
 	const setStageRect = React.useCallback(() => {
 		if (wrapper.current) {
@@ -94,62 +96,54 @@ const Stage = ({
 			if (numNodes === 0) return;
 
 			const wrapperRect = wrapper.current?.getBoundingClientRect();
+			if (!wrapperRect) return;
 
-			if (wrapperRect) {
-				dispatchStageState((stageState: StageState) => {
-					const { scale: currentScale, translate: currentTranslate } =
-						stageState;
-					const delta = e.deltaY;
-					const clampedDelta = Math.min(10, Math.max(-10, delta));
-					const newScale: number = Math.min(
-						7,
-						Math.max(0.1, currentScale - clampedDelta * 0.005),
-					);
+			// Read current state from the last pending commit or the live state ref.
+			const current = pendingScale.current ?? {
+				scale: parseFloat(scaleWrapper.current?.style.transform.replace("scale(", "") ?? "1") || scale,
+				translate,
+			};
 
-					const byOldScale = (no: number) => no * (1 / currentScale);
-					const byNewScale = (no: number) => no * (1 / newScale);
+			const delta = e.deltaY;
+			const clampedDelta = Math.min(10, Math.max(-10, delta));
+			const newScale = Math.min(7, Math.max(0.1, current.scale - clampedDelta * 0.005));
 
-					const xOld = byOldScale(
-						e.clientX -
-							wrapperRect.x -
-							wrapperRect.width / 2 +
-							currentTranslate.x,
-					);
-					const yOld = byOldScale(
-						e.clientY -
-							wrapperRect.y -
-							wrapperRect.height / 2 +
-							currentTranslate.y,
-					);
+			const byOldScale = (n: number) => n * (1 / current.scale);
+			const byNewScale = (n: number) => n * (1 / newScale);
+			const xOld = byOldScale(e.clientX - wrapperRect.x - wrapperRect.width  / 2 + current.translate.x);
+			const yOld = byOldScale(e.clientY - wrapperRect.y - wrapperRect.height / 2 + current.translate.y);
+			const xNew = byNewScale(e.clientX - wrapperRect.x - wrapperRect.width  / 2 + current.translate.x);
+			const yNew = byNewScale(e.clientY - wrapperRect.y - wrapperRect.height / 2 + current.translate.y);
+			const newTranslate = {
+				x: current.translate.x + (xOld - xNew) * newScale,
+				y: current.translate.y + (yOld - yNew) * newScale,
+			};
 
-					const xNew = byNewScale(
-						e.clientX -
-							wrapperRect.x -
-							wrapperRect.width / 2 +
-							currentTranslate.x,
-					);
-					const yNew = byNewScale(
-						e.clientY -
-							wrapperRect.y -
-							wrapperRect.height / 2 +
-							currentTranslate.y,
-					);
-
-					const xDistance = xOld - xNew;
-					const yDistance = yOld - yNew;
-
-					return {
-						type: StageActionType.SET_TRANSLATE_SCALE,
-						scale: newScale,
-						translate: {
-							x: currentTranslate.x + xDistance * newScale,
-							y: currentTranslate.y + yDistance * newScale,
-						},
-					};
-				});
+			// Apply transform immediately via CSS — no React re-render, no edge recalc.
+			if (scaleWrapper.current) {
+				scaleWrapper.current.style.transform = `scale(${newScale})`;
 			}
+			if (translateWrapper.current) {
+				translateWrapper.current.style.transform = `translate(${-newTranslate.x}px, ${-newTranslate.y}px)`;
+			}
+
+			pendingScale.current = { scale: newScale, translate: newTranslate };
+
+			// Commit to Redux (triggers edge recalc) only after the wheel gesture stops.
+			if (zoomCommitTimer.current !== null) clearTimeout(zoomCommitTimer.current);
+			zoomCommitTimer.current = setTimeout(() => {
+				const committed = pendingScale.current;
+				if (!committed) return;
+				pendingScale.current = null;
+				zoomCommitTimer.current = null;
+				dispatchStageState({
+					type: StageActionType.SET_TRANSLATE_SCALE,
+					scale: committed.scale,
+					translate: committed.translate,
+				});
+			}, 150);
 		},
-		[dispatchStageState, numNodes],
+		[dispatchStageState, numNodes, scale, translate],
 	);
 
 	const handleDragDelayStart = () => {
@@ -359,6 +353,7 @@ const Stage = ({
 				}}
 			>
 				<div
+					ref={scaleWrapper}
 					className={styles.scaleWrapper}
 					style={{ transform: `scale(${scale})` }}
 				>

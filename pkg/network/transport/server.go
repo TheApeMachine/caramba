@@ -666,8 +666,11 @@ type streamNode struct {
 }
 
 type streamNodeConfig struct {
-	Target     bool   `json:"target"`
-	Activation string `json:"activation"`
+	Version    int                     `json:"version"`
+	Target     bool                    `json:"target"`
+	Activation string                  `json:"activation"`
+	Operation  string                  `json:"operation"`
+	Attributes map[string]ir.Attribute `json:"attributes"`
 }
 
 func newStreamNode(node schema.IRNode) (streamNode, error) {
@@ -715,15 +718,26 @@ func newStreamNode(node schema.IRNode) (streamNode, error) {
 		}
 	}
 
+	metadata := map[string]any{
+		"activation": nodeConfig.Activation,
+	}
+
+	for key, attribute := range nodeConfig.Attributes {
+		metadata[key] = attribute.String()
+	}
+
+	operation := op
+	if nodeConfig.Operation != "" {
+		operation = nodeConfig.Operation
+	}
+
 	return streamNode{
-		ID:     id,
-		Op:     normalizeOperation(op),
-		Inputs: inputs,
-		Target: nodeConfig.Target,
-		Config: configData,
-		Metadata: map[string]any{
-			"activation": nodeConfig.Activation,
-		},
+		ID:       id,
+		Op:       normalizeOperation(operation),
+		Inputs:   inputs,
+		Target:   nodeConfig.Target,
+		Config:   configData,
+		Metadata: metadata,
 	}, nil
 }
 
@@ -790,21 +804,6 @@ func normalizeOperation(operation string) ir.OpType {
 	default:
 		return ir.OpType(operation)
 	}
-}
-
-func tensorShape(shape []int64) (computetensor.Shape, error) {
-	dimensions := make([]int, len(shape))
-	maxDimension := int64(int(^uint(0) >> 1))
-
-	for index, dimension := range shape {
-		if dimension > maxDimension {
-			return computetensor.Shape{}, fmt.Errorf("transport: tensor dimension overflows int")
-		}
-
-		dimensions[index] = int(dimension)
-	}
-
-	return computetensor.NewShape(dimensions)
 }
 
 func encodeFloat64Values(values []float64) ([]byte, error) {

@@ -3,6 +3,7 @@ import {
 	BlocksIcon,
 	BotIcon,
 	ChevronRightIcon,
+	CpuIcon,
 	KanbanIcon,
 	LightbulbIcon,
 	MicroscopeIcon,
@@ -15,6 +16,7 @@ import {
 	AccordionTrigger,
 } from "#/components/ui/accordion";
 import { Button } from "#/components/ui/button";
+import { Flex } from "../ui/flex";
 
 export const Navigation = () => {
 	return (
@@ -23,19 +25,19 @@ export const Navigation = () => {
 				<AccordionTrigger>
 					<BlocksIcon /> Projects
 				</AccordionTrigger>
-				<AccordionPanel>
+				<AccordionPanel className="flex flex-col gap-2">
 					<Link to={"/kanban"}>
 						<Button
-							className="h-auto! gap-4 px-4 py-3 text-left"
+							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
 						>
 							<KanbanIcon className="shrink-0" />
-							<div className="flex flex-col gap-0.5">
+							<Flex.Column gap={1} className="text-left" fullWidth>
 								<h3>Kanban</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
 									Manage your projects
 								</p>
-							</div>
+							</Flex.Column>
 							<ChevronRightIcon
 								aria-hidden="true"
 								className="in-[[data-slot=button]:hover]:translate-x-0.5 transition-transform"
@@ -44,40 +46,16 @@ export const Navigation = () => {
 					</Link>
 					<Link to={"/request-feature"}>
 						<Button
-							className="h-auto! gap-4 px-4 py-3 text-left"
+							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
 						>
 							<LightbulbIcon className="shrink-0" />
-							<div className="flex flex-col gap-0.5">
+							<Flex.Column gap={1} className="text-left" fullWidth>
 								<h3>Request a feature</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
 									Send requests to the Requests backlog
 								</p>
-							</div>
-							<ChevronRightIcon
-								aria-hidden="true"
-								className="in-[[data-slot=button]:hover]:translate-x-0.5 transition-transform"
-							/>
-						</Button>
-					</Link>
-				</AccordionPanel>
-			</AccordionItem>
-			<AccordionItem value="item-1">
-				<AccordionTrigger>
-					<MicroscopeIcon /> Research
-				</AccordionTrigger>
-				<AccordionPanel>
-					<Link to={"/research"}>
-						<Button
-							className="h-auto! gap-4 px-4 py-3 text-left"
-							variant="outline"
-						>
-							<div className="flex flex-col gap-0.5">
-								<h3>Architecture</h3>
-								<p className="whitespace-break-spaces font-normal text-muted-foreground">
-									Build and manage your research architectures
-								</p>
-							</div>
+							</Flex.Column>
 							<ChevronRightIcon
 								aria-hidden="true"
 								className="in-[[data-slot=button]:hover]:translate-x-0.5 transition-transform"
@@ -88,20 +66,21 @@ export const Navigation = () => {
 			</AccordionItem>
 			<AccordionItem value="item-2">
 				<AccordionTrigger>
-					<NetworkIcon /> Models
+					<MicroscopeIcon /> Research
 				</AccordionTrigger>
-				<AccordionPanel>
+				<AccordionPanel className="flex flex-col gap-2">
 					<Link to={"/research"}>
 						<Button
-							className="h-auto! gap-4 px-4 py-3 text-left"
+							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
 						>
-							<div className="flex flex-col gap-0.5">
+							<MicroscopeIcon className="shrink-0" />
+							<Flex.Column gap={1} className="text-left" fullWidth>
 								<h3>Architecture</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
 									Build and manage your research architectures
 								</p>
-							</div>
+							</Flex.Column>
 							<ChevronRightIcon
 								aria-hidden="true"
 								className="in-[[data-slot=button]:hover]:translate-x-0.5 transition-transform"
@@ -112,20 +91,46 @@ export const Navigation = () => {
 			</AccordionItem>
 			<AccordionItem value="item-3">
 				<AccordionTrigger>
-					<BotIcon /> Agents
+					<NetworkIcon /> Models
 				</AccordionTrigger>
-				<AccordionPanel>
+				<AccordionPanel className="flex flex-col gap-2">
 					<Link to={"/research"}>
 						<Button
-							className="h-auto! gap-4 px-4 py-3 text-left"
+							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
 						>
-							<div className="flex flex-col gap-0.5">
+							<CpuIcon className="shrink-0" />
+							<Flex.Column gap={1} className="text-left" fullWidth>
 								<h3>Architecture</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
 									Build and manage your research architectures
 								</p>
-							</div>
+							</Flex.Column>
+							<ChevronRightIcon
+								aria-hidden="true"
+								className="in-[[data-slot=button]:hover]:translate-x-0.5 transition-transform"
+							/>
+						</Button>
+					</Link>
+				</AccordionPanel>
+			</AccordionItem>
+			<AccordionItem value="item-4">
+				<AccordionTrigger>
+					<BotIcon /> Agents
+				</AccordionTrigger>
+				<AccordionPanel className="flex flex-col gap-2">
+					<Link to={"/research"}>
+						<Button
+							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
+							variant="outline"
+						>
+							<BotIcon className="shrink-0" />
+							<Flex.Column gap={1} className="text-left" fullWidth>
+								<h3>Architecture</h3>
+								<p className="whitespace-break-spaces font-normal text-muted-foreground">
+									Build and manage your research architectures
+								</p>
+							</Flex.Column>
 							<ChevronRightIcon
 								aria-hidden="true"
 								className="in-[[data-slot=button]:hover]:translate-x-0.5 transition-transform"

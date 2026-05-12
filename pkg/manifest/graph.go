@@ -12,10 +12,12 @@ Node is a single operation in the computation graph.
 It holds the resolved operation and its wiring metadata.
 */
 type Node struct {
-	ID  string
-	Op  operation.Operation
-	In  []string
-	Out []string
+	ID     string
+	OpID   string
+	Config map[string]any
+	Op     operation.Operation
+	In     []string
+	Out    []string
 }
 
 /*
@@ -49,6 +51,20 @@ func (graph *Graph) addNode(node *Node) {
 
 func (graph *Graph) addEdge(edge *Edge) {
 	graph.edges = append(graph.edges, edge)
+}
+
+func (graph *Graph) Nodes() []*Node {
+	nodes := make([]*Node, len(graph.nodes))
+	copy(nodes, graph.nodes)
+
+	return nodes
+}
+
+func (graph *Graph) Edges() []*Edge {
+	edges := make([]*Edge, len(graph.edges))
+	copy(edges, graph.edges)
+
+	return edges
 }
 
 /*

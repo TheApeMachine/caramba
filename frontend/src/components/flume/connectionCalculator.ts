@@ -95,10 +95,10 @@ export type ObstacleRect = {
 
 const OBSTACLE_PADDING = 16;
 const CORRIDOR_MARGIN = 36;
-const CORRIDOR_SCAN_STEP = 40;
-const CORRIDOR_SCAN_LIMIT = 96;
-/** Exit stub length: added to output (+X) and subtracted from input (−X) to form approach segments. */
-const PORT_EXIT_STUB = 32;
+const CORRIDOR_SCAN_STEP = 20;
+const CORRIDOR_SCAN_LIMIT = 200;
+/** Exit stub length: distance the wire travels horizontally before turning. */
+const PORT_EXIT_STUB = 40;
 
 function padObstacle(o: ObstacleRect, pad: number): ObstacleRect {
 	return {
@@ -119,8 +119,8 @@ function segmentHitsHorizontal(
 	const [xa, xb] = x1 <= x2 ? [x1, x2] : [x2, x1];
 	for (const raw of obstacles) {
 		const o = padObstacle(raw, OBSTACLE_PADDING);
-		if (y < o.top || y > o.bottom) continue;
-		if (xb < o.left || xa > o.right) continue;
+		if (y <= o.top || y >= o.bottom) continue;
+		if (xb <= o.left || xa >= o.right) continue;
 		return true;
 	}
 	return false;
@@ -136,41 +136,35 @@ function segmentHitsVertical(
 	const [ya, yb] = y1 <= y2 ? [y1, y2] : [y2, y1];
 	for (const raw of obstacles) {
 		const o = padObstacle(raw, OBSTACLE_PADDING);
-		if (x < o.left || x > o.right) continue;
-		if (yb < o.top || ya > o.bottom) continue;
+		if (x <= o.left || x >= o.right) continue;
+		if (yb <= o.top || ya >= o.bottom) continue;
 		return true;
 	}
 	return false;
 }
 
-function stubbedEastBusClear(
-	px: number,
-	py: number,
-	qx: number,
-	qy: number,
-	vx: number,
-	obstaclesHorizontal: ReadonlyArray<ObstacleRect>,
-	obstaclesVertical: ReadonlyArray<ObstacleRect>,
-): boolean {
-	return (
-		!segmentHitsHorizontal(py, px, vx, obstaclesHorizontal) &&
-		!segmentHitsHorizontal(qy, vx, qx, obstaclesHorizontal) &&
-		!segmentHitsVertical(vx, py, qy, obstaclesVertical)
-	);
-}
 
 /*
 Orthogonal path from {@link from} (output port) to {@link to} (input port).
 
-Two routing strategies based on relative node positions:
+Port conventions (fixed by UI layout):
+  - Output ports are on the RIGHT face of a node → wire exits rightward
+  - Input ports are on the LEFT face of a node  → wire enters leftward (approaches from west)
 
-1. Forward (px < qx): bus placed between the stubs — wire arrives at input from the west.
-2. Backward (px >= qx): input is left of or overlapping the output. The input stub flips to
-   approach from the east (qx = to.x + PORT_EXIT_STUB), and the bus is placed east of both
-   nodes, so the wire travels: output → east → down/up → east → input (no reversal at entry).
+The canonical 5-segment path has the form:
+  from → [px, py] → [vx, py] → [vx, qy] → [qx, qy] → to
 
-Port stubs are not obstacle-tested. Horizontal legs use {@link obstaclesHorizontal} (endpoint
-nodes excluded). The vertical bus uses {@link obstaclesVertical} (every node box).
+where px = from.x + STUB (output exit, going right)
+  and qx = to.x   - STUB (input  approach, arriving from the left)
+
+Case A — forward (px < qx): the vertical bus vx sits between the two stubs.
+  Scan from the midpoint outward to find a vx free of obstacles.
+
+Case B — backward (px >= qx): the output is to the right of (or level with) the input.
+  The wire must loop around. We do this by routing ABOVE or BELOW both nodes:
+  find a horizontal corridor vy that is clear, then use a 7-segment path:
+    from → [px,py] → [east,py] → [east,vy] → [west,vy] → [west,qy] → [qx,qy] → to
+  where east/west are vertical buses placed outside both nodes.
 */
 export function calculateOrthogonalEdgePath(
 	from: Coordinate,
@@ -180,51 +174,94 @@ export function calculateOrthogonalEdgePath(
 ): string {
 	const px = from.x + PORT_EXIT_STUB;
 	const py = from.y;
+	const qx = to.x - PORT_EXIT_STUB;
+	const qy = to.y;
 
-	// Forward path: input is to the right — approach from west (qx left of to.x).
-	if (px < to.x - PORT_EXIT_STUB) {
-		const qx = to.x - PORT_EXIT_STUB;
-		const qy = to.y;
+	// ── Case A: forward ─────────────────────────────────────────────────────────
+	if (px < qx) {
 		const seg = (vx: number) =>
 			`M ${from.x} ${from.y} L ${px} ${py} L ${vx} ${py} L ${vx} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
 
+		const isClear = (vx: number) =>
+			!segmentHitsHorizontal(py, px, vx, obstaclesHorizontal) &&
+			!segmentHitsHorizontal(qy, vx, qx, obstaclesHorizontal) &&
+			!segmentHitsVertical(vx, py, qy, obstaclesVertical);
+
 		const mid = Math.round((px + qx) / 2);
 		for (let i = 0; i <= CORRIDOR_SCAN_LIMIT; i++) {
-			const vx = mid + i * CORRIDOR_SCAN_STEP;
-			if (vx > qx) break;
-			if (stubbedEastBusClear(px, py, qx, qy, vx, obstaclesHorizontal, obstaclesVertical)) {
-				return seg(vx);
-			}
+			if (isClear(mid + i * CORRIDOR_SCAN_STEP)) return seg(mid + i * CORRIDOR_SCAN_STEP);
+			if (i > 0 && isClear(mid - i * CORRIDOR_SCAN_STEP)) return seg(mid - i * CORRIDOR_SCAN_STEP);
 		}
-		// Mid-bus blocked — fall back to east-bus with west approach.
-		const baseVx = Math.max(px, qx, from.x, to.x) + CORRIDOR_MARGIN;
-		let vx = baseVx;
-		for (let i = 0; i < CORRIDOR_SCAN_LIMIT; i++) {
-			if (stubbedEastBusClear(px, py, qx, qy, vx, obstaclesHorizontal, obstaclesVertical)) {
-				return seg(vx);
-			}
-			vx += CORRIDOR_SCAN_STEP;
-		}
-		return seg(baseVx + CORRIDOR_SCAN_STEP * 12);
+		return seg(mid);
 	}
 
-	// Backward path: input is left of or level with the output — approach from east.
-	// Flip the input stub so it exits rightward from to.x, and use an east-side bus.
-	const qx = to.x + PORT_EXIT_STUB;
-	const qy = to.y;
-	// Path: output → px (east stub) → vx (bus east of both) → qx (east of input) → to.x
-	const segBack = (vx: number) =>
-		`M ${from.x} ${from.y} L ${px} ${py} L ${vx} ${py} L ${vx} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
+	// ── Case B: backward — route above or below via a horizontal bypass ──────────
+	// Place two vertical buses (east of output, west of input) joined by a
+	// horizontal bypass corridor vy that sits above or below both nodes.
+	const eastBus = Math.max(from.x, to.x) + CORRIDOR_MARGIN;
+	const westBus = Math.min(from.x, to.x) - CORRIDOR_MARGIN;
 
-	const baseVx = Math.max(px, qx, from.x, to.x) + CORRIDOR_MARGIN;
-	let vx = baseVx;
-	for (let i = 0; i < CORRIDOR_SCAN_LIMIT; i++) {
-		if (stubbedEastBusClear(px, py, qx, qy, vx, obstaclesHorizontal, obstaclesVertical)) {
-			return segBack(vx);
+	const seg7 = (vy: number, vxEast: number, vxWest: number) =>
+		`M ${from.x} ${from.y} L ${px} ${py} L ${vxEast} ${py} L ${vxEast} ${vy} L ${vxWest} ${vy} L ${vxWest} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
+
+	// Gather all node tops/bottoms to find bypass corridors above and below.
+	const allNodes = [...obstaclesVertical, ...obstaclesHorizontal];
+	const nodeExtents = allNodes.flatMap((o) => [o.top - OBSTACLE_PADDING, o.bottom + OBSTACLE_PADDING]);
+	const yMin = Math.min(py, qy, ...nodeExtents) - CORRIDOR_MARGIN;
+	const yMax = Math.max(py, qy, ...nodeExtents) + CORRIDOR_MARGIN;
+
+	// Candidate horizontal corridors: above all nodes, below all nodes, and between node rows.
+	const candidates: number[] = [yMin, yMax];
+	for (const y of nodeExtents) candidates.push(y - CORRIDOR_MARGIN, y + CORRIDOR_MARGIN);
+	candidates.sort((a, b) => a - b);
+
+	const isBypassClear = (vy: number, vxEast: number, vxWest: number) =>
+		// horizontal legs at py and qy (output/input approach — exclude endpoint nodes)
+		!segmentHitsHorizontal(py, px, vxEast, obstaclesHorizontal) &&
+		!segmentHitsHorizontal(qy, vxWest, qx, obstaclesHorizontal) &&
+		// vertical buses (all nodes)
+		!segmentHitsVertical(vxEast, py, vy, obstaclesVertical) &&
+		!segmentHitsVertical(vxWest, vy, qy, obstaclesVertical) &&
+		// horizontal bypass (all nodes)
+		!segmentHitsHorizontal(vy, vxWest, vxEast, obstaclesVertical);
+
+	// Scan east/west bus positions outward while testing each bypass corridor.
+	for (let busStep = 0; busStep < CORRIDOR_SCAN_LIMIT; busStep++) {
+		const vxEast = eastBus + busStep * CORRIDOR_SCAN_STEP;
+		const vxWest = westBus - busStep * CORRIDOR_SCAN_STEP;
+		for (const vy of candidates) {
+			if (isBypassClear(vy, vxEast, vxWest)) return seg7(vy, vxEast, vxWest);
 		}
-		vx += CORRIDOR_SCAN_STEP;
 	}
-	return segBack(baseVx + CORRIDOR_SCAN_STEP * 12);
+
+	// Hard fallback.
+	const vy = yMin - CORRIDOR_SCAN_STEP * 4;
+	return seg7(vy, eastBus, westBus);
+}
+
+export function buildObstacleMap(
+	nodes: Record<string, FlumeNode>,
+	stage: DOMRect,
+	scale: number,
+): Map<string, ObstacleRect> {
+	const hw = stage.width / 2;
+	const hh = stage.height / 2;
+	const byScale = (value: number) => (1 / scale) * value;
+	const out = new Map<string, ObstacleRect>();
+	for (const id of Object.keys(nodes)) {
+		const el = document.querySelector(
+			`[data-flume-component="node"][data-node-id="${id}"]`,
+		);
+		if (!(el instanceof Element)) continue;
+		const rect = el.getBoundingClientRect();
+		out.set(id, {
+			left:   byScale(rect.left   - stage.x - hw),
+			right:  byScale(rect.right  - stage.x - hw),
+			top:    byScale(rect.top    - stage.y - hh),
+			bottom: byScale(rect.bottom - stage.y - hh),
+		});
+	}
+	return out;
 }
 
 export function obstacleRectsFromNodes(
@@ -233,26 +270,11 @@ export function obstacleRectsFromNodes(
 	scale: number,
 	excludeIds?: ReadonlySet<string>,
 ): ObstacleRect[] {
-	const hw = stage.width / 2;
-	const hh = stage.height / 2;
-	const byScale = (value: number) => (1 / scale) * value;
-
-	const out: ObstacleRect[] = [];
-	for (const id of Object.keys(nodes)) {
-		if (excludeIds?.has(id)) continue;
-		const el = document.querySelector(
-			`[data-flume-component="node"][data-node-id="${id}"]`,
-		);
-		if (!(el instanceof Element)) continue;
-		const rect = el.getBoundingClientRect();
-		out.push({
-			left: byScale(rect.left - stage.x - hw),
-			right: byScale(rect.right - stage.x - hw),
-			top: byScale(rect.top - stage.y - hh),
-			bottom: byScale(rect.bottom - stage.y - hh),
-		});
-	}
-	return out;
+	const map = buildObstacleMap(nodes, stage, scale);
+	if (!excludeIds) return Array.from(map.values());
+	return Array.from(map.entries())
+		.filter(([id]) => !excludeIds.has(id))
+		.map(([, rect]) => rect);
 }
 
 /*
@@ -461,6 +483,22 @@ export const createConnections = (
 
 		const byScale = (value: number) => (1 / scale) * value;
 
+		// Build obstacle rects once per pass, not once per edge.
+		// allObstaclesById lets us cheaply exclude endpoint nodes per edge.
+		const allObstaclesById: Map<string, ObstacleRect> | undefined =
+			routingMode === "orthogonal"
+				? buildObstacleMap(nodes, stage, scale)
+				: undefined;
+		const allObstacles = allObstaclesById
+			? Array.from(allObstaclesById.values())
+			: undefined;
+
+		// Viewport bounds in canvas coordinates — used to skip off-screen edges.
+		const vpLeft   = byScale(-stageHalfWidth);
+		const vpRight  = byScale( stageHalfWidth);
+		const vpTop    = byScale(-stageHalfHeight);
+		const vpBottom = byScale( stageHalfHeight);
+
 		Object.values(nodes).forEach((node) => {
 			if (node.connections?.inputs) {
 				Object.entries(node.connections.inputs).forEach(
@@ -479,8 +517,6 @@ export const createConnections = (
 								const toHalfH = toPort.height / 2;
 								const id =
 									output.nodeId + output.portName + node.id + inputName;
-								const existingLine: SVGPathElement | null =
-									document.querySelector(`[data-connection-id="${id}"]`);
 								const fromCoord = {
 									x: byScale(
 										fromPort.x - stage.x + fromHalfW - stageHalfWidth,
@@ -497,19 +533,26 @@ export const createConnections = (
 										toPort.y - stage.y + toHalfH - stageHalfHeight,
 									),
 								};
-								const obstaclesVertical =
-									routingMode === "orthogonal"
-										? obstacleRectsFromNodes(nodes, stage, scale)
-										: undefined;
-								const obstaclesHorizontal =
-									routingMode === "orthogonal"
-										? obstacleRectsFromNodes(
-												nodes,
-												stage,
-												scale,
-												new Set([output.nodeId, node.id]),
-											)
-										: undefined;
+
+								// Skip edges where both endpoints are outside the viewport.
+								const fromVisible =
+									fromCoord.x >= vpLeft && fromCoord.x <= vpRight &&
+									fromCoord.y >= vpTop  && fromCoord.y <= vpBottom;
+								const toVisible =
+									toCoord.x >= vpLeft && toCoord.x <= vpRight &&
+									toCoord.y >= vpTop  && toCoord.y <= vpBottom;
+								if (!fromVisible && !toVisible) return;
+
+								// Per-edge obstacle set: exclude the two endpoint nodes for horizontal legs.
+								const obstaclesVertical = allObstacles;
+								const obstaclesHorizontal = allObstaclesById
+									? Array.from(allObstaclesById.entries())
+										.filter(([id]) => id !== output.nodeId && id !== node.id)
+										.map(([, rect]) => rect)
+									: undefined;
+
+								const existingLine: SVGPathElement | null =
+									document.querySelector(`[data-connection-id="${id}"]`);
 
 								if (existingLine) {
 									updateConnection({

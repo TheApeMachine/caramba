@@ -11,3 +11,5 @@ models/
 code-dump.txt
 caramba.txt
 __pycache__/
+.continue/
+.kilo/

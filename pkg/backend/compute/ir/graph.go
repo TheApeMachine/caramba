@@ -12,6 +12,11 @@ type Graph struct {
 	nodes []*Node
 }
 
+type Index struct {
+	nodes map[string]*Node
+	users map[string][]*Node
+}
+
 /*
 NewGraph instantiates a new Graph.
 It is created to abstract physical execution from the mathematical intent.
@@ -39,6 +44,123 @@ func (graph *Graph) AddNode(node *Node) {
 		return
 	}
 	graph.nodes = append(graph.nodes, node)
+}
+
+func (graph *Graph) Index() (*Index, error) {
+	nodes := graph.Nodes()
+	index := &Index{
+		nodes: make(map[string]*Node, len(nodes)),
+		users: make(map[string][]*Node, len(nodes)),
+	}
+
+	for _, node := range nodes {
+		if node.ID() == "" {
+			return nil, fmt.Errorf("graph: node ID is required")
+		}
+
+		if _, ok := index.nodes[node.ID()]; ok {
+			return nil, fmt.Errorf("graph: duplicate node %q", node.ID())
+		}
+
+		index.nodes[node.ID()] = node
+	}
+
+	for _, node := range nodes {
+		for _, input := range node.Inputs() {
+			if _, ok := index.nodes[input.ID()]; !ok {
+				return nil, fmt.Errorf(
+					"graph: node %q has unregistered input %q",
+					node.ID(),
+					input.ID(),
+				)
+			}
+
+			index.users[input.ID()] = append(index.users[input.ID()], node)
+		}
+	}
+
+	return index, nil
+}
+
+func (index *Index) Node(id string) *Node {
+	if index == nil {
+		return nil
+	}
+
+	return index.nodes[id]
+}
+
+func (index *Index) Users(id string) []*Node {
+	if index == nil {
+		return nil
+	}
+
+	users := index.users[id]
+	out := make([]*Node, len(users))
+	copy(out, users)
+
+	return out
+}
+
+func (graph *Graph) Verify() error {
+	if _, err := graph.Index(); err != nil {
+		return err
+	}
+
+	if _, err := graph.TopologyLayers(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (graph *Graph) Clone() (*Graph, map[string]*Node, error) {
+	if err := graph.Verify(); err != nil {
+		return nil, nil, err
+	}
+
+	clone := NewGraph()
+	replacements := make(map[string]*Node, len(graph.nodes))
+
+	for _, node := range graph.nodes {
+		newNode := cloneNode(node)
+		replacements[node.ID()] = newNode
+		clone.AddNode(newNode)
+	}
+
+	for _, node := range graph.nodes {
+		newNode := replacements[node.ID()]
+
+		for _, input := range node.Inputs() {
+			newInput, ok := replacements[input.ID()]
+			if !ok {
+				return nil, nil, fmt.Errorf("graph: missing clone input %q", input.ID())
+			}
+
+			newNode.AddInput(newInput)
+		}
+	}
+
+	return clone, replacements, nil
+}
+
+func cloneNode(node *Node) *Node {
+	newNode := NewNode(node.ID(), node.OpType(), node.Shape())
+	newNode.SetOperationID(node.OperationID())
+	newNode.SetValueType(node.ValueType())
+	newNode.SetEffect(node.Effect())
+	newNode.SetAlias(node.Alias())
+	newNode.SetInPlace(node.InPlace())
+
+	for key, value := range node.Metadata() {
+		newNode.SetMetadata(key, value)
+	}
+
+	for key, value := range node.Attributes() {
+		newNode.SetAttribute(key, value)
+	}
+
+	return newNode
 }
 
 /*

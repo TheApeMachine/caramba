@@ -31,6 +31,18 @@ func remapTargets(targets []*ir.Node, replacements map[string]*ir.Node) []*ir.No
 	return remapped
 }
 
+func targetMap(targets []*ir.Node) TargetMap {
+	mapping := make(TargetMap, len(targets))
+
+	for _, target := range targets {
+		if target != nil {
+			mapping[target.ID()] = target
+		}
+	}
+
+	return mapping
+}
+
 func validateTargets(graph *ir.Graph, targets []*ir.Node) error {
 	if len(targets) == 0 {
 		return fmt.Errorf("scheduler: no execution targets")

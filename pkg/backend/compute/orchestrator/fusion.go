@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
@@ -11,13 +12,51 @@ FusionOptimizer analyzes an intermediate representation graph to combine
 adjacent operations into single kernels.
 */
 type FusionOptimizer struct {
+	capabilities Capabilities
 }
 
 /*
 NewFusionOptimizer instantiates a new FusionOptimizer.
 */
 func NewFusionOptimizer() *FusionOptimizer {
-	return &FusionOptimizer{}
+	return NewFusionOptimizerWithCapabilities(NewDefaultCapabilities(""))
+}
+
+func NewFusionOptimizerWithCapabilities(capabilities Capabilities) *FusionOptimizer {
+	if capabilities == nil {
+		capabilities = NewDefaultCapabilities("")
+	}
+
+	return &FusionOptimizer{capabilities: capabilities}
+}
+
+func (optimizer *FusionOptimizer) Name() string {
+	return "fusion"
+}
+
+func (optimizer *FusionOptimizer) Run(
+	ctx context.Context,
+	input PassInput,
+) (PassResult, error) {
+	if err := ctx.Err(); err != nil {
+		return PassResult{}, err
+	}
+
+	graph, targets, err := optimizer.OptimizeWithTargets(input.Graph, input.Targets)
+
+	if err != nil {
+		return PassResult{}, err
+	}
+
+	input.Diagnostics.Add(optimizer.Name(), DiagnosticInfo, "applied legal fusion patterns")
+
+	return PassResult{
+		Graph:       graph,
+		Targets:     targets,
+		TargetMap:   targetMap(targets),
+		Diagnostics: input.Diagnostics,
+		Changed:     true,
+	}, nil
 }
 
 /*
@@ -68,7 +107,9 @@ func (optimizer *FusionOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[stri
 
 		if isActivation && len(node.Inputs()) == 1 {
 			inputNode := node.Inputs()[0]
-			if inputNode.OpType() == ir.OpMatmul && dependents[inputNode.ID()] == 1 {
+			if inputNode.OpType() == ir.OpMatmul &&
+				dependents[inputNode.ID()] == 1 &&
+				optimizer.capabilities.CanFuse("matmul.activation", ir.OpFused) {
 				fusedAway[inputNode.ID()] = node.ID()
 				activationsToFuse[node.ID()] = true
 			}
@@ -88,6 +129,9 @@ func (optimizer *FusionOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[stri
 
 			fusedID := inputNode.ID() + "_fused_" + node.ID()
 			fusedNode := ir.NewNode(fusedID, ir.OpFused, node.Shape())
+			fusedNode.SetOperationID("fused.matmul.activation")
+			fusedNode.SetValueType(node.ValueType())
+			fusedNode.SetEffect(node.Effect())
 
 			for _, in := range inputNode.Inputs() {
 				if rep, ok := replacements[in.ID()]; ok {

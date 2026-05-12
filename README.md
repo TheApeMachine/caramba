@@ -126,14 +126,14 @@ caramba asset list
 
 ## Compute Backends
 
-The compute layer is organized around explicit tensor ownership and a hardware-agnostic IR. Backend kernels upload values once into a resident tensor store and only download at real boundaries. The IR graph travels through an optimizer pipeline (CSE, DCE, operator fusion) before dispatch.
+The compute layer is organized around explicit tensor ownership and a typed, hardware-agnostic IR. Backend kernels upload values once into a resident tensor store and only download at real boundaries. The IR graph now travels through a compiler pipeline with verification, canonicalization, semantic CSE, algebraic simplification, legality-aware fusion, side-effect-aware DCE, memory planning, cost scheduling, and backend lowering before dispatch.
 
 ```
 ┌────────────────────────────────────────────────────────────┐
 │                      COMPUTE PIPELINE                      │
 ├────────────────────────────────────────────────────────────┤
 │                                                            │
-│   Manifest → Compiler → IR Graph → Optimizer → Runner      │
+│   Manifest → Typed IR → Compiler Pipeline → Runner         │
 │                                                            │
 │   Runners:                                                 │
 │   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
@@ -158,6 +158,8 @@ type Runner interface {
     Close() error
 }
 ```
+
+The optimizer does not silently invent fused nodes. Backend capability contracts declare supported operations, legal fusion patterns, and shape-aware costs. CPU declares broad host operation support; CUDA and XLA only declare implemented tensor kernels; Metal declares its native operation families explicitly.
 
 ### Building Backends
 
@@ -195,21 +197,21 @@ For XLA, `CARAMBA_PJRT_CPU_PLUGIN` and `CARAMBA_PJRT_GPU_PLUGIN` are checked fir
 
 Operations are the atomic units of computation. The library spans standard deep learning primitives through esoteric research architectures:
 
-| Category         | Examples                                                      |
-|------------------|---------------------------------------------------------------|
-| Activation       | ReLU, GeLU, SwiGLU, Tanh, Sigmoid, Mish                     |
-| Attention        | SDPA, DBA, GQA, Multi-head, Causal, Flash                    |
-| Embedding        | Token, Positional (RoPE, ALiBi, sinusoidal)                  |
-| Normalization    | LayerNorm, RMSNorm, BatchNorm                                |
-| Projection       | Linear, FusedQKV, LoRA                                       |
-| Convolution      | Conv1D, Conv2D, depthwise, grouped                           |
-| Pooling          | Mean, Max, Attention pooling                                 |
-| Active Inference | Free energy minimization, precision weighting                |
-| Causal           | Temporal difference, causal intervention                     |
-| Hawkes Process   | Point process attention kernels                              |
-| Markov Blanket   | Blanket detection, free energy decomposition                 |
-| Predictive Coding| Hierarchical prediction error                                |
-| VSA              | Hyperdimensional binding, bundling, cleanup memory           |
+| Category          | Examples                                           |
+|-------------------|----------------------------------------------------|
+| Activation        | ReLU, GeLU, SwiGLU, Tanh, Sigmoid, Mish            |
+| Attention         | SDPA, DBA, GQA, Multi-head, Causal, Flash          |
+| Embedding         | Token, Positional (RoPE, ALiBi, sinusoidal)        |
+| Normalization     | LayerNorm, RMSNorm, BatchNorm                      |
+| Projection        | Linear, FusedQKV, LoRA                             |
+| Convolution       | Conv1D, Conv2D, depthwise, grouped                 |
+| Pooling           | Mean, Max, Attention pooling                       |
+| Active Inference  | Free energy minimization, precision weighting      |
+| Causal            | Temporal difference, causal intervention           |
+| Hawkes Process    | Point process attention kernels                    |
+| Markov Blanket    | Blanket detection, free energy decomposition       |
+| Predictive Coding | Hierarchical prediction error                      |
+| VSA               | Hyperdimensional binding, bundling, cleanup memory |
 
 Each operation ships with CPU (Go + SIMD), CUDA, Metal, and XLA implementations. No backend falls back silently—if a kernel isn't implemented for a backend, the build fails.
 
@@ -250,28 +252,28 @@ The agent layer is the conversational ingress into the research system. It prese
 
 Caramba supports pluggable storage backends:
 
-| Backend        | Use case                              |
-|----------------|---------------------------------------|
-| S3             | Checkpoints, weights, large artifacts |
-| Elasticsearch  | Metrics, event logs, text search      |
-| Neo4j          | Provenance graphs, dependency DAGs    |
-| Qdrant         | Embedding similarity search           |
-| DeepLake       | Tensor datasets                       |
+| Backend       | Use case                              |
+|---------------|---------------------------------------|
+| S3            | Checkpoints, weights, large artifacts |
+| Elasticsearch | Metrics, event logs, text search      |
+| Neo4j         | Provenance graphs, dependency DAGs    |
+| Qdrant        | Embedding similarity search           |
+| DeepLake      | Tensor datasets                       |
 
 ---
 
 ## Documentation
 
-| Document                                            | Description                                        |
-|-----------------------------------------------------|----------------------------------------------------|
-| [Getting Started](./docs/getting-started.md)        | Installation, first experiment, basic workflow     |
-| [Architecture](./docs/architecture.md)              | System design: actors, distributed model, IR       |
-| [Compute Backends](./docs/compute.md)               | CPU/SIMD, CUDA, Metal, XLA in depth                |
-| [Manifest & Governance](./docs/manifest.md)         | Manifest → Protocol → Model, atomic intent         |
-| [The Notary](./docs/notary.md)                      | Custody, lazy validation, the ledger               |
-| [Operations](./docs/operations.md)                  | Operation library, SIMD kernels, custom ops        |
-| [Frontend & Visualization](./docs/frontend.md)      | Node graph editor, microscope tooling              |
-| [Agents](./docs/agents.md)                          | Research team interface, LLM providers             |
+| Document                                       | Description                                    |
+|------------------------------------------------|------------------------------------------------|
+| [Getting Started](./docs/getting-started.md)   | Installation, first experiment, basic workflow |
+| [Architecture](./docs/architecture.md)         | System design: actors, distributed model, IR   |
+| [Compute Backends](./docs/compute.md)          | CPU/SIMD, CUDA, Metal, XLA in depth            |
+| [Manifest & Governance](./docs/manifest.md)    | Manifest → Protocol → Model, atomic intent     |
+| [The Notary](./docs/notary.md)                 | Custody, lazy validation, the ledger           |
+| [Operations](./docs/operations.md)             | Operation library, SIMD kernels, custom ops    |
+| [Frontend & Visualization](./docs/frontend.md) | Node graph editor, microscope tooling          |
+| [Agents](./docs/agents.md)                     | Research team interface, LLM providers         |
 
 ---
 

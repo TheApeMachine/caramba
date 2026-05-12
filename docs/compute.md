@@ -8,7 +8,7 @@ Caramba implements every backend from scratch. No backend falls back silently to
 
 **Explicit tensor ownership.** Tensors are resident in one backend and never implicitly transferred. Moving data between backends requires an explicit `DownloadFloat64` call at a real boundary.
 
-**Hardware-agnostic IR.** The computation graph is expressed once as an IR (`pkg/backend/compute/ir`) and dispatched to whichever runner is selected. The same graph runs on CPU, CUDA, Metal, and XLA.
+**Typed hardware-agnostic IR.** The computation graph is expressed once as an IR (`pkg/backend/compute/ir`) with operation IDs, value types, canonical attributes, effects, aliasing, and verifier support. The same graph runs on CPU, CUDA, Metal, and XLA only after backend legality has been checked.
 
 **No host staging.** Backend kernels keep tensors resident and only download when a real boundary is crossed (e.g., evaluation, checkpoint save). There is no per-operation round-trip to the host.
 
@@ -161,21 +161,37 @@ CGO_ENABLED=1 go test  -tags "cgo xla" ./pkg/backend/compute/xla/...
 
 ---
 
-## Orchestrator Passes
+## Compiler Pipeline
 
-Before a graph reaches a runner, it passes through the optimizer in `pkg/backend/compute/orchestrator`:
+Before a graph reaches a runner, it passes through the compiler pipeline in `pkg/backend/compute/orchestrator`:
 
-### CSE — Common Subexpression Elimination
+```mermaid
+flowchart LR
+  verifier["Verifier"] --> canonicalizer["Canonicalization"]
+  canonicalizer --> cse["Semantic CSE"]
+  cse --> algebra["Algebraic Simplification"]
+  algebra --> fusion["Backend-Legal Fusion"]
+  fusion --> dce["Side-Effect-Aware DCE"]
+  dce --> memory["Memory Planner"]
+  memory --> schedule["Cost Scheduler"]
+  schedule --> lowering["Backend Lowering"]
+```
 
-Identifies nodes with identical operation types and input sets. Replaces all duplicates with a single node. Eliminates redundant computation that emerges from composed operation blocks.
+### Verifier
 
-### DCE — Dead Code Elimination
+Rejects malformed graphs before execution: missing inputs, duplicate nodes, cycles, invalid targets, and backend lowering errors.
 
-Removes nodes whose outputs are never consumed by any output node. Cleans up unused branches that result from parameterized templates.
+### Semantic CSE
 
-### Fusion
+Identifies pure nodes with identical operation IDs, typed value semantics, canonical attributes, and canonicalized inputs. Effectful, random, checkpoint, and state-writing nodes are never merged.
 
-Merges adjacent compatible operations into a single fused kernel. The primary fusion pattern is matmul + bias + activation (e.g., linear + bias + GELU), which eliminates intermediate tensor allocations and improves cache locality.
+### Algebraic Simplification
+
+Runs after canonicalization so identity folds and future view/reshape simplifications operate on stable attributes instead of opaque metadata.
+
+### Backend-Legal Fusion
+
+Merges adjacent compatible operations only when the selected backend declares the fused form legal. The primary fusion family is matmul plus activation or bias and activation, which eliminates intermediate tensor allocations and improves cache locality.
 
 ```
 BEFORE fusion:          AFTER fusion:
@@ -184,9 +200,21 @@ MatMul                  FusedLinearGELU
         └─▶ GELU
 ```
 
-### Scheduler
+### Side-Effect-Aware DCE
 
-Produces a valid topological execution order. Resolves data dependencies and emits an ordered list of nodes for sequential or parallel dispatch.
+Removes unreachable pure nodes while preserving ordered side effects such as checkpoints, external IO, state reads/writes, and model registry mutations.
+
+### Memory Planner
+
+Computes tensor lifetimes, buffer assignments, and reuse candidates. Buffer reuse only happens when lifetimes do not overlap and aliasing semantics permit it.
+
+### Cost Scheduler
+
+Annotates graph nodes with cost and schedule metadata using backend capabilities. The lowering pass then rejects unsupported operations instead of silently staging work through another backend.
+
+### Manifest and Network IR
+
+Manifest graphs lower into typed IR while preserving manifest IDs, port bindings, operation IDs, and typed config attributes. Network execution now carries versioned operation IDs and attributes in node config payloads so remote workers receive compiler semantics instead of ad hoc activation strings.
 
 ---
 
