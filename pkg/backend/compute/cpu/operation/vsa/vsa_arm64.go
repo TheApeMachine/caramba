@@ -4,7 +4,6 @@ package vsa
 
 import (
 	"fmt"
-	"math"
 )
 
 //go:noescape
@@ -117,10 +116,16 @@ func applyReduceSumSq(a []float64) float64 {
 	return sum
 }
 
-func applyL2Normalize(dst []float64) {
-	norm := math.Sqrt(applyReduceSumSq(dst))
+//go:noescape
+func bundleAccumNEON(dst, src []float64)
 
-	if norm > l2NormEpsilon {
-		applyMulScalar(dst, 1.0/norm)
-	}
+//go:noescape
+func bundleNormalizeNEON(dst []float64, eps float64)
+
+func bundleAccum(dst, src []float64) {
+	bundleAccumNEON(dst, src)
+}
+
+func applyL2Normalize(dst []float64) {
+	bundleNormalizeNEON(dst, l2NormEpsilon)
 }

@@ -1,13 +1,16 @@
 #include "textflag.h"
 
-// choleskyRegAVX2(L, A []float64, n int, eps float64)
-// Computes in-place regularised lower Cholesky factor: starting from A (copied
-// into L upon entry by the caller). If a pivot becomes non-positive, substitute
-// `eps` (no panic).
-TEXT ·choleskyRegAVX2(SB), NOSPLIT, $0-56
+DATA ·choleskyOne+0(SB)/8, $1.0
+GLOBL ·choleskyOne(SB), RODATA, $8
+
+// choleskyRegAVX2(L []float64, n int, eps float64)
+// Computes in-place regularised lower Cholesky factor on L. The caller copies
+// the source matrix into L before this call. If a pivot becomes non-positive,
+// substitute `eps` (no panic).
+TEXT ·choleskyRegAVX2(SB), NOSPLIT, $0-40
 	MOVQ L+0(FP), AX
-	MOVQ n+48(FP), DX
-	MOVSD eps+56(FP), X20
+	MOVQ n+24(FP), DX
+	MOVSD eps+32(FP), X15
 	XORQ R8, R8
 
 cr_col_loop:
@@ -63,11 +66,11 @@ cr_diag:
 	XORPD X11, X11
 	UCOMISD X11, X10
 	JA cr_pivot_ok
-	MOVAPD X20, X10                           // clamp to eps
+	MOVAPD X15, X10                           // clamp to eps
 cr_pivot_ok:
 	SQRTSD X10, X10
 	MOVSD X10, (SI)
-	MOVSD $1.0, X12
+	MOVSD ·choleskyOne(SB), X12
 	DIVSD X10, X12
 
 	MOVQ R8, R10

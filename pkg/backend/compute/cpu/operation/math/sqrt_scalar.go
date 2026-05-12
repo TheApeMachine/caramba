@@ -1,11 +1,16 @@
 package math
 
-import stdmath "math"
+//go:noescape
+func scalarSqrtTailKernel(dst, src []float64, from int)
 
-// scalarSqrtTail fills dst[from:] = sqrt(src[from:]).
-// Called by SIMD sqrtVec to handle non-aligned remainders.
+//go:noescape
+func scalarExpTailKernel(dst, src []float64, from int)
+
+//go:noescape
+func scalarLogTailKernel(dst, src []float64, from int)
+
+// scalarSqrtTail fills dst[from:] = sqrt(src[from:]) via a SIMD SQRTSD-based
+// per-element kernel — no Go-side math.* calls survive on the hot path.
 func scalarSqrtTail(dst, src []float64, from int) {
-	for i := from; i < len(src); i++ {
-		dst[i] = stdmath.Sqrt(src[i])
-	}
+	scalarSqrtTailKernel(dst, src, from)
 }

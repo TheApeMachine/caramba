@@ -9,7 +9,7 @@ export const ResearchProject = z.object({
 	description: z.string(),
 	organization_slug: z.string().default(""),
 	project_slug: z.preprocess(
-		(v) => (v === "" ? null : v),
+		(v: unknown): string | null => (v === "" ? null : (v as string)),
 		z.string().min(1).nullable().optional(),
 	),
 	created_at: z.coerce.date(),
@@ -47,14 +47,22 @@ export const researchProjectCollection = createCollection(
 				}
 
 				if (!result?.txid) {
-					console.error("createResearchProject returned no txid", result);
+					console.error(
+						`createResearchProject returned no txid [skipTxid=${import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT}]`,
+					);
 					return;
 				}
 
 				return { timeout: 60_000, txid: result.txid };
 			} catch (err) {
-				console.error("createResearchProject failed", err);
-				throw err;
+				const message = err instanceof Error ? err.message : String(err);
+				const code = (err as { code?: string }).code;
+				console.error(
+					`createResearchProject failed: ${message}${code ? ` [code=${code}]` : ""}`,
+				);
+				throw err instanceof Error
+					? new Error(`createResearchProject: ${message}`, { cause: err })
+					: err;
 			}
 		},
 	}),

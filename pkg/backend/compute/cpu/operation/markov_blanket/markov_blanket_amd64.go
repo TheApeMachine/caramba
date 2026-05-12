@@ -24,6 +24,12 @@ func matvecAVX2(dst, w, x []float64, rows, cols int)
 //go:noescape
 func matvecSSE2(dst, w, x []float64, rows, cols int)
 
+//go:noescape
+func subVecAVX2(dst, a, b []float64)
+
+//go:noescape
+func subVecSSE2(dst, a, b []float64)
+
 func applyFlowInternal(out, xSens, wInt, bias []float64, Ni, Ns int) {
 	if len(out) < Ni || len(bias) < Ni || len(xSens) < Ns || len(wInt) < Ni*Ns {
 		panic(fmt.Errorf(

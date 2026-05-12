@@ -190,10 +190,10 @@ func logDetCholesky(a []float64, n int) float64 {
 		L[diag*n+diag] += eps
 	}
 
-	if !choleskyDecomp(L, n) {
+	if err := choleskyDecomp(L, n); err != nil {
 		panic(fmt.Sprintf(
-			"markov_blanket: logDetCholesky: non-positive pivot during decomposition (n=%d); matrix may be non-PD after regularisation",
-			n,
+			"markov_blanket: logDetCholesky: %s; matrix may be non-PD after regularisation",
+			err.Error(),
 		))
 	}
 

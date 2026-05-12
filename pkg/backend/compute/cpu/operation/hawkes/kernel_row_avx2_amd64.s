@@ -35,6 +35,8 @@ hkr_loop:
 	VFNMADD231PD Y5, Y1, Y0
 	VFNMADD231PD Y6, Y1, Y0
 
+	// See excitation_avx2_amd64.s for the rationale on not hoisting the
+	// 12-coefficient table — register pressure exceeds the 16-YMM budget.
 	VBROADCASTSD ·hexC11(SB), Y2
 	VBROADCASTSD ·hexC10(SB), Y3
 	VFMADD213PD Y3, Y0, Y2
@@ -92,8 +94,8 @@ hkr_scalar:
 
 	MOVSD ·hexLog2E(SB), X1
 	MULSD X0, X1
-	CVTSD2SQ X1, BX
-	CVTSQ2SD BX, X1
+	ROUNDSD $0, X1, X1                         // explicit round-to-nearest-even
+	CVTTSD2SQ X1, BX
 
 	MOVSD ·hexLn2Hi(SB), X2
 	MULSD X1, X2
@@ -164,8 +166,8 @@ hkrs_loop:
 
 	MOVSD ·hexLog2E(SB), X1
 	MULSD X0, X1
-	CVTSD2SQ X1, BX
-	CVTSQ2SD BX, X1
+	ROUNDSD $0, X1, X1                         // explicit round-to-nearest-even
+	CVTTSD2SQ X1, BX
 
 	MOVSD ·hexLn2Hi(SB), X2
 	MULSD X1, X2

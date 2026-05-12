@@ -33,10 +33,15 @@ func (service *ResearchProjectService) Create(ctx fiber.Ctx) error {
 		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid research project payload"})
 	}
 
-	organizationSlug, ok := ctx.Locals("clerkOrganizationSlug").(string)
+	organizationSlug, _ := ctx.Locals("clerkOrganizationSlug").(string)
 
-	if !ok || strings.TrimSpace(organizationSlug) == "" {
-		return ctx.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "active organization required"})
+	if strings.TrimSpace(organizationSlug) == "" {
+		subject, _ := ctx.Locals("clerkSubject").(string)
+		organizationSlug = strings.TrimSpace(subject)
+	}
+
+	if organizationSlug == "" {
+		return ctx.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "authenticated identity required"})
 	}
 
 	txid, err := service.insert(ctx, organizationSlug, request)

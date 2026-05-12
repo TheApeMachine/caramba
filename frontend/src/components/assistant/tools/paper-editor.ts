@@ -41,10 +41,11 @@ export const paperUpdateMetadata = toolDefinition({
 			keywords: { type: "string", description: "Comma-separated." },
 		},
 	},
-}).client((args: { title?: string; authors?: string; abstract?: string; keywords?: string }) => {
+}).client((args: unknown) => {
+	const typed = args as { title?: string; authors?: string; abstract?: string; keywords?: string };
 	const api = editorBridge.get();
 	if (!api) return { error: "Paper editor is not open." };
-	api.updateMetadata(args);
+	api.updateMetadata(typed);
 	return { ok: true };
 });
 
@@ -66,28 +67,29 @@ export const paperInsertBlock = toolDefinition({
 			latex:     { type: "string", description: "LaTeX source for equation blocks." },
 		},
 	},
-}).client((args: {
-	afterId: string;
-	blockType: "paragraph" | "heading" | "equation";
-	text?: string;
-	level?: 1 | 2 | 3;
-	latex?: string;
-}) => {
+}).client((args: unknown) => {
+	const typed = args as {
+		afterId: string;
+		blockType: "paragraph" | "heading" | "equation";
+		text?: string;
+		level?: 1 | 2 | 3;
+		latex?: string;
+	};
 	const api = editorBridge.get();
 	if (!api) return { error: "Paper editor is not open." };
 
 	const blocks = api.getBlocks();
-	const afterId = args.afterId === "last" ? (blocks.at(-1)?.id ?? blocks[0].id) : args.afterId;
+	const afterId = typed.afterId === "last" ? (blocks.at(-1)?.id ?? blocks[0].id) : typed.afterId;
 
 	let newId: string;
 
-	if (args.blockType === "heading") {
-		newId = api.insertHeadingAfter(afterId, args.level ?? 2);
-		if (args.text) api.updateText(newId, args.text);
-	} else if (args.blockType === "equation") {
-		newId = api.insertEquationAfter(afterId, args.latex ?? "");
+	if (typed.blockType === "heading") {
+		newId = api.insertHeadingAfter(afterId, typed.level ?? 2);
+		if (typed.text) api.updateText(newId, typed.text);
+	} else if (typed.blockType === "equation") {
+		newId = api.insertEquationAfter(afterId, typed.latex ?? "");
 	} else {
-		newId = api.insertParagraphAfter(afterId, args.text ?? "");
+		newId = api.insertParagraphAfter(afterId, typed.text ?? "");
 	}
 
 	api.scrollToBlock(newId);
@@ -109,14 +111,15 @@ export const paperUpdateBlock = toolDefinition({
 			latex: { type: "string", description: "New LaTeX for equation blocks." },
 		},
 	},
-}).client((args: { id: string; text?: string; latex?: string }) => {
+}).client((args: unknown) => {
+	const typed = args as { id: string; text?: string; latex?: string };
 	const api = editorBridge.get();
 	if (!api) return { error: "Paper editor is not open." };
 
-	if (args.text !== undefined) api.updateText(args.id, args.text);
-	if (args.latex !== undefined) api.updateLatex(args.id, args.latex);
+	if (typed.text !== undefined) api.updateText(typed.id, typed.text);
+	if (typed.latex !== undefined) api.updateLatex(typed.id, typed.latex);
 
-	api.scrollToBlock(args.id);
+	api.scrollToBlock(typed.id);
 	return { ok: true };
 });
 
@@ -133,10 +136,11 @@ export const paperRemoveBlock = toolDefinition({
 			id: { type: "string" },
 		},
 	},
-}).client((args: { id: string }) => {
+}).client((args: unknown) => {
+	const typed = args as { id: string };
 	const api = editorBridge.get();
 	if (!api) return { error: "Paper editor is not open." };
-	api.removeBlock(args.id);
+	api.removeBlock(typed.id);
 	return { ok: true };
 });
 
@@ -154,10 +158,11 @@ export const paperScrollToBlock = toolDefinition({
 			id: { type: "string" },
 		},
 	},
-}).client((args: { id: string }) => {
+}).client((args: unknown) => {
+	const typed = args as { id: string };
 	const api = editorBridge.get();
 	if (!api) return { error: "Paper editor is not open." };
-	api.scrollToBlock(args.id);
+	api.scrollToBlock(typed.id);
 	return { ok: true };
 });
 

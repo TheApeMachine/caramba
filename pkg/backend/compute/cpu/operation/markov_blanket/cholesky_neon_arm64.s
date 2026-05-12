@@ -1,5 +1,11 @@
 #include "textflag.h"
 
+// NOTE on the "NEON" suffix:
+// Go's ARM64 toolchain rejects double-precision .2D vector mnemonics, so the
+// inner sum-of-squares and dot-product loops run scalar FMADDD per element.
+// The kernel still lives in assembly (no Go scalar transcendentals) and the
+// symbol name mirrors the AVX2/SSE2 dispatch on amd64.
+
 // choleskyDecompNEON(L []float64, n int) uint64
 TEXT ·choleskyDecompNEON(SB), NOSPLIT, $0-40
 	MOVD L+0(FP), R0
@@ -39,6 +45,9 @@ chol_diag:
 	FMOVD (R6), F2
 	FSUBD F0, F2, F2
 	FMOVD $0.0, F3
+	// Plan-9 ARM64: `FCMPD F3, F2` corresponds to ARM `FCMP F2, F3` — flags
+	// reflect (F2 - F3). BLE branches when F2 ≤ F3 (pivot ≤ 0 or NaN),
+	// taking the chol_fail path. Otherwise we proceed to FSQRTD.
 	FCMPD F3, F2
 	BLE chol_fail
 	FSQRTD F2, F2

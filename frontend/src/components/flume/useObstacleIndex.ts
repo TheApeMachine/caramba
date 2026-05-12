@@ -1,4 +1,5 @@
 import React from "react";
+import { connectionId } from "#/components/flume/connectionCalculator";
 import type { EdgeRoutingMode, ObstacleRect } from "#/components/flume/connectionCalculator";
 import { CONNECTIONS_ID } from "#/components/flume/constants";
 import type { Coordinate, FlumeNode } from "#/components/flume/types";
@@ -10,9 +11,14 @@ import type {
 
 export type ObstacleIndex = Map<string, ObstacleRect>;
 
+// Safe default so consumers never receive { current: null }.
+const defaultObstacleIndex: React.RefObject<ObstacleIndex> = {
+	current: new Map<string, ObstacleRect>(),
+};
+
 export const ObstacleIndexContext = React.createContext<
 	React.RefObject<ObstacleIndex>
->(React.createRef<ObstacleIndex>());
+>(defaultObstacleIndex);
 
 function getStageContainer(editorId: string): HTMLDivElement | null {
 	return document.getElementById(
@@ -38,7 +44,6 @@ export function useObstacleIndex(
 	scale: number,
 ): React.RefObject<ObstacleIndex> {
 	const indexRef = React.useRef<ObstacleIndex>(new Map());
-	const measureRef = React.useRef<((el: Element) => void) | null>(null);
 
 	React.useEffect(() => {
 		const container = getStageContainer(editorId);
@@ -61,8 +66,6 @@ export function useObstacleIndex(
 				bottom: inv * (rect.bottom - stageRect.y - hh),
 			});
 		};
-
-		measureRef.current = measure;
 
 		const resizeObserver = new ResizeObserver((entries) => {
 			for (const entry of entries) measure(entry.target);
@@ -157,9 +160,6 @@ export function useConnectionWorker(
 			const hh = stageRect.height / 2;
 			const inv = safeInv(scaleRef.current);
 
-			// obstaclesVertical includes all nodes — prevents vertical segment overlap.
-			// obstaclesHorizontal excludes the two endpoint nodes so the wire can
-			// approach them horizontally without immediately hitting their own bounding boxes.
 			const allObstacles = Array.from(indexRef.current.entries());
 			const connections: ConnectionPathRequest[] = [];
 
@@ -189,8 +189,7 @@ export function useConnectionWorker(
 						};
 
 						connections.push({
-							// Delimited to avoid ambiguous concatenation collisions.
-							id: `${output.nodeId}|${output.portName}|${node.id}|${inputName}`,
+							id: connectionId(output.nodeId, output.portName, node.id, inputName),
 							from,
 							to,
 							routingMode,

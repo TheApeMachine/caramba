@@ -2,7 +2,6 @@ package causal
 
 import (
 	"fmt"
-	"math"
 )
 
 /*

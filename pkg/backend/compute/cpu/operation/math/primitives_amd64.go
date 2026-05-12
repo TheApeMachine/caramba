@@ -377,8 +377,8 @@ func sqrtVec(dst, src []float64) {
 		sqrtVecSSE2(dst[:limit], src[:limit])
 	}
 
-	for index := limit; index < len(src); index++ {
-		dst[index] = math.Sqrt(src[index])
+	if limit < len(src) {
+		scalarSqrtTailKernel(dst, src, limit)
 	}
 }
 
@@ -436,8 +436,8 @@ func expVec(dst, src []float64) {
 		expVecSSE2(dst[:limit], src[:limit])
 	}
 
-	for index := limit; index < len(src); index++ {
-		dst[index] = math.Exp(src[index])
+	if limit < len(src) {
+		scalarExpTailKernel(dst, src, limit)
 	}
 }
 
@@ -453,8 +453,8 @@ func logVec(dst, src []float64) {
 		logVecSSE2(dst[:limit], src[:limit])
 	}
 
-	for index := limit; index < len(src); index++ {
-		dst[index] = math.Log(src[index])
+	if limit < len(src) {
+		scalarLogTailKernel(dst, src, limit)
 	}
 }
 

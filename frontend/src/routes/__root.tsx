@@ -37,7 +37,7 @@ const RootDocument = ({ children }: { children: React.ReactNode }) => {
 									<AuthenticatedBoundary>{children}</AuthenticatedBoundary>
 								</div>
 							</Page.Main>
-							<Page.Aside></Page.Aside>
+							<Page.Aside>{/* reserved for layout */}</Page.Aside>
 							<Page.Footer />
 						</Page>
 						<Assistant />
@@ -83,10 +83,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 		}
 	},
 	head: () => ({
+		title: "caramba",
 		meta: [
 			{ charSet: "utf-8" },
 			{ name: "viewport", content: "width=device-width, initial-scale=1" },
-			{ title: "caramba" },
 		],
 		links: [{ rel: "stylesheet", href: appCss }],
 	}),

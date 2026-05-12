@@ -616,7 +616,7 @@ ll2_sse2_done:
 
 // lambUpdateNormSqAVX2(m, v, params []float64, bc1Inv, bc2Inv, eps, wd float64) float64
 // Returns sum of (mHat/(sqrt(vHat)+eps) + wd*params)² without writing anywhere.
-TEXT ·lambUpdateNormSqAVX2(SB), NOSPLIT, $0-128
+TEXT ·lambUpdateNormSqAVX2(SB), NOSPLIT, $0-112
 	MOVQ m+0(FP), R8
 	MOVQ v+24(FP), R11
 	MOVQ params+48(FP), R9
@@ -717,11 +717,11 @@ luns_avx2_scalar:
 	ADDSD X14, X15
 
 luns_avx2_done:
-	MOVSD X15, ret+120(FP)
+	MOVSD X15, ret+104(FP)
 	VZEROUPPER
 	RET
 
-TEXT ·lambUpdateNormSqSSE2(SB), NOSPLIT, $0-128
+TEXT ·lambUpdateNormSqSSE2(SB), NOSPLIT, $0-112
 	MOVQ m+0(FP), R8
 	MOVQ v+24(FP), R11
 	MOVQ params+48(FP), R9
@@ -792,5 +792,5 @@ luns_sse2_tail:
 	ADDSD X14, X15
 
 luns_sse2_done:
-	MOVSD X15, ret+120(FP)
+	MOVSD X15, ret+104(FP)
 	RET

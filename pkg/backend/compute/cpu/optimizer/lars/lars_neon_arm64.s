@@ -89,7 +89,7 @@ ll2_neon_done:
 	RET
 
 // lambUpdateNormSqNEON(m, v, params []float64, bc1Inv, bc2Inv, eps, wd float64) float64
-TEXT ·lambUpdateNormSqNEON(SB), NOSPLIT, $0-128
+TEXT ·lambUpdateNormSqNEON(SB), NOSPLIT, $0-112
 	MOVD m+0(FP), R0
 	MOVD v+24(FP), R1
 	MOVD params+48(FP), R2
@@ -121,7 +121,7 @@ luns_neon_loop:
 	BNE luns_neon_loop
 
 luns_neon_done:
-	FMOVD F10, ret+120(FP)
+	FMOVD F10, ret+104(FP)
 	RET
 
 // lambStepNEON(out, m, v, params, grads []float64,

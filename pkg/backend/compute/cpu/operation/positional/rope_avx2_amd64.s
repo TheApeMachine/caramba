@@ -50,8 +50,8 @@
 TEXT ·RoPEAVX2(SB), NOSPLIT, $0-104
 	MOVQ dst+0(FP),      AX   // dst ptr
 	MOVQ src+24(FP),     SI   // src ptr
-	MOVQ cos+48(FP),     CX   // cos ptr
-	MOVQ sin+72(FP),     DX   // sin ptr
+	MOVQ cosTable+48(FP),     CX   // cos ptr
+	MOVQ sinTable+72(FP),     DX   // sin ptr
 	MOVQ numPairs+96(FP), BX  // numPairs
 
 	// Process 4 pairs (8 float64s) per iteration

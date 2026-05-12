@@ -53,7 +53,7 @@ It gives the nested editor a callback to write its NodeMap back into the
 parent node's subGraph field, keeping the outer graph in sync.
 */
 export const SubGraphContext = React.createContext<
-	((subGraph: import("./types").NodeMap) => void) | null
+	((subGraph: NodeMap) => void) | null
 >(null);
 
 // Re-export FlumeNode so callers that import from context don't need a second import.

@@ -74,6 +74,14 @@ hex_loop:
 	VFNMADD231PD Y5, Y1, Y0
 	VFNMADD231PD Y6, Y1, Y0
 
+	// Degree-11 Horner: the 12 coefficients are reloaded per iteration via
+	// VBROADCASTSD. Hoisting all of them out of the loop would require 12
+	// YMM registers; the kernel already pins Y0=f, Y1=r, Y2=poly accumulator,
+	// Y4..Y8=range-reduction constants, Y10..Y14=loop state + sum, Y15=zero.
+	// That leaves no room for the full coefficient table. AVX2 FMA accepts a
+	// 32-byte memory source as its first operand, so each broadcast hits L1
+	// once a cache line and pipelines behind the FMA chain — perf-equivalent
+	// in practice to a hoisted register copy.
 	VBROADCASTSD ·hexC11(SB), Y2
 	VBROADCASTSD ·hexC10(SB), Y3
 	VFMADD213PD Y3, Y0, Y2
@@ -134,8 +142,8 @@ hex_scalar_loop:
 
 	MOVSD ·hexLog2E(SB), X1
 	MULSD X0, X1
-	CVTSD2SQ X1, BX
-	CVTSQ2SD BX, X1
+	ROUNDSD $0, X1, X1                         // explicit round-to-nearest-even (matches AVX2 VROUNDPD $0)
+	CVTTSD2SQ X1, BX
 
 	MOVSD ·hexLn2Hi(SB), X2
 	MULSD X1, X2
@@ -213,8 +221,8 @@ hexs_loop:
 
 	MOVSD ·hexLog2E(SB), X1
 	MULSD X0, X1
-	CVTSD2SQ X1, BX
-	CVTSQ2SD BX, X1
+	ROUNDSD $0, X1, X1                         // explicit round-to-nearest-even (matches AVX2 VROUNDPD $0)
+	CVTTSD2SQ X1, BX
 
 	MOVSD ·hexLn2Hi(SB), X2
 	MULSD X1, X2

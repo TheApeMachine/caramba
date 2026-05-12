@@ -1,15 +1,20 @@
-import { useCollection } from "@tanstack/react-db";
+import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { researchProjectCollection } from "#/collections/research_project";
 import { Button } from "#/components/ui/button";
 import { Flex } from "#/components/ui/flex";
 
-export const Route = createFileRoute("/research/")({ component: ResearchIndex });
+export const Route = createFileRoute("/research/")({
+	ssr: false,
+	component: ResearchIndex,
+});
 
 function ResearchIndex() {
-	const { rows: projects } = useCollection(researchProjectCollection, {
-		select: (row) => row,
-	});
+	const { data, isLoading } = useLiveQuery((q) =>
+		q.from({ project: researchProjectCollection }),
+	);
+
+	const projects = data ?? [];
 
 	return (
 		<Flex.Column gap={4} padding={6}>
@@ -21,7 +26,9 @@ function ResearchIndex() {
 					New project
 				</Button>
 			</Flex.Row>
-			{projects.length === 0 ? (
+			{isLoading ? (
+				<p className="text-muted-foreground text-sm">Loading…</p>
+			) : projects.length === 0 ? (
 				<p className="text-muted-foreground text-sm">No projects yet.</p>
 			) : (
 				<ul className="flex flex-col gap-2">

@@ -1,7 +1,7 @@
 #include "textflag.h"
 
 // sgdVanillaNEON(out, params, grads []float64, lr, wd float64)
-TEXT ·sgdVanillaNEON(SB), NOSPLIT, $0-104
+TEXT ·sgdVanillaNEON(SB), NOSPLIT, $0-88
 	MOVD out+0(FP), R0
 	MOVD params+24(FP), R1
 	MOVD grads+48(FP), R2
@@ -45,7 +45,7 @@ sgdv_neon_done:
 
 // sgdMomentumNEON(out, params, grads, velocity []float64,
 //                 lr, wd, momentum float64, nesterov uint64)
-TEXT ·sgdMomentumNEON(SB), NOSPLIT, $0-136
+TEXT ·sgdMomentumNEON(SB), NOSPLIT, $0-128
 	MOVD out+0(FP), R0
 	MOVD params+24(FP), R1
 	MOVD grads+48(FP), R2

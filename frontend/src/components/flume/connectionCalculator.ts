@@ -10,6 +10,18 @@ import type {
 	TransputType,
 } from "#/components/flume/types";
 
+/** Encodes a connection-id segment so the `|` delimiter is unambiguous. */
+const encSeg = (s: string) => s.replace(/[|\\]/g, (c) => `\\${c}`);
+
+/** Builds a stable, unambiguous connection id from its four components. */
+export const connectionId = (
+	outputNodeId: string,
+	outputPortName: string,
+	inputNodeId: string,
+	inputPortName: string,
+) =>
+	`${encSeg(outputNodeId)}|${encSeg(outputPortName)}|${encSeg(inputNodeId)}|${encSeg(inputPortName)}`;
+
 const getPort = (
 	nodeId: string,
 	portName: string,
@@ -69,7 +81,7 @@ export const getPortRectsByNodes = (
 								forEachConnection({
 									to: toRect,
 									from: fromRect,
-									name: `${output.nodeId}|${output.portName}|${node.id}|${inputName}`,
+									name: connectionId(output.nodeId, output.portName, node.id, inputName),
 								});
 							}
 							obj[node.id + inputName] = toRect;
@@ -515,7 +527,7 @@ export const createConnections = (
 								const fromHalfH = fromPort.height / 2;
 								const toHalfW = toPort.width / 2;
 								const toHalfH = toPort.height / 2;
-								const id = `${output.nodeId}|${output.portName}|${node.id}|${inputName}`;
+								const id = connectionId(output.nodeId, output.portName, node.id, inputName);
 								const fromCoord = {
 									x: byScale(
 										fromPort.x - stage.x + fromHalfW - stageHalfWidth,

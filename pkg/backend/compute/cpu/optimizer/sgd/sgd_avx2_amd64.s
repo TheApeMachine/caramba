@@ -2,7 +2,7 @@
 
 // sgdVanillaAVX2(out, params, grads []float64, lr, wd float64)
 //   out[i] = params[i] - lr*(grads[i] + wd*params[i])
-TEXT ·sgdVanillaAVX2(SB), NOSPLIT, $0-104
+TEXT ·sgdVanillaAVX2(SB), NOSPLIT, $0-88
 	MOVQ out+0(FP), AX
 	MOVQ params+24(FP), R8
 	MOVQ grads+48(FP), R9
@@ -64,7 +64,7 @@ sgdv_avx2_done:
 	VZEROUPPER
 	RET
 
-TEXT ·sgdVanillaSSE2(SB), NOSPLIT, $0-104
+TEXT ·sgdVanillaSSE2(SB), NOSPLIT, $0-88
 	MOVQ out+0(FP), AX
 	MOVQ params+24(FP), R8
 	MOVQ grads+48(FP), R9
@@ -110,7 +110,7 @@ sgdv_sse2_done:
 //                 lr, wd, momentum float64, nesterov uint64)
 //   v[i] = μ*v[i] - lr*grads[i]
 //   out[i] = params[i] - lr*wd*params[i] + (nesterov ? μ*v[i] - lr*g[i] : v[i])
-TEXT ·sgdMomentumAVX2(SB), NOSPLIT, $0-136
+TEXT ·sgdMomentumAVX2(SB), NOSPLIT, $0-128
 	MOVQ out+0(FP), AX
 	MOVQ params+24(FP), R8
 	MOVQ grads+48(FP), R9
@@ -243,7 +243,7 @@ sgdm_avx2_done:
 	VZEROUPPER
 	RET
 
-TEXT ·sgdMomentumSSE2(SB), NOSPLIT, $0-136
+TEXT ·sgdMomentumSSE2(SB), NOSPLIT, $0-128
 	MOVQ out+0(FP), AX
 	MOVQ params+24(FP), R8
 	MOVQ grads+48(FP), R9

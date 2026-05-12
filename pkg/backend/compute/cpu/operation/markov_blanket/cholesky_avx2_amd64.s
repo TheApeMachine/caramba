@@ -1,7 +1,19 @@
 #include "textflag.h"
 
+DATA ·choleskyOne+0(SB)/8, $1.0
+GLOBL ·choleskyOne(SB), RODATA, $8
+
 // choleskyDecompAVX2(L []float64, n int) uint64
 // In-place Cholesky factorisation; returns 1 on success, 0 on non-positive pivot.
+//
+// Size/alignment contract:
+//   - n == 0 is a no-op success (the loop body never executes).
+//   - n == 1 reduces to a scalar SQRTSD path (the SIMD loop has zero iterations
+//     and the tail handles the single element).
+//   - L has no alignment requirement — every load/store uses VMOVUPD/MOVUPD
+//     (unaligned), so any byte-aligned pointer from `make([]float64, ...)`
+//     works. SIMD vectorisation pays off starting at n >= 4 (one AVX2 lane
+//     pass); below that the kernel still runs but reduces to scalar tail.
 TEXT ·choleskyDecompAVX2(SB), NOSPLIT, $0-40
 	MOVQ L+0(FP), AX
 	MOVQ n+24(FP), DX
@@ -65,7 +77,7 @@ chol_diag:
 	JBE chol_fail
 	SQRTSD X10, X10
 	MOVSD X10, (SI)
-	MOVSD $1.0, X12
+	MOVSD ·choleskyOne(SB), X12
 	DIVSD X10, X12                            // invDiag
 
 	// For row in col+1..n: L[row*n+col] = (L[row*n+col] - Σ_k L[row*n+k]*L[col*n+k]) * invDiag

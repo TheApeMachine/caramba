@@ -1,7 +1,7 @@
 "use client";
 
 import { VegaEmbed } from "react-vega";
-import Flex from "../ui/flex";
+import { Flex } from "../ui/flex";
 
 interface BarStackedProps {
     data: Array<Record<string, unknown> & { name: string }>;
@@ -17,7 +17,6 @@ export function BarStacked({
     data,
     seriesKeys,
     colors,
-    className,
     height = 300,
     showLegend = true,
     categoryLabels

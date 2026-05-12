@@ -1,7 +1,7 @@
 #include "textflag.h"
 
 // adagradStepNEON(out, G, params, grads []float64, lr, eps, wd float64)
-TEXT ·adagradStepNEON(SB), NOSPLIT, $0-128
+TEXT ·adagradStepNEON(SB), NOSPLIT, $0-120
 	MOVD out+0(FP), R0
 	MOVD G+24(FP), R1
 	MOVD params+48(FP), R2

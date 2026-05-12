@@ -49,12 +49,22 @@ func hawkesExcitation(events []float64, now, beta, alpha float64) float64 {
 }
 
 func hawkesKernelRow(out, events []float64, ti, alpha, beta float64) {
-	if useAVX2 && useFMA {
-		hawkesKernelRowAVX2(out, events, ti, alpha, beta)
+	n := len(out)
+
+	if len(events) < n {
+		n = len(events)
+	}
+
+	if n == 0 {
 		return
 	}
 
-	hawkesKernelRowSSE2(out, events, ti, alpha, beta)
+	if useAVX2 && useFMA {
+		hawkesKernelRowAVX2(out[:n], events[:n], ti, alpha, beta)
+		return
+	}
+
+	hawkesKernelRowSSE2(out[:n], events[:n], ti, alpha, beta)
 }
 
 func applyIntensity(out, times, alpha, beta, mu []float64, t float64, K, T int) {

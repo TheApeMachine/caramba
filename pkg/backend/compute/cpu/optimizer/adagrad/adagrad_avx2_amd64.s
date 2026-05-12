@@ -4,7 +4,7 @@
 //   geff = grads + wd*params                (if wd != 0)
 //   G[i] += geff[i]^2
 //   out[i] = params[i] - lr * geff[i] / (sqrt(G[i]) + eps)
-TEXT ·adagradStepAVX2(SB), NOSPLIT, $0-128
+TEXT ·adagradStepAVX2(SB), NOSPLIT, $0-120
 	MOVQ out+0(FP), AX
 	MOVQ G+24(FP), R8
 	MOVQ params+48(FP), R9
@@ -123,7 +123,7 @@ ag_avx2_done:
 	RET
 
 // adagradStepSSE2 — SSE2 only.
-TEXT ·adagradStepSSE2(SB), NOSPLIT, $0-128
+TEXT ·adagradStepSSE2(SB), NOSPLIT, $0-120
 	MOVQ out+0(FP), AX
 	MOVQ G+24(FP), R8
 	MOVQ params+48(FP), R9

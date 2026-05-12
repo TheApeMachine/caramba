@@ -5,6 +5,13 @@ package positional
 //go:noescape
 func RoPENEON(dst, src, cosTable, sinTable []float64, numPairs int)
 
+//go:noescape
+func ropeAdvanceRowNEON(cosCur, sinCur, cosStep, sinStep []float64)
+
+func ropeAdvanceRow(cosCur, sinCur, cosStep, sinStep []float64) {
+	ropeAdvanceRowNEON(cosCur, sinCur, cosStep, sinStep)
+}
+
 func applyRoPE(dst, src, cosTable, sinTable []float64, batch, numHeads, seqLen, numPairs int) {
 	headDim := numPairs * 2
 	for b := 0; b < batch; b++ {

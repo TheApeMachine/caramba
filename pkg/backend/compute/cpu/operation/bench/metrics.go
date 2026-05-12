@@ -95,14 +95,6 @@ func (f1 *F1) Forward(_ []int, data ...[]float64) []float64 {
 }
 
 func argmax(xs []float64) int {
-	best := 0
-
-	for idx := 1; idx < len(xs); idx++ {
-		if xs[idx] > xs[best] {
-			best = idx
-		}
-	}
-
-	return best
+	return argmaxImpl(xs)
 }
 

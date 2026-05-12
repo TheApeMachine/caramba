@@ -2,7 +2,6 @@ package vsa
 
 import (
 	"fmt"
-	"math"
 )
 
 /*
@@ -53,14 +52,10 @@ func (bundle *Bundle) Forward(shape []int, data ...[]float64) []float64 {
 	}
 
 	for _, vec := range data {
-		applyAddInPlace(out, vec)
+		bundleAccum(out, vec)
 	}
 
-	norm := math.Sqrt(applyReduceSumSq(out))
-
-	if norm > l2NormEpsilon {
-		applyMulScalar(out, 1.0/norm)
-	}
+	applyL2Normalize(out)
 
 	return out
 }

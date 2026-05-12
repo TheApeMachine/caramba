@@ -7,7 +7,7 @@ GLOBL ·lionNegOne(SB), RODATA, $8
 
 // lionStepNEON(out, m, params, grads []float64,
 //              lr, beta1, oneMinusBeta1, beta2, oneMinusBeta2, wd float64)
-TEXT ·lionStepNEON(SB), NOSPLIT, $0-152
+TEXT ·lionStepNEON(SB), NOSPLIT, $0-144
 	MOVD out+0(FP), R0
 	MOVD m+24(FP), R1
 	MOVD params+48(FP), R2

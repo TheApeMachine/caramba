@@ -16,6 +16,21 @@ func RoPEAVX2(dst, src, cosTable, sinTable []float64, numPairs int)
 //go:noescape
 func RoPESSE2(dst, src, cosTable, sinTable []float64, numPairs int)
 
+//go:noescape
+func ropeAdvanceRowAVX2(cosCur, sinCur, cosStep, sinStep []float64)
+
+//go:noescape
+func ropeAdvanceRowSSE2(cosCur, sinCur, cosStep, sinStep []float64)
+
+func ropeAdvanceRow(cosCur, sinCur, cosStep, sinStep []float64) {
+	if useAVX2 {
+		ropeAdvanceRowAVX2(cosCur, sinCur, cosStep, sinStep)
+		return
+	}
+
+	ropeAdvanceRowSSE2(cosCur, sinCur, cosStep, sinStep)
+}
+
 // applyRoPE dispatches the rotation over the full tensor.
 // The SIMD kernels handle one (position) slice of length headDim at a time.
 func applyRoPE(dst, src, cosTable, sinTable []float64, batch, numHeads, seqLen, numPairs int) {

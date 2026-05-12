@@ -4,7 +4,6 @@ package vsa
 
 import (
 	"fmt"
-	"math"
 
 	"golang.org/x/sys/cpu"
 )
@@ -164,10 +163,32 @@ func applyReduceSumSq(a []float64) float64 {
 	return sum
 }
 
-func applyL2Normalize(dst []float64) {
-	norm := math.Sqrt(applyReduceSumSq(dst))
+//go:noescape
+func bundleAccumAVX2(dst, src []float64)
 
-	if norm > l2NormEpsilon {
-		applyMulScalar(dst, 1.0/norm)
+//go:noescape
+func bundleAccumSSE2(dst, src []float64)
+
+//go:noescape
+func bundleNormalizeAVX2(dst []float64, eps float64)
+
+//go:noescape
+func bundleNormalizeSSE2(dst []float64, eps float64)
+
+func bundleAccum(dst, src []float64) {
+	if useAVX2 {
+		bundleAccumAVX2(dst, src)
+		return
 	}
+
+	bundleAccumSSE2(dst, src)
+}
+
+func applyL2Normalize(dst []float64) {
+	if useAVX2 {
+		bundleNormalizeAVX2(dst, l2NormEpsilon)
+		return
+	}
+
+	bundleNormalizeSSE2(dst, l2NormEpsilon)
 }

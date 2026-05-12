@@ -6,8 +6,8 @@
 TEXT ·RoPESSE2(SB), NOSPLIT, $0-104
 	MOVQ dst+0(FP),      AX
 	MOVQ src+24(FP),     SI
-	MOVQ cos+48(FP),     CX
-	MOVQ sin+72(FP),     DX
+	MOVQ cosTable+48(FP),     CX
+	MOVQ sinTable+72(FP),     DX
 	MOVQ numPairs+96(FP), BX
 
 loop:

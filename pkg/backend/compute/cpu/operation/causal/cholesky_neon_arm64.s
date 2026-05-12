@@ -1,5 +1,13 @@
 #include "textflag.h"
 
+// NOTE on the "NEON" suffix:
+// The Go ARM64 assembler does not accept double-precision vector mnemonics
+// (FMUL/FADD with .2D, FMLA.2D, FRINTN.2D, FCVTNS.2D, etc.) — only scalar
+// FP64 instructions are available. This kernel therefore uses scalar FMOVD/
+// FMADDD/FSQRTD throughout; vectorisation would require raw-WORD encodings
+// of the NEON ops. The symbol name is kept for parity with the AVX2/SSE2
+// dispatch on amd64.
+
 // choleskyRegNEON(L []float64, n int, eps float64)
 TEXT ·choleskyRegNEON(SB), NOSPLIT, $0-40
 	MOVD L+0(FP), R0
@@ -37,6 +45,10 @@ cr_diag:
 	FMOVD (R6), F2
 	FSUBD F0, F2, F2
 	FMOVD $0.0, F3
+	// Plan-9 ARM64: `FCMPD F3, F2` corresponds to ARM `FCMP F2, F3` — flags
+	// reflect (F2 - F3). BGT therefore branches when F2 > F3 (pivot > 0),
+	// taking the cr_piv_ok path (no clamp). When pivot ≤ 0 or NaN we fall
+	// through to the FMOVD F20, F2 clamp.
 	FCMPD F3, F2
 	BGT cr_piv_ok
 	FMOVD F20, F2                            // clamp to eps

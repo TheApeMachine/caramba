@@ -19,10 +19,10 @@ func init() {
 }
 
 //go:noescape
-func freeEnergyAVX2(mu, logSigma []float64) float64
+func freeEnergyAVX2(mu, expSigma []float64) float64
 
 //go:noescape
-func freeEnergySSE2(mu, logSigma []float64) float64
+func freeEnergySSE2(mu, expSigma []float64) float64
 
 //go:noescape
 func precisionWeightMulAVX2(dst, errVec, prec []float64)

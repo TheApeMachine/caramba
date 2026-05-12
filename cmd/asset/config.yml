@@ -1,5 +1,5 @@
 clerk:
-  active: false
+  active: true
   secret_key: ${CLERK_SECRET_KEY}
   # Organizations: JWT org_slug + org:admin on this slug elevates Go API (matches Clerk default Admin role).
   privileged_organization_slug: ""

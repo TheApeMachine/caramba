@@ -1,3 +1,4 @@
+import { EventType } from "@tanstack/ai";
 import type { UIMessage } from "@tanstack/ai-client";
 import { fetchServerSentEvents } from "@tanstack/ai-react";
 import { useCallback, useRef, useState } from "react";
@@ -70,21 +71,21 @@ async function runTurn(
 		if (abortSignal.aborted) break;
 
 		switch (chunk.type) {
-			case "text-delta":
+			case EventType.TEXT_MESSAGE_CONTENT:
 				textContent += chunk.delta;
 				break;
 
-			case "tool-call-start":
-				currentToolCallId = chunk.id ?? crypto.randomUUID();
-				currentToolName = chunk.name ?? null;
+			case EventType.TOOL_CALL_START:
+				currentToolCallId = chunk.toolCallId ?? crypto.randomUUID();
+				currentToolName = chunk.toolCallName ?? null;
 				currentToolArgs = "";
 				break;
 
-			case "tool-call-delta":
+			case EventType.TOOL_CALL_ARGS:
 				currentToolArgs += chunk.delta ?? "";
 				break;
 
-			case "tool-call-end": {
+			case EventType.TOOL_CALL_END: {
 				if (!currentToolName || !currentToolCallId) break;
 				const toolCallId = currentToolCallId;
 				const toolName = currentToolName;
@@ -109,8 +110,10 @@ async function runTurn(
 				break;
 			}
 
-			case "run-finished":
-			case "done":
+			case EventType.RUN_FINISHED:
+				break;
+
+			default:
 				break;
 		}
 	}

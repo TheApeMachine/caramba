@@ -1,7 +1,7 @@
 "use client";
 
 import { VegaEmbed } from "react-vega";
-import Flex from "../ui/flex";
+import { Flex } from "../ui/flex";
 
 interface GaugeProps {
     value?: number;

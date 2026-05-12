@@ -17,17 +17,7 @@ export const Route = createFileRoute("/api/shape/research-projects")({
 					});
 				}
 
-				const orgSlug = authState.orgSlug;
-
-				if (!orgSlug) {
-					return new Response(
-						JSON.stringify({ error: "No active organization" }),
-						{
-							status: 403,
-							headers: { "Content-Type": "application/json" },
-						},
-					);
-				}
+				const orgSlug = authState.orgSlug ?? authState.userId;
 
 				const incomingUrl = new URL(request.url);
 				const upstreamUrl = new URL(ELECTRIC_URL);
@@ -38,7 +28,7 @@ export const Route = createFileRoute("/api/shape/research-projects")({
 
 				upstreamUrl.searchParams.set("table", "research_projects");
 				upstreamUrl.searchParams.set("where", "organization_slug = $1");
-				upstreamUrl.searchParams.set("params[0]", orgSlug);
+				upstreamUrl.searchParams.set("params[1]", orgSlug);
 
 				const upstreamResponse = await fetch(upstreamUrl.toString(), {
 					headers: { Accept: "application/json" },

@@ -2,7 +2,7 @@
 
 // attentionRowScoresAVX2(scores, q, K []float64, seqLen int, headDim int, scale float64)
 //   scores[j] = scale * Σ_d q[d] * K[j*headDim + d]
-TEXT ·attentionRowScoresAVX2(SB), NOSPLIT, $0-104
+TEXT ·attentionRowScoresAVX2(SB), NOSPLIT, $0-96
 	MOVQ scores+0(FP), AX
 	MOVQ q+24(FP), R8
 	MOVQ K+48(FP), R9
@@ -70,7 +70,7 @@ ars_done:
 	VZEROUPPER
 	RET
 
-TEXT ·attentionRowScoresSSE2(SB), NOSPLIT, $0-104
+TEXT ·attentionRowScoresSSE2(SB), NOSPLIT, $0-96
 	MOVQ scores+0(FP), AX
 	MOVQ q+24(FP), R8
 	MOVQ K+48(FP), R9

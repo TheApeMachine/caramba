@@ -38,9 +38,14 @@ function blockToLatex(block: PaperBlock): string {
 		}
 		return `\\${headingCommand(block.level)}{${escaped}}`;
 	}
+	if (block.type === "equation") {
+		return block.display
+			? `\\[\n${block.latex}\n\\]`
+			: `$${block.latex}$`;
+	}
 	const lines = block.text
 		.split("\n")
-		.map((l) => escapeLatexText(l.trim()))
+		.map((line: string) => escapeLatexText(line.trim()))
 		.filter(Boolean);
 	if (lines.length === 0) {
 		return "";

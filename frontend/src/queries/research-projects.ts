@@ -12,5 +12,6 @@ export const researchProjectsQueryOptions = queryOptions({
 export const researchProjectQueryOptions = (id: string) =>
 	queryOptions({
 		queryKey: ["research-projects", id],
+		enabled: Boolean(id),
 		queryFn: () => getResearchProject({ data: { id } }),
 	});

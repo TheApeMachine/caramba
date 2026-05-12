@@ -77,7 +77,7 @@ func (server *Server) Up() error {
 	server.app.Get("/backend/architecture", wrap(server.architecture.List))
 	server.app.Get("/backend/architecture/:name", wrap(server.architecture.Load))
 	server.app.Post("/backend/architecture/:name", RequireClerkAdmin(), wrap(server.architecture.Save))
-	server.app.Post("/backend/research-projects", RequireClerkAdmin(), wrap(server.researchProjects.Create))
+	server.app.Post("/backend/research-projects", wrap(server.researchProjects.Create))
 
 	devteamCfg := config.NewDevTeamConfig()
 

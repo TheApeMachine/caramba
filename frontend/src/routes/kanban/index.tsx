@@ -70,7 +70,7 @@ function KanbanHubContent() {
 					className="justify-start gap-3"
 					render={
 						<Link
-							params={{ organizationSlug: orgSlug }}
+							params={{ organizationSlug: orgSlug ?? "" }}
 							to="/kanban/org/$organizationSlug"
 						/>
 					}

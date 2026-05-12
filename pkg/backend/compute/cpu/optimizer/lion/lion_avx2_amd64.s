@@ -10,7 +10,7 @@ GLOBL ·lionNegOne(SB), RODATA, $8
 //   sign(interp) ∈ {-1,0,+1}
 //   out = params - lr*sign(interp) - lr*wd*params
 //   m  = β2*m + (1-β2)*g
-TEXT ·lionStepAVX2(SB), NOSPLIT, $0-152
+TEXT ·lionStepAVX2(SB), NOSPLIT, $0-144
 	MOVQ out+0(FP), AX
 	MOVQ m+24(FP), R8
 	MOVQ params+48(FP), R9
@@ -180,7 +180,7 @@ lion_avx2_done:
 	VZEROUPPER
 	RET
 
-TEXT ·lionStepSSE2(SB), NOSPLIT, $0-152
+TEXT ·lionStepSSE2(SB), NOSPLIT, $0-144
 	MOVQ out+0(FP), AX
 	MOVQ m+24(FP), R8
 	MOVQ params+48(FP), R9
