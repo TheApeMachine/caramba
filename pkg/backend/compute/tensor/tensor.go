@@ -174,18 +174,23 @@ type Backend interface {
 }
 
 /*
-HostBackend owns tensors backed by Go heap storage.
+HostBackend owns tensors backed by Go heap storage using a linear memory arena.
 */
 type HostBackend struct {
 	mu     sync.RWMutex
 	closed bool
+	arena  []float64
+	offset int
 }
 
 /*
 NewHostBackend creates a backend for native Go tensor ownership.
+It allocates a default 64MB memory arena to reduce garbage collection overhead.
 */
 func NewHostBackend() *HostBackend {
-	return &HostBackend{}
+	return &HostBackend{
+		arena: make([]float64, 8*1024*1024), // 8M elements * 8 bytes = 64MB
+	}
 }
 
 /*
@@ -243,14 +248,24 @@ func (hostBackend *HostBackend) createFloat64(
 		return nil, err
 	}
 
+	var dest []float64
+
 	if copyValues {
-		values = slices.Clone(values)
+		if shape.Len() > 0 && hostBackend.offset+shape.Len() <= len(hostBackend.arena) {
+			dest = hostBackend.arena[hostBackend.offset : hostBackend.offset+shape.Len()]
+			hostBackend.offset += shape.Len()
+			copy(dest, values)
+		} else {
+			dest = slices.Clone(values)
+		}
+	} else {
+		dest = values
 	}
 
 	return &HostTensor{
 		bytes:  bytes,
 		shape:  shape,
-		values: values,
+		values: dest,
 	}, nil
 }
 

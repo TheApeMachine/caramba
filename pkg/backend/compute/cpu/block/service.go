@@ -1,9 +1,12 @@
 package block
 
 import (
-	"github.com/gofiber/fiber/v3"
+	"maps"
+
 	"fmt"
 	"strings"
+
+	"github.com/gofiber/fiber/v3"
 	"github.com/theapemachine/caramba/pkg/asset"
 )
 
@@ -40,14 +43,12 @@ func (service *Service) Request(ctx fiber.Ctx) error {
 		})
 	}
 
-	for k, v := range modelSchemas {
-		schemas[k] = v
-	}
+	maps.Copy(schemas, modelSchemas)
 
-	for k, schema := range schemas {
-		if schema.System != nil && len(schema.System.Topology.Nodes) > 0 {
+	for key, schema := range schemas {
+		if schema.System != nil {
 			schema.System.Topology.Nodes = expandTopology(schema.System.Topology.Nodes)
-			schemas[k] = schema
+			schemas[key] = schema
 		}
 	}
 

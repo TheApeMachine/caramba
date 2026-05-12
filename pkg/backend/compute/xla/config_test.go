@@ -30,7 +30,7 @@ func TestNewPJRTConfig(test *testing.T) {
 
 func TestNewPJRTConfig_UnsupportedPlatform(test *testing.T) {
 	Convey("Given an unsupported platform token", test, func() {
-		_, err := NewPJRTConfig("tpu")
+		_, err := NewPJRTConfig("potato")
 
 		Convey("It should reject the configuration", func() {
 			So(err, ShouldNotBeNil)

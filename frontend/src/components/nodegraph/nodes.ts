@@ -18,7 +18,7 @@ export function buildSubGraph(
 	// Map each output signal name → the node id that produces it.
 	const outToNode: Record<string, string> = {};
 	for (const node of topologyNodes) {
-		for (const sig of node.out) {
+		for (const sig of (node.out || [])) {
 			outToNode[sig] = node.id;
 		}
 	}
@@ -31,7 +31,7 @@ export function buildSubGraph(
 		visited.add(id);
 		const node = topologyNodes.find((n) => n.id === id);
 		if (!node) return 0;
-		const parentRanks = node.in
+		const parentRanks = (node.in || [])
 			.map((sig) => outToNode[sig])
 			.filter(Boolean)
 			.map((pid) => assignRank(pid, visited));
@@ -66,7 +66,7 @@ export function buildSubGraph(
 		const destSchema = schemas[node.op];
 		if (!destSchema) continue;
 
-		node.in.forEach((signal, slotIdx) => {
+		(node.in || []).forEach((signal, slotIdx) => {
 			const sourceId = outToNode[signal];
 			if (!sourceId) return;
 
@@ -74,7 +74,7 @@ export function buildSubGraph(
 			const sourceSchema = schemas[sourceNode?.op ?? ""];
 			if (!sourceNode || !sourceSchema) return;
 
-			const sourceOutSlot = sourceNode.out.indexOf(signal);
+			const sourceOutSlot = (sourceNode.out || []).indexOf(signal);
 			const destPortName = destSchema.inputs?.[slotIdx]?.name;
 			const srcPortName = sourceSchema.outputs?.[sourceOutSlot]?.name;
 			if (!destPortName || !srcPortName) return;
