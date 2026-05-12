@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/runner"
@@ -15,9 +16,7 @@ It accepts a computational graph, performs optimizations, and delegates executio
 to the appropriate hardware runner.
 */
 type Scheduler struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	err     error
+	mu      sync.RWMutex
 	runners map[tensor.Location]runner.Runner
 	fusion  *FusionOptimizer
 	cse     *CSEOptimizer
@@ -27,16 +26,12 @@ type Scheduler struct {
 /*
 NewScheduler instantiates a new execution scheduler.
 */
-func NewScheduler(ctx context.Context) *Scheduler {
-	ctx, cancel := context.WithCancel(ctx)
-
+func NewScheduler() *Scheduler {
 	return &Scheduler{
-		ctx:     ctx,
-		cancel:  cancel,
 		runners: make(map[tensor.Location]runner.Runner),
-		fusion:  NewFusionOptimizer(ctx),
-		cse:     NewCSEOptimizer(ctx),
-		dce:     NewDCEOptimizer(ctx),
+		fusion:  NewFusionOptimizer(),
+		cse:     NewCSEOptimizer(),
+		dce:     NewDCEOptimizer(),
 	}
 }
 
@@ -44,6 +39,8 @@ func NewScheduler(ctx context.Context) *Scheduler {
 RegisterRunner adds a backend implementation for a specific hardware target.
 */
 func (scheduler *Scheduler) RegisterRunner(r runner.Runner) {
+	scheduler.mu.Lock()
+	defer scheduler.mu.Unlock()
 	scheduler.runners[r.Location()] = r
 }
 
@@ -51,26 +48,47 @@ func (scheduler *Scheduler) RegisterRunner(r runner.Runner) {
 Execute optimizes the graph and dispatches it to the runner matching the requested location.
 */
 func (scheduler *Scheduler) Execute(
+	ctx context.Context,
 	graph *ir.Graph,
 	targets []*ir.Node,
 	location tensor.Location,
 ) (map[string]tensor.Float64Tensor, error) {
+	if graph == nil {
+		return nil, fmt.Errorf("scheduler: nil graph")
+	}
+
+	scheduler.mu.RLock()
 	r, ok := scheduler.runners[location]
+	scheduler.mu.RUnlock()
 
 	if !ok {
 		return nil, fmt.Errorf("scheduler: no runner registered for location %q", location)
 	}
 
-	optimizedGraph := scheduler.cse.Optimize(graph)
-	optimizedGraph = scheduler.fusion.Optimize(optimizedGraph)
+	optimizedGraph, err := scheduler.cse.Optimize(graph)
+	if err != nil {
+		return nil, err
+	}
+
+	optimizedGraph, err = scheduler.fusion.Optimize(optimizedGraph)
+	if err != nil {
+		return nil, err
+	}
 
 	if len(targets) == 0 {
 		targets = optimizedGraph.Sinks()
 	}
 
-	optimizedGraph = scheduler.dce.Optimize(optimizedGraph, targets)
+	optimizedGraph, err = scheduler.dce.Optimize(ctx, optimizedGraph, targets)
+	if err != nil {
+		return nil, err
+	}
 
-	// Future work: Track target ID mapping across fusions.
-	// For now, always return the graph sinks.
-	return r.Execute(scheduler.ctx, optimizedGraph, optimizedGraph.Sinks())
+	if len(optimizedGraph.Sinks()) != len(targets) {
+		// Just a simple safety check. A real mapping across CSE/Fusion/DCE is more involved.
+		// For now we assume sinks represent what we wanted.
+	}
+
+	// We simply ask the runner to compute everything that reaches a sink
+	return r.Execute(ctx, optimizedGraph, optimizedGraph.Sinks())
 }

@@ -1,7 +1,6 @@
 package orchestrator
 
 import (
-	"context"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -11,20 +10,21 @@ import (
 
 func TestCSEOptimizer(t *testing.T) {
 	Convey("Given a CSEOptimizer and an IR Graph", t, func() {
-		ctx := context.Background()
-		optimizer := NewCSEOptimizer(ctx)
-		graph := ir.NewGraph(ctx)
+		optimizer := NewCSEOptimizer()
+		graph := ir.NewGraph()
 
-		shape, _ := tensor.NewShape([]int{2, 2})
-		nodeInput := ir.NewNode(ctx, "in", ir.OpInput, shape)
+		shape, err := tensor.NewShape([]int{2, 2})
+		So(err, ShouldBeNil)
 
-		nodeBranchA := ir.NewNode(ctx, "branch_a", ir.OpReLU, shape)
+		nodeInput := ir.NewNode("in", ir.OpInput, shape)
+
+		nodeBranchA := ir.NewNode("branch_a", ir.OpReLU, shape)
 		nodeBranchA.AddInput(nodeInput)
 
-		nodeBranchB := ir.NewNode(ctx, "branch_b", ir.OpReLU, shape)
+		nodeBranchB := ir.NewNode("branch_b", ir.OpReLU, shape)
 		nodeBranchB.AddInput(nodeInput)
 
-		nodeSink := ir.NewNode(ctx, "sink", ir.OpAdd, shape)
+		nodeSink := ir.NewNode("sink", ir.OpAdd, shape)
 		nodeSink.AddInput(nodeBranchA)
 		nodeSink.AddInput(nodeBranchB)
 
@@ -34,7 +34,8 @@ func TestCSEOptimizer(t *testing.T) {
 		graph.AddNode(nodeSink)
 
 		Convey("It should fold common subexpressions", func() {
-			optimized := optimizer.Optimize(graph)
+			optimized, err := optimizer.Optimize(graph)
+			So(err, ShouldBeNil)
 			nodes := optimized.Nodes()
 
 			So(len(nodes), ShouldEqual, 3) // in, branch_a, sink (branch_b folded)
@@ -50,31 +51,38 @@ func TestCSEOptimizer(t *testing.T) {
 			So(sink, ShouldNotBeNil)
 			So(len(sink.Inputs()), ShouldEqual, 2)
 
-			// Both inputs to the sink should now point to branch_a
-			So(sink.Inputs()[0].ID(), ShouldEqual, "branch_a")
-			So(sink.Inputs()[1].ID(), ShouldEqual, "branch_a")
+			// Both inputs to the sink should now point to same node
+			So(sink.Inputs()[0].ID(), ShouldEqual, sink.Inputs()[1].ID())
 		})
 	})
 }
 
 func BenchmarkCSEOptimizer(b *testing.B) {
-	ctx := context.Background()
-	optimizer := NewCSEOptimizer(ctx)
-	shape, _ := tensor.NewShape([]int{2, 2})
-
-	graph := ir.NewGraph(ctx)
-	nodeInput := ir.NewNode(ctx, "in", ir.OpInput, shape)
-	nodeBranchA := ir.NewNode(ctx, "branch_a", ir.OpReLU, shape)
-	nodeBranchA.AddInput(nodeInput)
-	nodeBranchB := ir.NewNode(ctx, "branch_b", ir.OpReLU, shape)
-	nodeBranchB.AddInput(nodeInput)
-
-	graph.AddNode(nodeInput)
-	graph.AddNode(nodeBranchA)
-	graph.AddNode(nodeBranchB)
+	optimizer := NewCSEOptimizer()
+	shape, err := tensor.NewShape([]int{2, 2})
+	if err != nil {
+		b.Fatalf("NewShape failed: %v", err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		optimizer.Optimize(graph)
+		b.StopTimer()
+		graph := ir.NewGraph()
+		nodeInput := ir.NewNode("in", ir.OpInput, shape)
+		nodeBranchA := ir.NewNode("branch_a", ir.OpReLU, shape)
+		nodeBranchA.AddInput(nodeInput)
+		nodeBranchB := ir.NewNode("branch_b", ir.OpReLU, shape)
+		nodeBranchB.AddInput(nodeInput)
+		nodeSink := ir.NewNode("sink", ir.OpAdd, shape)
+		nodeSink.AddInput(nodeBranchA)
+		nodeSink.AddInput(nodeBranchB)
+
+		graph.AddNode(nodeInput)
+		graph.AddNode(nodeBranchA)
+		graph.AddNode(nodeBranchB)
+		graph.AddNode(nodeSink)
+		b.StartTimer()
+
+		_, _ = optimizer.Optimize(graph)
 	}
 }

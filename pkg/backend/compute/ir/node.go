@@ -1,7 +1,7 @@
 package ir
 
 import (
-	"context"
+	"sync"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
@@ -23,11 +23,10 @@ const (
 /*
 Node represents an operation in the intermediate representation graph.
 It abstracts the hardware-specific implementation so operations can be routed generically.
+Safe for concurrent access.
 */
 type Node struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	err      error
+	mu       sync.RWMutex
 	id       string
 	opType   OpType
 	shape    tensor.Shape
@@ -40,12 +39,8 @@ type Node struct {
 NewNode instantiates a new Node.
 It serves as a single mathematical step in a larger compute graph.
 */
-func NewNode(ctx context.Context, id string, opType OpType, shape tensor.Shape) *Node {
-	ctx, cancel := context.WithCancel(ctx)
-
+func NewNode(id string, opType OpType, shape tensor.Shape) *Node {
 	return &Node{
-		ctx:      ctx,
-		cancel:   cancel,
 		id:       id,
 		opType:   opType,
 		shape:    shape,
@@ -58,6 +53,8 @@ func NewNode(ctx context.Context, id string, opType OpType, shape tensor.Shape) 
 ID returns the node's unique identifier.
 */
 func (node *Node) ID() string {
+	node.mu.RLock()
+	defer node.mu.RUnlock()
 	return node.id
 }
 
@@ -65,6 +62,8 @@ func (node *Node) ID() string {
 OpType returns the node's operation type.
 */
 func (node *Node) OpType() OpType {
+	node.mu.RLock()
+	defer node.mu.RUnlock()
 	return node.opType
 }
 
@@ -72,34 +71,58 @@ func (node *Node) OpType() OpType {
 Shape returns the node's output shape.
 */
 func (node *Node) Shape() tensor.Shape {
+	node.mu.RLock()
+	defer node.mu.RUnlock()
 	return node.shape
 }
 
 /*
 Inputs returns the nodes that this node depends on.
+Returns a defensive copy of the slice.
 */
 func (node *Node) Inputs() []*Node {
-	return node.inputs
+	node.mu.RLock()
+	defer node.mu.RUnlock()
+	out := make([]*Node, len(node.inputs))
+	copy(out, node.inputs)
+	return out
 }
 
 /*
 AddInput adds a dependency to this node.
 */
 func (node *Node) AddInput(input *Node) {
+	if input == nil {
+		return
+	}
+	node.mu.Lock()
+	defer node.mu.Unlock()
 	node.inputs = append(node.inputs, input)
 }
 
 /*
 Metadata returns additional configuration for the node.
+Returns a defensive copy of the map.
 */
 func (node *Node) Metadata() map[string]any {
-	return node.metadata
+	node.mu.RLock()
+	defer node.mu.RUnlock()
+	out := make(map[string]any)
+	for k, v := range node.metadata {
+		out[k] = v
+	}
+	return out
 }
 
 /*
 SetMetadata adds configuration to the node.
 */
 func (node *Node) SetMetadata(key string, value any) {
+	if key == "" {
+		return
+	}
+	node.mu.Lock()
+	defer node.mu.Unlock()
 	node.metadata[key] = value
 }
 
@@ -107,6 +130,8 @@ func (node *Node) SetMetadata(key string, value any) {
 InPlace returns whether the node should mutate its input buffer.
 */
 func (node *Node) InPlace() bool {
+	node.mu.RLock()
+	defer node.mu.RUnlock()
 	return node.inPlace
 }
 
@@ -114,5 +139,7 @@ func (node *Node) InPlace() bool {
 SetInPlace configures whether the node can safely mutate its input buffer.
 */
 func (node *Node) SetInPlace(val bool) {
+	node.mu.Lock()
+	defer node.mu.Unlock()
 	node.inPlace = val
 }

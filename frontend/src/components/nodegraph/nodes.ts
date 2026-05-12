@@ -18,7 +18,7 @@ export function buildSubGraph(
 	// Map each output signal name → the node id that produces it.
 	const outToNode: Record<string, string> = {};
 	for (const node of topologyNodes) {
-		for (const sig of (node.out || [])) {
+		for (const sig of node.out || []) {
 			outToNode[sig] = node.id;
 		}
 	}
@@ -55,7 +55,9 @@ export function buildSubGraph(
 			y: row * 140,
 			inputData: {},
 			connections: { inputs: {}, outputs: {} },
-			...(node.template && node.template.length > 0 ? { subGraph: buildSubGraph(node.template, schemas) } : {}),
+			...(node.template && node.template.length > 0
+				? { subGraph: buildSubGraph(node.template, schemas) }
+				: {}),
 		};
 	}
 
@@ -75,6 +77,8 @@ export function buildSubGraph(
 			if (!sourceNode || !sourceSchema) return;
 
 			const sourceOutSlot = (sourceNode.out || []).indexOf(signal);
+			if (sourceOutSlot < 0) return;
+
 			const destPortName = destSchema.inputs?.[slotIdx]?.name;
 			const srcPortName = sourceSchema.outputs?.[sourceOutSlot]?.name;
 			if (!destPortName || !srcPortName) return;

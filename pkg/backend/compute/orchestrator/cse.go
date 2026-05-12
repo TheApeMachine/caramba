@@ -1,8 +1,8 @@
 package orchestrator
 
 import (
-	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
@@ -14,79 +14,76 @@ If multiple nodes perform the exact same mathematical operation on the exact sam
 the optimizer folds them into a single evaluation path to save execution time.
 */
 type CSEOptimizer struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	err    error
 }
 
 /*
 NewCSEOptimizer instantiates a new Common Subexpression Elimination optimizer.
 */
-func NewCSEOptimizer(ctx context.Context) *CSEOptimizer {
-	ctx, cancel := context.WithCancel(ctx)
-
-	return &CSEOptimizer{
-		ctx:    ctx,
-		cancel: cancel,
-	}
+func NewCSEOptimizer() *CSEOptimizer {
+	return &CSEOptimizer{}
 }
 
 /*
 Optimize detects structural equivalence and eliminates redundant calculations.
 */
-func (optimizer *CSEOptimizer) Optimize(graph *ir.Graph) *ir.Graph {
-	optimizedGraph := ir.NewGraph(optimizer.ctx)
+func (optimizer *CSEOptimizer) Optimize(graph *ir.Graph) (*ir.Graph, error) {
+	if graph == nil {
+		return nil, fmt.Errorf("cse optimizer: nil graph")
+	}
+
+	optimizedGraph := ir.NewGraph()
 
 	// signature maps a structural hash to a node ID
 	signatures := make(map[string]string)
 	replacements := make(map[string]*ir.Node)
 
-	// This relies on nodes being topologically sorted, or at least processing
-	// inputs before dependents. ir.Graph currently doesn't enforce topological sort on Nodes()
-	// iteration, but for CSE to work correctly, we process iteratively until no changes occur.
-	// For simplicity in this architectural pass, we'll do a simple loop.
+	layers, err := graph.TopologyLayers()
+	if err != nil {
+		return nil, fmt.Errorf("cse optimizer could not sort graph: %w", err)
+	}
 
-	for _, node := range graph.Nodes() {
-		// Input nodes are exempt from CSE folding directly unless identical shape/metadata?
-		// Actually, inputs are typically unique entry points.
-		if node.OpType() == ir.OpInput {
-			newNode := ir.NewNode(optimizer.ctx, node.ID(), node.OpType(), node.Shape())
-			for k, v := range node.Metadata() {
-				newNode.SetMetadata(k, v)
-			}
-			replacements[node.ID()] = newNode
-			optimizedGraph.AddNode(newNode)
-			continue
-		}
-
-		sig := generateSignature(node, replacements)
-		if existingID, found := signatures[sig]; found {
-			// Redundant calculation found! Point to the existing node.
-			replacements[node.ID()] = replacements[existingID]
-		} else {
-			signatures[sig] = node.ID()
-
-			newNode := ir.NewNode(optimizer.ctx, node.ID(), node.OpType(), node.Shape())
-			newNode.SetInPlace(node.InPlace())
-			for k, v := range node.Metadata() {
-				newNode.SetMetadata(k, v)
-			}
-
-			// Add remapped inputs
-			for _, in := range node.Inputs() {
-				if rep, ok := replacements[in.ID()]; ok {
-					newNode.AddInput(rep)
-				} else {
-					newNode.AddInput(in) // Fallback, though ideally already processed
+	for _, layer := range layers {
+		for _, node := range layer {
+			if node.OpType() == ir.OpInput {
+				newNode := ir.NewNode(node.ID(), node.OpType(), node.Shape())
+				newNode.SetInPlace(node.InPlace())
+				for k, v := range node.Metadata() {
+					newNode.SetMetadata(k, v)
 				}
+				replacements[node.ID()] = newNode
+				optimizedGraph.AddNode(newNode)
+				continue
 			}
 
-			replacements[node.ID()] = newNode
-			optimizedGraph.AddNode(newNode)
+			sig := generateSignature(node, replacements)
+			if existingID, found := signatures[sig]; found {
+				// Redundant calculation found! Point to the existing node.
+				replacements[node.ID()] = replacements[existingID]
+			} else {
+				signatures[sig] = node.ID()
+
+				newNode := ir.NewNode(node.ID(), node.OpType(), node.Shape())
+				newNode.SetInPlace(node.InPlace())
+				for k, v := range node.Metadata() {
+					newNode.SetMetadata(k, v)
+				}
+
+				// Add remapped inputs
+				for _, in := range node.Inputs() {
+					if rep, ok := replacements[in.ID()]; ok {
+						newNode.AddInput(rep)
+					} else {
+						newNode.AddInput(in) // Fallback
+					}
+				}
+
+				replacements[node.ID()] = newNode
+				optimizedGraph.AddNode(newNode)
+			}
 		}
 	}
 
-	return optimizedGraph
+	return optimizedGraph, nil
 }
 
 func generateSignature(node *ir.Node, replacements map[string]*ir.Node) string {
@@ -96,6 +93,25 @@ func generateSignature(node *ir.Node, replacements map[string]*ir.Node) string {
 
 	// Include shape in signature
 	sb.WriteString(fmt.Sprintf("%v", node.Shape().Dims()))
+	sb.WriteString("|")
+
+	if node.InPlace() {
+		sb.WriteString("inplace=true|")
+	} else {
+		sb.WriteString("inplace=false|")
+	}
+
+	// Serialize metadata
+	meta := node.Metadata()
+	keys := make([]string, 0, len(meta))
+	for k := range meta {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		sb.WriteString(fmt.Sprintf("%s=%v;", k, meta[k]))
+	}
 	sb.WriteString("|")
 
 	for _, in := range node.Inputs() {

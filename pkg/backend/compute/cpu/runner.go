@@ -12,27 +12,23 @@ import (
 Runner implements the runner.Runner interface for CPU execution.
 */
 type Runner struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	err    error
 }
 
 /*
 NewRunner instantiates a new CPU runner.
 */
-func NewRunner(ctx context.Context) *Runner {
-	ctx, cancel := context.WithCancel(ctx)
-
-	return &Runner{
-		ctx:    ctx,
-		cancel: cancel,
-	}
+func NewRunner() *Runner {
+	return &Runner{}
 }
 
 /*
 Execute traverses the intermediate representation graph and executes operations on CPU.
 */
 func (runner *Runner) Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	// Abstract dispatch logic mapping ir.Node to CPU specific kernel execution.
 	// Currently a stub to fulfill architectural boundary constraints.
 	if len(targets) == 0 {
@@ -54,6 +50,5 @@ func (runner *Runner) Location() tensor.Location {
 Close cleans up any allocated resources.
 */
 func (runner *Runner) Close() error {
-	runner.cancel()
 	return nil
 }

@@ -1,7 +1,7 @@
 package ir
 
 import (
-	"context"
+	"fmt"
 )
 
 /*
@@ -9,37 +9,35 @@ Graph represents a collection of interconnected computational nodes.
 It serves as the intermediate representation of the execution flow.
 */
 type Graph struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	err    error
-	nodes  []*Node
+	nodes []*Node
 }
 
 /*
 NewGraph instantiates a new Graph.
 It is created to abstract physical execution from the mathematical intent.
 */
-func NewGraph(ctx context.Context) *Graph {
-	ctx, cancel := context.WithCancel(ctx)
-
+func NewGraph() *Graph {
 	return &Graph{
-		ctx:    ctx,
-		cancel: cancel,
-		nodes:  make([]*Node, 0),
+		nodes: make([]*Node, 0),
 	}
 }
 
 /*
-Nodes returns all nodes in the graph.
+Nodes returns a defensive copy of all nodes in the graph.
 */
 func (graph *Graph) Nodes() []*Node {
-	return graph.nodes
+	out := make([]*Node, len(graph.nodes))
+	copy(out, graph.nodes)
+	return out
 }
 
 /*
 AddNode registers a node in the computational graph.
 */
 func (graph *Graph) AddNode(node *Node) {
+	if node == nil {
+		return
+	}
 	graph.nodes = append(graph.nodes, node)
 }
 
@@ -71,7 +69,7 @@ TopologyLayers groups nodes into sequential execution layers.
 Nodes in the same layer are completely independent of each other and can be
 executed concurrently across multiple streams or command queues.
 */
-func (graph *Graph) TopologyLayers() [][]*Node {
+func (graph *Graph) TopologyLayers() ([][]*Node, error) {
 	layers := make([][]*Node, 0)
 
 	type irNodeInfo struct {
@@ -102,8 +100,10 @@ func (graph *Graph) TopologyLayers() [][]*Node {
 		}
 	}
 
+	processedCount := 0
 	for len(currentLayer) > 0 {
 		layers = append(layers, currentLayer)
+		processedCount += len(currentLayer)
 		var nextLayer []*Node
 
 		for _, n := range currentLayer {
@@ -118,5 +118,9 @@ func (graph *Graph) TopologyLayers() [][]*Node {
 		currentLayer = nextLayer
 	}
 
-	return layers
+	if processedCount != len(graph.nodes) {
+		return nil, fmt.Errorf("cycle detected in graph")
+	}
+
+	return layers, nil
 }

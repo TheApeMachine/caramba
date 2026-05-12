@@ -1,7 +1,6 @@
 package ir
 
 import (
-	"context"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -10,11 +9,10 @@ import (
 
 func TestNode(t *testing.T) {
 	Convey("Given a new Node", t, func() {
-		ctx := context.Background()
 		shape, err := tensor.NewShape([]int{2, 2})
 		So(err, ShouldBeNil)
 
-		node := NewNode(ctx, "n1", OpMatmul, shape)
+		node := NewNode("n1", OpMatmul, shape)
 
 		Convey("It should return its ID", func() {
 			So(node.ID(), ShouldEqual, "n1")
@@ -29,8 +27,9 @@ func TestNode(t *testing.T) {
 		})
 
 		Convey("It should allow adding inputs", func() {
-			inputShape, _ := tensor.NewShape([]int{2, 2})
-			inputNode := NewNode(ctx, "in1", OpInput, inputShape)
+			inputShape, err := tensor.NewShape([]int{2, 2})
+			So(err, ShouldBeNil)
+			inputNode := NewNode("in1", OpInput, inputShape)
 
 			node.AddInput(inputNode)
 			So(len(node.Inputs()), ShouldEqual, 1)
@@ -52,11 +51,23 @@ func TestNode(t *testing.T) {
 }
 
 func BenchmarkNode(b *testing.B) {
-	ctx := context.Background()
-	shape, _ := tensor.NewShape([]int{2, 2})
+	shape, err := tensor.NewShape([]int{2, 2})
+	if err != nil {
+		b.Fatalf("NewShape failed: %v", err)
+	}
+	inputShape, err := tensor.NewShape([]int{2, 2})
+	if err != nil {
+		b.Fatalf("NewShape failed: %v", err)
+	}
+
+	inputNode := NewNode("in1", OpInput, inputShape)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		NewNode(ctx, "n1", OpMatmul, shape)
+		node := NewNode("n1", OpMatmul, shape)
+		node.AddInput(inputNode)
+		node.SetMetadata("key", "value")
+		node.SetInPlace(true)
+		node.InPlace()
 	}
 }

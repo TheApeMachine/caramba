@@ -1,7 +1,7 @@
 package orchestrator
 
 import (
-	"context"
+	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 )
@@ -11,28 +11,24 @@ FusionOptimizer analyzes an intermediate representation graph to combine
 adjacent operations into single kernels.
 */
 type FusionOptimizer struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	err    error
 }
 
 /*
 NewFusionOptimizer instantiates a new FusionOptimizer.
 */
-func NewFusionOptimizer(ctx context.Context) *FusionOptimizer {
-	ctx, cancel := context.WithCancel(ctx)
-
-	return &FusionOptimizer{
-		ctx:    ctx,
-		cancel: cancel,
-	}
+func NewFusionOptimizer() *FusionOptimizer {
+	return &FusionOptimizer{}
 }
 
 /*
 Optimize traverses the graph and replaces fuseable node chains with a fused node.
 */
-func (optimizer *FusionOptimizer) Optimize(graph *ir.Graph) *ir.Graph {
-	optimizedGraph := ir.NewGraph(optimizer.ctx)
+func (optimizer *FusionOptimizer) Optimize(graph *ir.Graph) (*ir.Graph, error) {
+	if graph == nil {
+		return nil, fmt.Errorf("fusion optimizer: nil graph")
+	}
+
+	optimizedGraph := ir.NewGraph()
 
 	dependents := make(map[string]int)
 	for _, node := range graph.Nodes() {
@@ -68,7 +64,7 @@ func (optimizer *FusionOptimizer) Optimize(graph *ir.Graph) *ir.Graph {
 			inputNode := node.Inputs()[0]
 
 			fusedID := inputNode.ID() + "_fused_" + node.ID()
-			fusedNode := ir.NewNode(optimizer.ctx, fusedID, ir.OpFused, node.Shape())
+			fusedNode := ir.NewNode(fusedID, ir.OpFused, node.Shape())
 
 			for _, in := range inputNode.Inputs() {
 				if rep, ok := replacements[in.ID()]; ok {
@@ -76,6 +72,14 @@ func (optimizer *FusionOptimizer) Optimize(graph *ir.Graph) *ir.Graph {
 				} else {
 					fusedNode.AddInput(in)
 				}
+			}
+
+			// Preserve metadata from original nodes
+			for k, v := range inputNode.Metadata() {
+				fusedNode.SetMetadata(k, v)
+			}
+			for k, v := range node.Metadata() {
+				fusedNode.SetMetadata(k, v)
 			}
 
 			fusedNode.SetMetadata("base_op", string(inputNode.OpType()))
@@ -86,7 +90,9 @@ func (optimizer *FusionOptimizer) Optimize(graph *ir.Graph) *ir.Graph {
 			continue
 		}
 
-		newNode := ir.NewNode(optimizer.ctx, node.ID(), node.OpType(), node.Shape())
+		newNode := ir.NewNode(node.ID(), node.OpType(), node.Shape())
+		newNode.SetInPlace(node.InPlace())
+
 		for _, in := range node.Inputs() {
 			if rep, ok := replacements[in.ID()]; ok {
 				newNode.AddInput(rep)
@@ -102,5 +108,5 @@ func (optimizer *FusionOptimizer) Optimize(graph *ir.Graph) *ir.Graph {
 		optimizedGraph.AddNode(newNode)
 	}
 
-	return optimizedGraph
+	return optimizedGraph, nil
 }

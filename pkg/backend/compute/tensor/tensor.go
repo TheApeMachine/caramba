@@ -309,8 +309,18 @@ func (hostBackend *HostBackend) Close() error {
 	defer hostBackend.mu.Unlock()
 
 	hostBackend.closed = true
+	hostBackend.arena = nil
 
 	return nil
+}
+
+/*
+Reset performs a one-shot reclamation of the memory arena for when all tensors are gone.
+*/
+func (hostBackend *HostBackend) Reset() {
+	hostBackend.mu.Lock()
+	defer hostBackend.mu.Unlock()
+	hostBackend.offset = 0
 }
 
 /*
