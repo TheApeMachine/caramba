@@ -5,38 +5,54 @@
 extern "C" {
 #endif
 
-// Initialize Metal pipelines for Markov blanket operations.
-// metallib_path: absolute path to markov_blanket.metallib.
-int metal_mb_init(const char* metallib_path);
+/*
+Return codes: 0 success; negative errors (invalid args, not init, I/O, numeric).
+Thread-safety: not safe for concurrent use without external locking.
 
-// Partition joint state x[N] into [out_s|out_a|out_i|out_e].
-// masks layout: [smask|amask|imask|emask] each length N (float32).
+metal_mb_init loads markov_blanket.metallib (see repo Makefile).
+Callers allocate output buffers; kernels do not take ownership.
+*/
+
+int metal_mb_init(const char *metallib_path);
+
+int metal_mb_cleanup(void);
+
+/*
+Partition: x length N; masks = [smask|amask|imask|emask] each length N float32.
+out length Ns+Na+Ni+Ne. Returns non-zero if mask overlaps (more than one 1 per index).
+*/
 int metal_mb_partition(
-    const float* x, const float* masks,
-    float* out,
-    int N, int Ns, int Na, int Ni, int Ne
-);
+    const float *x, const float *masks,
+    float *out,
+    int N, int Ns, int Na, int Ni, int Ne);
 
-// Internal flow: out[Ni] = W[Ni*Ns] @ x_sens[Ns] + bias[Ni]
+/*
+Internal flow: W row-major Ni×Ns; x_sens length Ns; bias length Ni; out length Ni.
+out = W @ x_sens + bias.
+*/
 int metal_mb_flow_internal(
-    const float* x_sens, const float* W, const float* bias,
-    float* out,
-    int Ni, int Ns
-);
+    const float *x_sens, const float *W, const float *bias,
+    float *out,
+    int Ni, int Ns);
 
-// Active flow: out[Na] = W[Na*Ni] @ x_int[Ni] + bias[Na]
+/*
+Active flow: W row-major Na×Ni; x_int length Ni; bias length Na; out length Na.
+out = W @ x_int + bias (same pattern as flow_internal; see metal_mb_flow_internal).
+*/
 int metal_mb_flow_active(
-    const float* x_int, const float* W, const float* bias,
-    float* out,
-    int Na, int Ni
-);
+    const float *x_int, const float *W, const float *bias,
+    float *out,
+    int Na, int Ni);
 
-// Mutual information (Gaussian approximation). X[T*N], Y[T*M] → out[1].
+/*
+Gaussian MI approximation: MI = 0.5*(logdet Sigma_X + logdet Sigma_Y - logdet Sigma_joint).
+X row-major T×N (sample t at row t: X[t*N+n]); Y row-major T×M. out[0] receives scalar MI.
+Requires T>=2, N>0, M>0.
+*/
 int metal_mb_mutual_information(
-    const float* X, const float* Y,
-    float* out,
-    int T, int N, int M
-);
+    const float *X, const float *Y,
+    float *out,
+    int T, int N, int M);
 
 #ifdef __cplusplus
 }

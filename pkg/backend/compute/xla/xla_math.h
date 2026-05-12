@@ -28,6 +28,12 @@ void xla_math_shutdown(void);
  */
 int xla_matmul(const double* A, const double* B, double* C, int M, int K, int N);
 
+/** Sum of n elements -> single *out_scalar. */
+int xla_reduce_sum(const double* x, double* out_scalar, int n);
+
+/** Elementwise a - b -> out; length n. */
+int xla_sub(const double* a, const double* b, double* out, int n);
+
 /** Elementwise a+b -> out; length n; dst may alias inputs only if documented otherwise — treat as no-alias. */
 int xla_add(const double* a, const double* b, double* out, int n);
 /** Elementwise a*b -> out; length n. */
@@ -86,6 +92,18 @@ int xla_div_vec(const double* a, const double* b, double* dst, int n);
  * xla_clamp_vec: Clamps dst[i] to [lo, hi]. Requires lo <= hi; if lo > hi returns -1 and leaves dst unchanged.
  */
 int xla_clamp_vec(double* dst, double lo, double hi, int n);
+
+/** 
+ * Internal compilation and execution helpers exposed for theory-specific modules.
+ * These are valid only within the amalgamated __XLA_BUILD__ boundary.
+ */
+#ifdef __cplusplus
+struct PJRT_LoadedExecutable;
+PJRT_LoadedExecutable* xla_math_compile_module(const std::string& key, const std::string& mlir);
+int xla_math_run_exec(PJRT_LoadedExecutable* exec,
+                      const double** in_ptrs, int num_in, size_t* in_sizes,
+                      double* out_ptr, size_t out_size);
+#endif
 
 #ifdef __cplusplus
 }

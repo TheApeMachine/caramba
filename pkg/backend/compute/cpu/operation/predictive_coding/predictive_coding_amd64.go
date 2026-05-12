@@ -7,6 +7,10 @@ import "golang.org/x/sys/cpu"
 var useAVX2 bool
 var useFMA bool
 
+// AMD64 dispatch: matVecAVX2 and matVecTransposeAVX2 use VFMADD231PD (FMA) for a correct
+// single-pass fused multiply-add accumulate, so useFMA is required with useAVX2 for those
+// entrypoints. subVec*, mulVec*, axpy*, and outerRow* use separate multiply/add SIMD ops and
+// are gated only on useAVX2.
 func init() {
 	useAVX2 = cpu.X86.HasAVX2
 	useFMA = cpu.X86.HasFMA
@@ -57,6 +61,8 @@ func alignedLen(n int) int {
 }
 
 func applyMatVec(dst, W, x []float64, rows, cols int) {
+	requireMatVec(dst, W, x, rows, cols)
+
 	if useAVX2 && useFMA {
 		matVecAVX2(dst, W, x, rows, cols)
 	} else {
@@ -65,6 +71,8 @@ func applyMatVec(dst, W, x []float64, rows, cols int) {
 }
 
 func applyMatVecTranspose(dst, W, x []float64, rows, cols int) {
+	requireMatVecTranspose(dst, W, x, rows, cols)
+
 	if useAVX2 && useFMA {
 		matVecTransposeAVX2(dst, W, x, rows, cols)
 	} else {
@@ -73,6 +81,8 @@ func applyMatVecTranspose(dst, W, x []float64, rows, cols int) {
 }
 
 func applySubVec(dst, a, b []float64) {
+	requireEqualLen3(dst, a, b, "applySubVec")
+
 	n := len(a)
 	limit := alignedLen(n)
 
@@ -94,6 +104,8 @@ func applySubVecInPlace(dst, src []float64) {
 }
 
 func applyMulVec(dst, a, b []float64) {
+	requireEqualLen3(dst, a, b, "applyMulVec")
+
 	n := len(a)
 	limit := alignedLen(n)
 
@@ -111,6 +123,8 @@ func applyMulVec(dst, a, b []float64) {
 }
 
 func applyAxpy(dst, src []float64, scale float64) {
+	requireAxpy(dst, src)
+
 	n := len(src)
 	limit := alignedLen(n)
 
@@ -128,6 +142,8 @@ func applyAxpy(dst, src []float64, scale float64) {
 }
 
 func applyOuterAdd(W, eps, r []float64, lr float64, dOut, dIn int) {
+	requireOuterAdd(W, eps, r, dOut, dIn)
+
 	for i := 0; i < dOut; i++ {
 		scale := lr * eps[i]
 		row := W[i*dIn : (i+1)*dIn]

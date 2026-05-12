@@ -7,7 +7,7 @@ UpdateRepresentation performs the representation update step of predictive codin
 r += lr * (W^T @ ε_lower - ε_self)
 where W^T @ ε_lower is the bottom-up error signal propagated through transposed
 generative weights, and ε_self is the prediction error from the layer above.
-shape=[D_in, D_out, lr_bits], data[0]=r [D_in], data[1]=W [D_out*D_in],
+shape=[D_in, D_out], data[0]=r [D_in], data[1]=W [D_out*D_in],
 data[2]=eps_lower [D_out], data[3]=eps_self [D_in], data[4]=lr [1] → r_new [D_in].
 */
 type UpdateRepresentation struct{}
@@ -33,11 +33,17 @@ func (op *UpdateRepresentation) Forward(shape []int, data ...[]float64) []float6
 
 	r, W, epsLower, epsSelf, lrVec := data[0], data[1], data[2], data[3], data[4]
 
-	if len(r) != dIn || len(W) != dOut*dIn || len(epsLower) != dOut || len(epsSelf) != dIn {
+	needW := rowMajorWeightLen(dOut, dIn)
+
+	if len(r) != dIn || len(W) != needW || len(epsLower) != dOut || len(epsSelf) != dIn {
 		panic(fmt.Sprintf(
 			"predictive_coding: UpdateRepresentation.Forward: shape mismatch r=%d W=%d eps_lower=%d eps_self=%d",
 			len(r), len(W), len(epsLower), len(epsSelf),
 		))
+	}
+
+	if len(lrVec) == 0 {
+		panic("predictive_coding: UpdateRepresentation.Forward: len(lr) must be >= 1")
 	}
 
 	lr := lrVec[0]

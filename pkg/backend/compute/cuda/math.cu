@@ -145,6 +145,8 @@ __global__ void softmax_kernel(const double* src, double* dst,
         lmax = lmax > v ? lmax : v;
     }
     // warp reduce max
+    #pragma unroll
+    #pragma unroll
     for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
         double other = __shfl_down_sync(0xffffffff, lmax, offset);
         lmax = lmax > other ? lmax : other;
@@ -154,6 +156,8 @@ __global__ void softmax_kernel(const double* src, double* dst,
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lmax;
     __syncthreads();
     if (threadIdx.x < blockDim.x / warpSize) lmax = smem[threadIdx.x];
+    #pragma unroll
+    #pragma unroll
     for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
         double other = __shfl_down_sync(0xffffffff, lmax, offset);
         lmax = lmax > other ? lmax : other;
@@ -171,11 +175,13 @@ __global__ void softmax_kernel(const double* src, double* dst,
         lsum += e;
     }
     // warp reduce sum
+    #pragma unroll
     for (int offset = warpSize / 2; offset > 0; offset >>= 1)
         lsum += __shfl_down_sync(0xffffffff, lsum, offset);
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lsum;
     __syncthreads();
     if (threadIdx.x < blockDim.x / warpSize) lsum = smem[threadIdx.x];
+    #pragma unroll
     for (int offset = warpSize / 2; offset > 0; offset >>= 1)
         lsum += __shfl_down_sync(0xffffffff, lsum, offset);
     if (threadIdx.x == 0) smem[0] = lsum;
@@ -202,11 +208,13 @@ __global__ void layernorm_kernel(const double* src, double* dst,
     // mean
     double lsum = 0.0;
     for (int i = threadIdx.x; i < d_model; i += blockDim.x) lsum += row_src[i];
+    #pragma unroll
     for (int offset = warpSize/2; offset > 0; offset >>= 1)
         lsum += __shfl_down_sync(0xffffffff, lsum, offset);
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lsum;
     __syncthreads();
     if (threadIdx.x < blockDim.x / warpSize) lsum = smem[threadIdx.x];
+    #pragma unroll
     for (int offset = warpSize/2; offset > 0; offset >>= 1)
         lsum += __shfl_down_sync(0xffffffff, lsum, offset);
     if (threadIdx.x == 0) smem[0] = lsum;
@@ -220,11 +228,13 @@ __global__ void layernorm_kernel(const double* src, double* dst,
         double diff = row_src[i] - mean;
         lvar += diff * diff;
     }
+    #pragma unroll
     for (int offset = warpSize/2; offset > 0; offset >>= 1)
         lvar += __shfl_down_sync(0xffffffff, lvar, offset);
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lvar;
     __syncthreads();
     if (threadIdx.x < blockDim.x / warpSize) lvar = smem[threadIdx.x];
+    #pragma unroll
     for (int offset = warpSize/2; offset > 0; offset >>= 1)
         lvar += __shfl_down_sync(0xffffffff, lvar, offset);
     if (threadIdx.x == 0) smem[0] = lvar;
@@ -253,11 +263,13 @@ __global__ void rmsnorm_kernel(const double* src, double* dst,
         double v = row_src[i];
         lss += v * v;
     }
+    #pragma unroll
     for (int offset = warpSize/2; offset > 0; offset >>= 1)
         lss += __shfl_down_sync(0xffffffff, lss, offset);
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lss;
     __syncthreads();
     if (threadIdx.x < blockDim.x / warpSize) lss = smem[threadIdx.x];
+    #pragma unroll
     for (int offset = warpSize/2; offset > 0; offset >>= 1)
         lss += __shfl_down_sync(0xffffffff, lss, offset);
     if (threadIdx.x == 0) smem[0] = lss;

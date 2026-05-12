@@ -8,6 +8,7 @@
 //   x+48(FP)   ptr, +56 len, +64 cap
 //   rows+72(FP)
 //   cols+80(FP)
+// matvecAVX2: 8-wide unrolled SIMD when cols≥8, then 4-wide, then scalar tail.
 TEXT ·matvecAVX2(SB), NOSPLIT, $0-88
 	MOVQ dst+0(FP), AX      // dst ptr
 	MOVQ w+24(FP), BX       // w ptr
@@ -17,12 +18,27 @@ TEXT ·matvecAVX2(SB), NOSPLIT, $0-88
 	TESTQ R8, R8
 	JZ   done_mv2
 row_loop_mv2:
-	// accumulate dot product of w[row*cols:] with x into Y0
 	VXORPD Y0, Y0, Y0
+	VXORPD Y5, Y5, Y5
 	MOVQ   R9, CX           // col counter
 	MOVQ   BX, SI           // row start in w
 	MOVQ   DX, DI           // x ptr (reset each row)
-	CMPQ   CX, $4
+	CMPQ   CX, $8
+	JL     vec_try_4
+vec_loop_8:
+	VMOVUPD (SI), Y1
+	VMOVUPD (DI), Y2
+	VFMADD231PD Y2, Y1, Y0
+	VMOVUPD 32(SI), Y3
+	VMOVUPD 32(DI), Y4
+	VFMADD231PD Y4, Y3, Y5
+	ADDQ $64, SI
+	ADDQ $64, DI
+	SUBQ $8, CX
+	CMPQ CX, $8
+	JGE  vec_loop_8
+vec_try_4:
+	CMPQ CX, $4
 	JL     tail_mv2
 vec_loop_mv2:
 	VMOVUPD (SI), Y1
@@ -34,6 +50,7 @@ vec_loop_mv2:
 	CMPQ CX, $4
 	JGE  vec_loop_mv2
 tail_mv2:
+	VADDPD Y5, Y0, Y0
 	VEXTRACTF128 $1, Y0, X1
 	VADDPD X1, X0, X0
 	VHADDPD X0, X0, X0
@@ -75,12 +92,28 @@ TEXT ·matvecSSE2(SB), NOSPLIT, $0-88
 	TESTQ R8, R8
 	JZ   done_mvs
 row_loop_mvs:
-	XORPS  X0, X0
+	XORPD  X0, X0
 	MOVQ   R9, CX
 	MOVQ   BX, SI
 	MOVQ   DX, DI
-	CMPQ   CX, $2
+	CMPQ   CX, $4
 	JL     tail_mvs
+vec_loop_4_mvs:
+	MOVUPD (SI), X1
+	MOVUPD (DI), X2
+	MULPD  X2, X1
+	ADDPD  X1, X0
+	MOVUPD 16(SI), X1
+	MOVUPD 16(DI), X2
+	MULPD  X2, X1
+	ADDPD  X1, X0
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $4, CX
+	CMPQ CX, $4
+	JGE  vec_loop_4_mvs
+	CMPQ CX, $2
+	JLT  tail_mvs
 vec_loop_mvs:
 	MOVUPD (SI), X1
 	MOVUPD (DI), X2
@@ -93,12 +126,17 @@ vec_loop_mvs:
 	JGE  vec_loop_mvs
 tail_mvs:
 	HADDPD X0, X0
+scalar_rem_mvs:
 	TESTQ  CX, CX
 	JZ     write_mvs
 	MOVSD  (SI), X1
 	MOVSD  (DI), X2
 	MULSD  X2, X1
 	ADDSD  X1, X0
+	ADDQ $8, SI
+	ADDQ $8, DI
+	DECQ CX
+	JNZ  scalar_rem_mvs
 write_mvs:
 	MOVSD  (AX), X3
 	ADDSD  X0, X3
@@ -113,14 +151,24 @@ done_mvs:
 	RET
 
 // subVecAVX2(dst, a, b []float64)  dst[i] = a[i] - b[i]
-// ABI0: dst+0(FP)..16, a+24(FP)..40, b+48(FP)..64
+// Precondition: min(len(dst),len(a),len(b))) elements are valid to write/read.
 TEXT ·subVecAVX2(SB), NOSPLIT, $0-72
 	MOVQ dst+0(FP), AX
-	MOVQ a_len+32(FP), BX
+	MOVQ dst_len+8(FP), BX
+	MOVQ a_len+32(FP), CX
+	CMPQ CX, BX
+	JAE  mb_sv_min1
+	MOVQ CX, BX
+mb_sv_min1:
+	MOVQ b_len+56(FP), CX
+	CMPQ CX, BX
+	JAE  mb_sv_min2
+	MOVQ CX, BX
+mb_sv_min2:
 	MOVQ a+24(FP), DI
 	MOVQ b+48(FP), SI
 	CMPQ BX, $4
-	JL   done_sv_avx
+	JL   tail_mb_sv_avx
 loop_sv_avx:
 	VMOVUPD (DI), Y0
 	VMOVUPD (SI), Y1
@@ -132,6 +180,19 @@ loop_sv_avx:
 	SUBQ $4, BX
 	CMPQ BX, $4
 	JGE  loop_sv_avx
+tail_mb_sv_avx:
+	TESTQ BX, BX
+	JZ    done_sv_avx
+tail_mb_one_avx:
+	MOVSD (DI), X0
+	MOVSD (SI), X1
+	SUBSD X1, X0
+	MOVSD X0, (AX)
+	ADDQ $8, AX
+	ADDQ $8, DI
+	ADDQ $8, SI
+	DECQ BX
+	JNZ   tail_mb_one_avx
 done_sv_avx:
 	VZEROUPPER
 	RET
@@ -139,11 +200,21 @@ done_sv_avx:
 // subVecSSE2(dst, a, b []float64)  dst[i] = a[i] - b[i]
 TEXT ·subVecSSE2(SB), NOSPLIT, $0-72
 	MOVQ dst+0(FP), AX
-	MOVQ a_len+32(FP), BX
+	MOVQ dst_len+8(FP), BX
+	MOVQ a_len+32(FP), CX
+	CMPQ CX, BX
+	JAE  mb_sv2_min1
+	MOVQ CX, BX
+mb_sv2_min1:
+	MOVQ b_len+56(FP), CX
+	CMPQ CX, BX
+	JAE  mb_sv2_min2
+	MOVQ CX, BX
+mb_sv2_min2:
 	MOVQ a+24(FP), DI
 	MOVQ b+48(FP), SI
 	CMPQ BX, $2
-	JL   done_sv_sse
+	JL   tail_mb_sv2
 loop_sv_sse:
 	MOVUPD (DI), X0
 	MOVUPD (SI), X1
@@ -155,5 +226,12 @@ loop_sv_sse:
 	SUBQ $2, BX
 	CMPQ BX, $2
 	JGE  loop_sv_sse
+tail_mb_sv2:
+	CMPQ BX, $1
+	JNE  done_sv_sse
+	MOVSD (DI), X0
+	MOVSD (SI), X1
+	SUBSD X1, X0
+	MOVSD X0, (AX)
 done_sv_sse:
 	RET

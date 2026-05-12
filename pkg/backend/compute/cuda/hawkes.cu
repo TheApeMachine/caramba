@@ -79,7 +79,7 @@ __global__ void kernel_matrix_kernel(
 // ---------------------------------------------------------------------------
 __global__ void log_sum_kernel(
     const double* __restrict__ intensities,
-    double* __restrict__ partial,
+    double* __restrict__ out_sum,
     int T
 ) {
     extern __shared__ double smem[];
@@ -95,12 +95,18 @@ __global__ void log_sum_kernel(
     smem[tid] = val;
     __syncthreads();
 
+    #pragma unroll
     for (int stride = BLOCK_SIZE / 2; stride > 0; stride >>= 1) {
         if (tid < stride) smem[tid] += smem[tid + stride];
         __syncthreads();
     }
 
-    if (tid == 0) partial[blockIdx.x] = smem[0];
+    if (tid == 0) atomicAdd(out_sum, smem[0]);
+}
+
+__global__ void hawkes_fill_neg_one_kernel(double* out, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) out[i] = -1.0;
 }
 
 // ---------------------------------------------------------------------------
@@ -215,25 +221,23 @@ int cuda_hawkes_log_likelihood(
     double* out,
     int T
 ) {
-    double *dIntens, *dPartial;
+    double *dIntens, *dSum;
     size_t nb = (size_t)T * sizeof(double);
     if (alloc_copy(intensities, (void**)&dIntens, nb)) return -1;
 
-    int numBlocks = (T + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    CUDA_CHECK(cudaMalloc((void**)&dPartial, (size_t)numBlocks * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dSum, sizeof(double)));
+    CUDA_CHECK(cudaMemset(dSum, 0, sizeof(double)));
 
-    log_sum_kernel<<<numBlocks, BLOCK_SIZE, BLOCK_SIZE * sizeof(double)>>>(dIntens, dPartial, T);
+    int numBlocks = (T + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    log_sum_kernel<<<numBlocks, BLOCK_SIZE, BLOCK_SIZE * sizeof(double)>>>(dIntens, dSum, T);
     CUDA_CHECK(cudaGetLastError());
 
-    double* hPartial = (double*)malloc((size_t)numBlocks * sizeof(double));
-    CUDA_CHECK(cudaMemcpy(hPartial, dPartial, (size_t)numBlocks * sizeof(double), cudaMemcpyDeviceToHost));
-
     double sumLog = 0.0;
-    for (int b = 0; b < numBlocks; b++) sumLog += hPartial[b];
-    free(hPartial);
+    CUDA_CHECK(cudaMemcpy(&sumLog, dSum, sizeof(double), cudaMemcpyDeviceToHost));
+    cudaFree(dSum);
 
     out[0] = sumLog - integral;
-    cudaFree(dIntens); cudaFree(dPartial);
+    cudaFree(dIntens);
     return 0;
 }
 
@@ -250,11 +254,10 @@ int cuda_hawkes_simulate(
     size_t osz = (size_t)K * maxSteps * sizeof(double);
     CUDA_CHECK(cudaMalloc((void**)&dOut, osz));
 
-    // pre-fill output with -1 sentinel
-    double* hInit = (double*)malloc(osz);
-    for (int i = 0; i < K * maxSteps; i++) hInit[i] = -1.0;
-    cudaMemcpy(dOut, hInit, osz, cudaMemcpyHostToDevice);
-    free(hInit);
+    int totalInit = K * maxSteps;
+    int gridInit = (totalInit + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    hawkes_fill_neg_one_kernel<<<gridInit, BLOCK_SIZE>>>(dOut, totalInit);
+    CUDA_CHECK(cudaGetLastError());
 
     int grid = (K + BLOCK_SIZE - 1) / BLOCK_SIZE;
     simulate_kernel<<<grid, BLOCK_SIZE>>>(dMu, dAlpha, dBeta, T_max, dOut, K, maxSteps);

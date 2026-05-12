@@ -29,7 +29,7 @@ TEXT ·dotReduceSSE2(SB), NOSPLIT, $0-56
 	MOVQ  a+0(FP), AX
 	MOVQ  a_len+8(FP), BX
 	MOVQ  b+24(FP), DI
-	XORPS X0, X0
+	XORPD X0, X0
 	CMPQ  BX, $2
 	JL    done_ds2
 loop_ds2:
@@ -93,7 +93,7 @@ done_msv2:
 TEXT ·reduceSumSqSSE2(SB), NOSPLIT, $0-32
 	MOVQ  a+0(FP), AX
 	MOVQ  a_len+8(FP), BX
-	XORPS X0, X0
+	XORPD X0, X0
 	CMPQ  BX, $2
 	JL    done_rss2
 loop_rss2:

@@ -1,5 +1,8 @@
 #include "textflag.h"
 
+// SSE2 entry points (·freeEnergySSE2, ·beliefUpdateMuSSE2, ·precisionWeightMulSSE2) are defined in
+// this file alongside AVX/FMA routines. Go dispatches to them when AVX2+FMA are unavailable.
+
 // freeEnergyAVX2(mu, expSigma []float64) float64
 // Computes sum(mu[i]^2 + expSigma[i]) over all i.
 // Caller subtracts logSigma+1 terms and multiplies by 0.5.

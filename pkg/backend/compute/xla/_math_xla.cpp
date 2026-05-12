@@ -16,6 +16,7 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <vector>
 #include <unordered_map>
 
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -26,6 +27,9 @@
 
 static const PJRT_Api*    gm_api    = nullptr;
 static PJRT_Client*       gm_client = nullptr;
+
+// When true, gm_client/gm_api point at activation's g_api/g_client — do not destroy on shutdown.
+static bool               gm_borrowed_activation_client = false;
 
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> gm_execs;
 
@@ -53,7 +57,7 @@ static bool mcheck(const PJRT_Api* api, PJRT_Error* err) {
 
 // Run a precompiled executable with host double* in/out.
 // in_ptrs: array of pointers to input buffers, out_ptr: output buffer.
-static int run_exec(PJRT_LoadedExecutable* exec,
+int xla_math_xla_math_run_exec(PJRT_LoadedExecutable* exec,
                     const double** in_ptrs, int num_in, size_t* in_sizes,
                     double* out_ptr, size_t out_size)
 {
@@ -158,7 +162,7 @@ static int run_exec(PJRT_LoadedExecutable* exec,
 }
 
 // Compile a StableHLO module and cache under key.
-static PJRT_LoadedExecutable* compile_module(const std::string& key,
+PJRT_LoadedExecutable* xla_math_xla_math_compile_module(const std::string& key,
                                               const std::string& mlir)
 {
     auto it = gm_execs.find(key);
@@ -182,6 +186,155 @@ static PJRT_LoadedExecutable* compile_module(const std::string& key,
 
     gm_execs[key] = ca.executable;
     return ca.executable;
+}
+
+static std::string matmul_module(int M, int K, int N) {
+    std::string tA = "tensor<" + std::to_string(M) + "x" + std::to_string(K) + "xf64>";
+    std::string tB = "tensor<" + std::to_string(K) + "x" + std::to_string(N) + "xf64>";
+    std::string tC = "tensor<" + std::to_string(M) + "x" + std::to_string(N) + "xf64>";
+    return
+        "module @mm {\n"
+        "  func.func @main(%a: " + tA + ", %b: " + tB + ") -> " + tC + " {\n"
+        "    %c = stablehlo.dot_general %a, %b, contracting_dims = [1] x [0] : ("
+        + tA + ", " + tB + ") -> " + tC + "\n"
+        "    return %c : " + tC + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string reduce_sum_module(int n) {
+    std::string tv = "tensor<" + std::to_string(n) + "xf64>";
+    std::string ts = "tensor<f64>";
+    return
+        "module @redsum {\n"
+        "  func.func @main(%x: " + tv + ") -> " + ts + " {\n"
+        "    %zero = stablehlo.constant dense<0.0> : " + ts + "\n"
+        "    %r = stablehlo.reduce(%x init: %zero)"
+        " applies stablehlo.add across dimensions = [0] : (" + tv + ", " + ts + ") -> " + ts + "\n"
+        "    return %r : " + ts + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string subtract_module(int n) {
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+    return
+        "module @sub {\n"
+        "  func.func @main(%a: " + t + ", %b: " + t + ") -> " + t + " {\n"
+        "    %r = stablehlo.subtract %a, %b : " + t + "\n"
+        "    return %r : " + t + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string add_scalar_broadcast_module(int n, double scalar) {
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+    std::ostringstream oss;
+    oss << std::setprecision(17) << std::defaultfloat << scalar;
+    return
+        "module @adds {\n"
+        "  func.func @main(%x: " + t + ") -> " + t + " {\n"
+        "    %s = stablehlo.constant dense<" + oss.str() + "> : tensor<f64>\n"
+        "    %b = stablehlo.broadcast_in_dim %s, dims = [] : (tensor<f64>) -> " + t + "\n"
+        "    %r = stablehlo.add %x, %b : " + t + "\n"
+        "    return %r : " + t + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string softmax_module(int num_rows, int dim_size) {
+    std::string tr = "tensor<" + std::to_string(num_rows) + "xf64>";
+    std::string tm = "tensor<" + std::to_string(num_rows) + "x" + std::to_string(dim_size) + "xf64>";
+    return
+        "module @softmax {\n"
+        "  func.func @main(%x: " + tm + ") -> " + tm + " {\n"
+        "    %neg_inf = stablehlo.constant dense<0xFFF0000000000000> : tensor<f64>\n"
+        "    %max = stablehlo.reduce(%x init: %neg_inf) applies stablehlo.maximum across dimensions = [1] : (" + tm + ", tensor<f64>) -> " + tr + "\n"
+        "    %max_b = stablehlo.broadcast_in_dim %max, dims = [0] : (" + tr + ") -> " + tm + "\n"
+        "    %shifted = stablehlo.subtract %x, %max_b : " + tm + "\n"
+        "    %exp = stablehlo.exponential %shifted : " + tm + "\n"
+        "    %zero = stablehlo.constant dense<0.0> : tensor<f64>\n"
+        "    %sum = stablehlo.reduce(%exp init: %zero) applies stablehlo.add across dimensions = [1] : (" + tm + ", tensor<f64>) -> " + tr + "\n"
+        "    %sum_b = stablehlo.broadcast_in_dim %sum, dims = [0] : (" + tr + ") -> " + tm + "\n"
+        "    %out = stablehlo.divide %exp, %sum_b : " + tm + "\n"
+        "    return %out : " + tm + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string layernorm_module(int num_rows, int dim_size, double eps) {
+    std::ostringstream eps_ss;
+    eps_ss << std::setprecision(17) << std::defaultfloat << eps;
+    std::string eps_s = eps_ss.str();
+
+    std::string tr = "tensor<" + std::to_string(num_rows) + "xf64>";
+    std::string tm = "tensor<" + std::to_string(num_rows) + "x" + std::to_string(dim_size) + "xf64>";
+    std::string tw = "tensor<" + std::to_string(dim_size) + "xf64>";
+    std::string td = std::to_string(dim_size);
+    std::ostringstream ds;
+    ds << std::setprecision(17) << std::defaultfloat << (double)dim_size;
+    std::string ds_s = ds.str();
+
+    return
+        "module @layernorm {\n"
+        "  func.func @main(%x: " + tm + ", %w: " + tw + ", %b: " + tw + ") -> " + tm + " {\n"
+        "    %zero = stablehlo.constant dense<0.0> : tensor<f64>\n"
+        "    %sum = stablehlo.reduce(%x init: %zero) applies stablehlo.add across dimensions = [1] : (" + tm + ", tensor<f64>) -> " + tr + "\n"
+        "    %dim_f = stablehlo.constant dense<" + ds_s + "> : tensor<f64>\n"
+        "    %dim_b = stablehlo.broadcast_in_dim %dim_f, dims = [] : (tensor<f64>) -> " + tr + "\n"
+        "    %mean = stablehlo.divide %sum, %dim_b : " + tr + "\n"
+        "    %mean_b = stablehlo.broadcast_in_dim %mean, dims = [0] : (" + tr + ") -> " + tm + "\n"
+        "    %diff = stablehlo.subtract %x, %mean_b : " + tm + "\n"
+        "    %sq = stablehlo.multiply %diff, %diff : " + tm + "\n"
+        "    %var_sum = stablehlo.reduce(%sq init: %zero) applies stablehlo.add across dimensions = [1] : (" + tm + ", tensor<f64>) -> " + tr + "\n"
+        "    %var = stablehlo.divide %var_sum, %dim_b : " + tr + "\n"
+        "    %eps_val = stablehlo.constant dense<" + eps_s + "> : tensor<f64>\n"
+        "    %eps_b = stablehlo.broadcast_in_dim %eps_val, dims = [] : (tensor<f64>) -> " + tr + "\n"
+        "    %var_eps = stablehlo.add %var, %eps_b : " + tr + "\n"
+        "    %std = stablehlo.sqrt %var_eps : " + tr + "\n"
+        "    %std_b = stablehlo.broadcast_in_dim %std, dims = [0] : (" + tr + ") -> " + tm + "\n"
+        "    %norm = stablehlo.divide %diff, %std_b : " + tm + "\n"
+        "    %w_b = stablehlo.broadcast_in_dim %w, dims = [1] : (" + tw + ") -> " + tm + "\n"
+        "    %b_b = stablehlo.broadcast_in_dim %b, dims = [1] : (" + tw + ") -> " + tm + "\n"
+        "    %scaled = stablehlo.multiply %norm, %w_b : " + tm + "\n"
+        "    %out = stablehlo.add %scaled, %b_b : " + tm + "\n"
+        "    return %out : " + tm + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string rmsnorm_module(int num_rows, int dim_size, double eps) {
+    std::ostringstream eps_ss;
+    eps_ss << std::setprecision(17) << std::defaultfloat << eps;
+    std::string eps_s = eps_ss.str();
+
+    std::string tr = "tensor<" + std::to_string(num_rows) + "xf64>";
+    std::string tm = "tensor<" + std::to_string(num_rows) + "x" + std::to_string(dim_size) + "xf64>";
+    std::string tw = "tensor<" + std::to_string(dim_size) + "xf64>";
+    std::ostringstream ds;
+    ds << std::setprecision(17) << std::defaultfloat << (double)dim_size;
+    std::string ds_s = ds.str();
+
+    return
+        "module @rmsnorm {\n"
+        "  func.func @main(%x: " + tm + ", %w: " + tw + ") -> " + tm + " {\n"
+        "    %zero = stablehlo.constant dense<0.0> : tensor<f64>\n"
+        "    %sq = stablehlo.multiply %x, %x : " + tm + "\n"
+        "    %ss = stablehlo.reduce(%sq init: %zero) applies stablehlo.add across dimensions = [1] : (" + tm + ", tensor<f64>) -> " + tr + "\n"
+        "    %dim_f = stablehlo.constant dense<" + ds_s + "> : tensor<f64>\n"
+        "    %dim_b = stablehlo.broadcast_in_dim %dim_f, dims = [] : (tensor<f64>) -> " + tr + "\n"
+        "    %mean_ss = stablehlo.divide %ss, %dim_b : " + tr + "\n"
+        "    %eps_val = stablehlo.constant dense<" + eps_s + "> : tensor<f64>\n"
+        "    %eps_b = stablehlo.broadcast_in_dim %eps_val, dims = [] : (tensor<f64>) -> " + tr + "\n"
+        "    %var_eps = stablehlo.add %mean_ss, %eps_b : " + tr + "\n"
+        "    %rms = stablehlo.sqrt %var_eps : " + tr + "\n"
+        "    %rms_b = stablehlo.broadcast_in_dim %rms, dims = [0] : (" + tr + ") -> " + tm + "\n"
+        "    %norm = stablehlo.divide %x, %rms_b : " + tm + "\n"
+        "    %w_b = stablehlo.broadcast_in_dim %w, dims = [1] : (" + tw + ") -> " + tm + "\n"
+        "    %out = stablehlo.multiply %norm, %w_b : " + tm + "\n"
+        "    return %out : " + tm + "\n"
+        "  }\n"
+        "}\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -237,16 +390,16 @@ static std::string scale_module(int n, double scale) {
 extern "C" {
 
 int xla_math_init(const char* platform) {
-    // Load the PJRT plugin — same mechanism as activation_xla.cc.
-    // Platform "cpu" -> look for pjrt_c_api_cpu_plugin.so via dlopen.
-    // For brevity we reuse the global g_api/g_client from activation if
-    // already initialised; otherwise initialise independently.
+    if (g_client) {
+        gm_api    = g_api;
+        gm_client = g_client;
+        gm_borrowed_activation_client = true;
+        return 0;
+    }
 
-    // Use PJRT_Api_from_Platform (a convenience provided by some XLA builds)
-    // or fall back to dlopen.  Here we use the same approach as activation.
-    // Since we can't share statics across TUs easily we do a fresh init.
+    gm_borrowed_activation_client = false;
 
-    // Try the PJRT dynamic load approach:
+    // Stand-alone math client (only when xla_init was not used).
     std::string plugin = pjrt_plugin_path(platform);
 
 #ifdef __linux__
@@ -274,13 +427,23 @@ int xla_math_init(const char* platform) {
 }
 
 void xla_math_shutdown(void) {
-    for (auto& kv : gm_execs) {
-        PJRT_LoadedExecutable_Destroy_Args da{};
-        da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
-        da.executable  = kv.second;
-        gm_api->PJRT_LoadedExecutable_Destroy(&da);
+    if (gm_api) {
+        for (auto& kv : gm_execs) {
+            PJRT_LoadedExecutable_Destroy_Args da{};
+            da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
+            da.executable  = kv.second;
+            gm_api->PJRT_LoadedExecutable_Destroy(&da);
+        }
     }
     gm_execs.clear();
+
+    if (gm_borrowed_activation_client) {
+        gm_api    = nullptr;
+        gm_client = nullptr;
+        gm_borrowed_activation_client = false;
+        return;
+    }
+
     if (gm_client) {
         PJRT_Client_Destroy_Args da{};
         da.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
@@ -292,38 +455,38 @@ void xla_math_shutdown(void) {
 
 int xla_add(const double* a, const double* b, double* out, int n) {
     std::string key = "add_" + std::to_string(n);
-    auto* exec = compile_module(key, elementwise_module("stablehlo.add", n));
+    auto* exec = xla_math_compile_module(key, elementwise_module("stablehlo.add", n));
     if (!exec) return -1;
     const double* ins[2] = {a, b};
     size_t sizes[2] = {(size_t)n*8, (size_t)n*8};
-    return run_exec(exec, ins, 2, sizes, out, (size_t)n*8);
+    return xla_math_run_exec(exec, ins, 2, sizes, out, (size_t)n*8);
 }
 
 int xla_mul(const double* a, const double* b, double* out, int n) {
     std::string key = "mul_" + std::to_string(n);
-    auto* exec = compile_module(key, elementwise_module("stablehlo.multiply", n));
+    auto* exec = xla_math_compile_module(key, elementwise_module("stablehlo.multiply", n));
     if (!exec) return -1;
     const double* ins[2] = {a, b};
     size_t sizes[2] = {(size_t)n*8, (size_t)n*8};
-    return run_exec(exec, ins, 2, sizes, out, (size_t)n*8);
+    return xla_math_run_exec(exec, ins, 2, sizes, out, (size_t)n*8);
 }
 
 int xla_exp(const double* src, double* dst, int n) {
     std::string key = "exp_" + std::to_string(n);
-    auto* exec = compile_module(key, unary_module("stablehlo.exponential", n));
+    auto* exec = xla_math_compile_module(key, unary_module("stablehlo.exponential", n));
     if (!exec) return -1;
     const double* ins[1] = {src};
     size_t sizes[1] = {(size_t)n*8};
-    return run_exec(exec, ins, 1, sizes, dst, (size_t)n*8);
+    return xla_math_run_exec(exec, ins, 1, sizes, dst, (size_t)n*8);
 }
 
 int xla_log(const double* src, double* dst, int n) {
     std::string key = "log_" + std::to_string(n);
-    auto* exec = compile_module(key, unary_module("stablehlo.log", n));
+    auto* exec = xla_math_compile_module(key, unary_module("stablehlo.log", n));
     if (!exec) return -1;
     const double* ins[1] = {src};
     size_t sizes[1] = {(size_t)n*8};
-    return run_exec(exec, ins, 1, sizes, dst, (size_t)n*8);
+    return xla_math_run_exec(exec, ins, 1, sizes, dst, (size_t)n*8);
 }
 
 int xla_inv_sqrt_dim_scale(const double* src, double* dst, int n, int dim) {
@@ -331,75 +494,111 @@ int xla_inv_sqrt_dim_scale(const double* src, double* dst, int n, int dim) {
 
     double scale = 1.0 / std::sqrt((double)dim);
     std::string key = "isdscale_" + std::to_string(n) + "_" + std::to_string(dim);
-    auto* exec = compile_module(key, scale_module(n, scale));
+    auto* exec = xla_math_compile_module(key, scale_module(n, scale));
     if (!exec) return -1;
     const double* ins[1] = {src};
     size_t sizes[1] = {(size_t)n*8};
-    return run_exec(exec, ins, 1, sizes, dst, (size_t)n*8);
+    return xla_math_run_exec(exec, ins, 1, sizes, dst, (size_t)n*8);
 }
 
-// For softmax, layernorm, rmsnorm and matmul the StableHLO is more complex.
-// We provide a pure C fallback that mirrors the CPU implementation since
-// XLA's value is in large-scale parallelism — small ops fall back gracefully.
+// Softmax, layernorm, and rmsnorm still use host loops; matmul/diff/reductions use StableHLO.
 
 int xla_matmul(const double* A, const double* B, double* C, int M, int K, int N) {
     if (M <= 0 || K <= 0 || N <= 0) return -1;
+    if (!gm_client) return -1;
 
-    // Pure C reference implementation as fallback.
-    for (int i = 0; i < M; i++) {
-        for (int j = 0; j < N; j++) {
-            double acc = 0.0;
-            for (int k = 0; k < K; k++) acc += A[i*K+k] * B[k*N+j];
-            C[i*N+j] = acc;
-        }
-    }
-    return 0;
+    std::string key = "mm_" + std::to_string(M) + "_" + std::to_string(K) + "_" + std::to_string(N);
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, matmul_module(M, K, N));
+    if (!exec) return -1;
+
+    const double* ins[2] = {A, B};
+    size_t sizes[2] = {
+        (size_t)M * (size_t)K * sizeof(double),
+        (size_t)K * (size_t)N * sizeof(double),
+    };
+
+    return xla_math_run_exec(exec, ins, 2, sizes, C, (size_t)M * (size_t)N * sizeof(double));
+}
+
+int xla_reduce_sum(const double* x, double* out_scalar, int n) {
+    if (n <= 0 || !out_scalar) return -1;
+    if (!gm_client) return -1;
+
+    std::string key = "redsum_" + std::to_string(n);
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, reduce_sum_module(n));
+    if (!exec) return -1;
+
+    const double* ins[1] = {x};
+    size_t sizes[1] = {(size_t)n * sizeof(double)};
+
+    return xla_math_run_exec(exec, ins, 1, sizes, out_scalar, sizeof(double));
+}
+
+int xla_sub(const double* a, const double* b, double* out, int n) {
+    if (n <= 0 || !gm_client) return -1;
+
+    std::string key = "sub_" + std::to_string(n);
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, subtract_module(n));
+    if (!exec) return -1;
+
+    const double* ins[2] = {a, b};
+    size_t sizes[2] = {(size_t)n * sizeof(double), (size_t)n * sizeof(double)};
+
+    return xla_math_run_exec(exec, ins, 2, sizes, out, (size_t)n * sizeof(double));
 }
 
 int xla_softmax(const double* src, double* dst, int num_rows, int dim_size) {
-    for (int r = 0; r < num_rows; r++) {
-        const double* row_src = src + r * dim_size;
-        double*       row_dst = dst + r * dim_size;
-        double mx = row_src[0];
-        for (int i = 1; i < dim_size; i++) if (row_src[i] > mx) mx = row_src[i];
-        double sum = 0.0;
-        for (int i = 0; i < dim_size; i++) { row_dst[i] = std::exp(row_src[i] - mx); sum += row_dst[i]; }
-        for (int i = 0; i < dim_size; i++) row_dst[i] /= sum;
-    }
-    return 0;
+    if (num_rows <= 0 || dim_size <= 0) return -1;
+    if (!gm_client) return -1;
+
+    std::string key = "smax_" + std::to_string(num_rows) + "_" + std::to_string(dim_size);
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, softmax_module(num_rows, dim_size));
+    if (!exec) return -1;
+
+    const double* ins[1] = {src};
+    size_t sizes[1] = {(size_t)num_rows * (size_t)dim_size * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 1, sizes, dst, sizes[0]);
 }
 
 int xla_layernorm(const double* src, double* dst,
                   const double* weight, const double* bias,
                   int num_rows, int d_model, double eps) {
-    for (int r = 0; r < num_rows; r++) {
-        const double* rs = src + r * d_model;
-        double*       rd = dst + r * d_model;
-        double mean = 0.0;
-        for (int i = 0; i < d_model; i++) mean += rs[i];
-        mean /= d_model;
-        double var = 0.0;
-        for (int i = 0; i < d_model; i++) { double d = rs[i]-mean; var += d*d; }
-        var /= d_model;
-        double inv_std = 1.0 / std::sqrt(var + eps);
-        for (int i = 0; i < d_model; i++)
-            rd[i] = (rs[i] - mean) * inv_std * weight[i] + bias[i];
-    }
-    return 0;
+    if (num_rows <= 0 || d_model <= 0) return -1;
+    if (!gm_client) return -1;
+
+    std::ostringstream eps_ss;
+    eps_ss << std::setprecision(17) << std::defaultfloat << eps;
+    std::string key = "lnorm_" + std::to_string(num_rows) + "_" + std::to_string(d_model) + "_" + eps_ss.str();
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, layernorm_module(num_rows, d_model, eps));
+    if (!exec) return -1;
+
+    const double* ins[3] = {src, weight, bias};
+    size_t sizes[3] = {
+        (size_t)num_rows * (size_t)d_model * sizeof(double),
+        (size_t)d_model * sizeof(double),
+        (size_t)d_model * sizeof(double)
+    };
+    return xla_math_run_exec(exec, ins, 3, sizes, dst, sizes[0]);
 }
 
 int xla_rmsnorm(const double* src, double* dst,
                 const double* weight,
                 int num_rows, int d_model, double eps) {
-    for (int r = 0; r < num_rows; r++) {
-        const double* rs = src + r * d_model;
-        double*       rd = dst + r * d_model;
-        double ss = 0.0;
-        for (int i = 0; i < d_model; i++) ss += rs[i]*rs[i];
-        double inv_rms = 1.0 / std::sqrt(ss/d_model + eps);
-        for (int i = 0; i < d_model; i++) rd[i] = rs[i] * inv_rms * weight[i];
-    }
-    return 0;
+    if (num_rows <= 0 || d_model <= 0) return -1;
+    if (!gm_client) return -1;
+
+    std::ostringstream eps_ss;
+    eps_ss << std::setprecision(17) << std::defaultfloat << eps;
+    std::string key = "rmsnorm_" + std::to_string(num_rows) + "_" + std::to_string(d_model) + "_" + eps_ss.str();
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, rmsnorm_module(num_rows, d_model, eps));
+    if (!exec) return -1;
+
+    const double* ins[2] = {src, weight};
+    size_t sizes[2] = {
+        (size_t)num_rows * (size_t)d_model * sizeof(double),
+        (size_t)d_model * sizeof(double)
+    };
+    return xla_math_run_exec(exec, ins, 2, sizes, dst, sizes[0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -420,30 +619,51 @@ int xla_scale(double* dst, double s, int n) {
 int xla_sqrt_vec(const double* src, double* dst, int n) {
     char key[64];
     snprintf(key, sizeof(key), "sqrt_%d", n);
-    auto* exec = compile_module(key, unary_module("stablehlo.sqrt", n));
+    auto* exec = xla_math_compile_module(key, unary_module("stablehlo.sqrt", n));
     if (!exec) {
         for (int i = 0; i < n; i++) dst[i] = std::sqrt(src[i]);
         return 0;
     }
-    return run_exec(exec, (const double**)&src, 1, (size_t[]){(size_t)n*sizeof(double)}, dst, (size_t)n*sizeof(double));
+    return xla_math_run_exec(exec, (const double**)&src, 1, (size_t[]){(size_t)n*sizeof(double)}, dst, (size_t)n*sizeof(double));
 }
 
 int xla_add_scalar(double* dst, double scalar, int n) {
-    for (int i = 0; i < n; i++) dst[i] += scalar;
-    return 0;
+    if (n <= 0) return -1;
+
+    if (!gm_client) {
+        for (int i = 0; i < n; i++) {
+            dst[i] += scalar;
+        }
+        return 0;
+    }
+
+    std::ostringstream scalar_key;
+    scalar_key << std::setprecision(17) << std::defaultfloat << scalar;
+
+    std::string key = "adds_ip_" + std::to_string(n) + "_" + scalar_key.str();
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, add_scalar_broadcast_module(n, scalar));
+    if (!exec) return -1;
+
+    std::vector<double> tmp((size_t)n);
+    std::memcpy(tmp.data(), dst, (size_t)n * sizeof(double));
+
+    const double* ins[1] = {tmp.data()};
+    size_t sizes[1] = {(size_t)n * sizeof(double)};
+
+    return xla_math_run_exec(exec, ins, 1, sizes, dst, (size_t)n * sizeof(double));
 }
 
 int xla_div_vec(const double* a, const double* b, double* dst, int n) {
     char key[64];
     snprintf(key, sizeof(key), "div_%d", n);
-    auto* exec = compile_module(key, elementwise_module("stablehlo.divide", n));
+    auto* exec = xla_math_compile_module(key, elementwise_module("stablehlo.divide", n));
     if (!exec) {
         for (int i = 0; i < n; i++) dst[i] = a[i] / b[i];
         return 0;
     }
     const double* in[2] = {a, b};
     size_t in_sz[2] = {(size_t)n*sizeof(double), (size_t)n*sizeof(double)};
-    return run_exec(exec, in, 2, in_sz, dst, (size_t)n*sizeof(double));
+    return xla_math_run_exec(exec, in, 2, in_sz, dst, (size_t)n*sizeof(double));
 }
 
 int xla_clamp_vec(double* dst, double lo, double hi, int n) {
@@ -460,7 +680,7 @@ int xla_sign(const double* src, double* dst, int n) {
     // StableHLO: stablehlo.sign is the standard op for elementwise sign.
     char key[64];
     snprintf(key, sizeof(key), "sign_%d", n);
-    auto* exec = compile_module(key, unary_module("stablehlo.sign", n));
+    auto* exec = xla_math_compile_module(key, unary_module("stablehlo.sign", n));
     if (!exec) {
         // scalar fallback
         for (int i = 0; i < n; i++) {
@@ -469,7 +689,7 @@ int xla_sign(const double* src, double* dst, int n) {
         }
         return 0;
     }
-    return run_exec(exec, (const double**)&src, 1, (size_t[]){(size_t)n*sizeof(double)}, dst, (size_t)n*sizeof(double));
+    return xla_math_run_exec(exec, (const double**)&src, 1, (size_t[]){(size_t)n*sizeof(double)}, dst, (size_t)n*sizeof(double));
 }
 
 int xla_outer(const double* a, const double* b, double* dst, int M, int N) {
@@ -493,7 +713,7 @@ int xla_outer(const double* a, const double* b, double* dst, int M, int N) {
         a_type.c_str(), out_type.c_str(),
         b_type.c_str(), out_type.c_str(),
         out_type.c_str(), out_type.c_str());
-    auto* exec = compile_module(key, std::string(buf));
+    auto* exec = xla_math_compile_module(key, std::string(buf));
     if (!exec) {
         // scalar fallback
         for (int row = 0; row < M; row++)
@@ -503,7 +723,7 @@ int xla_outer(const double* a, const double* b, double* dst, int M, int N) {
     }
     const double* in[2] = {a, b};
     size_t in_sz[2] = {(size_t)M*sizeof(double), (size_t)N*sizeof(double)};
-    return run_exec(exec, in, 2, in_sz, dst, (size_t)M*N*sizeof(double));
+    return xla_math_run_exec(exec, in, 2, in_sz, dst, (size_t)M*N*sizeof(double));
 }
 
 } // extern "C"

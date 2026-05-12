@@ -32,11 +32,17 @@ func (op *UpdateWeights) Forward(shape []int, data ...[]float64) []float64 {
 
 	W, eps, r, lrVec := data[0], data[1], data[2], data[3]
 
-	if len(W) != dOut*dIn || len(eps) != dOut || len(r) != dIn {
+	needW := rowMajorWeightLen(dOut, dIn)
+
+	if len(W) != needW || len(eps) != dOut || len(r) != dIn {
 		panic(fmt.Sprintf(
 			"predictive_coding: UpdateWeights.Forward: shape mismatch W=%d eps=%d r=%d",
 			len(W), len(eps), len(r),
 		))
+	}
+
+	if len(lrVec) == 0 {
+		panic("predictive_coding: UpdateWeights.Forward: len(lr) must be >= 1")
 	}
 
 	lr := lrVec[0]

@@ -135,44 +135,34 @@ int cuda_transpose(const double* src, double* dst,
                    int dim0, int dim1, int n)
 {
     double *d_src = NULL, *d_dst = NULL;
-    int    *d_shape = NULL;
+    int    *d_shapepad = NULL;
     size_t bytes       = (size_t)n * sizeof(double);
-    size_t shape_bytes = (size_t)rank * sizeof(int);
 
     if (cudaMalloc(&d_src,   bytes)       != cudaSuccess) return -1;
     if (cudaMalloc(&d_dst,   bytes)       != cudaSuccess) goto fail;
-    if (cudaMalloc(&d_shape, shape_bytes) != cudaSuccess) goto fail;
+    if (cudaMalloc(&d_shapepad, MAX_RANK * sizeof(int)) != cudaSuccess) goto fail;
 
-    if (cudaMemcpy(d_src,   src,   bytes,       cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
-    if (cudaMemcpy(d_shape, shape, shape_bytes, cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
+    if (cudaMemcpy(d_src, src, bytes, cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
+    if (cudaMemcpy(d_shapepad, shape, (size_t)rank * sizeof(int),
+                   cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
 
-    // Pass shape as __shared__ via a fixed-size array.  For device-side, we
-    // pass it as a regular device pointer and the kernel reads it.
-    // We need to adapt the kernel signature: use a pointer in constant memory.
-    {
-        // Use a temporary host-side array padded to MAX_RANK.
-        int h_shape[MAX_RANK] = {};
-        for (int i = 0; i < rank && i < MAX_RANK; i++) h_shape[i] = shape[i];
-
-        int *d_shapepad = NULL;
-        if (cudaMalloc(&d_shapepad, MAX_RANK * sizeof(int)) != cudaSuccess) goto fail;
-        if (cudaMemcpy(d_shapepad, h_shape, MAX_RANK * sizeof(int),
-                       cudaMemcpyHostToDevice) != cudaSuccess) {
-            cudaFree(d_shapepad);
+    if (rank < MAX_RANK) {
+        if (cudaMemset(d_shapepad + rank, 0,
+                       (size_t)(MAX_RANK - rank) * sizeof(int)) != cudaSuccess) {
             goto fail;
         }
-        transpose_kernel<<<blocks(n), BLOCK>>>(d_src, d_dst, rank, dim0, dim1, d_shapepad, n);
-        cudaFree(d_shapepad);
     }
+
+    transpose_kernel<<<blocks(n), BLOCK>>>(d_src, d_dst, rank, dim0, dim1, d_shapepad, n);
 
     if (cudaGetLastError()     != cudaSuccess) goto fail;
     if (cudaDeviceSynchronize() != cudaSuccess) goto fail;
     if (cudaMemcpy(dst, d_dst, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
 
-    cudaFree(d_src); cudaFree(d_dst); cudaFree(d_shape);
+    cudaFree(d_src); cudaFree(d_dst); cudaFree(d_shapepad);
     return 0;
 fail:
-    cudaFree(d_src); cudaFree(d_dst); cudaFree(d_shape);
+    cudaFree(d_src); cudaFree(d_dst); cudaFree(d_shapepad);
     return -1;
 }
 

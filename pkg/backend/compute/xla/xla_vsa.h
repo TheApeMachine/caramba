@@ -16,6 +16,13 @@ int  xla_vsa_init(const char* platform);
 void xla_vsa_shutdown(void);
 
 /**
+ * xla_vsa_get_last_error: NUL-terminated message from the last PJRT error
+ * handled in this process (empty string if none). Pointer is valid until the
+ * next VSA call that may mutate the buffer.
+ */
+const char* xla_vsa_get_last_error(void);
+
+/**
  * xla_vsa_bind: elementwise multiply (Hadamard product / VSA binding).
  * a, b: host double arrays of length n. out: pre-allocated host array of length n.
  * Returns 0 on success, -1 on XLA/PJRT error or non-positive n.

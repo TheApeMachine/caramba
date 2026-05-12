@@ -6,9 +6,13 @@ extern "C" {
 #endif
 
 // Initialize Metal device/queue and compile all VSA pipelines.
-// metallib_path: absolute path to vsa.metallib.
+// metallib_path: absolute path to vsa.metallib (repo Makefile target).
 // Returns 0 on success, -1 on failure.
+// Pair metal_vsa_init with metal_vsa_cleanup before unload or process exit.
 int metal_vsa_init(const char* metallib_path);
+
+// Releases device, queue, and pipeline state created by metal_vsa_init (idempotent).
+int metal_vsa_cleanup(void);
 
 // Binding: out[i] = a[i] * b[i]  (Hadamard product, float32 on GPU)
 int metal_vsa_bind(const float* a, const float* b, float* out, int n);
@@ -18,6 +22,10 @@ int metal_vsa_l2normalize(const float* in, float* out, int n);
 
 // Dot product: out[0] = dot(a, b)  (cosine sim assuming unit-norm inputs)
 int metal_vsa_dot(const float* a, const float* b, float* out, int n);
+
+// After a failed return from any metal_vsa_* call on this thread, inspect TLS diagnostics.
+int metal_vsa_last_error_code(void);
+const char* metal_vsa_last_error_message(void);
 
 #ifdef __cplusplus
 }

@@ -1,6 +1,9 @@
 package active_inference
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 /*
 ExpectedFreeEnergy computes the expected free energy G for policy selection
@@ -9,7 +12,8 @@ under the Free Energy Principle. G combines:
   - Pragmatic value (KL divergence):    KL(q(s|pi) || p(s))
 
 For K outcome categories with predicted probabilities q_outcomes[k]:
-  G[k] = -sum_i(q_outcomes[i*K+k] * ln(q_outcomes[i*K+k] + eps))
+
+	G[k] = -sum_i(q_outcomes[i*K+k] * ln(q_outcomes[i*K+k] + eps))
 
 shape = [N, K]: N = number of state dimensions, K = number of outcome categories.
 data[0] = q_outcomes [N*K] row-major (q[i,k] = q_outcomes[i*K+k]).
@@ -23,7 +27,8 @@ NewExpectedFreeEnergy instantiates a new ExpectedFreeEnergy operation.
 func NewExpectedFreeEnergy() *ExpectedFreeEnergy { return &ExpectedFreeEnergy{} }
 
 /*
-Forward computes the expected free energy G[k] = -sum_i q[i,k]*ln(q[i,k]) for each outcome k.
+Forward computes G[k] = -sum_i q_outcomes[i*K+k] * ln(q_outcomes[i*K+k] + eps) for each outcome k,
+with eps a small positive constant for numerical stability (see applyExpectedFreeEnergy).
 */
 func (op *ExpectedFreeEnergy) Forward(shape []int, data ...[]float64) []float64 {
 	if len(shape) < 2 {
@@ -31,6 +36,13 @@ func (op *ExpectedFreeEnergy) Forward(shape []int, data ...[]float64) []float64 
 	}
 
 	n, k := shape[0], shape[1]
+
+	if n <= 0 || k <= 0 {
+		panic(fmt.Sprintf(
+			"active_inference: ExpectedFreeEnergy.Forward: need shape[0]=N > 0 and shape[1]=K > 0 (got N=%d K=%d)",
+			n, k,
+		))
+	}
 
 	if len(data) < 1 {
 		panic(fmt.Sprintf("active_inference: ExpectedFreeEnergy.Forward: len(data)=%d, need >= 1", len(data)))
@@ -41,6 +53,15 @@ func (op *ExpectedFreeEnergy) Forward(shape []int, data ...[]float64) []float64 
 			"active_inference: ExpectedFreeEnergy.Forward: len(q_outcomes)=%d, need N*K=%d",
 			len(data[0]), n*k,
 		))
+	}
+
+	for idx, v := range data[0] {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			panic(fmt.Sprintf(
+				"active_inference: ExpectedFreeEnergy.Forward: q_outcomes[%d]=%g is not finite",
+				idx, v,
+			))
+		}
 	}
 
 	out := make([]float64, k)

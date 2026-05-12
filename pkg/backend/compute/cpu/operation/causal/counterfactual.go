@@ -3,20 +3,22 @@ package causal
 import "fmt"
 
 /*
-Counterfactual computes E[Y_{X=x'}|X=x, Y=y] using the three-step
-abduction-action-prediction procedure for linear SCMs.
+Counterfactual runs Pearl's abduction–action–prediction for a heterogeneous linear SCM:
 
-Given a linear SCM: Y = beta * X + e
-  - Abduction: infer noise e = Y - beta * X from observed (X=x, Y=y)
-  - Action: modify SCM to fix X = x'
-  - Prediction: compute Y' = beta * x' + e under counterfactual X
+	Y_i = beta_i * X_i + epsilon_i
+
+with one structural slope beta_i per observation (data[2]), not a shared global beta.
+
+  - Abduction: epsilon_i = Y_obs[i] - beta_i * X_obs[i] per row.
+  - Action: intervene to set X to each counterfactual level x' in X_cf.
+  - Prediction: Y_cf[i,j] = beta_i * X_cf[j] + epsilon_i
 
 shape = [N, N_cf]
-data[0] = X_obs [N]      — observed treatment values
-data[1] = Y_obs [N]      — observed outcome values
-data[2] = beta [N]       — linear causal coefficients (one per observation)
-data[3] = X_cf [N_cf]    — counterfactual treatment values
-Returns Y_cf [N_cf] — predicted counterfactual outcomes.
+data[0] = X_obs [N]
+data[1] = Y_obs [N]
+data[2] = beta [N]  — per-observation slopes
+data[3] = X_cf [N_cf]
+Returns Y_cf as a flat row-major [N × N_cf] slice of length N*N_cf (index i*N_cf + j).
 */
 type Counterfactual struct{}
 
@@ -31,17 +33,21 @@ func NewCounterfactual() *Counterfactual {
 /*
 Forward runs the counterfactual query.
 */
-func (counterfactual *Counterfactual) Forward(shape []int, data ...[]float64) []float64 {
+func (_ *Counterfactual) Forward(shape []int, data ...[]float64) []float64 {
 	if len(shape) < 2 {
-		panic(fmt.Errorf("causal: Counterfactual.Forward: len(shape)=%d, need >= 2", len(shape)).Error())
+		panic(fmt.Errorf("causal: Counterfactual.Forward: len(shape)=%d, need >= 2", len(shape)))
 	}
 
 	if len(data) < 4 {
-		panic(fmt.Errorf("causal: Counterfactual.Forward: len(data)=%d, need >= 4", len(data)).Error())
+		panic(fmt.Errorf("causal: Counterfactual.Forward: len(data)=%d, need >= 4", len(data)))
 	}
 
 	n := shape[0]
 	nCF := shape[1]
+
+	if n <= 0 {
+		panic(fmt.Errorf("causal: Counterfactual.Forward: N=%d from shape[0] must be positive", n))
+	}
 
 	xObs := data[0]
 	yObs := data[1]
@@ -51,42 +57,30 @@ func (counterfactual *Counterfactual) Forward(shape []int, data ...[]float64) []
 	if len(xObs) != n || len(yObs) != n || len(beta) != n {
 		panic(fmt.Errorf(
 			"causal: Counterfactual.Forward: X_obs/Y_obs/beta must have len N=%d", n,
-		).Error())
+		))
 	}
 
 	if len(xCF) != nCF {
 		panic(fmt.Errorf(
 			"causal: Counterfactual.Forward: len(X_cf)=%d, need N_cf=%d",
 			len(xCF), nCF,
-		).Error())
+		))
 	}
 
-	// Step 1 — Abduction: compute mean exogenous noise from observed data.
-	// e_i = y_i - beta_i * x_i
-	// Average noise represents the exogenous background factor.
-	noiseSum := 0.0
+	epsilon := make([]float64, n)
 
 	for obsIdx := 0; obsIdx < n; obsIdx++ {
-		noiseSum += yObs[obsIdx] - beta[obsIdx]*xObs[obsIdx]
+		epsilon[obsIdx] = yObs[obsIdx] - beta[obsIdx]*xObs[obsIdx]
 	}
 
-	meanNoise := noiseSum / float64(n)
-
-	// Mean beta (structural coefficient under counterfactual).
-	betaSum := 0.0
+	yCF := make([]float64, n*nCF)
 
 	for obsIdx := 0; obsIdx < n; obsIdx++ {
-		betaSum += beta[obsIdx]
-	}
+		base := obsIdx * nCF
 
-	meanBeta := betaSum / float64(n)
-
-	// Step 2 — Action: fix X = x' (graph surgery handled implicitly).
-	// Step 3 — Prediction: Y' = meanBeta * x' + meanNoise
-	yCF := make([]float64, nCF)
-
-	for cfIdx := 0; cfIdx < nCF; cfIdx++ {
-		yCF[cfIdx] = meanBeta*xCF[cfIdx] + meanNoise
+		for cfIdx := 0; cfIdx < nCF; cfIdx++ {
+			yCF[base+cfIdx] = beta[obsIdx]*xCF[cfIdx] + epsilon[obsIdx]
+		}
 	}
 
 	return yCF

@@ -9,7 +9,6 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/causal"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/convolution"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/data"
-	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/predictive_coding"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/embedding"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/hawkes"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/markov_blanket"
@@ -18,6 +17,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/model"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/pooling"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/positional"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/predictive_coding"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/projection"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/shape"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/train"
@@ -32,7 +32,6 @@ func init() {
 	registerCausal()
 	registerConvolution()
 	registerData()
-	registerPredictiveCoding()
 	registerEmbedding()
 	registerHawkes()
 	registerMarkovBlanket()
@@ -41,6 +40,7 @@ func init() {
 	registerModel()
 	registerPooling()
 	registerPositional()
+	registerPredictiveCoding()
 	registerProjection()
 	registerShape()
 	registerTrain()
@@ -687,4 +687,3 @@ func anyToInt(val any) int {
 		return 0
 	}
 }
-

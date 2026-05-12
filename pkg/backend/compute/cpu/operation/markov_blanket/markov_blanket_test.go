@@ -1,6 +1,7 @@
 package markov_blanket
 
 import (
+	"fmt"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -29,11 +30,23 @@ func TestPartition(t *testing.T) {
 			})
 
 			Convey("It should panic on shape length < 5", func() {
-				So(func() { op.Forward([]int{4, 2}) }, ShouldPanic)
+				x := []float64{10, 20, 30, 40}
+				smask := []float64{1, 0, 1, 0}
+				amask := []float64{0, 1, 0, 0}
+				imask := []float64{0, 0, 0, 1}
+				emask := []float64{0, 0, 0, 0}
+				So(func() { op.Forward([]int{4, 2}, x, smask, amask, imask, emask) }, ShouldPanic)
 			})
 
 			Convey("It should panic on data length < 5", func() {
-				So(func() { op.Forward([]int{4, 2, 1, 1, 0}, []float64{1, 2, 3, 4}) }, ShouldPanic)
+				shape := []int{4, 2, 1, 1, 0}
+				x := []float64{1, 2, 3, 4}
+				smask := []float64{1, 0, 1, 0}
+				amask := []float64{0, 1, 0, 0}
+				imask := []float64{0, 0, 0, 1}
+				So(func() {
+					op.Forward(shape, x, smask, amask, imask)
+				}, ShouldPanic)
 			})
 		})
 	})
@@ -68,7 +81,23 @@ func TestFlowInternal(t *testing.T) {
 			})
 
 			Convey("It should panic on shape length < 2", func() {
-				So(func() { op.Forward([]int{4}) }, ShouldPanic)
+				So(func() {
+					defer func() {
+						recovered := recover()
+						So(recovered, ShouldNotBeNil)
+						So(fmt.Sprint(recovered), ShouldContainSubstring, "need >= 2")
+					}()
+					op.Forward([]int{4}, nil, nil, nil)
+				}, ShouldNotPanic)
+			})
+
+			Convey("It should panic when shape[2] != N_i", func() {
+				xSens := []float64{1, 2, 3}
+				w := make([]float64, 2*3)
+				bias := []float64{0, 0}
+				So(func() {
+					op.Forward([]int{2, 3, 99}, xSens, w, bias)
+				}, ShouldPanic)
 			})
 		})
 	})
@@ -99,6 +128,17 @@ func TestFlowActive(t *testing.T) {
 				out := op.Forward([]int{2, 2}, xInt, w, bias)
 				So(out[0], ShouldAlmostEqual, 11.0, 1e-9)
 				So(out[1], ShouldAlmostEqual, 20.0, 1e-9)
+			})
+
+			Convey("It should panic on shape length < 2", func() {
+				So(func() {
+					defer func() {
+						recovered := recover()
+						So(recovered, ShouldNotBeNil)
+						So(fmt.Sprint(recovered), ShouldContainSubstring, "need >= 2")
+					}()
+					op.Forward([]int{4}, nil, nil, nil)
+				}, ShouldNotPanic)
 			})
 		})
 	})
@@ -140,11 +180,13 @@ func TestMutualInformation(t *testing.T) {
 
 				out := op.Forward([]int{1, 1}, x, y)
 				So(out, ShouldHaveLength, 1)
-				So(out[0], ShouldAlmostEqual, 0.0, 1.0)
+				So(out[0], ShouldAlmostEqual, 0.0, 1e-6)
 			})
 
 			Convey("It should panic on insufficient shape", func() {
-				So(func() { op.Forward([]int{2}) }, ShouldPanic)
+				x := []float64{1.0, 2.0}
+				y := []float64{3.0, 4.0}
+				So(func() { op.Forward([]int{2}, x, y) }, ShouldPanic)
 			})
 		})
 	})
@@ -188,8 +230,8 @@ func BenchmarkFlowActive_Forward(b *testing.B) {
 		xInt[idx] = float64(idx) / float64(Ni)
 	}
 
-	for idx := range Na * Ni {
-		w[idx] = float64(idx) / float64(Na*Ni)
+	for idx := range Na {
+		bias[idx] = 0.1
 	}
 
 	shape := []int{Na, Ni}

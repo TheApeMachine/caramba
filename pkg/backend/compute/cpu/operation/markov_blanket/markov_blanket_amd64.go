@@ -2,7 +2,11 @@
 
 package markov_blanket
 
-import "golang.org/x/sys/cpu"
+import (
+	"fmt"
+
+	"golang.org/x/sys/cpu"
+)
 
 var (
 	useAVX2 bool
@@ -20,13 +24,14 @@ func matvecAVX2(dst, w, x []float64, rows, cols int)
 //go:noescape
 func matvecSSE2(dst, w, x []float64, rows, cols int)
 
-//go:noescape
-func subVecAVX2(dst, a, b []float64)
-
-//go:noescape
-func subVecSSE2(dst, a, b []float64)
-
 func applyFlowInternal(out, xSens, wInt, bias []float64, Ni, Ns int) {
+	if len(out) < Ni || len(bias) < Ni || len(xSens) < Ns || len(wInt) < Ni*Ns {
+		panic(fmt.Errorf(
+			"markov_blanket: applyFlowInternal: need len(out)>=%d, len(bias)>=%d, len(xSens)>=%d, len(wInt)>=%d",
+			Ni, Ni, Ns, Ni*Ns,
+		))
+	}
+
 	copy(out, bias)
 
 	if useAVX2 && useFMA {
@@ -37,6 +42,13 @@ func applyFlowInternal(out, xSens, wInt, bias []float64, Ni, Ns int) {
 }
 
 func applyFlowActive(out, xInt, wAct, bias []float64, Na, Ni int) {
+	if len(out) < Na || len(bias) < Na || len(xInt) < Ni || len(wAct) < Na*Ni {
+		panic(fmt.Errorf(
+			"markov_blanket: applyFlowActive: need len(out)>=%d, len(bias)>=%d, len(xInt)>=%d, len(wAct)>=%d",
+			Na, Na, Ni, Na*Ni,
+		))
+	}
+
 	copy(out, bias)
 
 	if useAVX2 && useFMA {
@@ -44,13 +56,6 @@ func applyFlowActive(out, xInt, wAct, bias []float64, Na, Ni int) {
 	} else {
 		matvecSSE2(out, wAct, xInt, Na, Ni)
 	}
-}
-
-func applyPartition(
-	out, x, smask, amask, imask, emask []float64,
-	Ns, Na, Ni, Ne int,
-) {
-	applyPartitionScalar(out, x, smask, amask, imask, emask, Ns, Na, Ni, Ne)
 }
 
 func alignedLen(n int) int {

@@ -1,7 +1,8 @@
 package hawkes
 
 import (
-	stdmath "math"
+	"fmt"
+	"math"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -35,7 +36,7 @@ func TestIntensity(t *testing.T) {
 				mu := []float64{0.5}
 				tVal := []float64{1.0}
 				out := op.Forward(shape, times, alpha, beta, mu, tVal)
-				expected := 0.5 + stdmath.Exp(-1.0)
+				expected := 0.5 + math.Exp(-1.0)
 				So(out[0], ShouldAlmostEqual, expected, 1e-9)
 			})
 
@@ -48,14 +49,21 @@ func TestIntensity(t *testing.T) {
 				tVal := []float64{2.0}
 				out := op.Forward(shape, times, alpha, beta, mu, tVal)
 				So(out, ShouldHaveLength, 2)
-				e0 := 0.1 + 1.0*stdmath.Exp(-1.0*2.0)
-				e1 := 0.2 + 2.0*stdmath.Exp(-0.5*2.0)
+				e0 := 0.1 + 1.0*math.Exp(-1.0*2.0)
+				e1 := 0.2 + 2.0*math.Exp(-0.5*2.0)
 				So(out[0], ShouldAlmostEqual, e0, 1e-9)
 				So(out[1], ShouldAlmostEqual, e1, 1e-9)
 			})
 
 			Convey("It should panic on insufficient data", func() {
-				So(func() { op.Forward([]int{1, 0}, []float64{}) }, ShouldPanic)
+				So(func() {
+					defer func() {
+						recovered := recover()
+						So(recovered, ShouldNotBeNil)
+						So(fmt.Sprint(recovered), ShouldContainSubstring, "need at least 5")
+					}()
+					op.Forward([]int{1, 0}, []float64{})
+				}, ShouldNotPanic)
 			})
 		})
 	})
@@ -80,6 +88,11 @@ func TestKernelMatrix(t *testing.T) {
 				So(out[6], ShouldEqual, 0) // [2,0]
 				So(out[7], ShouldEqual, 0) // [2,1]
 				So(out[8], ShouldEqual, 0) // [2,2]
+				// Upper triangle [0,2] and [1,2]
+				So(out[2], ShouldBeGreaterThan, 0)
+				So(out[5], ShouldBeGreaterThan, 0)
+				So(out[2], ShouldAlmostEqual, math.Exp(-0.5*(2.0-0.0)), 1e-12)
+				So(out[5], ShouldAlmostEqual, math.Exp(-0.5*(2.0-1.0)), 1e-12)
 			})
 
 			Convey("It should compute correct upper triangle values", func() {
@@ -89,7 +102,7 @@ func TestKernelMatrix(t *testing.T) {
 				shape := []int{2, 0, 0}
 				out := op.Forward(shape, times, alpha, beta)
 				// K[0,1] = 2 * exp(-1.0 * (1-0)) = 2*exp(-1)
-				expected := 2.0 * stdmath.Exp(-1.0)
+				expected := 2.0 * math.Exp(-1.0)
 				So(out[1], ShouldAlmostEqual, expected, 1e-9)
 			})
 		})
@@ -106,25 +119,32 @@ func TestLogLikelihood(t *testing.T) {
 				times := []float64{1.0, 2.0, 3.0}
 				intensities := []float64{1.0, 2.0, 4.0}
 				integral := []float64{5.0}
-				expected := stdmath.Log(1.0) + stdmath.Log(2.0) + stdmath.Log(4.0) - 5.0
-				out := op.Forward([]int{T, 0}, times, intensities, integral)
+				expected := math.Log(1.0) + math.Log(2.0) + math.Log(4.0) - 5.0
+				out := op.Forward([]int{T}, times, intensities, integral)
 				So(out, ShouldHaveLength, 1)
 				So(out[0], ShouldAlmostEqual, expected, 1e-9)
 			})
 
 			Convey("It should panic on data length mismatch", func() {
 				So(func() {
-					op.Forward([]int{3, 0},
+					defer func() {
+						recovered := recover()
+						So(recovered, ShouldNotBeNil)
+						So(fmt.Sprint(recovered), ShouldContainSubstring, "len(intensities)=2, need T=3")
+					}()
+					op.Forward([]int{3},
 						[]float64{1, 2, 3},
 						[]float64{1, 2},
 						[]float64{0})
-				}, ShouldPanic)
+				}, ShouldNotPanic)
 			})
 		})
 	})
 }
 
 func TestSimulate(t *testing.T) {
+	const sentinelUnusedEvent = -1.0
+
 	Convey("Given a Simulate operation", t, func() {
 		op := NewSimulate()
 
@@ -140,7 +160,7 @@ func TestSimulate(t *testing.T) {
 				So(out, ShouldHaveLength, maxSteps)
 
 				for _, ev := range out {
-					if ev == -1 {
+					if ev == sentinelUnusedEvent {
 						break
 					}
 
@@ -160,7 +180,7 @@ func TestSimulate(t *testing.T) {
 				prev := -1.0
 
 				for _, ev := range out {
-					if ev == -1 {
+					if ev == sentinelUnusedEvent {
 						break
 					}
 
@@ -170,7 +190,14 @@ func TestSimulate(t *testing.T) {
 			})
 
 			Convey("It should panic on insufficient data", func() {
-				So(func() { op.Forward([]int{1, 10}) }, ShouldPanic)
+				So(func() {
+					defer func() {
+						recovered := recover()
+						So(recovered, ShouldNotBeNil)
+						So(fmt.Sprint(recovered), ShouldContainSubstring, "need 4")
+					}()
+					op.Forward([]int{1, 10})
+				}, ShouldNotPanic)
 			})
 		})
 	})
@@ -178,6 +205,7 @@ func TestSimulate(t *testing.T) {
 
 func BenchmarkIntensity_Forward(b *testing.B) {
 	op := NewIntensity()
+	// T=1000 and K=4: representative multi-process intensity at fixed wall time with dense history.
 	T := 1000
 	K := 4
 	times := make([]float64, T)
@@ -198,6 +226,7 @@ func BenchmarkIntensity_Forward(b *testing.B) {
 	tVal := []float64{float64(T) * 0.01}
 	shape := []int{K, T}
 	b.ResetTimer()
+	b.ReportAllocs()
 
 	for range b.N {
 		op.Forward(shape, times, alpha, beta, mu, tVal)
@@ -206,6 +235,7 @@ func BenchmarkIntensity_Forward(b *testing.B) {
 
 func BenchmarkKernelMatrix_Forward(b *testing.B) {
 	op := NewKernelMatrix()
+	// T=256: moderate stress for O(T²) upper-triangle fill without dominating benchmark time.
 	T := 256
 	times := make([]float64, T)
 
@@ -217,14 +247,37 @@ func BenchmarkKernelMatrix_Forward(b *testing.B) {
 	beta := []float64{0.5}
 	shape := []int{T, 0, 0}
 	b.ResetTimer()
+	b.ReportAllocs()
 
 	for range b.N {
 		op.Forward(shape, times, alpha, beta)
 	}
 }
 
+func BenchmarkLogLikelihood_Forward(b *testing.B) {
+	op := NewLogLikelihood()
+	T := 1000
+	times := make([]float64, T)
+	intensities := make([]float64, T)
+
+	for idx := range T {
+		times[idx] = float64(idx) * 0.01
+		intensities[idx] = 0.5 + float64(idx)*1e-4
+	}
+
+	integral := []float64{12.0}
+	shape := []int{T}
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for range b.N {
+		op.Forward(shape, times, intensities, integral)
+	}
+}
+
 func BenchmarkSimulate_Forward(b *testing.B) {
 	op := NewSimulate()
+	// K=4 and maxSteps=500: multi-series thinning with bounded event buffer (realistic iteration cost).
 	K, maxSteps := 4, 500
 	mu := []float64{1.0, 0.8, 1.2, 0.9}
 	alpha := []float64{0.4, 0.3, 0.5, 0.6}
@@ -232,6 +285,7 @@ func BenchmarkSimulate_Forward(b *testing.B) {
 	tMax := []float64{20.0}
 	shape := []int{K, maxSteps}
 	b.ResetTimer()
+	b.ReportAllocs()
 
 	for range b.N {
 		op.Forward(shape, mu, alpha, beta, tMax)

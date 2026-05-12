@@ -51,6 +51,10 @@ func applyMatVec(dst, w, x []float64, rows, cols int) {
 applyAxpy computes dst += scale * src elementwise.
 */
 func applyAxpy(dst, src []float64, scale float64) {
+	if len(dst) < len(src) {
+		panic("causal: applyAxpy: len(dst) < len(src)")
+	}
+
 	limit := alignedLen(len(src))
 
 	if useAVX2 {
@@ -70,6 +74,10 @@ func applyAxpy(dst, src []float64, scale float64) {
 applyDotProduct computes the inner product of a and b.
 */
 func applyDotProduct(a, b []float64) float64 {
+	if len(a) != len(b) {
+		panic("causal: applyDotProduct: length mismatch")
+	}
+
 	n := len(a)
 
 	if n == 0 {
@@ -98,6 +106,10 @@ func applyDotProduct(a, b []float64) float64 {
 applySubVec computes dst = a - b elementwise.
 */
 func applySubVec(dst, a, b []float64) {
+	if len(dst) < len(a) || len(b) < len(a) {
+		panic("causal: applySubVec: slice too short")
+	}
+
 	limit := alignedLen(len(a))
 
 	if useAVX2 {
@@ -131,12 +143,24 @@ applyMatMulFull computes C = A @ B where A is [m x k], B is [k x n], C is [m x n
 All matrices are row-major flat slices.
 */
 func applyMatMulFull(dst, a, b []float64, m, k, n int) {
+	if m < 0 || k < 0 || n < 0 {
+		panic("causal: applyMatMulFull: negative dimension")
+	}
+
+	needDst := m * n
+	needA := m * k
+	needB := k * n
+
+	if len(dst) < needDst || len(a) < needA || len(b) < needB {
+		panic("causal: applyMatMulFull: slice shorter than declared matrix size")
+	}
+
 	for row := 0; row < m; row++ {
 		dstRow := dst[row*n : (row+1)*n]
 		aRow := a[row*k : (row+1)*k]
 
-		for col := 0; col < n; col++ {
-			dstRow[col] = 0
+		for i := range dstRow {
+			dstRow[i] = 0
 		}
 
 		for kIdx := 0; kIdx < k; kIdx++ {
@@ -152,6 +176,18 @@ applyMatMulTransposeLeft computes C = A^T @ B where A is [t x p], B is [t x q], 
 Equivalent to computing the cross product A^T B.
 */
 func applyMatMulTransposeLeft(dst, a, b []float64, t, p, q int) {
+	if p < 0 || q < 0 || t < 0 {
+		panic("causal: applyMatMulTransposeLeft: negative dimension")
+	}
+
+	needDst := p * q
+	needA := t * p
+	needB := t * q
+
+	if len(dst) < needDst || len(a) < needA || len(b) < needB {
+		panic("causal: applyMatMulTransposeLeft: slice shorter than declared matrix size")
+	}
+
 	for row := 0; row < p; row++ {
 		for col := 0; col < q; col++ {
 			dst[row*q+col] = 0
@@ -172,6 +208,14 @@ func applyMatMulTransposeLeft(dst, a, b []float64, t, p, q int) {
 applyMatVecTranspose computes dst = A^T @ x where A is [t x p] and x is [t].
 */
 func applyMatVecTranspose(dst, a, x []float64, t, p int) {
+	if t < 0 || p < 0 {
+		panic("causal: applyMatVecTranspose: negative dimension")
+	}
+
+	if len(dst) < p || len(a) < t*p || len(x) < t {
+		panic("causal: applyMatVecTranspose: slice shorter than declared size")
+	}
+
 	for pIdx := 0; pIdx < p; pIdx++ {
 		dst[pIdx] = 0
 	}

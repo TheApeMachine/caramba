@@ -2,7 +2,10 @@
 
 package active_inference
 
-import "math"
+import (
+	"fmt"
+	"math"
+)
 
 //go:noescape
 func freeEnergyNEON(mu, expSigma []float64) float64
@@ -13,51 +16,136 @@ func precisionWeightMulNEON(dst, errVec, prec []float64)
 //go:noescape
 func beliefUpdateMuNEON(dst, mu, predErr []float64, lr float64)
 
-func applyFreeEnergy(mu, logSigma []float64, n int) float64 {
-	expBuf := make([]float64, n)
-
-	for idx := range logSigma {
-		expBuf[idx] = math.Exp(logSigma[idx])
+func applyFreeEnergy(mu, logSigma []float64, n int, expScratch []float64) float64 {
+	if n < 0 {
+		panic("active_inference: applyFreeEnergy: n < 0")
 	}
 
-	sum := freeEnergyNEON(mu, expBuf)
+	if len(mu) < n || len(logSigma) < n {
+		panic(fmt.Sprintf(
+			"active_inference: applyFreeEnergy: need len(mu) >= n and len(logSigma) >= n (got %d, %d, n=%d)",
+			len(mu), len(logSigma), n,
+		))
+	}
 
-	for idx := range logSigma {
-		sum -= logSigma[idx] + 1.0
+	muUse := mu[:n]
+	logSigmaUse := logSigma[:n]
+
+	var expBuf []float64
+
+	if expScratch != nil {
+		if len(expScratch) < n {
+			panic(fmt.Sprintf("active_inference: applyFreeEnergy: expScratch len=%d < n=%d", len(expScratch), n))
+		}
+
+		expBuf = expScratch[:n]
+	} else {
+		expBuf = make([]float64, n)
+	}
+
+	for idx := 0; idx < n; idx++ {
+		expBuf[idx] = math.Exp(logSigmaUse[idx])
+	}
+
+	sum := freeEnergyNEON(muUse, expBuf)
+
+	for idx := 0; idx < n; idx++ {
+		sum -= logSigmaUse[idx] + 1.0
 	}
 
 	return 0.5 * sum
 }
 
 func applyBeliefUpdate(muOut, logSigOut, mu, logSigma, predErr []float64, lr float64, n int) {
-	beliefUpdateMuNEON(muOut, mu, predErr, lr)
-
-	if n%2 != 0 {
-		last := n - 1
-		muOut[last] = mu[last] - lr*(mu[last]+predErr[last])
+	if n < 0 {
+		panic("active_inference: applyBeliefUpdate: n < 0")
 	}
 
-	for idx := range logSigma {
+	if len(muOut) < n || len(logSigOut) < n || len(mu) < n || len(logSigma) < n || len(predErr) < n {
+		panic(fmt.Sprintf(
+			"active_inference: applyBeliefUpdate: slice shorter than n=%d (muOut=%d logSigOut=%d mu=%d logSigma=%d predErr=%d)",
+			n, len(muOut), len(logSigOut), len(mu), len(logSigma), len(predErr),
+		))
+	}
+
+	pairLimit := n - (n % 2)
+
+	if pairLimit > 0 {
+		beliefUpdateMuNEON(muOut[:pairLimit], mu[:pairLimit], predErr[:pairLimit], lr)
+	}
+
+	for idx := pairLimit; idx < n; idx++ {
+		muOut[idx] = mu[idx] - lr*(mu[idx]+predErr[idx])
+	}
+
+	for idx := 0; idx < n; idx++ {
 		logSigOut[idx] = logSigma[idx] - lr*(math.Exp(logSigma[idx])-1.0)
 	}
 }
 
-func applyPrecisionWeight(dst, errVec, logPrec []float64, n int) {
-	prec := make([]float64, n)
+func applyPrecisionWeight(dst, errVec, logPrec []float64, n int, precScratch []float64) {
+	if n < 0 {
+		panic("active_inference: applyPrecisionWeight: n < 0")
+	}
 
-	for idx := range logPrec {
+	if len(dst) < n || len(errVec) < n {
+		panic(fmt.Sprintf(
+			"active_inference: applyPrecisionWeight: need len(dst) >= n and len(errVec) >= n (got %d, %d, n=%d)",
+			len(dst), len(errVec), n,
+		))
+	}
+
+	var prec []float64
+
+	if precScratch != nil {
+		if len(precScratch) < n {
+			panic(fmt.Sprintf("active_inference: applyPrecisionWeight: precScratch len=%d < n=%d", len(precScratch), n))
+		}
+
+		prec = precScratch[:n]
+	} else {
+		prec = make([]float64, n)
+	}
+
+	fillCount := min(n, len(logPrec))
+
+	for idx := 0; idx < fillCount; idx++ {
 		prec[idx] = math.Exp(logPrec[idx])
 	}
 
-	precisionWeightMulNEON(dst, errVec, prec)
+	for idx := fillCount; idx < n; idx++ {
+		prec[idx] = 1.0
+	}
 
-	if n%2 != 0 {
-		last := n - 1
-		dst[last] = errVec[last] * prec[last]
+	pairLimit := n - (n % 2)
+
+	if pairLimit > 0 {
+		precisionWeightMulNEON(dst[:pairLimit], errVec[:pairLimit], prec[:pairLimit])
+	}
+
+	for idx := pairLimit; idx < n; idx++ {
+		dst[idx] = errVec[idx] * prec[idx]
 	}
 }
 
 func applyExpectedFreeEnergy(out, qOutcomes []float64, n, k int) {
+	if n <= 0 || k <= 0 {
+		panic(fmt.Sprintf("active_inference: applyExpectedFreeEnergy: need n > 0 and k > 0 (got n=%d k=%d)", n, k))
+	}
+
+	need := n * k
+
+	if len(qOutcomes) < need {
+		panic(fmt.Sprintf(
+			"active_inference: applyExpectedFreeEnergy: len(qOutcomes)=%d < n*k=%d (row-major q[i,k]=qOutcomes[i*k+k])",
+			len(qOutcomes), need,
+		))
+	}
+
+	if len(out) < k {
+		panic(fmt.Sprintf("active_inference: applyExpectedFreeEnergy: len(out)=%d < k=%d", len(out), k))
+	}
+
 	const eps = 1e-12
 
 	for kIdx := 0; kIdx < k; kIdx++ {
@@ -65,6 +153,15 @@ func applyExpectedFreeEnergy(out, qOutcomes []float64, n, k int) {
 
 		for iIdx := 0; iIdx < n; iIdx++ {
 			q := qOutcomes[iIdx*k+kIdx]
+
+			if q < 0 {
+				q = 0
+			}
+
+			if q > 1 {
+				q = 1
+			}
+
 			g -= q * math.Log(q+eps)
 		}
 

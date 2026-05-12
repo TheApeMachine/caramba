@@ -2,9 +2,11 @@ package hawkes
 
 import (
 	"fmt"
-	stdmath "math"
+	"math"
 	"math/rand/v2"
 )
+
+const lambdaStarEpsilon = 1e-12
 
 /*
 Simulate generates event times for K Hawkes processes using Ogata's thinning
@@ -25,11 +27,11 @@ func NewSimulate() *Simulate { return &Simulate{} }
 
 func (op *Simulate) Forward(shape []int, data ...[]float64) []float64 {
 	if len(shape) < 2 {
-		panic(fmt.Errorf("hawkes: Simulate: len(shape)=%d, need >= 2", len(shape)).Error())
+		panic(fmt.Errorf("hawkes: Simulate: len(shape)=%d, need >= 2", len(shape)))
 	}
 
 	if len(data) < 4 {
-		panic(fmt.Errorf("hawkes: Simulate: len(data)=%d, need 4", len(data)).Error())
+		panic(fmt.Errorf("hawkes: Simulate: len(data)=%d, need 4", len(data)))
 	}
 
 	K, maxSteps := shape[0], shape[1]
@@ -39,11 +41,25 @@ func (op *Simulate) Forward(shape []int, data ...[]float64) []float64 {
 	tMaxSlice := data[3]
 
 	if len(mu) != K || len(alpha) != K || len(beta) != K {
-		panic(fmt.Errorf("hawkes: Simulate: mu/alpha/beta must have length K=%d", K).Error())
+		panic(fmt.Errorf("hawkes: Simulate: mu/alpha/beta must have length K=%d", K))
+	}
+
+	for idx := range K {
+		if beta[idx] <= 0 {
+			panic(fmt.Errorf("hawkes: Simulate: beta[%d] must be > 0", idx))
+		}
+
+		if alpha[idx] < 0 {
+			panic(fmt.Errorf("hawkes: Simulate: alpha[%d] must be >= 0", idx))
+		}
+
+		if mu[idx] <= 0 {
+			panic(fmt.Errorf("hawkes: Simulate: mu[%d] must be > 0", idx))
+		}
 	}
 
 	if len(tMaxSlice) < 1 {
-		panic(fmt.Errorf("hawkes: Simulate: data[3] (T_max) must have length >= 1").Error())
+		panic(fmt.Errorf("hawkes: Simulate: data[3] (T_max) must have length >= 1"))
 	}
 
 	tMax := tMaxSlice[0]
@@ -57,10 +73,6 @@ func (op *Simulate) Forward(shape []int, data ...[]float64) []float64 {
 		events := ogataThinningSingle(mu[k], alpha[k], beta[k], tMax, maxSteps)
 
 		for idx, ev := range events {
-			if idx >= maxSteps {
-				break
-			}
-
 			out[k*maxSteps+idx] = ev
 		}
 	}
@@ -74,35 +86,43 @@ func ogataThinningSingle(mu, alpha, beta, tMax float64, maxSteps int) []float64 
 	t := 0.0
 
 	for t < tMax && len(events) < maxSteps {
-		// upper bound on intensity: current λ*(t) using all past events
 		lambdaStar := mu
 
 		for _, prevT := range events {
-			lambdaStar += alpha * stdmath.Exp(-beta*(t-prevT))
+			lambdaStar += alpha * math.Exp(-beta*(t-prevT))
 		}
 
-		// draw inter-arrival time from exponential(lambdaStar)
+		if lambdaStar < lambdaStarEpsilon {
+			lambdaStar = lambdaStarEpsilon
+		}
+
 		u1 := rand.Float64()
 
-		if u1 == 0 {
-			u1 = 1e-300
+		for u1 <= 0 {
+			u1 = rand.Float64()
 		}
 
-		dt := -stdmath.Log(u1) / lambdaStar
+		dt := -math.Log(u1) / lambdaStar
 		t += dt
 
 		if t >= tMax {
 			break
 		}
 
-		// recompute true intensity at proposed t
 		lambdaT := mu
 
 		for _, prevT := range events {
-			lambdaT += alpha * stdmath.Exp(-beta*(t-prevT))
+			lambdaT += alpha * math.Exp(-beta*(t-prevT))
 		}
 
-		// accept with probability lambdaT / lambdaStar
+		if lambdaT < 0 {
+			lambdaT = 0
+		}
+
+		if lambdaT > lambdaStar {
+			lambdaT = lambdaStar
+		}
+
 		u2 := rand.Float64()
 
 		if u2 <= lambdaT/lambdaStar {

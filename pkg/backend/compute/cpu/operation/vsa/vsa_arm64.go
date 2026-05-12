@@ -2,7 +2,10 @@
 
 package vsa
 
-import "math"
+import (
+	"fmt"
+	"math"
+)
 
 //go:noescape
 func bindNEON(dst, a, b []float64)
@@ -21,6 +24,14 @@ func reduceSumSqNEON(a []float64) float64
 
 func applyBind(dst, a, b []float64) {
 	n := len(a)
+
+	if len(b) != n || len(dst) < n {
+		panic(fmt.Sprintf(
+			"vsa: applyBind: need len(b)==len(a) and len(dst)>=len(a), got len(dst)=%d len(a)=%d len(b)=%d",
+			len(dst), len(a), len(b),
+		))
+	}
+
 	limit := n / 2 * 2
 
 	if limit > 0 {
@@ -34,6 +45,14 @@ func applyBind(dst, a, b []float64) {
 
 func applyDot(a, b []float64) float64 {
 	n := len(a)
+
+	if len(b) != n {
+		panic(fmt.Sprintf(
+			"vsa: applyDot: len(a)=%d len(b)=%d must match",
+			len(a), len(b),
+		))
+	}
+
 	limit := n / 2 * 2
 	sum := 0.0
 
@@ -50,6 +69,14 @@ func applyDot(a, b []float64) float64 {
 
 func applyAddInPlace(dst, src []float64) {
 	n := len(src)
+
+	if len(dst) < n {
+		panic(fmt.Sprintf(
+			"vsa: applyAddInPlace: need len(dst)>=%d, got len(dst)=%d",
+			n, len(dst),
+		))
+	}
+
 	limit := n / 2 * 2
 
 	if limit > 0 {
@@ -93,7 +120,7 @@ func applyReduceSumSq(a []float64) float64 {
 func applyL2Normalize(dst []float64) {
 	norm := math.Sqrt(applyReduceSumSq(dst))
 
-	if norm > 1e-12 {
+	if norm > l2NormEpsilon {
 		applyMulScalar(dst, 1.0/norm)
 	}
 }

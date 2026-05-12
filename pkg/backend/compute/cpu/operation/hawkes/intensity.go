@@ -2,13 +2,14 @@ package hawkes
 
 import (
 	"fmt"
-	stdmath "math"
+	"math"
+	"sort"
 )
 
 /*
 Intensity computes the current Hawkes process intensity for K processes:
 
-  λ_k(t) = mu_k + alpha_k * Σ_{t_i < t} exp(-beta_k * (t - t_i))
+	λ_k(t) = mu_k + alpha_k * Σ_{t_i < t} exp(-beta_k * (t - t_i))
 
 shape = [K, T]
 data[0] = event_times [T]   (sorted ascending, all < current time t)
@@ -29,7 +30,7 @@ func (op *Intensity) Forward(shape []int, data ...[]float64) []float64 {
 	}
 
 	if len(data) < 5 {
-		panic(fmt.Errorf("hawkes: Intensity: len(data)=%d, need 5", len(data)).Error())
+		panic(fmt.Errorf("hawkes: Intensity: len(data)=%d, need at least 5", len(data)).Error())
 	}
 
 	K, T := shape[0], shape[1]
@@ -62,18 +63,16 @@ func (op *Intensity) Forward(shape []int, data ...[]float64) []float64 {
 }
 
 func applyIntensityScalar(out, times, alpha, beta, mu []float64, t float64, K, T int) {
-	for k := range K {
+	for k := 0; k < K; k++ {
 		sum := 0.0
 		bk := beta[k]
 
-		for idx := range T {
-			dt := t - times[idx]
+		cutoff := sort.Search(T, func(idx int) bool {
+			return times[idx] >= t
+		})
 
-			if dt <= 0 {
-				break
-			}
-
-			sum += stdmath.Exp(-bk * dt)
+		for idx := 0; idx < cutoff; idx++ {
+			sum += math.Exp(-bk * (t - times[idx]))
 		}
 
 		out[k] = mu[k] + alpha[k]*sum

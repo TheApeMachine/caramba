@@ -9,8 +9,8 @@ import (
 MutualInformation estimates mutual information between two multivariate
 Gaussian-approximated marginals X and Y via:
 
-  MI = 0.5 * log( det(Σ_x) * det(Σ_y) / det(Σ_joint) )
-     = 0.5 * (logdet(Σ_x) + logdet(Σ_y) - logdet(Σ_joint))
+	MI = 0.5 * log( det(Σ_x) * det(Σ_y) / det(Σ_joint) )
+	   = 0.5 * (logdet(Σ_x) + logdet(Σ_y) - logdet(Σ_joint))
 
 shape = [N, M]
 data[0] = X [T * N]  (T samples, N dims)
@@ -43,6 +43,13 @@ func (op *MutualInformation) Forward(shape []int, data ...[]float64) []float64 {
 	}
 
 	T := len(xData) / N
+
+	if T < 2 {
+		panic(fmt.Sprintf(
+			"markov_blanket: MutualInformation: need at least 2 samples (T>=2) before computeMI(xData, yData, T, N, M); got T=%d len(xData)=%d len(yData)=%d N=%d M=%d",
+			T, len(xData), len(yData), N, M,
+		))
+	}
 
 	if len(yData) != T*M {
 		panic(fmt.Errorf(
@@ -103,6 +110,10 @@ func computeMI(xData, yData []float64, T, N, M int) float64 {
 
 func columnMean(data []float64, T, D int) []float64 {
 	mean := make([]float64, D)
+
+	if T <= 0 {
+		return mean
+	}
 
 	for t := range T {
 		for d := range D {
@@ -187,8 +198,10 @@ func logDetCholesky(a []float64, n int) float64 {
 		}
 
 		if sum <= 0 {
-			// Not positive definite — clamp to tiny positive.
-			sum = 1e-300
+			panic(fmt.Sprintf(
+				"markov_blanket: logDetCholesky: diagonal pivot non-positive at col=%d/%d (sum=%g); matrix may be non-PD after regularisation",
+				col, n, sum,
+			))
 		}
 
 		L[col*n+col] = stdmath.Sqrt(sum)

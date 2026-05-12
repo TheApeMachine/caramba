@@ -9,9 +9,12 @@
 
 #include "projection.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 
@@ -123,6 +126,88 @@ static std::string build_tied_embedding(int M, int D, int V) {
         "    return %out : " + tL + "\n"
         "  }\n"
         "}\n";
+}
+
+static std::string proj_dense_identity_literal(int n) {
+    std::ostringstream lit;
+    lit << "dense<[";
+    for (int i = 0; i < n; i++) {
+        lit << "[";
+        for (int j = 0; j < n; j++) {
+            lit << (i == j ? "1.0" : "0.0");
+            if (j + 1 < n) {
+                lit << ", ";
+            }
+        }
+        lit << "]";
+        if (i + 1 < n) {
+            lit << ", ";
+        }
+    }
+    lit << "]> : tensor<" << n << "x" << n << "xf64>";
+    return lit.str();
+}
+
+static std::string build_spd_inverse_mlir(int n, double ridge) {
+    std::ostringstream rs;
+    rs << std::setprecision(17) << std::defaultfloat << ridge;
+    std::string rn = rs.str();
+    std::string tn = t2(n, n);
+    std::string idlit = proj_dense_identity_literal(n);
+    return std::string(
+        "module @spd_inv {\n"
+        "  func.func @main(%A: " + tn + ") -> " + tn + " {\n"
+        "    %eps = stablehlo.constant dense<" + rn + "> : tensor<f64>\n"
+        "    %I = stablehlo.constant " + idlit + "\n"
+        "    %epsB = stablehlo.broadcast_in_dim %eps, dims = [] : (tensor<f64>) -> " + tn + "\n"
+        "    %ridge = stablehlo.multiply %I, %epsB : " + tn + "\n"
+        "    %Ap = stablehlo.add %A, %ridge : " + tn + "\n"
+        "    %L = \"stablehlo.cholesky\"(%Ap) {lower = true} : (" + tn + ") -> " + tn + "\n"
+        "    %Z = \"stablehlo.triangular_solve\"(%L, %I) {left_side = true, lower = true, "
+        "transpose_a = #stablehlo<transpose NO_TRANSPOSE>, unit_diagonal = false} : ("
+        + tn + ", " + tn + ") -> " + tn + "\n"
+        "    %Inv = stablehlo.dot_general %Z, %Z, contracting_dims = [0] x [0] : ("
+        + tn + ", " + tn + ") -> " + tn + "\n"
+        "    return %Inv : " + tn + "\n"
+        "  }\n"
+        "}\n");
+}
+
+static std::string build_spd_log_det_mlir(int n, double ridge) {
+    std::ostringstream rs;
+    rs << std::setprecision(17) << std::defaultfloat << ridge;
+    std::string rn = rs.str();
+    std::string tn = t2(n, n);
+    std::string idlit = proj_dense_identity_literal(n);
+    std::ostringstream oss;
+    oss <<
+        "module @spd_ld {\n"
+        "  func.func @main(%A: " << tn << ") -> tensor<f64> {\n"
+        "    %eps = stablehlo.constant dense<" << rn << "> : tensor<f64>\n"
+        "    %I = stablehlo.constant " << idlit << "\n"
+        "    %epsB = stablehlo.broadcast_in_dim %eps, dims = [] : (tensor<f64>) -> " << tn << "\n"
+        "    %ridge = stablehlo.multiply %I, %epsB : " << tn << "\n"
+        "    %Ap = stablehlo.add %A, %ridge : " << tn << "\n"
+        "    %L = \"stablehlo.cholesky\"(%Ap) {lower = true} : (" << tn << ") -> " << tn << "\n";
+    for (int i = 0; i < n; i++) {
+        oss << "    %s" << i << " = stablehlo.slice %L [" << i << ", " << i << "] ["
+            << (i + 1) << ", " << (i + 1) << "] [1, 1] : (" << tn << ") -> tensor<1x1xf64>\n";
+        oss << "    %r" << i << " = stablehlo.reshape %s" << i
+            << " : (tensor<1x1xf64>) -> tensor<f64>\n";
+        oss << "    %lg" << i << " = stablehlo.log %r" << i << " : tensor<f64>\n";
+    }
+    std::string acc = "lg0";
+    for (int i = 1; i < n; i++) {
+        std::string next = std::string("acc") + std::to_string(i);
+        oss << "    %" << next << " = stablehlo.add %" << acc << ", %lg" << i << " : tensor<f64>\n";
+        acc = next;
+    }
+    std::string finalName = (n == 1) ? std::string("lg0") : acc;
+    oss << "    %two = stablehlo.constant dense<2.0> : tensor<f64>\n";
+    oss << "    %out = stablehlo.multiply %" << finalName << ", %two : tensor<f64>\n";
+    oss << "    return %out : tensor<f64>\n";
+    oss << "  }\n}\n";
+    return oss.str();
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +389,89 @@ static int proj_run3(
     return 0;
 }
 
+static int proj_run1(
+    PJRT_LoadedExecutable* exec,
+    const double* h_a, int a_n,
+    double* h_dst,     int dst_n)
+{
+    auto make_buf = [&](const double* data, int n) -> PJRT_Buffer* {
+        PJRT_Client_BufferFromHostBuffer_Args ba{};
+        ba.struct_size = PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE;
+        ba.client = g_client;
+        ba.data   = data;
+        ba.type   = PJRT_Buffer_Type_F64;
+        int64_t dims[1] = { (int64_t)n };
+        ba.dims = dims;
+        ba.num_dims = 1;
+        ba.host_buffer_semantics = PJRT_HostBufferSemantics_kImmutableOnlyDuringCall;
+        PJRT_Error* err = g_api->PJRT_Client_BufferFromHostBuffer(&ba);
+        if (!proj_check(g_api, err, "BufferFromHostBuffer1")) return nullptr;
+        PJRT_Buffer_ReadyEvent_Args re{};
+        re.struct_size = PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE;
+        re.buffer = ba.buffer;
+        err = g_api->PJRT_Buffer_ReadyEvent(&re);
+        if (!proj_check(g_api, err, "ReadyEvent1")) return nullptr;
+        PJRT_Event_Await_Args ea{};
+        ea.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
+        ea.event = re.event;
+        err = g_api->PJRT_Event_Await(&ea);
+        proj_check(g_api, err, "Event_Await1");
+        PJRT_Event_Destroy_Args eda{};
+        eda.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+        eda.event = re.event;
+        g_api->PJRT_Event_Destroy(&eda);
+        return ba.buffer;
+    };
+
+    PJRT_Buffer* in_a = make_buf(h_a, a_n);
+    if (!in_a) return -1;
+
+    PJRT_Buffer* in_list[1]  = { in_a };
+    PJRT_Buffer* out_storage = nullptr;
+    PJRT_Buffer** out_list[1] = { &out_storage };
+
+    PJRT_LoadedExecutable_Execute_Args ea{};
+    ea.struct_size     = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
+    ea.executable      = exec;
+    ea.argument_lists  = (PJRT_Buffer***)&in_list;
+    ea.num_devices     = 1;
+    ea.num_args        = 1;
+    ea.output_lists    = out_list;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options = &options;
+
+    PJRT_Error* err = g_api->PJRT_LoadedExecutable_Execute(&ea);
+    if (!proj_check(g_api, err, "Execute1")) return -1;
+
+    PJRT_Buffer_ToHostBuffer_Args tha{};
+    tha.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
+    tha.src  = out_storage;
+    tha.dst  = h_dst;
+    tha.dst_size = (size_t)dst_n * sizeof(double);
+    err = g_api->PJRT_Buffer_ToHostBuffer(&tha);
+    if (!proj_check(g_api, err, "ToHostBuffer1")) return -1;
+
+    PJRT_Event_Await_Args ev{};
+    ev.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
+    ev.event = tha.event;
+    err = g_api->PJRT_Event_Await(&ev);
+    proj_check(g_api, err, "Event_Await1(out)");
+    PJRT_Event_Destroy_Args ed2{};
+    ed2.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+    ed2.event = tha.event;
+    g_api->PJRT_Event_Destroy(&ed2);
+
+    auto destroy_buf = [&](PJRT_Buffer* buffer) {
+        PJRT_Buffer_Destroy_Args da{};
+        da.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
+        da.buffer = buffer;
+        g_api->PJRT_Buffer_Destroy(&da);
+    };
+    destroy_buf(in_a);
+    destroy_buf(out_storage);
+    return 0;
+}
+
 // ---------------------------------------------------------------------------
 // Public C API
 // ---------------------------------------------------------------------------
@@ -357,6 +525,36 @@ int xla_tied_embedding(const double* src, const double* weight,
         g_proj_execs[key] = ex;
     }
     return proj_run2(g_proj_execs[key], src, M*D, weight, V*D, dst, M*V);
+}
+
+int xla_spd_inverse(const double* a, int n, double ridge, double* inv_out) {
+    if (!g_client || n <= 0 || !a || !inv_out) return -1;
+    if (!std::isfinite(ridge) || ridge < 0.0) return -1;
+
+    std::ostringstream rs;
+    rs << std::setprecision(17) << std::defaultfloat << ridge;
+    std::string key = "spd_inv_" + s(n) + "_" + rs.str();
+    if (g_proj_execs.find(key) == g_proj_execs.end()) {
+        PJRT_LoadedExecutable* ex = proj_compile(build_spd_inverse_mlir(n, ridge));
+        if (!ex) return -1;
+        g_proj_execs[key] = ex;
+    }
+    return proj_run1(g_proj_execs[key], a, n * n, inv_out, n * n);
+}
+
+int xla_spd_log_det(const double* a, int n, double ridge, double* log_det_out) {
+    if (!g_client || n <= 0 || !a || !log_det_out) return -1;
+    if (!std::isfinite(ridge) || ridge < 0.0) return -1;
+
+    std::ostringstream rs;
+    rs << std::setprecision(17) << std::defaultfloat << ridge;
+    std::string key = "spd_ldet_" + s(n) + "_" + rs.str();
+    if (g_proj_execs.find(key) == g_proj_execs.end()) {
+        PJRT_LoadedExecutable* ex = proj_compile(build_spd_log_det_mlir(n, ridge));
+        if (!ex) return -1;
+        g_proj_execs[key] = ex;
+    }
+    return proj_run1(g_proj_execs[key], a, n * n, log_det_out, 1);
 }
 
 void xla_projection_shutdown(void) {

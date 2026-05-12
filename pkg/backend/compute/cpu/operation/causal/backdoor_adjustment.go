@@ -1,18 +1,21 @@
 package causal
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 /*
 BackdoorAdjustment computes the causal effect of X on Y adjusting for confounders Z
 using the backdoor adjustment formula: P(Y|do(X)) = Σ_Z P(Y|X,Z) * P(Z).
 
-Implemented via outcome regression: fit Y ~ X + Z via OLS, return the coefficient of X.
+Implemented via outcome regression: fit Y ~ 1 + X + Z via OLS; aggregate absolute X coefficients.
 
 shape = [N_y, N_x, N_z, T]
 data[0] = Y [T*N_y]
 data[1] = X [T*N_x]
 data[2] = Z [T*N_z]
-Returns causal_effect [N_y] — mean causal effect of a unit change in X on each Y dimension.
+Returns causal_effect [N_y] — mean magnitude of causal X effect per Y dimension.
 */
 type BackdoorAdjustment struct{}
 
@@ -37,6 +40,13 @@ func (backdoorAdjustment *BackdoorAdjustment) Forward(shape []int, data ...[]flo
 	}
 
 	ny, nx, nz, t := shape[0], shape[1], shape[2], shape[3]
+
+	if nx <= 0 || t <= 0 {
+		panic(fmt.Errorf(
+			"causal: BackdoorAdjustment.Forward: need N_x > 0 and T > 0 (got N_x=%d, T=%d)",
+			nx, t,
+		).Error())
+	}
 
 	if len(data[0]) != t*ny {
 		panic(fmt.Errorf(
@@ -63,51 +73,57 @@ func (backdoorAdjustment *BackdoorAdjustment) Forward(shape []int, data ...[]flo
 	xMat := data[1]
 	zMat := data[2]
 
-	// Build design matrix W = [X, Z] of shape [T x (nx+nz)].
-	p := nx + nz
+	// Design W = [1, X, Z] row-major [T x p], p = 1 + nx + nz.
+	p := 1 + nx + nz
 	design := make([]float64, t*p)
 
 	for row := 0; row < t; row++ {
+		design[row*p] = 1.0
+
 		for col := 0; col < nx; col++ {
-			design[row*p+col] = xMat[row*nx+col]
+			design[row*p+1+col] = xMat[row*nx+col]
 		}
 
 		for col := 0; col < nz; col++ {
-			design[row*p+nx+col] = zMat[row*nz+col]
+			design[row*p+1+nx+col] = zMat[row*nz+col]
 		}
 	}
 
-	// OLS: beta = (W^T W)^{-1} W^T Y  shape [p x ny]
-	// W^T W [p x p]
+	const ridge = 1e-10
+
 	wtw := make([]float64, p*p)
 	applyMatMulTransposeLeft(wtw, design, design, t, p, p)
+	addRidgeToDiagInPlace(wtw, p, ridge)
 
 	wtwInv := invertSymPD(wtw, p)
 
 	causalEffect := make([]float64, ny)
 
-	// For each y dimension, solve for beta and sum the X coefficients.
-	for yDim := 0; yDim < ny; yDim++ {
-		// Extract y column [T].
-		yCol := make([]float64, t)
+	yCol := make([]float64, t)
+	wty := make([]float64, p)
+	beta := make([]float64, p)
 
-		for row := 0; row < t; row++ {
+	for yDim := 0; yDim < ny; yDim++ {
+		for row := range yCol {
 			yCol[row] = yMat[row*ny+yDim]
 		}
 
-		// W^T y [p]
-		wty := make([]float64, p)
+		for pIdx := range wty {
+			wty[pIdx] = 0
+		}
+
 		applyMatVecTranspose(wty, design, yCol, t, p)
 
-		// beta = wtwInv @ wty  [p]
-		beta := make([]float64, p)
+		for pIdx := range beta {
+			beta[pIdx] = 0
+		}
+
 		applyMatVec(beta, wtwInv, wty, p, p)
 
-		// Causal effect of X on Y: sum of absolute X coefficients (mean over nx dims).
 		effect := 0.0
 
 		for xDim := 0; xDim < nx; xDim++ {
-			effect += beta[xDim]
+			effect += math.Abs(beta[1+xDim])
 		}
 
 		causalEffect[yDim] = effect / float64(nx)

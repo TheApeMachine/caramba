@@ -7,8 +7,12 @@ import (
 
 /*
 DoCalculus computes P(Y|do(X=x)) via graph surgery on a joint Gaussian distribution.
-Given a covariance matrix, intervention mask, and intervention values, it returns
-the adjusted mean and covariance after severing incoming edges to intervened variables.
+
+	Given a covariance matrix, intervention mask, and intervention values, it returns
+	the adjusted mean and covariance after severing incoming edges to intervened variables.
+
+	The conditioning algebra assumes the submitted covariance is consistent with a
+	zero-mean joint Gaussian before the do-intervention (non-zero means are not modeled).
 
 shape = [N_vars, N_vars, N_obs]
 data[0] = cov_matrix [N*N]    — joint Gaussian covariance
@@ -180,6 +184,15 @@ func (doCalculus *DoCalculus) Forward(shape []int, data ...[]float64) []float64 
 	copy(result[n:], adjustedCov)
 
 	return result
+}
+
+/*
+addRidgeToDiagInPlace adds ridge to every diagonal entry of a row-major [n*n] matrix.
+*/
+func addRidgeToDiagInPlace(a []float64, n int, ridge float64) {
+	for diagIdx := 0; diagIdx < n; diagIdx++ {
+		a[diagIdx*n+diagIdx] += ridge
+	}
 }
 
 /*

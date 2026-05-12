@@ -41,10 +41,11 @@ int xla_ai_precision_weight(
 /**
  * xla_ai_expected_free_energy:
  * G[k] = -sum_i q[i,k]*ln(q[i,k]+eps)  for k in [0,K).
- * q_outcomes is [n*K] row-major; out is [K].
+ * q_outcomes is [n*K] row-major (i stride K); out is [K].
+ * eps must be finite and > 0 (e.g. 1e-12).
  */
 int xla_ai_expected_free_energy(
-    const double* q_outcomes, double* out, int n, int K);
+    const double* q_outcomes, double* out, int n, int K, double eps);
 
 #ifdef __cplusplus
 }

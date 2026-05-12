@@ -23,7 +23,7 @@ type PJRTConfig struct {
 /*
 NewPJRTConfig reads the environment used by the XLA backend.
 
-Platform must be one of: cpu, gpu, cuda (cuda aliases to gpu). Other values return an error.
+Platform must be one of: cpu, gpu, cuda (cuda aliases to gpu), or tpu.
 */
 func NewPJRTConfig(platform string) (PJRTConfig, error) {
 	normalizedPlatform, err := normalizedPJRTPlatform(platform)
@@ -64,6 +64,10 @@ PluginNames returns accepted plugin filenames for the configured platform.
 func (config PJRTConfig) PluginNames() []string {
 	if config.Platform == "gpu" {
 		return []string{"pjrt_c_api_gpu_plugin.so", "pjrt_c_api_gpu_plugin.dylib"}
+	}
+
+	if config.Platform == "tpu" {
+		return []string{"pjrt_c_api_tpu_plugin.so", "pjrt_c_api_tpu_plugin.dylib"}
 	}
 
 	return []string{"pjrt_c_api_cpu_plugin.so", "pjrt_c_api_cpu_plugin.dylib"}
@@ -141,8 +145,8 @@ func (config PJRTConfig) Validate() error {
 }
 
 /*
-normalizedPJRTPlatform maps user input to "cpu" or "gpu".
-Allowed inputs: "", whitespace (cpu default), cpu, gpu, cuda (cuda → gpu).
+normalizedPJRTPlatform maps user input to "cpu", "gpu", or "tpu".
+Allowed inputs: "", whitespace (cpu default), cpu, gpu, cuda (cuda → gpu), tpu.
 Any other token returns an error so typos are not silently treated as CPU.
 */
 func normalizedPJRTPlatform(platform string) (string, error) {
@@ -157,9 +161,11 @@ func normalizedPJRTPlatform(platform string) (string, error) {
 		return "cpu", nil
 	case "gpu", "cuda":
 		return "gpu", nil
+	case "tpu":
+		return "tpu", nil
 	default:
 		return "", fmt.Errorf(
-			"xla: unsupported PJRT platform %q (allowed: cpu, gpu, cuda)",
+			"xla: unsupported PJRT platform %q (allowed: cpu, gpu, cuda, tpu)",
 			platform,
 		)
 	}
@@ -191,12 +197,16 @@ func pjrtIncludeDirFromCGOFlags(cgoFlags string) string {
 	return ""
 }
 
-// pjrtPluginFile expects normalizedPlatform ("cpu" or "gpu").
+// pjrtPluginFile expects normalizedPlatform ("cpu", "gpu", or "tpu").
 func pjrtPluginFile(normalizedPlatform string) string {
 	platformEnvName := "CARAMBA_PJRT_CPU_PLUGIN"
 
 	if normalizedPlatform == "gpu" {
 		platformEnvName = "CARAMBA_PJRT_GPU_PLUGIN"
+	}
+
+	if normalizedPlatform == "tpu" {
+		platformEnvName = "CARAMBA_PJRT_TPU_PLUGIN"
 	}
 
 	for _, envName := range []string{platformEnvName, "CARAMBA_PJRT_PLUGIN", "PJRT_PLUGIN_PATH"} {

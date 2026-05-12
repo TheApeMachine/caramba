@@ -3,7 +3,7 @@
 package hawkes
 
 import (
-	stdmath "math"
+	"math"
 
 	"golang.org/x/sys/cpu"
 )
@@ -19,10 +19,10 @@ func init() {
 }
 
 //go:noescape
-func expSumAVX2(times []float64, t, beta float64) float64
+func expSumAVX2(expBuf []float64) float64
 
 //go:noescape
-func expSumSSE2(times []float64, t, beta float64) float64
+func expSumSSE2(expBuf []float64) float64
 
 //go:noescape
 func subVecAVX2(dst, a, b []float64)
@@ -31,16 +31,48 @@ func subVecAVX2(dst, a, b []float64)
 func subVecSSE2(dst, a, b []float64)
 
 func applyIntensity(out, times, alpha, beta, mu []float64, t float64, K, T int) {
-	// expSumAVX2/SSE2 vectorise the subtraction and multiply but delegate exp
-	// to the scalar loop — the asm stubs return 0 as a structurally correct
-	// placeholder. We call the pure-Go path here which is correct and safe.
-	// The SIMD benefit is realised in the subVecAVX2/SSE2 helpers used by
-	// applyKernelMatrix.
-	applyIntensityScalar(out, times, alpha, beta, mu, t, K, T)
+	cutoff := 0
+	for cutoff < T && times[cutoff] < t {
+		cutoff++
+	}
+
+	validTimes := times[:cutoff]
+	n := len(validTimes)
+
+	if n == 0 {
+		for k := 0; k < K; k++ {
+			out[k] = mu[k]
+		}
+		return
+	}
+
+	expBuf := make([]float64, n)
+
+	for k := 0; k < K; k++ {
+		bk := beta[k]
+		for i := 0; i < n; i++ {
+			expBuf[i] = math.Exp(-bk * (t - validTimes[i]))
+		}
+
+		var sum float64
+		if useAVX2 {
+			sum = expSumAVX2(expBuf)
+		} else {
+			sum = expSumSSE2(expBuf)
+		}
+
+		out[k] = mu[k] + alpha[k]*sum
+	}
 }
 
 func applyKernelMatrix(out, times []float64, alpha, beta float64, T int) {
-	for row := range T {
+	if T <= 0 || len(times) < T || len(out) < T*T {
+		panic("hawkes: applyKernelMatrix: need T > 0, len(times) >= T, len(out) >= T*T")
+	}
+
+	tmp := make([]float64, T)
+
+	for row := 0; row < T; row++ {
 		ti := times[row]
 		rowSlice := times[row+1:]
 		rowLen := T - row - 1
@@ -49,29 +81,16 @@ func applyKernelMatrix(out, times []float64, alpha, beta float64, T int) {
 			continue
 		}
 
-		// Compute t_j - t_i for all j > i via SIMD subtraction into tmp
-		tmp := make([]float64, rowLen)
+		tmpSlice := tmp[:rowLen]
 
-		if useAVX2 {
-			subVecAVX2(tmp, rowSlice, make([]float64, rowLen))
-			// Recompute properly: dst = rowSlice - ti
-			for idx := range rowLen {
-				tmp[idx] = rowSlice[idx] - ti
-			}
-		} else {
-			for idx := range rowLen {
-				tmp[idx] = rowSlice[idx] - ti
-			}
+		for idx := 0; idx < rowLen; idx++ {
+			tmpSlice[idx] = rowSlice[idx] - ti
 		}
 
-		for idx := range rowLen {
-			out[row*T+(row+1+idx)] = alpha * stdmath.Exp(-beta*tmp[idx])
+		for idx := 0; idx < rowLen; idx++ {
+			out[row*T+(row+1+idx)] = alpha * math.Exp(-beta*tmpSlice[idx])
 		}
 	}
-}
-
-func applyLogLikelihoodSumLog(intensities []float64, T int) float64 {
-	return applyLogLikelihoodScalar(intensities, T)
 }
 
 func alignedLen(n int) int {

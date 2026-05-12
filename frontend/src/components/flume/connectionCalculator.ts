@@ -97,7 +97,7 @@ const OBSTACLE_PADDING = 16;
 const CORRIDOR_MARGIN = 36;
 const CORRIDOR_SCAN_STEP = 40;
 const CORRIDOR_SCAN_LIMIT = 96;
-/** Pixels along +X from output and along −X toward input (Flume ports: outputs right, inputs left). */
+/** Exit stub length: added to output (+X) and subtracted from input (−X) to form approach segments. */
 const PORT_EXIT_STUB = 32;
 
 function padObstacle(o: ObstacleRect, pad: number): ObstacleRect {
@@ -162,20 +162,15 @@ function stubbedEastBusClear(
 /*
 Orthogonal path from {@link from} (output port) to {@link to} (input port).
 
-Flume wires outputs on the right and inputs on the left. We leave the producer with a short +X
-stub, run an east-side vertical bus {@link vx}, then approach the input along the port row from
-the west (`qx` → `to.x`), matching input ports sitting left of labels.
+Two routing strategies based on relative node positions:
 
-Port stubs are not obstacle-tested. Horizontal legs at {@link py} and {@link qy} use
-{@link obstaclesHorizontal}, which should **omit the two endpoint nodes** so the trace leaving the
-output stub is not treated as colliding with its own card. The vertical bus uses
-{@link obstaclesVertical}, typically **every** node box, so we still dodge cards between rows.
+1. Forward (px < qx): bus placed between the stubs — wire arrives at input from the west.
+2. Backward (px >= qx): input is left of or overlapping the output. The input stub flips to
+   approach from the east (qx = to.x + PORT_EXIT_STUB), and the bus is placed east of both
+   nodes, so the wire travels: output → east → down/up → east → input (no reversal at entry).
 
-If horizontals used full node bounds including endpoints, clearance almost never succeeds and the
-fallback pushes {@link vx} thousands of units east (“infinite” rays).
-
-Obstacle DOM lookup uses `[data-flume-component="node"]` so port handles sharing `data-node-id`
-do not replace full node bounds.
+Port stubs are not obstacle-tested. Horizontal legs use {@link obstaclesHorizontal} (endpoint
+nodes excluded). The vertical bus uses {@link obstaclesVertical} (every node box).
 */
 export function calculateOrthogonalEdgePath(
 	from: Coordinate,
@@ -185,33 +180,51 @@ export function calculateOrthogonalEdgePath(
 ): string {
 	const px = from.x + PORT_EXIT_STUB;
 	const py = from.y;
-	const qx = to.x - PORT_EXIT_STUB;
+
+	// Forward path: input is to the right — approach from west (qx left of to.x).
+	if (px < to.x - PORT_EXIT_STUB) {
+		const qx = to.x - PORT_EXIT_STUB;
+		const qy = to.y;
+		const seg = (vx: number) =>
+			`M ${from.x} ${from.y} L ${px} ${py} L ${vx} ${py} L ${vx} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
+
+		const mid = Math.round((px + qx) / 2);
+		for (let i = 0; i <= CORRIDOR_SCAN_LIMIT; i++) {
+			const vx = mid + i * CORRIDOR_SCAN_STEP;
+			if (vx > qx) break;
+			if (stubbedEastBusClear(px, py, qx, qy, vx, obstaclesHorizontal, obstaclesVertical)) {
+				return seg(vx);
+			}
+		}
+		// Mid-bus blocked — fall back to east-bus with west approach.
+		const baseVx = Math.max(px, qx, from.x, to.x) + CORRIDOR_MARGIN;
+		let vx = baseVx;
+		for (let i = 0; i < CORRIDOR_SCAN_LIMIT; i++) {
+			if (stubbedEastBusClear(px, py, qx, qy, vx, obstaclesHorizontal, obstaclesVertical)) {
+				return seg(vx);
+			}
+			vx += CORRIDOR_SCAN_STEP;
+		}
+		return seg(baseVx + CORRIDOR_SCAN_STEP * 12);
+	}
+
+	// Backward path: input is left of or level with the output — approach from east.
+	// Flip the input stub so it exits rightward from to.x, and use an east-side bus.
+	const qx = to.x + PORT_EXIT_STUB;
 	const qy = to.y;
+	// Path: output → px (east stub) → vx (bus east of both) → qx (east of input) → to.x
+	const segBack = (vx: number) =>
+		`M ${from.x} ${from.y} L ${px} ${py} L ${vx} ${py} L ${vx} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
 
 	const baseVx = Math.max(px, qx, from.x, to.x) + CORRIDOR_MARGIN;
 	let vx = baseVx;
 	for (let i = 0; i < CORRIDOR_SCAN_LIMIT; i++) {
-		if (
-			stubbedEastBusClear(
-				px,
-				py,
-				qx,
-				qy,
-				vx,
-				obstaclesHorizontal,
-				obstaclesVertical,
-			)
-		) {
-			return `M ${from.x} ${from.y} L ${px} ${py} L ${vx} ${py} L ${vx} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
+		if (stubbedEastBusClear(px, py, qx, qy, vx, obstaclesHorizontal, obstaclesVertical)) {
+			return segBack(vx);
 		}
 		vx += CORRIDOR_SCAN_STEP;
 	}
-
-	const vxFallback = baseVx + Math.min(
-		CORRIDOR_SCAN_STEP * 12,
-		CORRIDOR_SCAN_STEP * CORRIDOR_SCAN_LIMIT,
-	);
-	return `M ${from.x} ${from.y} L ${px} ${py} L ${vxFallback} ${py} L ${vxFallback} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
+	return segBack(baseVx + CORRIDOR_SCAN_STEP * 12);
 }
 
 export function obstacleRectsFromNodes(

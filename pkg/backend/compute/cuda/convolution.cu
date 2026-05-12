@@ -211,6 +211,20 @@ __global__ void conv_transpose2d_kernel(
     }
 }
 
+__global__ void conv_transpose2d_bias_init_kernel(
+    double* dst, const double* bias, int N, int OutC, int Hout, int Wout)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int hw = Hout * Wout;
+    int slice = OutC * hw;
+    int total = N * slice;
+    if (idx >= total) return;
+
+    int rem = idx;
+    int oc = (rem % slice) / hw;
+    dst[idx] = bias[oc];
+}
+
 // ---------------------------------------------------------------------------
 // Launch helpers
 // ---------------------------------------------------------------------------
@@ -358,26 +372,10 @@ int cuda_conv_transpose2d(
 
     if (cudaMemcpy(d_x, x,      xn * sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
     if (cudaMemcpy(d_w, weight, wn * sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
+    if (cudaMemcpy(d_b, bias,   bn * sizeof(double), cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
 
-    // Initialize dst with bias values on device.
-    {
-        // Fill with zeros first, then add bias per output channel.
-        if (cudaMemset(d_dst, 0, dn * sizeof(double)) != cudaSuccess) goto fail;
-        // Copy bias to host-local tmp and do a simple host-side expansion is not ideal;
-        // use a small initialization kernel instead.
-        // For correctness we just copy bias-initialized data from host.
-        double* h_init = (double*)malloc(dn * sizeof(double));
-        if (!h_init) goto fail;
-        for (int ni = 0; ni < N; ni++) {
-            for (int oc = 0; oc < OutC; oc++) {
-                double b = bias[oc];
-                int base = ni * OutC * Hout * Wout + oc * Hout * Wout;
-                for (int i = 0; i < Hout * Wout; i++) h_init[base + i] = b;
-            }
-        }
-        cudaMemcpy(d_dst, h_init, dn * sizeof(double), cudaMemcpyHostToDevice);
-        free(h_init);
-    }
+    conv_transpose2d_bias_init_kernel<<<blocks(dn), BLOCK>>>(d_dst, d_b, N, OutC, Hout, Wout);
+    if (cudaGetLastError() != cudaSuccess) goto fail;
 
     conv_transpose2d_kernel<<<blocks(inp), BLOCK>>>(
         d_x, d_dst, N, InC, H, W, OutC, KH, KW,

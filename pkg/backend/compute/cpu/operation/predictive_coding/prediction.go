@@ -24,15 +24,16 @@ func (op *Prediction) Forward(shape []int, data ...[]float64) []float64 {
 	}
 
 	dOut, dIn := shape[0], shape[1]
+	needW := rowMajorWeightLen(dOut, dIn)
 
 	if len(data) < 2 {
 		panic(fmt.Sprintf("predictive_coding: Prediction.Forward: len(data)=%d, need >= 2", len(data)))
 	}
 
-	if len(data[0]) != dOut*dIn {
+	if len(data[0]) != needW {
 		panic(fmt.Sprintf(
 			"predictive_coding: Prediction.Forward: len(W)=%d, need D_out*D_in=%d",
-			len(data[0]), dOut*dIn,
+			len(data[0]), needW,
 		))
 	}
 

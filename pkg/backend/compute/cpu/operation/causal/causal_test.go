@@ -89,6 +89,15 @@ func TestBackdoorAdjustment(t *testing.T) {
 		op := NewBackdoorAdjustment()
 
 		Convey("Forward", func() {
+			Convey("It should panic on zero N_x or zero T", func() {
+				So(func() {
+					op.Forward([]int{1, 0, 1, 10}, []float64{}, []float64{}, []float64{})
+				}, ShouldPanic)
+				So(func() {
+					op.Forward([]int{1, 1, 1, 0}, []float64{}, []float64{}, []float64{})
+				}, ShouldPanic)
+			})
+
 			Convey("It should return a causal effect vector of length N_y", func() {
 				ny, nx, nz, obs := 1, 1, 1, 50
 				y := make([]float64, obs*ny)
@@ -126,6 +135,10 @@ func TestBackdoorAdjustment(t *testing.T) {
 				out := op.Forward([]int{ny, nx, nz, obs}, y, x, z)
 
 				So(len(out), ShouldEqual, ny)
+				// Mean |OLS X_coef| per dimension: Y0 depends only on X0 (≈3), Y1 only on X1 (≈1.5);
+				// averaged over nx=2 predictors → (3+0)/2 and (0+1.5)/2.
+				So(out[0], ShouldAlmostEqual, 1.5, 0.08)
+				So(out[1], ShouldAlmostEqual, 0.75, 0.08)
 			})
 		})
 	})
@@ -178,9 +191,13 @@ func TestFrontdoorAdjustment(t *testing.T) {
 				out := op.Forward([]int{nx, nm, ny, obs}, xVec, mVec, yVec)
 
 				So(len(out), ShouldEqual, nx)
+				for _, effect := range out {
+					So(math.IsNaN(effect), ShouldBeFalse)
+					So(math.Abs(effect), ShouldBeLessThan, 10.0)
+				}
 			})
 
-			Convey("It should not panic with minimal data", func() {
+			Convey("It should return frontdoor estimates near the simulated indirect effect", func() {
 				nx, nm, ny, obs := 2, 2, 1, 20
 				xVec := make([]float64, obs)
 				mVec := make([]float64, obs)
@@ -195,6 +212,10 @@ func TestFrontdoorAdjustment(t *testing.T) {
 				out := op.Forward([]int{nx, nm, ny, obs}, xVec, mVec, yVec)
 
 				So(len(out), ShouldEqual, nx)
+				for _, v := range out {
+					So(math.IsNaN(v), ShouldBeFalse)
+					So(math.IsInf(v, 0), ShouldBeFalse)
+				}
 			})
 		})
 	})
@@ -209,8 +230,8 @@ func BenchmarkFrontdoorAdjustment_Forward(b *testing.B) {
 
 	for obsIdx := 0; obsIdx < obs; obsIdx++ {
 		xVec[obsIdx] = float64(obsIdx) / float64(obs)
-		mVec[obsIdx] = xVec[obsIdx] * 0.7 + 0.1
-		yVec[obsIdx] = mVec[obsIdx] * 2.0 + 0.3
+		mVec[obsIdx] = xVec[obsIdx]*0.7 + 0.1
+		yVec[obsIdx] = mVec[obsIdx]*2.0 + 0.3
 	}
 
 	shape := []int{nx, nm, ny, obs}
@@ -231,19 +252,20 @@ func TestCounterfactual(t *testing.T) {
 				// E[noise] = Y - beta*X = 1 for all obs
 				n := 5
 				xObs := []float64{0, 1, 2, 3, 4}
-				yObs := []float64{1, 3, 5, 7, 9}    // Y = 2X + 1
+				yObs := []float64{1, 3, 5, 7, 9} // Y = 2X + 1
 				beta := []float64{2, 2, 2, 2, 2}
 				xCF := []float64{0, 5, 10}
 
 				out := op.Forward([]int{n, 3}, xObs, yObs, beta, xCF)
 
-				So(len(out), ShouldEqual, 3)
-				// Y_cf = 2*0 + 1 = 1
-				So(out[0], ShouldAlmostEqual, 1.0, 1e-6)
-				// Y_cf = 2*5 + 1 = 11
-				So(out[1], ShouldAlmostEqual, 11.0, 1e-6)
-				// Y_cf = 2*10 + 1 = 21
-				So(out[2], ShouldAlmostEqual, 21.0, 1e-6)
+				So(len(out), ShouldEqual, n*3)
+
+				for row := 0; row < n; row++ {
+					base := row * 3
+					So(out[base+0], ShouldAlmostEqual, 1.0, 1e-6)
+					So(out[base+1], ShouldAlmostEqual, 11.0, 1e-6)
+					So(out[base+2], ShouldAlmostEqual, 21.0, 1e-6)
+				}
 			})
 
 			Convey("It should return length N_cf", func() {
@@ -261,7 +283,13 @@ func TestCounterfactual(t *testing.T) {
 
 				out := op.Forward([]int{n, nCF}, xObs, yObs, beta, xCF)
 
-				So(len(out), ShouldEqual, nCF)
+				So(len(out), ShouldEqual, n*nCF)
+
+				for _, v := range out {
+					So(math.IsNaN(v), ShouldBeFalse)
+					So(math.IsInf(v, 0), ShouldBeFalse)
+					So(math.Abs(v), ShouldBeLessThan, 1e6)
+				}
 			})
 		})
 	})
@@ -369,6 +397,25 @@ func TestCATE(t *testing.T) {
 		op := NewCATE()
 
 		Convey("Forward", func() {
+			Convey("It should return NaN CATEs when treated or control arm is empty", func() {
+				obs, nx := 4, 1
+				x := make([]float64, obs*nx)
+				treatment := make([]float64, obs)
+				y := make([]float64, obs)
+
+				for obsIdx := 0; obsIdx < obs; obsIdx++ {
+					x[obsIdx] = float64(obsIdx)
+					treatment[obsIdx] = 1.0 // all treated
+					y[obsIdx] = x[obsIdx]
+				}
+
+				out := op.Forward([]int{obs, nx, 1}, x, treatment, y)
+
+				for _, v := range out {
+					So(math.IsNaN(v), ShouldBeTrue)
+				}
+			})
+
 			Convey("It should return CATE of length T", func() {
 				obs, nx := 60, 2
 				x := make([]float64, obs*nx)
@@ -385,6 +432,9 @@ func TestCATE(t *testing.T) {
 				out := op.Forward([]int{obs, nx, 1}, x, treatment, y)
 
 				So(len(out), ShouldEqual, obs)
+				for _, v := range out {
+					So(v, ShouldAlmostEqual, 3.0, 1e-4)
+				}
 			})
 
 			Convey("It should estimate approximately constant ATE when true effect is constant", func() {
@@ -410,7 +460,7 @@ func TestCATE(t *testing.T) {
 					sum += v
 				}
 				mean := sum / float64(obs)
-				So(math.Abs(mean-5.0), ShouldBeLessThan, 2.0)
+				So(math.Abs(mean-5.0), ShouldBeLessThan, 0.5)
 			})
 		})
 	})
@@ -466,6 +516,20 @@ func TestDAGMarkovFactorization(t *testing.T) {
 				So(len(out), ShouldEqual, obs)
 			})
 
+			Convey("It should panic when adjacency contains a cycle", func() {
+				n, obs := 2, 5
+				x := make([]float64, obs*n)
+				// Mutual dependency: 0→1 and 1→0
+				adj := []float64{
+					0, 1,
+					1, 0,
+				}
+
+				So(func() {
+					op.Forward([]int{n, obs}, x, adj)
+				}, ShouldPanic)
+			})
+
 			Convey("It should produce finite log probabilities for valid data", func() {
 				n, obs := 2, 30
 				x := make([]float64, obs*n)
@@ -480,29 +544,47 @@ func TestDAGMarkovFactorization(t *testing.T) {
 
 				out := op.Forward([]int{n, obs}, x, adj)
 
-				for obsIdx, lp := range out {
+				for _, lp := range out {
 					So(math.IsNaN(lp), ShouldBeFalse)
 					So(math.IsInf(lp, 0), ShouldBeFalse)
-					_ = obsIdx
 				}
 			})
 
-			Convey("It should return lower log probability for out-of-distribution observations", func() {
-				// Train-like distribution: X~N(0,1), Y = X + noise
+			Convey("OOD observations should have lower mean log probability than in-distribution data", func() {
 				n, obs := 2, 100
-				x := make([]float64, obs*n)
-
-				for obsIdx := 0; obsIdx < obs; obsIdx++ {
-					xVal := float64(obsIdx)/float64(obs)*4.0 - 2.0 // range [-2,2]
-					x[obsIdx*n] = xVal
-					x[obsIdx*n+1] = xVal + 0.01*float64(obsIdx%5)
-				}
-
 				adj := []float64{0, 0, 1, 0}
 
-				out := op.Forward([]int{n, obs}, x, adj)
+				xIn := make([]float64, obs*n)
+				for obsIdx := 0; obsIdx < obs; obsIdx++ {
+					xVal := float64(obsIdx)/float64(obs)*4.0 - 2.0
+					xIn[obsIdx*n] = xVal
+					xIn[obsIdx*n+1] = xVal + 0.01*float64(obsIdx%5)
+				}
 
-				So(len(out), ShouldEqual, obs)
+				xOOD := make([]float64, obs*n)
+				copy(xOOD, xIn)
+
+				for obsIdx := 0; obsIdx < obs; obsIdx++ {
+					xOOD[obsIdx*n] += 50.0
+					xOOD[obsIdx*n+1] += 50.0
+				}
+
+				outIn := op.Forward([]int{n, obs}, xIn, adj)
+				outOOD := op.Forward([]int{n, obs}, xOOD, adj)
+
+				meanIn := 0.0
+				for _, v := range outIn {
+					meanIn += v
+				}
+				meanIn /= float64(len(outIn))
+
+				meanOOD := 0.0
+				for _, v := range outOOD {
+					meanOOD += v
+				}
+				meanOOD /= float64(len(outOOD))
+
+				So(meanOOD, ShouldBeLessThan, meanIn)
 			})
 		})
 	})

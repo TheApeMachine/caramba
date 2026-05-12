@@ -35,12 +35,61 @@ func (op *Partition) Forward(shape []int, data ...[]float64) []float64 {
 		panic(fmt.Errorf("markov_blanket: Partition: len(x)=%d, need N=%d", len(x), N).Error())
 	}
 
+	smask, amask, imask, emask := data[1], data[2], data[3], data[4]
+
+	for _, label := range []struct {
+		name string
+		mask []float64
+	}{
+		{"sensory_mask", smask},
+		{"active_mask", amask},
+		{"internal_mask", imask},
+		{"external_mask", emask},
+	} {
+		if len(label.mask) != N {
+			panic(fmt.Errorf(
+				"markov_blanket: Partition: len(%s)=%d, need N=%d",
+				label.name, len(label.mask), N,
+			).Error())
+		}
+	}
+
+	for idx := range x {
+		set := 0
+
+		if smask[idx] != 0 {
+			set++
+		}
+
+		if amask[idx] != 0 {
+			set++
+		}
+
+		if imask[idx] != 0 {
+			set++
+		}
+
+		if emask[idx] != 0 {
+			set++
+		}
+
+		if set > 1 {
+			panic(fmt.Errorf(
+				"markov_blanket: Partition: index %d has %d partition mask(s) set; at most one of sensory/active/internal/external may be non-zero",
+				idx, set,
+			).Error())
+		}
+	}
+
 	out := make([]float64, Ns+Na+Ni+Ne)
-	applyPartition(out, x, data[1], data[2], data[3], data[4], Ns, Na, Ni, Ne)
+	applyPartitionScalar(out, x, smask, amask, imask, emask, Ns, Na, Ni, Ne)
 
 	return out
 }
 
+// applyPartitionScalar fills out with values from x selected by masks.
+// If an index has multiple masks set, Forward rejects before calling here; if this helper is
+// called directly with overlaps, the switch order is sensory > active > internal > external.
 func applyPartitionScalar(
 	out, x, smask, amask, imask, emask []float64,
 	Ns, Na, Ni, Ne int,

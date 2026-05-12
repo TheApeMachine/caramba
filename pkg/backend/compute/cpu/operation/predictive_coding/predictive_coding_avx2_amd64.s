@@ -16,9 +16,27 @@ TEXT ·matVecAVX2(SB), NOSPLIT, $0-88
 row_loop_mv:
 	CMPQ R10, R8
 	JGE  done_mv
-	VXORPD Y0, Y0, Y0       // acc = 0 — reset per row
+	VXORPD Y0, Y0, Y0       // acc = 0
+	VXORPD Y5, Y5, Y5       // acc2 = 0
 	MOVQ   DX, AX           // AX = &x[0]
 	MOVQ   R9, BX           // BX = cols remaining
+	CMPQ   BX, $8
+	JL     try_4_mv
+vec_8_mv:
+	VMOVUPD (SI), Y1
+	VMOVUPD (AX), Y2
+	VMULPD  Y2, Y1, Y1
+	VADDPD  Y1, Y0, Y0
+	VMOVUPD 32(SI), Y3
+	VMOVUPD 32(AX), Y4
+	VMULPD  Y4, Y3, Y3
+	VADDPD  Y3, Y5, Y5
+	ADDQ $64, SI
+	ADDQ $64, AX
+	SUBQ $8, BX
+	CMPQ BX, $8
+	JGE  vec_8_mv
+try_4_mv:
 	CMPQ   BX, $4
 	JL     tail_mv
 vec_mv:
@@ -32,6 +50,7 @@ vec_mv:
 	CMPQ BX, $4
 	JGE  vec_mv
 tail_mv:
+	VADDPD Y5, Y0, Y0
 	// horizontal sum Y0 → scalar
 	VEXTRACTF128 $1, Y0, X1
 	VADDPD X1, X0, X0
@@ -133,6 +152,25 @@ outer_tv:
 	ADDQ $8, DX
 	MOVQ DI, AX             // AX = &dst[0]
 	MOVQ R9, BX
+	CMPQ BX, $8
+	JL   try_4_tv
+vec_8_tv:
+	VMOVUPD (SI), Y1
+	VMOVUPD (AX), Y2
+	VMULPD  Y15, Y1, Y1
+	VADDPD  Y1, Y2, Y2
+	VMOVUPD Y2, (AX)
+	VMOVUPD 32(SI), Y3
+	VMOVUPD 32(AX), Y4
+	VMULPD  Y15, Y3, Y3
+	VADDPD  Y3, Y4, Y4
+	VMOVUPD Y4, 32(AX)
+	ADDQ $64, SI
+	ADDQ $64, AX
+	SUBQ $8, BX
+	CMPQ BX, $8
+	JGE  vec_8_tv
+try_4_tv:
 	CMPQ BX, $4
 	JL   tail_tv
 vec_tv:

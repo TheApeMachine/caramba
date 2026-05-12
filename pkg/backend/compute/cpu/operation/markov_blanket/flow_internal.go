@@ -4,7 +4,8 @@ import "fmt"
 
 /*
 FlowInternal computes the internal state update conditioned on sensory input:
-  x_int_new = W_int @ x_sens + bias
+
+	x_int_new = W_int @ x_sens + bias
 
 shape = [N_i, N_s, N_i]  (reuse: out-dim, in-dim, out-dim for shape validation)
 data[0] = x_sens   [N_s]
@@ -24,6 +25,13 @@ func (op *FlowInternal) Forward(shape []int, data ...[]float64) []float64 {
 
 	if len(data) < 3 {
 		panic(fmt.Errorf("markov_blanket: FlowInternal: len(data)=%d, need 3", len(data)).Error())
+	}
+
+	if len(shape) >= 3 && shape[2] != shape[0] {
+		panic(fmt.Errorf(
+			"markov_blanket: FlowInternal: shape[2]=%d must match N_i=shape[0]=%d",
+			shape[2], shape[0],
+		).Error())
 	}
 
 	Ni, Ns := shape[0], shape[1]

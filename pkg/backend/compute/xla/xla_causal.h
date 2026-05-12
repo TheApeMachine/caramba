@@ -47,8 +47,9 @@ int xla_causal_frontdoor(
 );
 
 /**
- * xla_causal_counterfactual: abduction-action-prediction.
- * X_obs [N], Y_obs [N], beta [N], X_cf [N_cf] → Y_cf [N_cf].
+ * xla_causal_counterfactual: abduction-action-prediction (per-observation beta).
+ * X_obs [N], Y_obs [N], beta [N], X_cf [N_cf] → Y_cf [N×N_cf] row-major
+ * (index i*N_cf + j = beta_i * X_cf[j] + epsilon_i).
  */
 int xla_causal_counterfactual(
     const double* X_obs, const double* Y_obs,

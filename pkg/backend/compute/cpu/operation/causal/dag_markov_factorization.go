@@ -61,6 +61,8 @@ func (dagMarkov *DAGMarkovFactorization) Forward(shape []int, data ...[]float64)
 		).Error())
 	}
 
+	validateDAGAcyclic(adj, n)
+
 	// For each node, identify parents and fit a Gaussian conditional model.
 	// beta[i] [numParents] and sigma2[i] are learned from data.
 	nodeBetas := make([][]float64, n)
@@ -111,6 +113,9 @@ func (dagMarkov *DAGMarkovFactorization) Forward(shape []int, data ...[]float64)
 
 			nodeBetas[nodeIdx] = []float64{mean}
 			nodeSigma2[nodeIdx] = variance
+		} else if t <= np {
+			nodeBetas[nodeIdx] = make([]float64, np+1)
+			nodeSigma2[nodeIdx] = 1e-10
 		} else {
 			// Node with parents: fit Y ~ X_parents via OLS.
 			parentMat := make([]float64, t*np)
@@ -121,7 +126,7 @@ func (dagMarkov *DAGMarkovFactorization) Forward(shape []int, data ...[]float64)
 				}
 			}
 
-			beta := fitOLS(parentMat, nodeVals, makeRange(t), t, np)
+			beta := fitOLS(parentMat, nodeVals, makeRange(t), np)
 			nodeBetas[nodeIdx] = beta
 
 			// Compute residual variance.
@@ -129,7 +134,7 @@ func (dagMarkov *DAGMarkovFactorization) Forward(shape []int, data ...[]float64)
 
 			for obsIdx := 0; obsIdx < t; obsIdx++ {
 				parentRow := parentMat[obsIdx*np : (obsIdx+1)*np]
-				predicted := applyDotProduct(beta, parentRow)
+				predicted := beta[0] + applyDotProduct(beta[1:], parentRow)
 				residual := nodeVals[obsIdx] - predicted
 				residualSS += residual * residual
 			}
@@ -168,7 +173,7 @@ func (dagMarkov *DAGMarkovFactorization) Forward(shape []int, data ...[]float64)
 					parentRow[pIdx] = xMat[obsIdx*n+parentNode]
 				}
 
-				predicted = applyDotProduct(nodeBetas[nodeIdx], parentRow)
+				predicted = nodeBetas[nodeIdx][0] + applyDotProduct(nodeBetas[nodeIdx][1:], parentRow)
 			}
 
 			// log N(xVal; predicted, sigma2) = -0.5*log(2*pi*sigma2) - 0.5*(xVal-predicted)^2/sigma2
@@ -193,4 +198,51 @@ func makeRange(n int) []int {
 	}
 
 	return indices
+}
+
+/*
+validateDAGAcyclic panics if adj encodes a directed cycle. Entry adj[i*n+j] != 0 means
+edge j → i (j is a parent of i), matching node parent enumeration in Forward.
+*/
+func validateDAGAcyclic(adj []float64, n int) {
+	indeg := make([]int, n)
+
+	for child := 0; child < n; child++ {
+		for parent := 0; parent < n; parent++ {
+			if adj[child*n+parent] != 0 {
+				indeg[child]++
+			}
+		}
+	}
+
+	queue := make([]int, 0, n)
+
+	for nodeIdx := 0; nodeIdx < n; nodeIdx++ {
+		if indeg[nodeIdx] == 0 {
+			queue = append(queue, nodeIdx)
+		}
+	}
+
+	ordered := 0
+
+	for head := 0; head < len(queue); head++ {
+		nodeIdx := queue[head]
+		ordered++
+
+		for child := 0; child < n; child++ {
+			if adj[child*n+nodeIdx] == 0 {
+				continue
+			}
+
+			indeg[child]--
+
+			if indeg[child] == 0 {
+				queue = append(queue, child)
+			}
+		}
+	}
+
+	if ordered != n {
+		panic(fmt.Errorf("causal: DAGMarkovFactorization.Forward: adjacency is not a DAG (cycle detected)"))
+	}
 }

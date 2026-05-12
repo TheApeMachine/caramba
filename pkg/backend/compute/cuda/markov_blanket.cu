@@ -4,7 +4,6 @@
 #include "markov_blanket.h"
 
 #define BLOCK_SIZE 256
-#define TILE_SIZE  16
 
 #define CUDA_CHECK(call) do { \
     cudaError_t _e = (call); \
@@ -12,9 +11,15 @@
 } while(0)
 
 static int alloc_copy(const void* h, void** d, size_t bytes) {
-    if (cudaMalloc(d, bytes) != cudaSuccess) return -1;
+    *d = NULL;
+
+    if (cudaMalloc(d, bytes) != cudaSuccess) {
+        return -1;
+    }
     if (cudaMemcpy(*d, h, bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
-        cudaFree(*d); return -1;
+        cudaFree(*d);
+        *d = NULL;
+        return -1;
     }
     return 0;
 }
@@ -143,23 +148,74 @@ __device__ double logdet_cholesky(double* A, int n) {
 }
 
 // ---------------------------------------------------------------------------
-// MI kernel: single thread computes MI from covariance matrices on device.
+// Stack samples row-wise: Z[t, 0:N) = X[t], Z[t, N:N+M) = Y[t, …]
 // ---------------------------------------------------------------------------
-__global__ void mi_kernel(
-    double* __restrict__ covX,   // N*N  (writable scratch)
-    double* __restrict__ covY,   // M*M
-    double* __restrict__ covJ,   // (N+M)*(N+M)
+__global__ void pack_xy_joint_kernel(
+    const double* __restrict__ X,
+    const double* __restrict__ Y,
+    double* __restrict__ Z,
+    int T, int N, int M
+) {
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+
+    int NM = N + M;
+
+    for (int i = 0; i < N; i++) {
+        Z[t * NM + i] = X[t * N + i];
+    }
+
+    for (int j = 0; j < M; j++) {
+        Z[t * NM + N + j] = Y[t * M + j];
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MI from full joint covariance Σ_J (upper-left Σ_X, lower-right Σ_Y on device).
+// Scratches are overwritten by Cholesky; covJ is read-only.
+// ---------------------------------------------------------------------------
+__global__ void mi_from_joint_kernel(
+    const double* __restrict__ covJ,
+    double* __restrict__ scratchX,
+    double* __restrict__ scratchY,
+    double* __restrict__ scratchJ,
     double* __restrict__ out,
     int N, int M
 ) {
     if (threadIdx.x != 0 || blockIdx.x != 0) return;
 
-    double ldX = logdet_cholesky(covX, N);
-    double ldY = logdet_cholesky(covY, M);
-    double ldJ = logdet_cholesky(covJ, N+M);
+    int NM = N + M;
+
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            scratchX[i * N + j] = covJ[i * NM + j];
+        }
+    }
+
+    double ldX = logdet_cholesky(scratchX, N);
+
+    for (int i = 0; i < M; i++) {
+        for (int j = 0; j < M; j++) {
+            scratchY[i * M + j] = covJ[(N + i) * NM + (N + j)];
+        }
+    }
+
+    double ldY = logdet_cholesky(scratchY, M);
+
+    for (int i = 0; i < NM; i++) {
+        for (int j = 0; j < NM; j++) {
+            scratchJ[i * NM + j] = covJ[i * NM + j];
+        }
+    }
+
+    double ldJ = logdet_cholesky(scratchJ, NM);
 
     double mi = 0.5 * (ldX + ldY - ldJ);
-    if (mi < 0.0) mi = 0.0;
+
+    if (mi < 0.0) {
+        mi = 0.0;
+    }
+
     out[0] = mi;
 }
 
@@ -238,65 +294,43 @@ int cuda_mb_mutual_information(
     double* out,
     int T, int N, int M
 ) {
-    double *dX, *dY, *dMeanX, *dMeanY, *dCovX, *dCovY, *dCovJ, *dOut;
+    double *dX, *dY, *dZ, *dMean, *dCovJ, *dOut;
+    double *dScrX, *dScrY, *dScrJ;
     int NM = N + M;
 
     if (alloc_copy(X, (void**)&dX, (size_t)T*N*sizeof(double))) return -1;
     if (alloc_copy(Y, (void**)&dY, (size_t)T*M*sizeof(double))) { cudaFree(dX); return -1; }
 
-    CUDA_CHECK(cudaMalloc((void**)&dMeanX, (size_t)N*sizeof(double)));
-    CUDA_CHECK(cudaMalloc((void**)&dMeanY, (size_t)M*sizeof(double)));
-    CUDA_CHECK(cudaMalloc((void**)&dCovX,  (size_t)N*N*sizeof(double)));
-    CUDA_CHECK(cudaMalloc((void**)&dCovY,  (size_t)M*M*sizeof(double)));
-    CUDA_CHECK(cudaMalloc((void**)&dCovJ,  (size_t)NM*NM*sizeof(double)));
-    CUDA_CHECK(cudaMalloc((void**)&dOut,   sizeof(double)));
-    CUDA_CHECK(cudaMemset(dCovJ, 0, (size_t)NM*NM*sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dZ,    (size_t)T*NM*sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dMean, (size_t)NM*sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dCovJ, (size_t)NM*NM*sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dOut, sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dScrX, (size_t)N*N*sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dScrY, (size_t)M*M*sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dScrJ, (size_t)NM*NM*sizeof(double)));
 
-    // means
-    colmean_kernel<<<(N+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(dX, dMeanX, T, N);
-    CUDA_CHECK(cudaGetLastError());
-    colmean_kernel<<<(M+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(dY, dMeanY, T, M);
-    CUDA_CHECK(cudaGetLastError());
-
-    // covariances (cov_kernel: one thread per (row,col) pair)
-    dim3 covBlockX((N+BLOCK_SIZE-1)/BLOCK_SIZE, N);
-    cov_kernel<<<covBlockX, BLOCK_SIZE>>>(dX, dMeanX, dCovX, T, N);
-    CUDA_CHECK(cudaGetLastError());
-
-    dim3 covBlockY((M+BLOCK_SIZE-1)/BLOCK_SIZE, M);
-    cov_kernel<<<covBlockY, BLOCK_SIZE>>>(dY, dMeanY, dCovY, T, M);
-    CUDA_CHECK(cudaGetLastError());
-
-    // Copy covX/covY into upper-left/lower-right of covJ on host, then re-upload
-    double* hCovJ = (double*)calloc(NM*NM, sizeof(double));
-    if (!hCovJ) goto cleanup_mi;
     {
-        double* hCovX = (double*)malloc((size_t)N*N*sizeof(double));
-        double* hCovY = (double*)malloc((size_t)M*M*sizeof(double));
-        cudaMemcpy(hCovX, dCovX, (size_t)N*N*sizeof(double), cudaMemcpyDeviceToHost);
-        cudaMemcpy(hCovY, dCovY, (size_t)M*M*sizeof(double), cudaMemcpyDeviceToHost);
-        for (int r = 0; r < N; r++)
-            for (int c = 0; c < N; c++)
-                hCovJ[r*NM+c] = hCovX[r*N+c];
-        for (int r = 0; r < M; r++)
-            for (int c = 0; c < M; c++)
-                hCovJ[(N+r)*NM+(N+c)] = hCovY[r*M+c];
-        // cross-covariance: zero (upper-right/lower-left remain 0 for independence prior;
-        // full cross-cov would require an additional kernel pass — set via host)
-        free(hCovX); free(hCovY);
-        cudaMemcpy(dCovJ, hCovJ, (size_t)NM*NM*sizeof(double), cudaMemcpyHostToDevice);
-        free(hCovJ);
+        int gridPack = (T + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        pack_xy_joint_kernel<<<gridPack, BLOCK_SIZE>>>(dX, dY, dZ, T, N, M);
+        CUDA_CHECK(cudaGetLastError());
     }
 
-    mi_kernel<<<1, 1>>>(dCovX, dCovY, dCovJ, dOut, N, M);
+    colmean_kernel<<<(NM+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(dZ, dMean, T, NM);
+    CUDA_CHECK(cudaGetLastError());
+
+    {
+        dim3 covBlockJ((NM+BLOCK_SIZE-1)/BLOCK_SIZE, NM);
+        cov_kernel<<<covBlockJ, BLOCK_SIZE>>>(dZ, dMean, dCovJ, T, NM);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    mi_from_joint_kernel<<<1, 1>>>(dCovJ, dScrX, dScrY, dScrJ, dOut, N, M);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaMemcpy(out, dOut, sizeof(double), cudaMemcpyDeviceToHost));
 
-cleanup_mi:
-    cudaFree(dX); cudaFree(dY);
-    cudaFree(dMeanX); cudaFree(dMeanY);
-    cudaFree(dCovX); cudaFree(dCovY); cudaFree(dCovJ);
-    cudaFree(dOut);
+    cudaFree(dX); cudaFree(dY); cudaFree(dZ);
+    cudaFree(dMean); cudaFree(dCovJ); cudaFree(dOut);
+    cudaFree(dScrX); cudaFree(dScrY); cudaFree(dScrJ);
     return 0;
 }
 

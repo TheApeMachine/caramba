@@ -34,6 +34,13 @@ int xla_fused_qkv(const double* src, const double* weight, const double* bias,
 int xla_tied_embedding(const double* src, const double* weight,
                        double* dst, int M, int D, int V);
 
+// SPD: inv ≈ (L L^T + ridge I)^{-1} via Cholesky, triangular_solve, ZᵀZ on device.
+// inv_out is n×n row-major; a is not modified.
+int xla_spd_inverse(const double* a, int n, double ridge, double* inv_out);
+
+// log|A + ridge I| for SPD (2 Σ log diag L).
+int xla_spd_log_det(const double* a, int n, double ridge, double* log_det_out);
+
 void xla_projection_shutdown(void);
 
 #ifdef __cplusplus

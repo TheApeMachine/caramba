@@ -37,7 +37,8 @@ int xla_mb_mutual_information(
     int T, int N, int M
 );
 
-void xla_mb_shutdown(void);
+// Returns 0 on success (was shut down or idle).
+int xla_mb_shutdown(void);
 
 #ifdef __cplusplus
 }

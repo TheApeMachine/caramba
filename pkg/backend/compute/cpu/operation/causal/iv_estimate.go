@@ -7,8 +7,9 @@ IVEstimate computes the instrumental variable (2SLS) estimator for causal effect
 in the presence of unmeasured confounding.
 
 Given instrument Z (Z→X→Y, Z has no direct effect on Y):
-  Stage 1: X_hat = Z @ (Z^T Z)^{-1} Z^T X
-  Stage 2: beta_iv = (X_hat^T X_hat)^{-1} X_hat^T Y
+
+	Stage 1: X_hat = Z @ (Z^T Z)^{-1} Z^T X
+	Stage 2: beta_iv = (X_hat^T X_hat)^{-1} X_hat^T Y
 
 shape = [T, N_z, N_x, N_y]
 data[0] = Z [T*N_z] — instrument matrix
@@ -31,14 +32,22 @@ Forward computes the 2SLS IV estimate.
 */
 func (ivEstimate *IVEstimate) Forward(shape []int, data ...[]float64) []float64 {
 	if len(shape) < 4 {
-		panic(fmt.Errorf("causal: IVEstimate.Forward: len(shape)=%d, need >= 4", len(shape)).Error())
+		panic(fmt.Errorf("causal: IVEstimate.Forward: len(shape)=%d, need >= 4", len(shape)))
 	}
 
 	if len(data) < 3 {
-		panic(fmt.Errorf("causal: IVEstimate.Forward: len(data)=%d, need >= 3", len(data)).Error())
+		panic(fmt.Errorf("causal: IVEstimate.Forward: len(data)=%d, need >= 3", len(data)))
 	}
 
 	t, nz, nx, ny := shape[0], shape[1], shape[2], shape[3]
+
+	if t < nz {
+		panic(fmt.Errorf("causal: IVEstimate.Forward: T=%d must be >= N_z=%d", t, nz))
+	}
+
+	if t < nx {
+		panic(fmt.Errorf("causal: IVEstimate.Forward: T=%d must be >= N_x=%d", t, nx))
+	}
 
 	zMat := data[0]
 	xMat := data[1]
@@ -48,21 +57,21 @@ func (ivEstimate *IVEstimate) Forward(shape []int, data ...[]float64) []float64 
 		panic(fmt.Errorf(
 			"causal: IVEstimate.Forward: len(Z)=%d, need T*N_z=%d",
 			len(zMat), t*nz,
-		).Error())
+		))
 	}
 
 	if len(xMat) != t*nx {
 		panic(fmt.Errorf(
 			"causal: IVEstimate.Forward: len(X)=%d, need T*N_x=%d",
 			len(xMat), t*nx,
-		).Error())
+		))
 	}
 
 	if len(yMat) != t*ny {
 		panic(fmt.Errorf(
 			"causal: IVEstimate.Forward: len(Y)=%d, need T*N_y=%d",
 			len(yMat), t*ny,
-		).Error())
+		))
 	}
 
 	// Stage 1: X_hat = Z (Z^T Z)^{-1} Z^T X

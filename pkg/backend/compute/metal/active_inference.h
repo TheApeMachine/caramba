@@ -5,32 +5,60 @@
 extern "C" {
 #endif
 
-// Initialize Metal device/queue and compile active inference pipelines.
-// metallib_path: absolute path to active_inference.metallib.
-// Returns 0 on success, -1 on failure.
-int metal_ai_init(const char* metallib_path);
+/*
+API conventions: return 0 on success; negative error codes otherwise.
+See `metal_error_string` in `metal_error.c` for short labels.
 
-// Variational free energy F = 0.5*sum(mu^2 + exp(ls) - ls - 1).
-// Returns scalar via *out. Float32. n = number of elements.
-int metal_ai_free_energy(const float* mu, const float* log_sigma, float* out, int n);
+metal_ai_init loads active_inference.metallib from the path you pass (absolute path recommended).
 
-// Belief update:
-//   out[0..n-1]   = mu - lr*(mu + pred_err)
-//   out[n..2n-1]  = log_sigma - lr*(exp(log_sigma) - 1)
-// out must be pre-allocated to 2*n floats.
+Thread-safety: the Objective-C bridge uses a private serial queue; still pair init/cleanup
+explicitly. Go callers should use one ActiveInferenceOps per logical device and rely on its mutex.
+
+metal_ai_init must succeed before other entrypoints. metal_ai_cleanup releases
+reference state and is idempotent; after cleanup, init must be called again
+before compute functions run.
+
+Pairing: always call metal_ai_cleanup once per successful init cycle before
+unload or exit.
+*/
+
+int metal_ai_init(const char *metallib_path);
+
+/* Release state from metal_ai_init (idempotent). Returns 0 on success. */
+int metal_ai_cleanup(void);
+
+/*
+Variational free energy F = 0.5*sum(mu_i^2 + exp(log_sigma_i) - log_sigma_i - 1).
+mu, log_sigma: host float32, n elements each, non-NULL when n>0.
+out: non-NULL; receives scalar F in out[0]. n==0 writes 0 to out[0].
+Returns 0 on success, non-zero on error.
+*/
+int metal_ai_free_energy(const float *mu, const float *log_sigma, float *out, int n);
+
+/*
+Belief update (same formulas as CPU reference):
+  out[0..n-1]   = mu - lr*(mu + pred_err)
+  out[n..2n-1]  = log_sigma - lr*(exp(log_sigma) - 1)
+out must hold 2*n float32 values.
+*/
 int metal_ai_belief_update(
-    const float* mu, const float* log_sigma,
-    const float* pred_err, float lr,
-    float* out, int n);
+    const float *mu, const float *log_sigma,
+    const float *pred_err, float lr,
+    float *out, int n);
 
-// Precision-weighted error: out[i] = err[i] * exp(log_prec[i]). Float32.
+/*
+Precision-weighted error: out[i] = err[i] * exp(clamp(log_prec[i], -80, 80)).
+err, log_prec, out: length n float32 arrays. Returns -3 if non-finite inputs.
+*/
 int metal_ai_precision_weight(
-    const float* err, const float* log_prec, float* out, int n);
+    const float *err, const float *log_prec, float *out, int n);
 
-// Expected free energy G[k] = -sum_i q[i,k]*ln(q[i,k]+eps). Float32.
-// q_outcomes is [n*K] row-major.
+/*
+Expected free energy: G[k] = -sum_i q[i,k]*ln(q[i,k]+eps).
+q_outcomes: row-major n×K (index i*K+k). out: length K. eps must be finite and >0.
+*/
 int metal_ai_expected_free_energy(
-    const float* q_outcomes, float* out, int n, int K);
+    const float *q_outcomes, float *out, int n, int K, float eps);
 
 #ifdef __cplusplus
 }

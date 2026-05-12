@@ -3,7 +3,7 @@
 package metal
 
 // #include <stdlib.h>
-// #include "math.h"
+// #include "metal_kernel_math.h"
 import "C"
 
 import (

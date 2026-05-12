@@ -1,19 +1,22 @@
 package causal
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 /*
 CATE computes the Conditional Average Treatment Effect:
 E[Y(1) - Y(0) | X=x] via outcome regression on treatment subgroups.
 
-Fits linear models E[Y|T=1, X=x] and E[Y|T=0, X=x] separately,
+Fits linear models E[Y|T=1, X=x] and E[Y|T=0, X=x] separately with intercept,
 then computes CATE(x) = mu_1(x) - mu_0(x) for each observation.
 
 shape = [T, N_x, 1]
 data[0] = X [T*N_x]      — covariate matrix
 data[1] = T_treatment [T] — binary treatment indicator (0 or 1)
 data[2] = Y [T]           — outcome vector
-Returns cate [T] — individual-level CATE estimates.
+Returns cate [T] — individual-level CATE estimates (NaN if treated-only or control-only).
 */
 type CATE struct{}
 
@@ -57,7 +60,6 @@ func (cate *CATE) Forward(shape []int, data ...[]float64) []float64 {
 		).Error())
 	}
 
-	// Separate treated and control observations.
 	treatedIdx := make([]int, 0, t)
 	controlIdx := make([]int, 0, t)
 
@@ -69,19 +71,23 @@ func (cate *CATE) Forward(shape []int, data ...[]float64) []float64 {
 		}
 	}
 
-	// Fit outcome model for treated: Y ~ X for T=1 subgroup.
-	beta1 := fitOLS(xMat, yVec, treatedIdx, t, nx)
-
-	// Fit outcome model for control: Y ~ X for T=0 subgroup.
-	beta0 := fitOLS(xMat, yVec, controlIdx, t, nx)
-
-	// CATE(x_i) = mu_1(x_i) - mu_0(x_i)
 	cateValues := make([]float64, t)
+
+	if len(treatedIdx) == 0 || len(controlIdx) == 0 {
+		for obsIdx := range cateValues {
+			cateValues[obsIdx] = math.NaN()
+		}
+
+		return cateValues
+	}
+
+	beta1 := fitOLS(xMat, yVec, treatedIdx, nx)
+	beta0 := fitOLS(xMat, yVec, controlIdx, nx)
 
 	for obsIdx := 0; obsIdx < t; obsIdx++ {
 		xRow := xMat[obsIdx*nx : (obsIdx+1)*nx]
-		mu1 := dotProduct(beta1, xRow)
-		mu0 := dotProduct(beta0, xRow)
+		mu1 := beta1[0] + dotProduct(beta1[1:], xRow)
+		mu0 := beta0[0] + dotProduct(beta0[1:], xRow)
 		cateValues[obsIdx] = mu1 - mu0
 	}
 
@@ -89,36 +95,46 @@ func (cate *CATE) Forward(shape []int, data ...[]float64) []float64 {
 }
 
 /*
-fitOLS fits an OLS model Y ~ X on the subset of observations given by indices.
-Returns the coefficient vector beta [nx].
+fitOLS fits Y ~ 1 + X on the subset of observations given by indices.
+Returns beta [1+nx]: beta[0] intercept, beta[1:] covariate slopes.
 */
-func fitOLS(xMat, yVec []float64, indices []int, t, nx int) []float64 {
+func fitOLS(xMat, yVec []float64, indices []int, nx int) []float64 {
+	nFeat := nx + 1
 	n := len(indices)
 
 	if n == 0 {
-		return make([]float64, nx)
+		coef := make([]float64, nFeat)
+
+		for idx := range coef {
+			coef[idx] = math.NaN()
+		}
+
+		return coef
 	}
 
-	// Build subgroup design matrix and response.
-	xSub := make([]float64, n*nx)
+	xSub := make([]float64, n*nFeat)
 	ySub := make([]float64, n)
 
 	for subIdx, obsIdx := range indices {
-		copy(xSub[subIdx*nx:(subIdx+1)*nx], xMat[obsIdx*nx:(obsIdx+1)*nx])
+		rowOff := subIdx * nFeat
+		xSub[rowOff] = 1.0
+		copy(xSub[rowOff+1:(subIdx+1)*nFeat], xMat[obsIdx*nx:(obsIdx+1)*nx])
 		ySub[subIdx] = yVec[obsIdx]
 	}
 
-	// beta = (X^T X)^{-1} X^T Y
-	xtx := make([]float64, nx*nx)
-	applyMatMulTransposeLeft(xtx, xSub, xSub, n, nx, nx)
+	const ridge = 1e-10
 
-	xtxInv := invertSymPD(xtx, nx)
+	xtx := make([]float64, nFeat*nFeat)
+	applyMatMulTransposeLeft(xtx, xSub, xSub, n, nFeat, nFeat)
+	addRidgeToDiagInPlace(xtx, nFeat, ridge)
 
-	xty := make([]float64, nx)
-	applyMatVecTranspose(xty, xSub, ySub, n, nx)
+	xtxInv := invertSymPD(xtx, nFeat)
 
-	beta := make([]float64, nx)
-	applyMatVec(beta, xtxInv, xty, nx, nx)
+	xty := make([]float64, nFeat)
+	applyMatVecTranspose(xty, xSub, ySub, n, nFeat)
+
+	beta := make([]float64, nFeat)
+	applyMatVec(beta, xtxInv, xty, nFeat, nFeat)
 
 	return beta
 }

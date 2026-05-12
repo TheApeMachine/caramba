@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import {
 	BotIcon,
 	ChevronRightIcon,
+	KanbanIcon,
 	MicroscopeIcon,
 	NetworkIcon,
 } from "lucide-react";
@@ -16,6 +17,31 @@ import { Button } from "#/components/ui/button";
 export const Navigation = () => {
 	return (
 		<Accordion className="w-full">
+			<AccordionItem value="item-1">
+				<AccordionTrigger>
+					<MicroscopeIcon /> Projects
+				</AccordionTrigger>
+				<AccordionPanel>
+					<Link to={"/kanban"}>
+						<Button
+							className="h-auto! gap-4 px-4 py-3 text-left"
+							variant="outline"
+						>
+							<KanbanIcon className="shrink-0" />
+							<div className="flex flex-col gap-0.5">
+								<h3>Kanban</h3>
+								<p className="whitespace-break-spaces font-normal text-muted-foreground">
+									Manage your projects
+								</p>
+							</div>
+							<ChevronRightIcon
+								aria-hidden="true"
+								className="in-[[data-slot=button]:hover]:translate-x-0.5 transition-transform"
+							/>
+						</Button>
+					</Link>
+				</AccordionPanel>
+			</AccordionItem>
 			<AccordionItem value="item-1">
 				<AccordionTrigger>
 					<MicroscopeIcon /> Research

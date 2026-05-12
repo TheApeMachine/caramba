@@ -1,5 +1,12 @@
 #include "textflag.h"
 
+// Causal linear-algebra kernels: AVX2/FMA implementations live in this file.
+//
+// Several symbols are named *SSE2 (e.g. ·matVecSSE2) but are defined here alongside
+// AVX2 variants so one translation unit satisfies both code paths selected at runtime
+// in causal_amd64.go. The sibling causal_sse2_amd64.s file contains only comments to
+// document that split and avoid duplicate TEXT symbols at link time.
+
 // matVecAVX2(dst, w, x []float64, rows, cols int)
 // dst = W @ x  where W is [rows x cols] row-major.
 // ABI0: dst+0(FP)..16, w+24(FP)..40, x+48(FP)..64, rows+72(FP), cols+80(FP)
@@ -13,8 +20,24 @@ TEXT ·matVecAVX2(SB), NOSPLIT, $0-88
 	JZ   done_mv_avx2
 row_loop_mv_avx2:
 	VXORPD Y0, Y0, Y0          // accumulator = 0
+	VXORPD Y5, Y5, Y5          // accumulator 2 = 0
 	MOVQ   SI, DI              // cols remaining
 	MOVQ   CX, R8              // x pointer (reset per row)
+	CMPQ   DI, $8
+	JL     try_4_mv_avx2
+col_loop_8_mv_avx2:
+	VMOVUPD (BX), Y1
+	VMOVUPD (R8), Y2
+	VFMADD231PD Y2, Y1, Y0
+	VMOVUPD 32(BX), Y3
+	VMOVUPD 32(R8), Y4
+	VFMADD231PD Y4, Y3, Y5
+	ADDQ $64, BX
+	ADDQ $64, R8
+	SUBQ $8, DI
+	CMPQ DI, $8
+	JGE  col_loop_8_mv_avx2
+try_4_mv_avx2:
 	CMPQ   DI, $4
 	JL     tail_mv_avx2
 col_loop_mv_avx2:
@@ -27,6 +50,7 @@ col_loop_mv_avx2:
 	CMPQ DI, $4
 	JGE  col_loop_mv_avx2
 tail_mv_avx2:
+	VADDPD Y5, Y0, Y0
 	// Horizontal sum of Y0
 	VEXTRACTF128 $1, Y0, X1
 	VADDPD X1, X0, X0
@@ -61,7 +85,7 @@ TEXT ·matVecSSE2(SB), NOSPLIT, $0-88
 	TESTQ DX, DX
 	JZ   done_mv_sse2
 row_loop_mv_sse2:
-	XORPS  X0, X0
+	XORPD  X0, X0
 	MOVQ   SI, DI
 	MOVQ   CX, R8
 	CMPQ   DI, $2
@@ -105,8 +129,25 @@ TEXT ·axpyAVX2(SB), NOSPLIT, $0-56
 	MOVQ         src_len+32(FP), BX
 	MOVQ         src+24(FP), DI
 	VBROADCASTSD scale+48(FP), Y15
+	CMPQ BX, $8
+	JL   try_4_axpy_avx2
+loop_8_axpy_avx2:
+	VMOVUPD (AX), Y0
+	VMOVUPD (DI), Y1
+	VFMADD231PD Y15, Y1, Y0
+	VMOVUPD Y0, (AX)
+	VMOVUPD 32(AX), Y2
+	VMOVUPD 32(DI), Y3
+	VFMADD231PD Y15, Y3, Y2
+	VMOVUPD Y2, 32(AX)
+	ADDQ $64, AX
+	ADDQ $64, DI
+	SUBQ $8, BX
+	CMPQ BX, $8
+	JGE  loop_8_axpy_avx2
+try_4_axpy_avx2:
 	CMPQ BX, $4
-	JL   done_axpy_avx2
+	JL   tail_axpy_avx2
 loop_axpy_avx2:
 	VMOVUPD (AX), Y0
 	VMOVUPD (DI), Y1
@@ -117,6 +158,19 @@ loop_axpy_avx2:
 	SUBQ $4, BX
 	CMPQ BX, $4
 	JGE  loop_axpy_avx2
+tail_axpy_avx2:
+	TESTQ BX, BX
+	JZ    done_axpy_avx2
+	MOVSD scale+48(FP), X14
+scalar_axpy_avx2:
+	VMOVSD (AX), X0
+	VMOVSD (DI), X1
+	VFMADD231SD X0, X1, X14
+	VMOVSD X0, (AX)
+	ADDQ $8, AX
+	ADDQ $8, DI
+	DECQ BX
+	JNZ  scalar_axpy_avx2
 done_axpy_avx2:
 	VZEROUPPER
 	RET
@@ -129,7 +183,7 @@ TEXT ·axpySSE2(SB), NOSPLIT, $0-56
 	MOVSD scale+48(FP), X15
 	SHUFPD $0, X15, X15
 	CMPQ BX, $2
-	JL   done_axpy_sse2
+	JL   tail_axpy_sse2
 loop_axpy_sse2:
 	MOVUPD (AX), X0
 	MOVUPD (DI), X1
@@ -141,6 +195,20 @@ loop_axpy_sse2:
 	SUBQ $2, BX
 	CMPQ BX, $2
 	JGE  loop_axpy_sse2
+tail_axpy_sse2:
+	TESTQ BX, BX
+	JZ    done_axpy_sse2
+	MOVSD scale+48(FP), X14
+scalar_axpy_sse2:
+	MOVSD (AX), X0
+	MOVSD (DI), X1
+	MULSD  X14, X1
+	ADDSD  X1, X0
+	MOVSD  X0, (AX)
+	ADDQ $8, AX
+	ADDQ $8, DI
+	DECQ BX
+	JNZ  scalar_axpy_sse2
 done_axpy_sse2:
 	RET
 
@@ -151,6 +219,22 @@ TEXT ·dotAVX2(SB), NOSPLIT, $0-56
 	MOVQ a_len+8(FP), BX
 	MOVQ b+24(FP), DI
 	VXORPD Y0, Y0, Y0
+	VXORPD Y5, Y5, Y5
+	CMPQ BX, $8
+	JL   try_4_dot_avx2
+loop_8_dot_avx2:
+	VMOVUPD (AX), Y1
+	VMOVUPD (DI), Y2
+	VFMADD231PD Y2, Y1, Y0
+	VMOVUPD 32(AX), Y3
+	VMOVUPD 32(DI), Y4
+	VFMADD231PD Y4, Y3, Y5
+	ADDQ $64, AX
+	ADDQ $64, DI
+	SUBQ $8, BX
+	CMPQ BX, $8
+	JGE  loop_8_dot_avx2
+try_4_dot_avx2:
 	CMPQ BX, $4
 	JL   tail_dot_avx2
 loop_dot_avx2:
@@ -163,6 +247,7 @@ loop_dot_avx2:
 	CMPQ BX, $4
 	JGE  loop_dot_avx2
 tail_dot_avx2:
+	VADDPD Y5, Y0, Y0
 	VEXTRACTF128 $1, Y0, X1
 	VADDPD X1, X0, X0
 	VHADDPD X0, X0, X0
@@ -226,7 +311,7 @@ TEXT ·subVecAVX2(SB), NOSPLIT, $0-72
 	MOVQ a+24(FP), DI
 	MOVQ b+48(FP), SI
 	CMPQ BX, $4
-	JL   done_sub_avx2
+	JL   tail_sub_avx2
 loop_sub_avx2:
 	VMOVUPD (DI), Y0
 	VMOVUPD (SI), Y1
@@ -238,6 +323,19 @@ loop_sub_avx2:
 	SUBQ $4, BX
 	CMPQ BX, $4
 	JGE  loop_sub_avx2
+tail_sub_avx2:
+	TESTQ BX, BX
+	JZ    done_sub_avx2
+scalar_sub_avx2:
+	VMOVSD (DI), X0
+	VMOVSD (SI), X1
+	VSUBSD  X1, X0, X0
+	VMOVSD X0, (AX)
+	ADDQ $8, AX
+	ADDQ $8, DI
+	ADDQ $8, SI
+	DECQ BX
+	JNZ  scalar_sub_avx2
 done_sub_avx2:
 	VZEROUPPER
 	RET
@@ -249,7 +347,7 @@ TEXT ·subVecSSE2(SB), NOSPLIT, $0-72
 	MOVQ a+24(FP), DI
 	MOVQ b+48(FP), SI
 	CMPQ BX, $2
-	JL   done_sub_sse2
+	JL   tail_sub_sse2
 loop_sub_sse2:
 	MOVUPD (DI), X0
 	MOVUPD (SI), X1
@@ -261,5 +359,12 @@ loop_sub_sse2:
 	SUBQ $2, BX
 	CMPQ BX, $2
 	JGE  loop_sub_sse2
+tail_sub_sse2:
+	CMPQ BX, $1
+	JNE  done_sub_sse2
+	MOVSD (DI), X0
+	MOVSD (SI), X1
+	SUBSD X1, X0
+	MOVSD X0, (AX)
 done_sub_sse2:
 	RET

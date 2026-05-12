@@ -5,23 +5,32 @@
 extern "C" {
 #endif
 
-int metal_pc_init(const char* metallib_path);
+/*
+Return codes: 0 = success; -1 invalid args; -3 not initialised; -4/-5 internal.
+metal_pc_init loads predictive_coding.metallib (see repo Makefile).
+The Objective-C bridge uses a serial dispatch queue; Go wraps with a mutex.
+Call metal_pc_init before other functions; metal_pc_shutdown pairs with init.
+*/
 
-// Top-down prediction: dst[D_out] = W[D_out*D_in] @ r[D_in]
-int metal_pc_prediction(const float* W, const float* r, float* dst, int D_out, int D_in);
+int metal_pc_init(const char *metallib_path);
 
-// Precision-weighted prediction error: dst = prec * (x - mu_hat); pass NULL prec to skip.
-int metal_pc_prediction_error(const float* x, const float* mu_hat,
-                               const float* prec, float* dst, int n, int use_prec);
+int metal_pc_shutdown(void);
 
-// Representation update: dst[D_in] = r + lr*(W^T @ eps_lower - eps_self)
-int metal_pc_update_representation(const float* r, const float* W,
-                                    const float* eps_lower, const float* eps_self,
-                                    float lr, float* dst, int D_out, int D_in);
+int metal_pc_prediction(const float *W, const float *r, float *dst, int D_out, int D_in);
 
-// Weight update: dst[D_out*D_in] = W + lr * eps ⊗ r
-int metal_pc_update_weights(const float* W, const float* eps, const float* r,
-                             float lr, float* dst, int D_out, int D_in);
+/* If prec is NULL, dst[i] = x[i]-mu_hat[i]; else dst[i] = prec[i]*(x[i]-mu_hat[i]). */
+int metal_pc_prediction_error(
+    const float *x, const float *mu_hat,
+    const float *prec, float *dst, int n);
+
+int metal_pc_update_representation(
+    const float *r, const float *W,
+    const float *eps_lower, const float *eps_self,
+    float lr, float *dst, int D_out, int D_in);
+
+int metal_pc_update_weights(
+    const float *W, const float *eps, const float *r,
+    float lr, float *dst, int D_out, int D_in);
 
 #ifdef __cplusplus
 }

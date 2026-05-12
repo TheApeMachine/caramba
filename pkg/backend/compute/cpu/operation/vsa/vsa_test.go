@@ -9,6 +9,9 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/vsa"
 )
 
+// benchSink prevents the compiler from discarding benchmark Forward results.
+var benchSink []float64
+
 // randUnit returns a random unit-norm vector of length n.
 func randUnit(n int, rng *rand.Rand) []float64 {
 	v := make([]float64, n)
@@ -20,6 +23,11 @@ func randUnit(n int, rng *rand.Rand) []float64 {
 	}
 
 	norm := math.Sqrt(sumsq)
+
+	if norm == 0 || math.IsNaN(norm) || norm < 1e-15 {
+		v[0] = 1.0
+		norm = 1.0
+	}
 
 	for i := range v {
 		v[i] /= norm
@@ -45,10 +53,6 @@ func TestBind(t *testing.T) {
 
 			So(len(out), ShouldEqual, n)
 			So(out[0], ShouldAlmostEqual, 1.0/float64(n), 1e-9)
-
-			Convey("And the result length should equal n", func() {
-				So(len(out), ShouldEqual, n)
-			})
 		})
 
 		Convey("It should be commutative", func() {
@@ -193,9 +197,10 @@ func TestInversePermute(t *testing.T) {
 			}
 		})
 
-		Convey("It should handle negative-equivalent shifts correctly", func() {
-			perm := vsa.NewPermute(5)
-			inv := vsa.NewInversePermute(5)
+		Convey("It should recover the original after Permute and InversePermute with negative k", func() {
+			k := -5
+			perm := vsa.NewPermute(k)
+			inv := vsa.NewInversePermute(k)
 			shifted := perm.Forward([]int{n}, v)
 			recovered := inv.Forward([]int{n}, shifted)
 
@@ -215,7 +220,7 @@ func BenchmarkBind(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		op.Forward([]int{n}, a, v)
+		benchSink = op.Forward([]int{n}, a, v)
 	}
 }
 
@@ -228,7 +233,7 @@ func BenchmarkBundle(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		op.Forward([]int{n}, a, c)
+		benchSink = op.Forward([]int{n}, a, c)
 	}
 }
 
@@ -241,7 +246,7 @@ func BenchmarkSimilarity(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		op.Forward([]int{n}, a, c)
+		benchSink = op.Forward([]int{n}, a, c)
 	}
 }
 
@@ -257,6 +262,22 @@ func BenchmarkPermute(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		op.Forward([]int{n}, v)
+		benchSink = op.Forward([]int{n}, v)
+	}
+}
+
+func BenchmarkInversePermute(b *testing.B) {
+	n := 10000
+	v := make([]float64, n)
+
+	for i := range v {
+		v[i] = float64(i)
+	}
+
+	op := vsa.NewInversePermute(42)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		benchSink = op.Forward([]int{n}, v)
 	}
 }

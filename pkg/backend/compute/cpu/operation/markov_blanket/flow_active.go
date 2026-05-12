@@ -4,9 +4,10 @@ import "fmt"
 
 /*
 FlowActive computes the active state update conditioned on internal state:
-  x_act_new = W_act @ x_int + bias
 
-shape = [N_a, N_i, N_a]
+	x_act_new = W_act @ x_int + bias
+
+shape = [N_a, N_i]
 data[0] = x_int  [N_i]
 data[1] = W_act  [N_a * N_i]  (row-major)
 data[2] = bias   [N_a]

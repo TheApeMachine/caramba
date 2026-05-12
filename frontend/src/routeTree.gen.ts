@@ -9,11 +9,13 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as KanbanRouteImport } from './routes/kanban'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResearchIndexRouteImport } from './routes/research/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as ResearchPaperRouteImport } from './routes/research/paper'
 import { Route as ResearchNewRouteImport } from './routes/research/new'
+import { Route as ProjectEditRouteImport } from './routes/project/edit'
 import { Route as PaperEditRouteImport } from './routes/paper/edit'
 import { Route as ApiAssistantRouteImport } from './routes/api/assistant'
 import { Route as ResearchEditRouteRouteImport } from './routes/research/edit/route'
@@ -22,6 +24,11 @@ import { Route as ResearchEditResearchPaperRouteImport } from './routes/research
 import { Route as ResearchEditModelScopeRouteImport } from './routes/research/edit/model-scope'
 import { Route as ApiComputeOptimizerRouteImport } from './routes/api/compute/optimizer'
 
+const KanbanRoute = KanbanRouteImport.update({
+  id: '/kanban',
+  path: '/kanban',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -45,6 +52,11 @@ const ResearchPaperRoute = ResearchPaperRouteImport.update({
 const ResearchNewRoute = ResearchNewRouteImport.update({
   id: '/research/new',
   path: '/research/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectEditRoute = ProjectEditRouteImport.update({
+  id: '/project/edit',
+  path: '/project/edit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PaperEditRoute = PaperEditRouteImport.update({
@@ -86,9 +98,11 @@ const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/kanban': typeof KanbanRoute
   '/research/edit': typeof ResearchEditRouteRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
+  '/project/edit': typeof ProjectEditRoute
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
   '/docs/': typeof DocsIndexRoute
@@ -100,8 +114,10 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/kanban': typeof KanbanRoute
   '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
+  '/project/edit': typeof ProjectEditRoute
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
   '/docs': typeof DocsIndexRoute
@@ -114,9 +130,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/kanban': typeof KanbanRoute
   '/research/edit': typeof ResearchEditRouteRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
+  '/project/edit': typeof ProjectEditRoute
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
   '/docs/': typeof DocsIndexRoute
@@ -130,9 +148,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/kanban'
     | '/research/edit'
     | '/api/assistant'
     | '/paper/edit'
+    | '/project/edit'
     | '/research/new'
     | '/research/paper'
     | '/docs/'
@@ -144,8 +164,10 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/kanban'
     | '/api/assistant'
     | '/paper/edit'
+    | '/project/edit'
     | '/research/new'
     | '/research/paper'
     | '/docs'
@@ -157,9 +179,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/kanban'
     | '/research/edit'
     | '/api/assistant'
     | '/paper/edit'
+    | '/project/edit'
     | '/research/new'
     | '/research/paper'
     | '/docs/'
@@ -172,9 +196,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  KanbanRoute: typeof KanbanRoute
   ResearchEditRouteRoute: typeof ResearchEditRouteRouteWithChildren
   ApiAssistantRoute: typeof ApiAssistantRoute
   PaperEditRoute: typeof PaperEditRoute
+  ProjectEditRoute: typeof ProjectEditRoute
   ResearchNewRoute: typeof ResearchNewRoute
   ResearchPaperRoute: typeof ResearchPaperRoute
   DocsIndexRoute: typeof DocsIndexRoute
@@ -184,6 +210,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/kanban': {
+      id: '/kanban'
+      path: '/kanban'
+      fullPath: '/kanban'
+      preLoaderRoute: typeof KanbanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -217,6 +250,13 @@ declare module '@tanstack/react-router' {
       path: '/research/new'
       fullPath: '/research/new'
       preLoaderRoute: typeof ResearchNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/project/edit': {
+      id: '/project/edit'
+      path: '/project/edit'
+      fullPath: '/project/edit'
+      preLoaderRoute: typeof ProjectEditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/paper/edit': {
@@ -288,9 +328,11 @@ const ResearchEditRouteRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  KanbanRoute: KanbanRoute,
   ResearchEditRouteRoute: ResearchEditRouteRouteWithChildren,
   ApiAssistantRoute: ApiAssistantRoute,
   PaperEditRoute: PaperEditRoute,
+  ProjectEditRoute: ProjectEditRoute,
   ResearchNewRoute: ResearchNewRoute,
   ResearchPaperRoute: ResearchPaperRoute,
   DocsIndexRoute: DocsIndexRoute,

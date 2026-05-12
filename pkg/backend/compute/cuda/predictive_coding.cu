@@ -52,6 +52,14 @@ __global__ void pc_outer_add_kernel(
     W[i * D_in + j] += lr * eps[i] * r[j];
 }
 
+// dst[i] = r[i] + lr * delta[i]
+__global__ void pc_fused_repr_kernel(
+    const double* r, const double* delta, double lr, double* dst, int n
+) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) dst[idx] = r[idx] + lr * delta[idx];
+}
+
 // ---------------------------------------------------------------------------
 // Host wrappers
 // ---------------------------------------------------------------------------
@@ -120,31 +128,10 @@ int cuda_pc_update_representation(
         return -1;
     }
     int block = 256, grid = (D_in + block - 1) / block;
-    // signal = W^T @ eps_lower
     pc_matvec_t_kernel<<<grid, block>>>(dW, deps_lower, dsignal, D_out, D_in);
-    // signal -= eps_self; dst = r + lr * signal  (fused in one kernel via axpy-style)
-    // Reuse pc_pred_error_kernel for (signal - eps_self) then scale+add manually
-    // Use axpy: ddst = dr + lr*(dsignal - deps_self), compute inline
-    // Launch a simple pointwise kernel
-    // We inline it here as a lambda-equivalent thrust-free approach:
-    // signal[j] = signal[j] - eps_self[j]; dst[j] = r[j] + lr*signal[j]
-    // Use pc_pred_error_kernel to compute (signal - eps_self) into ddst first
     pc_pred_error_kernel<<<grid, block>>>(dsignal, deps_self, NULL, ddst, D_in, 0);
-    // Now ddst = signal - eps_self. Apply: dst = r + lr*ddst using outer_add is overkill;
-    // reuse pc_pred_error_kernel won't work here. Use the matvec result differently.
-    // Simple: copy r to host, compute on host, copy back — but that defeats the purpose.
-    // Instead launch a minimal pointwise scale-add kernel inline:
-    struct { double* r; double* delta; double* out; double lr; int n; } args;
-    // We can't define lambdas, so use the existing outer_add pattern:
-    // For a 1D r + lr*delta, use pc_outer_add_kernel with D_out=1, D_in=n, eps=[lr], r=delta
-    // That gives W[j] += lr * 1.0 * delta[j]. Let W = copy of r.
-    // Simpler: cudaMemcpy r → ddst, then axpy via a separate kernel. Define it here.
-    // Since we already have ddst = delta, let's do: copy r to a temp, then fused add.
-    cudaMemcpy(dst, dr, D_in * sizeof(double), cudaMemcpyDeviceToHost);
-    double* htmp = (double*)malloc(D_in * sizeof(double));
-    cudaMemcpy(htmp, ddst, D_in * sizeof(double), cudaMemcpyDeviceToHost);
-    for (int i = 0; i < D_in; i++) dst[i] += lr * htmp[i];
-    free(htmp);
+    pc_fused_repr_kernel<<<grid, block>>>(dr, ddst, lr, ddst, D_in);
+    cudaMemcpy(dst, ddst, D_in * sizeof(double), cudaMemcpyDeviceToHost);
     cudaFree(dr); cudaFree(dW); cudaFree(deps_lower);
     cudaFree(deps_self); cudaFree(dsignal); cudaFree(ddst);
     return 0;

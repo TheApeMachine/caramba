@@ -5,58 +5,76 @@
 extern "C" {
 #endif
 
-// Initialize Metal causal pipelines.
-// metallib_path: absolute path to a compiled .metallib containing causal kernels.
-// Returns 0 on success, -1 on failure.
-int metal_causal_init(const char* metallib_path);
+/*
+Metal implementation (float32; linear algebra runs on the GPU via causal.metallib).
 
-// Elementwise AXPY: dst[i] += scale * src[i], float32, length n.
-int metal_causal_axpy(float* dst, const float* src, float scale, int n);
+Return codes: 0 success; -1 invalid argument; -2 graph / mask error (e.g. DAG cycle);
+ -3 not initialised; -4 allocation failure; -5 numeric (inversion / OLS failure).
 
-// Dot product: returns sum(a[i]*b[i]) via Metal reduction, length n.
-int metal_causal_dot(const float* a, const float* b, float* out, int n);
+metal_causal_init loads causal.metallib (Makefile); metal_causal_shutdown clears state (idempotent).
+Not safe for concurrent use without external synchronisation.
 
-// Elementwise subtraction: dst[i] = a[i] - b[i], length n.
-int metal_causal_sub(float* dst, const float* a, const float* b, int n);
+Float buffers are host pointers; lengths are element counts; matrices are row-major.
 
-// Matrix-vector product: dst[rows] = W[rows x cols] @ x[cols], float32.
-int metal_causal_matvec(float* dst, const float* W, const float* x, int rows, int cols);
+Elementwise / matvec helpers:
+  metal_causal_axpy: dst[i] += scale*src[i]
+  metal_causal_dot: writes dot(a,b) into *out
+  metal_causal_sub: dst[i] = a[i] - b[i]
+  metal_causal_matvec: dst[rows] = W[rows×cols row-major] @ x[cols]
+  W[row*cols + col] is row row, column col, x indexed 0..cols-1.
 
-// Do-calculus: graph surgery on joint Gaussian.
-// cov [N*N], mask [N], values [N] → out [N + N*N] (adjusted_mean ++ adjusted_cov).
+metal_causal_do_calculus: cov is N×N row-major joint covariance; mask[i]!=0 marks
+  do-intervention on variable i; values[i] is the intervention level. out is
+  N + N*N floats: adjusted mean[0..N-1] then adjusted covariance row-major.
+
+metal_causal_backdoor: ATE via outcome regression (reference CPU). Y is T×ny row-major,
+  X is T×nx, Z is T×nz; effect length ny (float32). No normalisation in-kernel.
+
+metal_causal_iv: 2SLS. Z [T×nz], X [T×nx], Y [T×ny] row-major. beta_iv row-major
+  [nx×ny]: coefficient for X_i on outcome j at beta_iv[i*ny + j].
+
+metal_causal_cate: X [T×nx], treatment [T], Y [T]; output cate [T].
+
+metal_causal_dag_markov: X [T×N] row-major (sample t, variable n: X[t*N+n]); adj
+  [N×N] row-major, adj[i*N+j]!=0 means directed edge parent j → child i; must be
+  a DAG. log_prob length T.
+*/
+
+int metal_causal_init(const char *metallib_path);
+
+int metal_causal_shutdown(void);
+
+int metal_causal_axpy(float *dst, const float *src, float scale, int n);
+
+int metal_causal_dot(const float *a, const float *b, float *out, int n);
+
+int metal_causal_sub(float *dst, const float *a, const float *b, int n);
+
+int metal_causal_matvec(float *dst, const float *W, const float *x, int rows, int cols);
+
 int metal_causal_do_calculus(
-    const float* cov, const float* mask, const float* values,
-    float* out, int N
-);
+    const float *cov, const float *mask, const float *values,
+    float *out, int N);
 
-// Backdoor adjustment causal effect.
-// Y [T*ny], X [T*nx], Z [T*nz] → effect [ny].
 int metal_causal_backdoor(
-    const float* Y, const float* X, const float* Z,
-    float* effect,
-    int T, int ny, int nx, int nz
-);
+    const float *Y, const float *X, const float *Z,
+    float *effect,
+    int T, int ny, int nx, int nz);
 
-// IV estimate (2SLS): Z [T*nz], X [T*nx], Y [T*ny] → beta_iv [nx*ny].
 int metal_causal_iv(
-    const float* Z, const float* X, const float* Y,
-    float* beta_iv,
-    int T, int nz, int nx, int ny
-);
+    const float *Z, const float *X, const float *Y,
+    float *beta_iv,
+    int T, int nz, int nx, int ny);
 
-// CATE via outcome regression: X [T*nx], treatment [T], Y [T] → cate [T].
 int metal_causal_cate(
-    const float* X, const float* treatment, const float* Y,
-    float* cate,
-    int T, int nx
-);
+    const float *X, const float *treatment, const float *Y,
+    float *cate,
+    int T, int nx);
 
-// DAG Markov factorization log probability: X [T*N], adj [N*N] → log_prob [T].
 int metal_causal_dag_markov(
-    const float* X, const float* adj,
-    float* log_prob,
-    int T, int N
-);
+    const float *X, const float *adj,
+    float *log_prob,
+    int T, int N);
 
 #ifdef __cplusplus
 }

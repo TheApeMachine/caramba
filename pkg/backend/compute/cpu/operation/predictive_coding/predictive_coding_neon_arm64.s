@@ -11,19 +11,46 @@ TEXT ·matVecNEON(SB), NOSPLIT, $0-88
 	MOVD cols+80(FP), R4    // R4 = cols
 	CBZ  R3, done_mv
 row_loop_mv:
-	FMOVD $0.0, F0          // acc = 0.0
-	MOVD  R2, R5            // R5 = &x[0] (reset per row)
-	MOVD  R4, R6            // R6 = cols remaining
-	CBZ   R6, store_mv
-col_loop_mv:
-	FMOVD.P 8(R1), F1       // F1 = W[i*cols+j]; R1 += 8
-	FMOVD.P 8(R5), F2       // F2 = x[j]; R5 += 8
-	FMULD   F2, F1, F1      // F1 = F1 * F2
-	FADDD   F1, F0, F0      // F0 += F1
-	SUBS $1, R6, R6
-	BNE  col_loop_mv
+	FMOVD $0.0, F0
+	FMOVD $0.0, F5
+	MOVD  R2, R5
+	MOVD  R4, R6
+	LSR   $2, R6, R7
+	CBZ   R7, pair_mv
+quad_mv:
+	FMOVD.P 8(R1), F1
+	FMOVD.P 8(R5), F2
+	FMADDD  F2, F0, F1, F0
+	FMOVD.P 8(R1), F3
+	FMOVD.P 8(R5), F4
+	FMADDD  F4, F5, F3, F5
+	FMOVD.P 8(R1), F8
+	FMOVD.P 8(R5), F9
+	FMADDD  F9, F0, F8, F0
+	FMOVD.P 8(R1), F10
+	FMOVD.P 8(R5), F11
+	FMADDD  F11, F5, F10, F5
+	SUBS $1, R7, R7
+	BNE  quad_mv
+pair_mv:
+	AND   $3, R6, R6
+	LSR   $1, R6, R7
+	CBZ   R7, scalar_mv
+	FMOVD.P 8(R1), F1
+	FMOVD.P 8(R5), F2
+	FMADDD  F2, F0, F1, F0
+	FMOVD.P 8(R1), F3
+	FMOVD.P 8(R5), F4
+	FMADDD  F4, F5, F3, F5
+scalar_mv:
+	AND $1, R6, R8
+	CBZ R8, store_mv
+	FMOVD.P 8(R1), F1
+	FMOVD.P 8(R5), F2
+	FMADDD  F2, F0, F1, F0
 store_mv:
-	FMOVD.P F0, 8(R0)       // dst[i] = F0; R0 += 8
+	FADDD F5, F0, F0
+	FMOVD.P F0, 8(R0)
 	SUBS $1, R3, R3
 	BNE  row_loop_mv
 done_mv:
@@ -52,15 +79,58 @@ outer_tv:
 	FMOVD.P 8(R2), F15     // F15 = x[i]; R2 += 8
 	MOVD R0, R5             // R5 = &dst[0]
 	MOVD R4, R6             // R6 = cols
-	CBZ  R6, next_tv
-inner_tv:
+	LSR  $2, R6, R7         // quads
+	CBZ  R7, pair_tv
+quad_tv:
+	FMOVD.P 8(R1), F1
+	FMOVD   (R5), F2
+	FMULD   F15, F1, F1
+	FADDD   F1, F2, F2
+	FMOVD.P F2, 8(R5)
+	
+	FMOVD.P 8(R1), F3
+	FMOVD   (R5), F4
+	FMULD   F15, F3, F3
+	FADDD   F3, F4, F4
+	FMOVD.P F4, 8(R5)
+
+	FMOVD.P 8(R1), F6
+	FMOVD   (R5), F7
+	FMULD   F15, F6, F6
+	FADDD   F6, F7, F7
+	FMOVD.P F7, 8(R5)
+
+	FMOVD.P 8(R1), F8
+	FMOVD   (R5), F9
+	FMULD   F15, F8, F8
+	FADDD   F8, F9, F9
+	FMOVD.P F9, 8(R5)
+	
+	SUBS $1, R7, R7
+	BNE  quad_tv
+pair_tv:
+	AND  $3, R6, R6
+	LSR  $1, R6, R7
+	CBZ  R7, scalar_tv
+	FMOVD.P 8(R1), F1
+	FMOVD   (R5), F2
+	FMULD   F15, F1, F1
+	FADDD   F1, F2, F2
+	FMOVD.P F2, 8(R5)
+
+	FMOVD.P 8(R1), F3
+	FMOVD   (R5), F4
+	FMULD   F15, F3, F3
+	FADDD   F3, F4, F4
+	FMOVD.P F4, 8(R5)
+scalar_tv:
+	AND  $1, R6, R8
+	CBZ  R8, next_tv
 	FMOVD.P 8(R1), F1      // F1 = W[i*cols+j]; R1 += 8
 	FMOVD   (R5), F2       // F2 = dst[j]
 	FMULD   F15, F1, F1    // F1 = F15 * F1
 	FADDD   F1, F2, F2     // F2 += F1
 	FMOVD.P F2, 8(R5)      // dst[j] = F2; R5 += 8
-	SUBS $1, R6, R6
-	BNE  inner_tv
 next_tv:
 	SUBS $1, R3, R3
 	BNE  outer_tv
@@ -118,23 +188,4 @@ loop_axpy:
 	SUBS $1, R2, R2
 	BNE  loop_axpy
 done_axpy:
-	RET
-
-// outerRowNEON(dst, b []float64, scale float64)
-// dst[j] += scale * b[j]
-TEXT ·outerRowNEON(SB), NOSPLIT, $0-56
-	MOVD  dst+0(FP), R0
-	MOVD  b+24(FP), R1
-	MOVD  b_len+32(FP), R2
-	FMOVD scale+48(FP), F16
-	CBZ   R2, done_or
-loop_or:
-	FMOVD.P 8(R1), F0      // F0 = b[j]
-	FMOVD   (R0), F1       // F1 = dst[j]
-	FMULD   F16, F0, F0    // F0 = scale * b[j]
-	FADDD   F0, F1, F1     // F1 = dst[j] + scale*b[j]
-	FMOVD.P F1, 8(R0)
-	SUBS $1, R2, R2
-	BNE  loop_or
-done_or:
 	RET

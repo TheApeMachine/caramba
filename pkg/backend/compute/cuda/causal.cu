@@ -105,19 +105,185 @@ __global__ void causal_axpy_kernel(double* dst, const double* src, double scale,
 // ---------------------------------------------------------------------------
 // Dot product kernel with shared memory reduction
 // ---------------------------------------------------------------------------
-__global__ void causal_dot_kernel(const double* a, const double* b, double* partial, int n) {
+__global__ void causal_dot_kernel(const double* a, const double* b, double* out_sum, int n) {
     extern __shared__ double smem[];
     int tid = threadIdx.x;
     int idx = blockIdx.x * blockDim.x + tid;
     smem[tid] = (idx < n) ? a[idx] * b[idx] : 0.0;
     __syncthreads();
 
+    #pragma unroll
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (tid < s) smem[tid] += smem[tid + s];
         __syncthreads();
     }
 
-    if (tid == 0) partial[blockIdx.x] = smem[0];
+    if (tid == 0) atomicAdd(out_sum, smem[0]);
+}
+
+__global__ void pack_design_kernel(
+    const double* X, const double* Z, double* design,
+    int T, int nx, int nz)
+{
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+
+    int p = nx + nz;
+    double* row = design + t * p;
+
+    for (int j = 0; j < nx; j++) row[j] = X[t * nx + j];
+
+    for (int j = 0; j < nz; j++) row[nx + j] = Z[t * nz + j];
+}
+
+__global__ void cate_fill_indices_kernel(
+    const double* treatment, int T,
+    int* idx1, int* idx0, int* c1, int* c0)
+{
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+
+    if (treatment[t] >= 0.5) {
+        int k = atomicAdd(c1, 1);
+        idx1[k] = t;
+    } else {
+        int k = atomicAdd(c0, 1);
+        idx0[k] = t;
+    }
+}
+
+__global__ void gather_X_rows_kernel(
+    const double* X, const int* idx, int count, int nx, double* out)
+{
+    int r = blockIdx.x * blockDim.x + threadIdx.x;
+    if (r >= count) return;
+
+    int t = idx[r];
+
+    for (int j = 0; j < nx; j++) out[r * nx + j] = X[t * nx + j];
+}
+
+__global__ void gather_y_values_kernel(
+    const double* y, const int* idx, int count, double* out)
+{
+    int r = blockIdx.x * blockDim.x + threadIdx.x;
+    if (r >= count) return;
+
+    out[r] = y[idx[r]];
+}
+
+__global__ void cate_predict_kernel(
+    const double* X, const double* b1, const double* b0,
+    int T, int nx, double* out)
+{
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+
+    double m1 = 0.0, m0 = 0.0;
+
+    for (int j = 0; j < nx; j++) {
+        double xv = X[t * nx + j];
+        m1 += b1[j] * xv;
+        m0 += b0[j] * xv;
+    }
+
+    out[t] = m1 - m0;
+}
+
+__global__ void dag_gather_parents_kernel(
+    const double* X, int T, int N,
+    const int* parents, int np,
+    double* pMat)
+{
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+
+    for (int j = 0; j < np; j++) pMat[t * np + j] = X[t * N + parents[j]];
+}
+
+__global__ void extract_column_kernel(
+    const double* X, int T, int N, int col, double* out)
+{
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t < T) out[t] = X[t * N + col];
+}
+
+__global__ void reduce_mean_var_kernel(const double* v, int T, double* meanOut, double* varOut) {
+    if (threadIdx.x != 0 || blockIdx.x != 0) return;
+
+    double s = 0.0;
+
+    for (int i = 0; i < T; i++) s += v[i];
+
+    double mu = s / (double)T;
+    double q = 0.0;
+
+    for (int i = 0; i < T; i++) {
+        double d = v[i] - mu;
+        q += d * d;
+    }
+
+    meanOut[0] = mu;
+    varOut[0] = fmax(q / (double)T, 1e-10);
+}
+
+__global__ void rss_kernel(
+    const double* Xmat, const double* y, const double* beta, int T, int p, double* rssOut)
+{
+    if (threadIdx.x != 0 || blockIdx.x != 0) return;
+
+    double rss = 0.0;
+
+    for (int t = 0; t < T; t++) {
+        double pred = 0.0;
+
+        for (int j = 0; j < p; j++) pred += Xmat[t * p + j] * beta[j];
+
+        double d = y[t] - pred;
+        rss += d * d;
+    }
+
+    rssOut[0] = rss;
+}
+
+__global__ void dag_conditional_logp_kernel(
+    const double* nodeVals, const double* X, int T, int N,
+    const int* parents, int np, const double* beta, double sigma2, double* logProb)
+{
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+
+    double pred = 0.0;
+
+    for (int j = 0; j < np; j++) {
+        pred += beta[j] * X[t * N + parents[j]];
+    }
+
+    double diff = nodeVals[t] - pred;
+    double lp = -0.5 * log(2.0 * M_PI * sigma2) - 0.5 * diff * diff / sigma2;
+    atomicAdd(&logProb[t], lp);
+}
+
+__global__ void dag_logp_univariate_kernel(
+    const double* nodeVals, double mu, double sigma2, double* logProb, int T)
+{
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+
+    double diff = nodeVals[t] - mu;
+    double lp = -0.5 * log(2.0 * M_PI * sigma2) - 0.5 * diff * diff / sigma2;
+    atomicAdd(&logProb[t], lp);
+}
+
+__global__ void backdoor_effect_kernel(const double* beta, int nx, int ny, double* effect) {
+    int yd = blockIdx.x * blockDim.x + threadIdx.x;
+    if (yd >= ny) return;
+
+    double sum = 0.0;
+
+    for (int j = 0; j < nx; j++) sum += beta[j * ny + yd];
+
+    effect[yd] = sum / (double)nx;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +314,7 @@ __global__ void residual_ss_kernel(
     smem[tid] = res;
     __syncthreads();
 
+    #pragma unroll
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
         if (tid < s) smem[tid] += smem[tid + s];
         __syncthreads();
@@ -169,11 +336,15 @@ __global__ void gaussian_logp_kernel(
 }
 
 // ---------------------------------------------------------------------------
-// Device-side small matrix inverse (Cholesky, max 8x8)
-// Runs on a single thread.
+// Device SPD inverse via Cholesky (row-major, sym A). work: p*p + 2*p doubles.
 // ---------------------------------------------------------------------------
-__device__ void chol_invert(const double* A, double* inv, int n) {
-    double L[64] = {0};
+__device__ void chol_invert_bufs(
+    const double* A, double* inv, int n,
+    double* L, double* y, double* x
+) {
+    for (int i = 0; i < n * n; i++) {
+        L[i] = 0.0;
+    }
 
     for (int i = 0; i < n; i++) {
         for (int j = 0; j <= i; j++) {
@@ -188,12 +359,13 @@ __device__ void chol_invert(const double* A, double* inv, int n) {
     }
 
     for (int col = 0; col < n; col++) {
-        double y[8] = {0};
+        for (int ii = 0; ii < n; ii++) y[ii] = 0.0;
+
         y[col] = 1.0;
 
         for (int i = col; i < n; i++) {
             if (i > col) {
-                y[i] = 0;
+                y[i] = 0.0;
 
                 for (int k = col; k < i; k++) {
                     y[i] -= L[i * n + k] * y[k];
@@ -202,8 +374,6 @@ __device__ void chol_invert(const double* A, double* inv, int n) {
 
             y[i] /= L[i * n + i];
         }
-
-        double x[8] = {0};
 
         for (int i = n - 1; i >= 0; i--) {
             x[i] = y[i];
@@ -221,26 +391,34 @@ __device__ void chol_invert(const double* A, double* inv, int n) {
     }
 }
 
+__global__ void invert_spd_global_kernel(const double* A, double* inv, int p, double* work) {
+    if (threadIdx.x != 0 || blockIdx.x != 0) return;
+
+    double* L = work;
+    double* y = L + p * p;
+    double* x = y + p;
+    chol_invert_bufs(A, inv, p, L, y, x);
+}
+
+#define CAUSAL_BLOCK_CAP 64
+
 // ---------------------------------------------------------------------------
-// Do-calculus kernel (single-block; N <= BLOCK_SIZE assumed manageable)
+// Do-calculus kernel (single thread; scratch = 8 * 64*64 doubles + Cholesky tail).
 // ---------------------------------------------------------------------------
 __global__ void do_calculus_kernel(
     const double* cov, const double* mask, const double* values,
-    double* out_mean, double* out_cov, int N)
+    double* out_mean, double* out_cov, int N, double* scratch)
 {
-    // Single thread does all work for correctness on small N.
     if (threadIdx.x != 0) return;
 
-    // Identify intervened/free sets.
-    int interv[64], nInt = 0;
-    int freeIdx[64], nFree = 0;
+    int interv[CAUSAL_BLOCK_CAP], nInt = 0;
+    int freeIdx[CAUSAL_BLOCK_CAP], nFree = 0;
 
     for (int i = 0; i < N; i++) {
         if (mask[i] != 0.0) { interv[nInt++] = i; }
         else                 { freeIdx[nFree++] = i; }
     }
 
-    // Initialize output.
     for (int i = 0; i < N; i++) out_mean[i] = 0.0;
     for (int i = 0; i < N * N; i++) out_cov[i] = cov[i];
 
@@ -249,66 +427,89 @@ __global__ void do_calculus_kernel(
     }
 
     if (nInt > 0 && nFree > 0) {
-        double sigIntInt[64], sigIntIntInv[64];
-        double sigFreeInt[64], sigFreeFree[64], sigIntFree[64];
-        double xInt[8], tmp[8], deltaFree[8];
+        size_t step = (size_t)CAUSAL_BLOCK_CAP * CAUSAL_BLOCK_CAP;
+        double* sigIntInt   = scratch;
+        double* sigIntIntInv = scratch + step;
+        double* sigFreeInt  = scratch + 2 * step;
+        double* sigFreeFree = scratch + 3 * step;
+        double* sigIntFree  = scratch + 4 * step;
+        double* tmp2        = scratch + 5 * step;
+        double* correction  = scratch + 6 * step;
+        double* cholL       = scratch + 7 * step;
+        double* choly       = cholL + step;
+        double* cholx       = choly + CAUSAL_BLOCK_CAP;
 
-        for (int r = 0; r < nInt; r++)
-            for (int c = 0; c < nInt; c++)
+        double xInt[CAUSAL_BLOCK_CAP], tmp[CAUSAL_BLOCK_CAP], deltaFree[CAUSAL_BLOCK_CAP];
+
+        for (int r = 0; r < nInt; r++) {
+            for (int c = 0; c < nInt; c++) {
                 sigIntInt[r * nInt + c] = cov[interv[r] * N + interv[c]];
+            }
+        }
 
-        chol_invert(sigIntInt, sigIntIntInv, nInt);
+        chol_invert_bufs(sigIntInt, sigIntIntInv, nInt, cholL, choly, cholx);
 
-        for (int r = 0; r < nFree; r++)
-            for (int c = 0; c < nInt; c++)
+        for (int r = 0; r < nFree; r++) {
+            for (int c = 0; c < nInt; c++) {
                 sigFreeInt[r * nInt + c] = cov[freeIdx[r] * N + interv[c]];
+            }
+        }
 
         for (int k = 0; k < nInt; k++) xInt[k] = values[interv[k]];
 
-        // tmp = sigIntIntInv @ xInt
         for (int r = 0; r < nInt; r++) {
-            tmp[r] = 0;
+            tmp[r] = 0.0;
+
             for (int c = 0; c < nInt; c++) tmp[r] += sigIntIntInv[r * nInt + c] * xInt[c];
         }
 
-        // deltaFree = sigFreeInt @ tmp
         for (int r = 0; r < nFree; r++) {
-            deltaFree[r] = 0;
+            deltaFree[r] = 0.0;
+
             for (int c = 0; c < nInt; c++) deltaFree[r] += sigFreeInt[r * nInt + c] * tmp[c];
+
             out_mean[freeIdx[r]] = deltaFree[r];
         }
 
-        for (int r = 0; r < nFree; r++)
-            for (int c = 0; c < nFree; c++)
+        for (int r = 0; r < nFree; r++) {
+            for (int c = 0; c < nFree; c++) {
                 sigFreeFree[r * nFree + c] = cov[freeIdx[r] * N + freeIdx[c]];
+            }
+        }
 
-        for (int r = 0; r < nInt; r++)
-            for (int c = 0; c < nFree; c++)
+        for (int r = 0; r < nInt; r++) {
+            for (int c = 0; c < nFree; c++) {
                 sigIntFree[r * nFree + c] = cov[interv[r] * N + freeIdx[c]];
+            }
+        }
 
-        // tmp2 = sigIntIntInv @ sigIntFree  [nInt x nFree]
-        double tmp2[64];
-        for (int r = 0; r < nInt; r++)
+        for (int r = 0; r < nInt; r++) {
             for (int c = 0; c < nFree; c++) {
-                tmp2[r * nFree + c] = 0;
-                for (int k = 0; k < nInt; k++)
+                tmp2[r * nFree + c] = 0.0;
+
+                for (int k = 0; k < nInt; k++) {
                     tmp2[r * nFree + c] += sigIntIntInv[r * nInt + k] * sigIntFree[k * nFree + c];
+                }
             }
+        }
 
-        // correction = sigFreeInt @ tmp2  [nFree x nFree]
-        double correction[64];
-        for (int r = 0; r < nFree; r++)
+        for (int r = 0; r < nFree; r++) {
             for (int c = 0; c < nFree; c++) {
-                correction[r * nFree + c] = 0;
-                for (int k = 0; k < nInt; k++)
+                correction[r * nFree + c] = 0.0;
+
+                for (int k = 0; k < nInt; k++) {
                     correction[r * nFree + c] += sigFreeInt[r * nInt + k] * tmp2[k * nFree + c];
-                out_cov[freeIdx[r] * N + freeIdx[c]] = sigFreeFree[r * nFree + c] - correction[r * nFree + c];
+                }
+
+                out_cov[freeIdx[r] * N + freeIdx[c]] =
+                    sigFreeFree[r * nFree + c] - correction[r * nFree + c];
             }
+        }
     }
 
-    // Zero rows/cols for intervened.
     for (int k = 0; k < nInt; k++) {
         int ii = interv[k];
+
         for (int j = 0; j < N; j++) {
             out_cov[ii * N + j] = 0.0;
             out_cov[j * N + ii] = 0.0;
@@ -319,6 +520,49 @@ __global__ void do_calculus_kernel(
 // ---------------------------------------------------------------------------
 // C wrappers
 // ---------------------------------------------------------------------------
+
+static int causal_launch_matmul_dev(
+    const double* dA, const double* dB, double* dC, int M, int K, int N)
+{
+    dim3 block(TILE_SIZE, TILE_SIZE);
+    dim3 grid((N + TILE_SIZE - 1) / TILE_SIZE, (M + TILE_SIZE - 1) / TILE_SIZE);
+    causal_matmul_kernel<<<grid, block>>>(dA, dB, dC, M, K, N);
+    return (cudaGetLastError() == cudaSuccess) ? 0 : -1;
+}
+
+static int causal_launch_matmul_t_dev(
+    const double* dA, const double* dB, double* dC, int M, int K, int N)
+{
+    dim3 block(TILE_SIZE, TILE_SIZE);
+    dim3 grid((N + TILE_SIZE - 1) / TILE_SIZE, (M + TILE_SIZE - 1) / TILE_SIZE);
+    causal_matmul_t_kernel<<<grid, block>>>(dA, dB, dC, M, K, N);
+    return (cudaGetLastError() == cudaSuccess) ? 0 : -1;
+}
+
+static int ols_fit_device_dim(
+    const double* dXsub, int n, int p, const double* dYcol,
+    double* dBeta,
+    double* dXTX, double* dXTXInv, double* dXTY,
+    double* dInvWork)
+{
+    if (n <= 0) {
+        cudaMemset(dBeta, 0, (size_t)p * sizeof(double));
+        return 0;
+    }
+
+    if (causal_launch_matmul_t_dev(dXsub, dXsub, dXTX, p, n, p) != 0) return -1;
+
+    invert_spd_global_kernel<<<1, 1>>>(dXTX, dXTXInv, p, dInvWork);
+
+    if (cudaGetLastError() != cudaSuccess) return -1;
+
+    if (causal_launch_matmul_t_dev(dXsub, dYcol, dXTY, p, n, 1) != 0) return -1;
+
+    if (causal_launch_matmul_dev(dXTXInv, dXTY, dBeta, p, p, 1) != 0) return -1;
+
+    return 0;
+}
+
 extern "C" {
 
 int cuda_causal_matmul(const double* A, const double* B, double* C, int M, int K, int N) {
@@ -363,22 +607,21 @@ int cuda_causal_axpy(double* dst, const double* src, double scale, int n) {
 }
 
 int cuda_causal_dot(const double* a, const double* b, double* out, int n) {
-    double *dA, *dB, *dPartial;
+    double *dA, *dB, *dSum;
     size_t nb = (size_t)n * sizeof(double);
     int numBlocks = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
     if (alloc_copy(a, (void**)&dA, nb)) return -1;
     if (alloc_copy(b, (void**)&dB, nb)) { cudaFree(dA); return -1; }
-    CUDA_CHECK(cudaMalloc((void**)&dPartial, numBlocks * sizeof(double)));
-    causal_dot_kernel<<<numBlocks, BLOCK_SIZE, BLOCK_SIZE*sizeof(double)>>>(dA, dB, dPartial, n);
+
+    CUDA_CHECK(cudaMalloc((void**)&dSum, sizeof(double)));
+    CUDA_CHECK(cudaMemset(dSum, 0, sizeof(double)));
+
+    causal_dot_kernel<<<numBlocks, BLOCK_SIZE, BLOCK_SIZE*sizeof(double)>>>(dA, dB, dSum, n);
     CUDA_CHECK(cudaGetLastError());
-    double* hPartial = (double*)malloc(numBlocks * sizeof(double));
-    if (!hPartial) { cudaFree(dA); cudaFree(dB); cudaFree(dPartial); return -1; }
-    CUDA_CHECK(cudaMemcpy(hPartial, dPartial, numBlocks*sizeof(double), cudaMemcpyDeviceToHost));
-    double result = 0.0;
-    for (int i = 0; i < numBlocks; i++) result += hPartial[i];
-    *out = result;
-    free(hPartial);
-    cudaFree(dA); cudaFree(dB); cudaFree(dPartial);
+
+    CUDA_CHECK(cudaMemcpy(out, dSum, sizeof(double), cudaMemcpyDeviceToHost));
+    cudaFree(dSum);
+    cudaFree(dA); cudaFree(dB);
     return 0;
 }
 
@@ -394,8 +637,12 @@ int cuda_causal_do_calculus(
     if (alloc_copy(values, (void**)&dValues, nb)) { cudaFree(dCov); cudaFree(dMask); return -1; }
     CUDA_CHECK(cudaMalloc((void**)&dMean,   nb));
     CUDA_CHECK(cudaMalloc((void**)&dCovOut, nn));
-    do_calculus_kernel<<<1, 1>>>(dCov, dMask, dValues, dMean, dCovOut, N);
+    size_t scratchElems = 8 * (size_t)CAUSAL_BLOCK_CAP * CAUSAL_BLOCK_CAP + 128;
+    double* dScratch = NULL;
+    CUDA_CHECK(cudaMalloc((void**)&dScratch, scratchElems * sizeof(double)));
+    do_calculus_kernel<<<1, 1>>>(dCov, dMask, dValues, dMean, dCovOut, N, dScratch);
     CUDA_CHECK(cudaGetLastError());
+    cudaFree(dScratch);
     CUDA_CHECK(cudaMemcpy(out,     dMean,   nb, cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(out + N, dCovOut, nn, cudaMemcpyDeviceToHost));
     cudaFree(dCov); cudaFree(dMask); cudaFree(dValues);
@@ -409,74 +656,65 @@ int cuda_causal_backdoor(
     int T, int ny, int nx, int nz)
 {
     int p = nx + nz;
-    size_t designSz = (size_t)T * p * sizeof(double);
-    double* design = (double*)malloc(designSz);
-    if (!design) return -1;
+    double *dX = NULL, *dZ = NULL, *dY = NULL;
+    double *dDesign = NULL, *dWTW = NULL, *dWTWInv = NULL;
+    double *dWTY = NULL, *dBeta = NULL, *dEffect = NULL;
+    double *dInvWork = NULL;
 
-    for (int t = 0; t < T; t++) {
-        for (int j = 0; j < nx; j++) design[t*p+j] = X[t*nx+j];
-        for (int j = 0; j < nz; j++) design[t*p+nx+j] = Z[t*nz+j];
+    if (alloc_copy(X, (void**)&dX, (size_t)T * nx * sizeof(double))) return -1;
+    if (alloc_copy(Z, (void**)&dZ, (size_t)T * nz * sizeof(double))) { cudaFree(dX); return -1; }
+    if (alloc_copy(Y, (void**)&dY, (size_t)T * ny * sizeof(double))) {
+        cudaFree(dX); cudaFree(dZ); return -1;
     }
 
-    // W^T W [p x p]
-    double* wtw = (double*)calloc(p * p, sizeof(double));
-    if (!wtw) { free(design); return -1; }
-    cuda_causal_matmul_t(design, design, wtw, p, T, p);
-
-    // Invert W^T W on host (small matrix)
-    double* wtwInv = (double*)malloc(p * p * sizeof(double));
-    if (!wtwInv) { free(design); free(wtw); return -1; }
-
-    // Cholesky inversion host-side
-    double* L = (double*)calloc(p * p, sizeof(double));
-    for (int i = 0; i < p; i++) {
-        for (int j = 0; j <= i; j++) {
-            double s = wtw[i*p+j];
-            for (int k = 0; k < j; k++) s -= L[i*p+k]*L[j*p+k];
-            L[i*p+j] = (i == j) ? sqrt(fmax(s, 1e-10)) : s / L[j*p+j];
-        }
+    CUDA_CHECK(cudaMalloc((void**)&dDesign, (size_t)T * p * sizeof(double)));
+    {
+        int gridP = (T + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        pack_design_kernel<<<gridP, BLOCK_SIZE>>>(dX, dZ, dDesign, T, nx, nz);
     }
-    for (int col = 0; col < p; col++) {
-        double y[256] = {0}, x[256] = {0};
-        y[col] = 1.0;
-        for (int i = col; i < p; i++) {
-            if (i > col) { y[i] = 0; for (int k=col; k<i; k++) y[i] -= L[i*p+k]*y[k]; }
-            y[i] /= L[i*p+i];
-        }
-        for (int i = p-1; i >= 0; i--) {
-            x[i] = y[i];
-            for (int k = i+1; k < p; k++) x[i] -= L[k*p+i]*x[k];
-            x[i] /= L[i*p+i];
-        }
-        for (int i = 0; i < p; i++) wtwInv[i*p+col] = x[i];
-    }
-    free(L);
+    CUDA_CHECK(cudaGetLastError());
 
-    for (int yd = 0; yd < ny; yd++) {
-        double* yCol = (double*)malloc(T * sizeof(double));
-        for (int t = 0; t < T; t++) yCol[t] = Y[t*ny+yd];
+    CUDA_CHECK(cudaMalloc((void**)&dWTW, (size_t)p * p * sizeof(double)));
+    if (causal_launch_matmul_t_dev(dDesign, dDesign, dWTW, p, T, p)   != 0) goto fail_backdoor;
 
-        // W^T y [p]
-        double* wty = (double*)calloc(p, sizeof(double));
-        for (int t = 0; t < T; t++)
-            for (int j = 0; j < p; j++)
-                wty[j] += design[t*p+j] * yCol[t];
-
-        // beta = wtwInv @ wty [p]
-        double* beta = (double*)calloc(p, sizeof(double));
-        for (int i = 0; i < p; i++)
-            for (int j = 0; j < p; j++)
-                beta[i] += wtwInv[i*p+j] * wty[j];
-
-        double eff = 0.0;
-        for (int j = 0; j < nx; j++) eff += beta[j];
-        effect[yd] = eff / (double)nx;
-
-        free(yCol); free(wty); free(beta);
+    CUDA_CHECK(cudaMalloc((void**)&dWTWInv, (size_t)p * p * sizeof(double)));
+    {
+        size_t wz = ((size_t)p * p + (size_t)2 * p) * sizeof(double);
+        CUDA_CHECK(cudaMalloc((void**)&dInvWork, wz));
+        invert_spd_global_kernel<<<1, 1>>>(dWTW, dWTWInv, p, dInvWork);
+        CUDA_CHECK(cudaGetLastError());
+        cudaFree(dInvWork);
+        dInvWork = NULL;
     }
 
-    free(design); free(wtw); free(wtwInv);
+    CUDA_CHECK(cudaMalloc((void**)&dWTY, (size_t)p * ny * sizeof(double)));
+    if (causal_launch_matmul_t_dev(dDesign, dY, dWTY, p, T, ny) != 0) goto fail_backdoor;
+
+    CUDA_CHECK(cudaMalloc((void**)&dBeta, (size_t)p * ny * sizeof(double)));
+    if (causal_launch_matmul_dev(dWTWInv, dWTY, dBeta, p, p, ny) != 0) goto fail_backdoor;
+
+    CUDA_CHECK(cudaMalloc((void**)&dEffect, (size_t)ny * sizeof(double)));
+    {
+        int gridE = (ny + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        backdoor_effect_kernel<<<gridE, BLOCK_SIZE>>>(dBeta, nx, ny, dEffect);
+    }
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(effect, dEffect, (size_t)ny * sizeof(double), cudaMemcpyDeviceToHost));
+
+    cudaFree(dX); cudaFree(dZ); cudaFree(dY); cudaFree(dDesign);
+    cudaFree(dWTW); cudaFree(dWTWInv); cudaFree(dWTY); cudaFree(dBeta); cudaFree(dEffect);
     return 0;
+
+fail_backdoor:
+    if (dInvWork) cudaFree(dInvWork);
+    cudaFree(dX); cudaFree(dZ); cudaFree(dY);
+    if (dDesign) cudaFree(dDesign);
+    if (dWTW) cudaFree(dWTW);
+    if (dWTWInv) cudaFree(dWTWInv);
+    if (dWTY) cudaFree(dWTY);
+    if (dBeta) cudaFree(dBeta);
+    if (dEffect) cudaFree(dEffect);
+    return -1;
 }
 
 int cuda_causal_iv(
@@ -484,95 +722,81 @@ int cuda_causal_iv(
     double* beta_iv,
     int T, int nz, int nx, int ny)
 {
-    size_t zSz = (size_t)T*nz*sizeof(double);
-    size_t xSz = (size_t)T*nx*sizeof(double);
-    size_t ySz = (size_t)T*ny*sizeof(double);
+    double *dZ = NULL, *dX = NULL, *dY = NULL;
+    double *dZtZ = NULL, *dZtZInv = NULL, *dZtX = NULL, *dProj = NULL;
+    double *dXHat = NULL, *dXhTXh = NULL, *dXhTXhInv = NULL, *dXhTY = NULL;
+    double *dBetaIv = NULL;
+    double *dInvWork = NULL;
 
-    // Z^T Z [nz x nz]
-    double* ztZ = (double*)calloc(nz*nz, sizeof(double));
-    cuda_causal_matmul_t(Z, Z, ztZ, nz, T, nz);
-
-    // (Z^T Z)^{-1}
-    double* ztZInv = (double*)malloc(nz*nz*sizeof(double));
-    {
-        double* L = (double*)calloc(nz*nz, sizeof(double));
-        for (int i = 0; i < nz; i++) {
-            for (int j = 0; j <= i; j++) {
-                double s = ztZ[i*nz+j];
-                for (int k = 0; k < j; k++) s -= L[i*nz+k]*L[j*nz+k];
-                L[i*nz+j] = (i==j) ? sqrt(fmax(s,1e-10)) : s/L[j*nz+j];
-            }
-        }
-        for (int col = 0; col < nz; col++) {
-            double y[64]={0}, x[64]={0};
-            y[col]=1.0;
-            for (int i=col; i<nz; i++) {
-                if (i>col) { y[i]=0; for (int k=col;k<i;k++) y[i]-=L[i*nz+k]*y[k]; }
-                y[i]/=L[i*nz+i];
-            }
-            for (int i=nz-1;i>=0;i--) {
-                x[i]=y[i];
-                for (int k=i+1;k<nz;k++) x[i]-=L[k*nz+i]*x[k];
-                x[i]/=L[i*nz+i];
-            }
-            for (int i=0;i<nz;i++) ztZInv[i*nz+col]=x[i];
-        }
-        free(L);
+    if (alloc_copy(Z, (void**)&dZ, (size_t)T * nz * sizeof(double))) return -1;
+    if (alloc_copy(X, (void**)&dX, (size_t)T * nx * sizeof(double))) { cudaFree(dZ); return -1; }
+    if (alloc_copy(Y, (void**)&dY, (size_t)T * ny * sizeof(double))) {
+        cudaFree(dZ); cudaFree(dX); return -1;
     }
 
-    // Z^T X [nz x nx]
-    double* ztX = (double*)calloc(nz*nx, sizeof(double));
-    cuda_causal_matmul_t(Z, X, ztX, nz, T, nx);
+    CUDA_CHECK(cudaMalloc((void**)&dZtZ, (size_t)nz * nz * sizeof(double)));
+    if (causal_launch_matmul_t_dev(dZ, dZ, dZtZ, nz, T, nz) != 0) goto fail_iv;
 
-    // proj = (Z^T Z)^{-1} Z^T X [nz x nx]
-    double* proj = (double*)calloc(nz*nx, sizeof(double));
-    cuda_causal_matmul(ztZInv, ztX, proj, nz, nz, nx);
-
-    // X_hat = Z @ proj [T x nx]
-    double* xHat = (double*)calloc(T*nx, sizeof(double));
-    cuda_causal_matmul(Z, proj, xHat, T, nz, nx);
-
-    // X_hat^T X_hat [nx x nx]
-    double* xhTxh = (double*)calloc(nx*nx, sizeof(double));
-    cuda_causal_matmul_t(xHat, xHat, xhTxh, nx, T, nx);
-
-    double* xhTxhInv = (double*)malloc(nx*nx*sizeof(double));
+    CUDA_CHECK(cudaMalloc((void**)&dZtZInv, (size_t)nz * nz * sizeof(double)));
     {
-        double* L = (double*)calloc(nx*nx, sizeof(double));
-        for (int i=0; i<nx; i++) {
-            for (int j=0; j<=i; j++) {
-                double s = xhTxh[i*nx+j];
-                for (int k=0;k<j;k++) s-=L[i*nx+k]*L[j*nx+k];
-                L[i*nx+j]=(i==j)?sqrt(fmax(s,1e-10)):s/L[j*nx+j];
-            }
-        }
-        for (int col=0;col<nx;col++) {
-            double y[64]={0},x[64]={0};
-            y[col]=1.0;
-            for (int i=col;i<nx;i++) {
-                if (i>col) { y[i]=0; for (int k=col;k<i;k++) y[i]-=L[i*nx+k]*y[k]; }
-                y[i]/=L[i*nx+i];
-            }
-            for (int i=nx-1;i>=0;i--) {
-                x[i]=y[i];
-                for (int k=i+1;k<nx;k++) x[i]-=L[k*nx+i]*x[k];
-                x[i]/=L[i*nx+i];
-            }
-            for (int i=0;i<nx;i++) xhTxhInv[i*nx+col]=x[i];
-        }
-        free(L);
+        size_t wz = ((size_t)nz * nz + (size_t)2 * nz) * sizeof(double);
+        CUDA_CHECK(cudaMalloc((void**)&dInvWork, wz));
+        invert_spd_global_kernel<<<1, 1>>>(dZtZ, dZtZInv, nz, dInvWork);
+        CUDA_CHECK(cudaGetLastError());
+        cudaFree(dInvWork);
+        dInvWork = NULL;
     }
 
-    // X_hat^T Y [nx x ny]
-    double* xhTy = (double*)calloc(nx*ny, sizeof(double));
-    cuda_causal_matmul_t(xHat, Y, xhTy, nx, T, ny);
+    CUDA_CHECK(cudaMalloc((void**)&dZtX, (size_t)nz * nx * sizeof(double)));
+    if (causal_launch_matmul_t_dev(dZ, dX, dZtX, nz, T, nx) != 0) goto fail_iv;
 
-    // beta_iv = xhTxhInv @ xhTy [nx x ny]
-    cuda_causal_matmul(xhTxhInv, xhTy, beta_iv, nx, nx, ny);
+    CUDA_CHECK(cudaMalloc((void**)&dProj, (size_t)nz * nx * sizeof(double)));
+    if (causal_launch_matmul_dev(dZtZInv, dZtX, dProj, nz, nz, nx) != 0) goto fail_iv;
 
-    free(ztZ); free(ztZInv); free(ztX); free(proj);
-    free(xHat); free(xhTxh); free(xhTxhInv); free(xhTy);
+    CUDA_CHECK(cudaMalloc((void**)&dXHat, (size_t)T * nx * sizeof(double)));
+    if (causal_launch_matmul_dev(dZ, dProj, dXHat, T, nz, nx) != 0) goto fail_iv;
+
+    CUDA_CHECK(cudaMalloc((void**)&dXhTXh, (size_t)nx * nx * sizeof(double)));
+    if (causal_launch_matmul_t_dev(dXHat, dXHat, dXhTXh, nx, T, nx) != 0) goto fail_iv;
+
+    CUDA_CHECK(cudaMalloc((void**)&dXhTXhInv, (size_t)nx * nx * sizeof(double)));
+    {
+        size_t wz = ((size_t)nx * nx + (size_t)2 * nx) * sizeof(double);
+        CUDA_CHECK(cudaMalloc((void**)&dInvWork, wz));
+        invert_spd_global_kernel<<<1, 1>>>(dXhTXh, dXhTXhInv, nx, dInvWork);
+        CUDA_CHECK(cudaGetLastError());
+        cudaFree(dInvWork);
+        dInvWork = NULL;
+    }
+
+    CUDA_CHECK(cudaMalloc((void**)&dXhTY, (size_t)nx * ny * sizeof(double)));
+    if (causal_launch_matmul_t_dev(dXHat, dY, dXhTY, nx, T, ny) != 0) goto fail_iv;
+
+    CUDA_CHECK(cudaMalloc((void**)&dBetaIv, (size_t)nx * ny * sizeof(double)));
+    if (causal_launch_matmul_dev(dXhTXhInv, dXhTY, dBetaIv, nx, nx, ny) != 0) goto fail_iv;
+
+    CUDA_CHECK(cudaMemcpy(
+        beta_iv, dBetaIv, (size_t)nx * ny * sizeof(double), cudaMemcpyDeviceToHost));
+
+    cudaFree(dZ); cudaFree(dX); cudaFree(dY);
+    cudaFree(dZtZ); cudaFree(dZtZInv); cudaFree(dZtX); cudaFree(dProj);
+    cudaFree(dXHat); cudaFree(dXhTXh); cudaFree(dXhTXhInv); cudaFree(dXhTY);
+    cudaFree(dBetaIv);
     return 0;
+
+fail_iv:
+    if (dInvWork) cudaFree(dInvWork);
+    cudaFree(dZ); cudaFree(dX); cudaFree(dY);
+    if (dZtZ) cudaFree(dZtZ);
+    if (dZtZInv) cudaFree(dZtZInv);
+    if (dZtX) cudaFree(dZtX);
+    if (dProj) cudaFree(dProj);
+    if (dXHat) cudaFree(dXHat);
+    if (dXhTXh) cudaFree(dXhTXh);
+    if (dXhTXhInv) cudaFree(dXhTXhInv);
+    if (dXhTY) cudaFree(dXhTY);
+    if (dBetaIv) cudaFree(dBetaIv);
+    return -1;
 }
 
 int cuda_causal_cate(
@@ -580,84 +804,101 @@ int cuda_causal_cate(
     double* cate,
     int T, int nx)
 {
-    // Count treated/control.
+    double *dX = NULL, *dTr = NULL,      *dY = NULL;
+    int *dIdx1 = NULL, *dIdx0 = NULL, *dC1 = NULL, *dC0 = NULL;
+    double *dX1 = NULL, *dY1 = NULL, *dX0 = NULL, *dY0 = NULL;
+    double *dBeta1 = NULL, *dBeta0 = NULL;
+    double *dXTX = NULL, *dInv = NULL, *dXTY = NULL, *dIw = NULL;
+
+    if (alloc_copy(X, (void**)&dX, (size_t)T * nx * sizeof(double))) return -1;
+    if (alloc_copy(treatment, (void**)&dTr, (size_t)T * sizeof(double))) {
+        cudaFree(dX); return -1;
+    }
+    if (alloc_copy(Y, (void**)&dY, (size_t)T * sizeof(double))) {
+        cudaFree(dX); cudaFree(dTr); return -1;
+    }
+
+    CUDA_CHECK(cudaMalloc((void**)&dIdx1, (size_t)T * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&dIdx0, (size_t)T * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&dC1, sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&dC0, sizeof(int)));
+    CUDA_CHECK(cudaMemset(dC1, 0, sizeof(int)));
+    CUDA_CHECK(cudaMemset(dC0, 0, sizeof(int)));
+
+    {
+        int gridT = (T + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        cate_fill_indices_kernel<<<gridT, BLOCK_SIZE>>>(dTr, T, dIdx1, dIdx0, dC1, dC0);
+    }
+    CUDA_CHECK(cudaGetLastError());
+
     int n1 = 0, n0 = 0;
-    for (int t = 0; t < T; t++) {
-        if (treatment[t] >= 0.5) n1++;
-        else n0++;
+    CUDA_CHECK(cudaMemcpy(&n1, dC1, sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&n0, dC0, sizeof(int), cudaMemcpyDeviceToHost));
+
+    CUDA_CHECK(cudaMalloc((void**)&dX1, (size_t)(n1 > 0 ? n1 : 1) * nx * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dY1, (size_t)(n1 > 0 ? n1 : 1) * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dX0, (size_t)(n0 > 0 ? n0 : 1) * nx * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dY0, (size_t)(n0 > 0 ? n0 : 1) * sizeof(double)));
+
+    if (n1 > 0) {
+        int g1 = (n1 + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        gather_X_rows_kernel<<<g1, BLOCK_SIZE>>>(dX, dIdx1, n1, nx, dX1);
+        gather_y_values_kernel<<<g1, BLOCK_SIZE>>>(dY, dIdx1, n1, dY1);
+        CUDA_CHECK(cudaGetLastError());
     }
 
-    double* X1 = (double*)malloc(n1*nx*sizeof(double));
-    double* Y1 = (double*)malloc(n1*sizeof(double));
-    double* X0 = (double*)malloc(n0*nx*sizeof(double));
-    double* Y0 = (double*)malloc(n0*sizeof(double));
-    int i1 = 0, i0 = 0;
-
-    for (int t = 0; t < T; t++) {
-        if (treatment[t] >= 0.5) {
-            memcpy(X1+i1*nx, X+t*nx, nx*sizeof(double));
-            Y1[i1++] = Y[t];
-        } else {
-            memcpy(X0+i0*nx, X+t*nx, nx*sizeof(double));
-            Y0[i0++] = Y[t];
-        }
+    if (n0 > 0) {
+        int g0 = (n0 + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        gather_X_rows_kernel<<<g0, BLOCK_SIZE>>>(dX, dIdx0, n0, nx, dX0);
+        gather_y_values_kernel<<<g0, BLOCK_SIZE>>>(dY, dIdx0, n0, dY0);
+        CUDA_CHECK(cudaGetLastError());
     }
 
-    // OLS helper: beta = (X^T X)^{-1} X^T y
-    auto ols = [&](const double* Xsub, const double* ySub, int n, double* beta) {
-        double* xtx = (double*)calloc(nx*nx, sizeof(double));
-        cuda_causal_matmul_t(Xsub, Xsub, xtx, nx, n, nx);
-        double* xtxInv = (double*)malloc(nx*nx*sizeof(double));
-        double* L = (double*)calloc(nx*nx, sizeof(double));
-        for (int i=0;i<nx;i++) {
-            for (int j=0;j<=i;j++) {
-                double s=xtx[i*nx+j];
-                for (int k=0;k<j;k++) s-=L[i*nx+k]*L[j*nx+k];
-                L[i*nx+j]=(i==j)?sqrt(fmax(s,1e-10)):s/L[j*nx+j];
-            }
-        }
-        for (int col=0;col<nx;col++) {
-            double y[64]={0},x[64]={0};
-            y[col]=1.0;
-            for (int i=col;i<nx;i++) {
-                if (i>col) { y[i]=0; for (int k=col;k<i;k++) y[i]-=L[i*nx+k]*y[k]; }
-                y[i]/=L[i*nx+i];
-            }
-            for (int i=nx-1;i>=0;i--) {
-                x[i]=y[i];
-                for (int k=i+1;k<nx;k++) x[i]-=L[k*nx+i]*x[k];
-                x[i]/=L[i*nx+i];
-            }
-            for (int i=0;i<nx;i++) xtxInv[i*nx+col]=x[i];
-        }
-        free(L);
-        double* xty = (double*)calloc(nx, sizeof(double));
-        for (int t=0;t<n;t++)
-            for (int j=0;j<nx;j++)
-                xty[j] += Xsub[t*nx+j]*ySub[t];
-        for (int i=0;i<nx;i++) {
-            beta[i]=0;
-            for (int j=0;j<nx;j++) beta[i]+=xtxInv[i*nx+j]*xty[j];
-        }
-        free(xtx); free(xtxInv); free(xty);
-    };
-
-    double* beta1 = (double*)calloc(nx, sizeof(double));
-    double* beta0 = (double*)calloc(nx, sizeof(double));
-    if (n1 > 0) ols(X1, Y1, n1, beta1);
-    if (n0 > 0) ols(X0, Y0, n0, beta0);
-
-    for (int t = 0; t < T; t++) {
-        double mu1 = 0, mu0 = 0;
-        for (int j = 0; j < nx; j++) {
-            mu1 += beta1[j] * X[t*nx+j];
-            mu0 += beta0[j] * X[t*nx+j];
-        }
-        cate[t] = mu1 - mu0;
+    CUDA_CHECK(cudaMalloc((void**)&dBeta1, (size_t)nx * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dBeta0, (size_t)nx * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dXTX, (size_t)nx * nx * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dInv, (size_t)nx * nx * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dXTY, (size_t)nx * sizeof(double)));
+    {
+        size_t wz = ((size_t)nx * nx + (size_t)2 * nx) * sizeof(double);
+        CUDA_CHECK(cudaMalloc((void**)&dIw, wz));
     }
 
-    free(X1); free(Y1); free(X0); free(Y0);
-    free(beta1); free(beta0);
+    if (ols_fit_device_dim(dX1, n1, nx, dY1, dBeta1, dXTX, dInv, dXTY, dIw) != 0) {
+        cudaFree(dX); cudaFree(dTr); cudaFree(dY);
+        cudaFree(dIdx1); cudaFree(dIdx0); cudaFree(dC1); cudaFree(dC0);
+        cudaFree(dX1); cudaFree(dY1); cudaFree(dX0); cudaFree(dY0);
+        cudaFree(dBeta1); cudaFree(dBeta0); cudaFree(dXTX); cudaFree(dInv); cudaFree(dXTY);
+        cudaFree(dIw);
+        return -1;
+    }
+
+    if (ols_fit_device_dim(dX0, n0, nx, dY0, dBeta0, dXTX, dInv, dXTY, dIw) != 0) {
+        cudaFree(dX); cudaFree(dTr); cudaFree(dY);
+        cudaFree(dIdx1); cudaFree(dIdx0); cudaFree(dC1); cudaFree(dC0);
+        cudaFree(dX1); cudaFree(dY1); cudaFree(dX0); cudaFree(dY0);
+        cudaFree(dBeta1); cudaFree(dBeta0); cudaFree(dXTX); cudaFree(dInv); cudaFree(dXTY);
+        cudaFree(dIw);
+        return -1;
+    }
+
+    {
+        double* dCate = NULL;
+        CUDA_CHECK(cudaMalloc((void**)&dCate, (size_t)T * sizeof(double)));
+        int gridT = (T + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        cate_predict_kernel<<<gridT, BLOCK_SIZE>>>(dX, dBeta1, dBeta0, T, nx, dCate);
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaMemcpy(cate, dCate, (size_t)T * sizeof(double), cudaMemcpyDeviceToHost));
+        cudaFree(dCate);
+    }
+
+    cudaFree(dIw);
+
+    cudaFree(dX); cudaFree(dTr); cudaFree(dY);
+    cudaFree(dIdx1); cudaFree(dIdx0); cudaFree(dC1); cudaFree(dC0);
+    cudaFree(dX1); cudaFree(dY1); cudaFree(dX0); cudaFree(dY0);
+    cudaFree(dBeta1); cudaFree(dBeta0); cudaFree(dXTX); cudaFree(dInv); cudaFree(dXTY);
+
     return 0;
 }
 
@@ -666,94 +907,96 @@ int cuda_causal_dag_markov(
     double* log_prob,
     int T, int N)
 {
-    for (int t = 0; t < T; t++) log_prob[t] = 0.0;
+    double *dX = NULL, *dLogProb = NULL, *dNodeVals = NULL;
+    double *dMu = NULL, *dVar = NULL, *dRss = NULL;
+    double *dPMat = NULL, *dBeta = NULL, *dXTX = NULL, *dInv = NULL, *dXTY = NULL;
+    double *dIw = NULL;
+    int *dParents = NULL;
+
+    if (alloc_copy(X, (void**)&dX, (size_t)T * N * sizeof(double))) return -1;
+
+    CUDA_CHECK(cudaMalloc((void**)&dLogProb, (size_t)T * sizeof(double)));
+    CUDA_CHECK(cudaMemset(dLogProb, 0, (size_t)T * sizeof(double)));
+
+    CUDA_CHECK(cudaMalloc((void**)&dNodeVals, (size_t)T * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dMu, sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dVar, sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dRss, sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dParents, 64 * sizeof(int)));
+
+    CUDA_CHECK(cudaMalloc((void**)&dPMat, (size_t)T * 64 * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dBeta, 64 * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dXTX, 64 * 64 * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dInv, 64 * 64 * sizeof(double)));
+    CUDA_CHECK(cudaMalloc((void**)&dXTY, 64 * sizeof(double)));
+    {
+        size_t wz = (64 * 64 + 2 * 64) * sizeof(double);
+        CUDA_CHECK(cudaMalloc((void**)&dIw, wz));
+    }
+
+    int gridT = (T + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
     for (int node = 0; node < N; node++) {
         int parents[64], np = 0;
-        for (int j = 0; j < N; j++)
-            if (adj[node*N+j] != 0.0) parents[np++] = j;
 
-        double* nodeVals = (double*)malloc(T*sizeof(double));
-        for (int t=0;t<T;t++) nodeVals[t] = X[t*N+node];
+        for (int j = 0; j < N; j++) {
+            if (adj[node * N + j] != 0.0) parents[np++] = j;
+        }
 
-        double mu = 0.0, sigma2 = 0.0;
-        double* beta = (double*)calloc(np, sizeof(double));
+        if (np > 64) {
+            cudaFree(dIw); cudaFree(dX); cudaFree(dLogProb); cudaFree(dNodeVals);
+            cudaFree(dMu); cudaFree(dVar); cudaFree(dRss); cudaFree(dParents);
+            cudaFree(dPMat); cudaFree(dBeta); cudaFree(dXTX); cudaFree(dInv); cudaFree(dXTY);
+            return -1;
+        }
+
+        CUDA_CHECK(cudaMemcpy(dParents, parents, (size_t)np * sizeof(int), cudaMemcpyHostToDevice));
+
+        extract_column_kernel<<<gridT, BLOCK_SIZE>>>(dX, T, N, node, dNodeVals);
+        CUDA_CHECK(cudaGetLastError());
 
         if (np == 0) {
-            for (int t=0;t<T;t++) mu += nodeVals[t];
-            mu /= T;
-            for (int t=0;t<T;t++) { double d=nodeVals[t]-mu; sigma2+=d*d; }
-            sigma2 /= T;
-            if (sigma2 < 1e-10) sigma2 = 1e-10;
+            reduce_mean_var_kernel<<<1, 1>>>(dNodeVals, T, dMu, dVar);
+            CUDA_CHECK(cudaGetLastError());
+
+            double mu_h = 0.0, sigma2_h = 1e-10;
+            CUDA_CHECK(cudaMemcpy(&mu_h, dMu, sizeof(double), cudaMemcpyDeviceToHost));
+            CUDA_CHECK(cudaMemcpy(&sigma2_h, dVar, sizeof(double), cudaMemcpyDeviceToHost));
+
+            dag_logp_univariate_kernel<<<gridT, BLOCK_SIZE>>>(
+                dNodeVals, mu_h, sigma2_h, dLogProb, T);
+            CUDA_CHECK(cudaGetLastError());
         } else {
-            double* pMat = (double*)malloc(T*np*sizeof(double));
-            for (int t=0;t<T;t++)
-                for (int p=0;p<np;p++)
-                    pMat[t*np+p] = X[t*N+parents[p]];
+            dag_gather_parents_kernel<<<gridT, BLOCK_SIZE>>>(dX, T, N, dParents, np, dPMat);
+            CUDA_CHECK(cudaGetLastError());
 
-            double* xtx = (double*)calloc(np*np, sizeof(double));
-            cuda_causal_matmul_t(pMat, pMat, xtx, np, T, np);
-            double* xtxInv = (double*)malloc(np*np*sizeof(double));
-            double* L = (double*)calloc(np*np, sizeof(double));
-            for (int i=0;i<np;i++) {
-                for (int j=0;j<=i;j++) {
-                    double s=xtx[i*np+j];
-                    for (int k=0;k<j;k++) s-=L[i*np+k]*L[j*np+k];
-                    L[i*np+j]=(i==j)?sqrt(fmax(s,1e-10)):s/L[j*np+j];
-                }
+            if (ols_fit_device_dim(dPMat, T, np, dNodeVals, dBeta, dXTX, dInv, dXTY, dIw) != 0) {
+                cudaFree(dIw); cudaFree(dX); cudaFree(dLogProb); cudaFree(dNodeVals);
+                cudaFree(dMu); cudaFree(dVar); cudaFree(dRss); cudaFree(dParents);
+                cudaFree(dPMat); cudaFree(dBeta); cudaFree(dXTX); cudaFree(dInv); cudaFree(dXTY);
+                return -1;
             }
-            for (int col=0;col<np;col++) {
-                double y[64]={0},x[64]={0};
-                y[col]=1.0;
-                for (int i=col;i<np;i++) {
-                    if (i>col) { y[i]=0; for (int k=col;k<i;k++) y[i]-=L[i*np+k]*y[k]; }
-                    y[i]/=L[i*np+i];
-                }
-                for (int i=np-1;i>=0;i--) {
-                    x[i]=y[i];
-                    for (int k=i+1;k<np;k++) x[i]-=L[k*np+i]*x[k];
-                    x[i]/=L[i*np+i];
-                }
-                for (int i=0;i<np;i++) xtxInv[i*np+col]=x[i];
-            }
-            free(L);
-            double* xty = (double*)calloc(np, sizeof(double));
-            for (int t=0;t<T;t++)
-                for (int p=0;p<np;p++)
-                    xty[p] += pMat[t*np+p]*nodeVals[t];
-            for (int i=0;i<np;i++) {
-                beta[i]=0;
-                for (int j=0;j<np;j++) beta[i]+=xtxInv[i*np+j]*xty[j];
-            }
-            free(xty); free(xtx); free(xtxInv);
 
-            double rss = 0.0;
-            for (int t=0;t<T;t++) {
-                double pred=0;
-                for (int p=0;p<np;p++) pred+=beta[p]*pMat[t*np+p];
-                double d=nodeVals[t]-pred;
-                rss+=d*d;
-            }
-            sigma2 = rss / T;
-            if (sigma2 < 1e-10) sigma2 = 1e-10;
-            free(pMat);
+            rss_kernel<<<1, 1>>>(dPMat, dNodeVals, dBeta, T, np, dRss);
+            CUDA_CHECK(cudaGetLastError());
+
+            double rss_h = 0.0;
+            CUDA_CHECK(cudaMemcpy(&rss_h, dRss, sizeof(double), cudaMemcpyDeviceToHost));
+
+            double sigma2_h = fmax(rss_h / (double)T, 1e-10);
+
+            dag_conditional_logp_kernel<<<gridT, BLOCK_SIZE>>>(
+                dNodeVals, dX, T, N, dParents, np, dBeta, sigma2_h, dLogProb);
+            CUDA_CHECK(cudaGetLastError());
         }
-
-        for (int t=0;t<T;t++) {
-            double pred;
-            if (np == 0) {
-                pred = mu;
-            } else {
-                pred = 0;
-                for (int p=0;p<np;p++) pred += beta[p]*X[t*N+parents[p]];
-            }
-            double diff = nodeVals[t] - pred;
-            log_prob[t] += -0.5*log(2.0*M_PI*sigma2) - 0.5*diff*diff/sigma2;
-        }
-
-        free(nodeVals); free(beta);
     }
 
+    CUDA_CHECK(cudaMemcpy(log_prob, dLogProb, (size_t)T * sizeof(double), cudaMemcpyDeviceToHost));
+
+    cudaFree(dIw);
+    cudaFree(dX); cudaFree(dLogProb); cudaFree(dNodeVals);
+    cudaFree(dMu); cudaFree(dVar); cudaFree(dRss); cudaFree(dParents);
+    cudaFree(dPMat); cudaFree(dBeta); cudaFree(dXTX); cudaFree(dInv); cudaFree(dXTY);
     return 0;
 }
 

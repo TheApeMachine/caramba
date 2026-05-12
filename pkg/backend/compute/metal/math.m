@@ -1,6 +1,6 @@
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
-#include "math.h"
+#include "metal_kernel_math.h"
 #include <string.h>
 
 // ---------------------------------------------------------------------------

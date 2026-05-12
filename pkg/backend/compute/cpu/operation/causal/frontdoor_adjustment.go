@@ -1,6 +1,10 @@
 package causal
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+	"sort"
+)
 
 /*
 FrontdoorAdjustment computes the causal effect using the frontdoor criterion:
@@ -9,12 +13,12 @@ P(Y|do(X)) = Σ_M P(M|X) * Σ_X' P(Y|X',M) * P(X')
 This applies when a mediator M is observed that blocks all directed paths from X to Y,
 and there is no unblocked backdoor path from X to M.
 
-shape = [N_x, N_m, N_y, T]
+shape = [N_x, N_m, N_y, T]  (N_y is unused; reserved for API symmetry)
 data[0] = X [T] — treatment (scalar per observation)
 data[1] = M [T] — mediator (scalar per observation)
 data[2] = Y [T] — outcome (scalar per observation)
-data[3] = X_bins [N_x] — bin boundaries for discretizing X
-Returns causal_effect [N_x] — causal effect estimate per X bin.
+Discretization uses equal-frequency binning on X and M (no optional bin array).
+Returns causal_effect [N_x].
 */
 type FrontdoorAdjustment struct{}
 
@@ -31,11 +35,11 @@ Forward computes the frontdoor-adjusted causal effect.
 */
 func (frontdoorAdjustment *FrontdoorAdjustment) Forward(shape []int, data ...[]float64) []float64 {
 	if len(shape) < 4 {
-		panic(fmt.Errorf("causal: FrontdoorAdjustment.Forward: len(shape)=%d, need >= 4", len(shape)).Error())
+		panic(fmt.Errorf("causal: FrontdoorAdjustment.Forward: len(shape)=%d, need >= 4", len(shape)))
 	}
 
 	if len(data) < 3 {
-		panic(fmt.Errorf("causal: FrontdoorAdjustment.Forward: len(data)=%d, need >= 3", len(data)).Error())
+		panic(fmt.Errorf("causal: FrontdoorAdjustment.Forward: len(data)=%d, need >= 3", len(data)))
 	}
 
 	nx, nm, _, t := shape[0], shape[1], shape[2], shape[3]
@@ -48,7 +52,7 @@ func (frontdoorAdjustment *FrontdoorAdjustment) Forward(shape []int, data ...[]f
 		panic(fmt.Errorf(
 			"causal: FrontdoorAdjustment.Forward: data lengths %d/%d/%d must all be >= T=%d",
 			len(xVec), len(mVec), len(yVec), t,
-		).Error())
+		))
 	}
 
 	// Discretize X into nx bins and M into nm bins using equal-frequency binning.
@@ -98,9 +102,14 @@ func (frontdoorAdjustment *FrontdoorAdjustment) Forward(shape []int, data ...[]f
 
 	for xBin := 0; xBin < nx; xBin++ {
 		for mBin := 0; mBin < nm; mBin++ {
-			if countXM[xBin*nm+mBin] > 0 {
-				eYGivenXM[xBin*nm+mBin] /= countXM[xBin*nm+mBin]
+			idxCell := xBin*nm + mBin
+
+			if countXM[idxCell] > 0 {
+				eYGivenXM[idxCell] /= countXM[idxCell]
+				continue
 			}
+
+			eYGivenXM[idxCell] = math.NaN()
 		}
 	}
 
@@ -116,7 +125,13 @@ func (frontdoorAdjustment *FrontdoorAdjustment) Forward(shape []int, data ...[]f
 			innerSum := 0.0
 
 			for xPrimeBin := 0; xPrimeBin < nx; xPrimeBin++ {
-				innerSum += eYGivenXM[xPrimeBin*nm+mBin] * pX[xPrimeBin]
+				cellMean := eYGivenXM[xPrimeBin*nm+mBin]
+
+				if math.IsNaN(cellMean) {
+					continue
+				}
+
+				innerSum += cellMean * pX[xPrimeBin]
 			}
 
 			effect += pMGivenX[mBin*nx+xBin] * innerSum
@@ -136,15 +151,13 @@ func discretize(data []float64, nBins int) []int {
 	n := len(data)
 
 	if nBins <= 0 || n == 0 {
-		return make([]int, n)
+		panic(fmt.Errorf("causal: discretize: need nBins > 0 and len(data) > 0 (got nBins=%d, n=%d)", nBins, n))
 	}
 
-	// Sort copy for quantile computation.
 	sorted := make([]float64, n)
 	copy(sorted, data)
-	sortFloat64(sorted)
+	sort.Float64s(sorted)
 
-	// Compute bin boundaries at equal quantile points.
 	boundaries := make([]float64, nBins-1)
 
 	for binIdx := 1; binIdx < nBins; binIdx++ {
@@ -161,65 +174,8 @@ func discretize(data []float64, nBins int) []int {
 	bins := make([]int, n)
 
 	for obsIdx, val := range data {
-		bin := 0
-
-		for boundaryIdx, boundary := range boundaries {
-			if val >= boundary {
-				bin = boundaryIdx + 1
-			}
-		}
-
-		bins[obsIdx] = bin
+		bins[obsIdx] = sort.Search(len(boundaries), func(i int) bool { return val < boundaries[i] })
 	}
 
 	return bins
-}
-
-/*
-sortFloat64 sorts a float64 slice in-place using insertion sort for small slices
-and a recursive quicksort for larger ones.
-*/
-func sortFloat64(a []float64) {
-	if len(a) <= 1 {
-		return
-	}
-
-	if len(a) <= 16 {
-		for idx := 1; idx < len(a); idx++ {
-			key := a[idx]
-			j := idx - 1
-
-			for j >= 0 && a[j] > key {
-				a[j+1] = a[j]
-				j--
-			}
-
-			a[j+1] = key
-		}
-
-		return
-	}
-
-	pivot := a[len(a)/2]
-	left := 0
-	right := len(a) - 1
-
-	for left <= right {
-		for a[left] < pivot {
-			left++
-		}
-
-		for a[right] > pivot {
-			right--
-		}
-
-		if left <= right {
-			a[left], a[right] = a[right], a[left]
-			left++
-			right--
-		}
-	}
-
-	sortFloat64(a[:right+1])
-	sortFloat64(a[left:])
 }

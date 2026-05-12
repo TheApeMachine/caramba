@@ -25,6 +25,13 @@ func (op *PredictionError) Forward(shape []int, data ...[]float64) []float64 {
 
 	n := shape[0]
 
+	if n <= 0 {
+		panic(fmt.Sprintf(
+			"predictive_coding: PredictionError.Forward: shape[0] (n) must be positive, got n=%d",
+			n,
+		))
+	}
+
 	if len(data) < 2 {
 		panic(fmt.Sprintf("predictive_coding: PredictionError.Forward: len(data)=%d, need >= 2", len(data)))
 	}

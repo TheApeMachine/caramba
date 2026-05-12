@@ -146,6 +146,9 @@ func TestUpdateWeights(t *testing.T) {
 		})
 
 		Convey("It should converge prediction error toward zero over multiple steps", func() {
+			const convergenceSteps = 200
+			const convergenceTolerance = 0.01
+
 			// Simple 1D test: x = 1.0, mu_hat from W@r should converge
 			opPred := pc.NewPrediction()
 			opErr := pc.NewPredictionError()
@@ -155,14 +158,14 @@ func TestUpdateWeights(t *testing.T) {
 			r1 := []float64{1.0}
 			x1 := []float64{1.0}
 
-			for step := 0; step < 200; step++ {
+			for i := 0; i < convergenceSteps; i++ {
 				muHat := opPred.Forward([]int{1, 1}, W1, r1)
 				eps := opErr.Forward([]int{1}, x1, muHat)
 				W1 = opWUpdate.Forward([]int{1, 1}, W1, eps, r1, []float64{0.1})
 			}
 
 			// After convergence W should be ~1.0 since r=1, x=1
-			So(math.Abs(W1[0]-1.0), ShouldBeLessThan, 0.01)
+			So(math.Abs(W1[0]-1.0), ShouldBeLessThan, convergenceTolerance)
 		})
 	})
 }
@@ -185,6 +188,27 @@ func BenchmarkPrediction(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		op.Forward([]int{dOut, dIn}, W, r)
+	}
+}
+
+func BenchmarkUpdateRepresentation(b *testing.B) {
+	dIn, dOut := 4, 8
+	W := make([]float64, dOut*dIn)
+	r := make([]float64, dIn)
+	epsLower := make([]float64, dOut)
+	epsSelf := make([]float64, dIn)
+	lr := []float64{0.1}
+
+	for i := range r {
+		r[i] = 1.0
+	}
+
+	op := pc.NewUpdateRepresentation()
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		op.Forward([]int{dIn, dOut}, r, W, epsLower, epsSelf, lr)
 	}
 }
 

@@ -13,20 +13,44 @@
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <vector>
+
+#ifdef __linux__
+#include <dlfcn.h>
+#endif
 
 #include "xla/pjrt/c/pjrt_c_api.h"
+
+namespace {
+
+constexpr double kVsaNormEps = 1e-12;
+
+// Quantise inverse norm so scale executables cache on buckets rather than raw floats.
+constexpr double kVsaInvNormQuant = 1e9;
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Globals
 // ---------------------------------------------------------------------------
 
+static std::mutex gv_mutex;
+
 static const PJRT_Api*    gv_api    = nullptr;
 static PJRT_Client*       gv_client = nullptr;
 
+#ifdef __linux__
+static void* gv_dl_handle = nullptr;
+#endif
+
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> gv_execs;
+
+static std::mutex gv_err_mu;
+static std::string gv_last_err;
 
 // ---------------------------------------------------------------------------
 // Error helpers
@@ -40,8 +64,21 @@ static void vfree_error(const PJRT_Api* api, PJRT_Error* err) {
     api->PJRT_Error_Destroy(&da);
 }
 
-static bool vcheck(const PJRT_Api* api, PJRT_Error* err) {
+static bool vcheck(const PJRT_Api* api, PJRT_Error* err, const char* ctx) {
     if (!err) return true;
+    PJRT_Error_Message_Args ma{};
+    ma.struct_size = PJRT_Error_Message_Args_STRUCT_SIZE;
+    ma.error = err;
+    api->PJRT_Error_Message(&ma);
+    std::string detail;
+    if (ma.message && ma.message_size > 0) {
+        detail.assign(ma.message, ma.message + ma.message_size);
+    }
+    {
+        std::lock_guard<std::mutex> elock(gv_err_mu);
+        gv_last_err = std::string(ctx) + ": " + detail;
+    }
+    fprintf(stderr, "XLA VSA PJRT error in %s: %s\n", ctx, detail.c_str());
     vfree_error(api, err);
     return false;
 }
@@ -72,6 +109,8 @@ static void set_single_device_compile_options(PJRT_Client_Compile_Args* ca) {
     ca->compile_options_size  = 0;
 }
 
+static void destroy_buf(PJRT_Buffer* buf);
+
 // ---------------------------------------------------------------------------
 // Buffer helpers
 // ---------------------------------------------------------------------------
@@ -91,22 +130,38 @@ static PJRT_Buffer* host_to_device(const double* ptr, size_t n) {
     ba.device = nullptr;
 
     auto* err = gv_api->PJRT_Client_BufferFromHostBuffer(&ba);
-    if (!vcheck(gv_api, err)) return nullptr;
+    if (!vcheck(gv_api, err, "PJRT_Client_BufferFromHostBuffer")) return nullptr;
 
     PJRT_Buffer_ReadyEvent_Args re{};
     re.struct_size = PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE;
     re.buffer = ba.buffer;
-    gv_api->PJRT_Buffer_ReadyEvent(&re);
+    auto* err_re = gv_api->PJRT_Buffer_ReadyEvent(&re);
+    if (!vcheck(gv_api, err_re, "PJRT_Buffer_ReadyEvent")) {
+        destroy_buf(ba.buffer);
+        return nullptr;
+    }
 
     PJRT_Event_Await_Args ea{};
     ea.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
     ea.event = re.event;
-    gv_api->PJRT_Event_Await(&ea);
+    auto* err_ea = gv_api->PJRT_Event_Await(&ea);
+    if (!vcheck(gv_api, err_ea, "PJRT_Event_Await(host_to_device)")) {
+        PJRT_Event_Destroy_Args ed_fail{};
+        ed_fail.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+        ed_fail.event = re.event;
+        gv_api->PJRT_Event_Destroy(&ed_fail);
+        destroy_buf(ba.buffer);
+        return nullptr;
+    }
 
     PJRT_Event_Destroy_Args ed{};
     ed.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
     ed.event = re.event;
-    gv_api->PJRT_Event_Destroy(&ed);
+    auto* err_ed = gv_api->PJRT_Event_Destroy(&ed);
+    if (!vcheck(gv_api, err_ed, "PJRT_Event_Destroy(host_to_device)")) {
+        destroy_buf(ba.buffer);
+        return nullptr;
+    }
 
     return ba.buffer;
 }
@@ -120,17 +175,25 @@ static int device_to_host(PJRT_Buffer* buf, double* out, size_t bytes) {
     ca.host_layout = nullptr;
 
     auto* err = gv_api->PJRT_Buffer_ToHostBuffer(&ca);
-    if (!vcheck(gv_api, err)) return -1;
+    if (!vcheck(gv_api, err, "PJRT_Buffer_ToHostBuffer")) return -1;
 
     PJRT_Event_Await_Args ea{};
     ea.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
     ea.event = ca.event;
-    gv_api->PJRT_Event_Await(&ea);
+    auto* err_ea = gv_api->PJRT_Event_Await(&ea);
+    if (!vcheck(gv_api, err_ea, "PJRT_Event_Await(device_to_host)")) {
+        PJRT_Event_Destroy_Args ed_fail{};
+        ed_fail.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+        ed_fail.event = ca.event;
+        gv_api->PJRT_Event_Destroy(&ed_fail);
+        return -1;
+    }
 
     PJRT_Event_Destroy_Args ed{};
     ed.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
     ed.event = ca.event;
-    gv_api->PJRT_Event_Destroy(&ed);
+    auto* err_ed = gv_api->PJRT_Event_Destroy(&ed);
+    if (!vcheck(gv_api, err_ed, "PJRT_Event_Destroy(device_to_host)")) return -1;
 
     return 0;
 }
@@ -150,6 +213,8 @@ static void destroy_buf(PJRT_Buffer* buf) {
 static PJRT_LoadedExecutable* compile_module(
     const std::string& key, const std::string& mlir)
 {
+    if (mlir.empty() || !gv_api || !gv_client) return nullptr;
+
     auto it = gv_execs.find(key);
     if (it != gv_execs.end()) return it->second;
 
@@ -167,7 +232,7 @@ static PJRT_LoadedExecutable* compile_module(
     set_single_device_compile_options(&ca);
 
     auto* err = gv_api->PJRT_Client_Compile(&ca);
-    if (!vcheck(gv_api, err)) return nullptr;
+    if (!vcheck(gv_api, err, "PJRT_Client_Compile")) return nullptr;
 
     gv_execs[key] = ca.executable;
     return ca.executable;
@@ -177,7 +242,16 @@ static PJRT_LoadedExecutable* compile_module(
 // StableHLO module builders
 // ---------------------------------------------------------------------------
 
+static bool elementwise_op_allowed(const std::string& op) {
+    return op == "stablehlo.multiply" || op == "stablehlo.add";
+}
+
 static std::string elementwise_module(const std::string& op, int n) {
+    if (!elementwise_op_allowed(op)) {
+        fprintf(stderr, "XLA VSA: disallowed elementwise op (expected stablehlo.multiply|stablehlo.add): %s\n",
+                op.c_str());
+        return {};
+    }
     std::string t = "tensor<" + std::to_string(n) + "xf64>";
     return
         "module @m {"
@@ -253,7 +327,7 @@ static int run_binary(
     auto* xerr = gv_api->PJRT_LoadedExecutable_Execute(&xa);
     destroy_buf(ba);
     destroy_buf(bb);
-    if (!vcheck(gv_api, xerr)) return -1;
+    if (!vcheck(gv_api, xerr, "PJRT_LoadedExecutable_Execute(binary)")) return -1;
 
     int rc = device_to_host(out_buf, out_ptr, out_bytes);
     destroy_buf(out_buf);
@@ -289,7 +363,7 @@ static int run_unary(
 
     auto* xerr = gv_api->PJRT_LoadedExecutable_Execute(&xa);
     destroy_buf(bin);
-    if (!vcheck(gv_api, xerr)) return -1;
+    if (!vcheck(gv_api, xerr, "PJRT_LoadedExecutable_Execute(unary)")) return -1;
 
     int rc = device_to_host(out_buf, out_ptr, out_bytes);
     destroy_buf(out_buf);
@@ -303,6 +377,9 @@ static int run_unary(
 extern "C" {
 
 int xla_vsa_init(const char* platform) {
+    std::lock_guard<std::mutex> lock(gv_mutex);
+
+    if (!platform) return -1;
     std::string plugin = pjrt_plugin_path(platform);
 
 #ifdef __linux__
@@ -310,28 +387,50 @@ int xla_vsa_init(const char* platform) {
     if (!handle) return -1;
     typedef const PJRT_Api* (*GetPJRTApiFn)();
     auto* get_api = (GetPJRTApiFn)dlsym(handle, "GetPjrtApi");
-    if (!get_api) return -1;
-    gv_api = get_api();
-#else
-    (void)plugin;
-    return -1;
-#endif
-
-    if (!gv_api) return -1;
+    if (!get_api) {
+        dlclose(handle);
+        return -1;
+    }
+    const PJRT_Api* api = get_api();
+    if (!api) {
+        dlclose(handle);
+        return -1;
+    }
 
     PJRT_Client_Create_Args cca{};
     cca.struct_size    = PJRT_Client_Create_Args_STRUCT_SIZE;
     cca.create_options = nullptr;
     cca.num_options    = 0;
 
-    auto* err = gv_api->PJRT_Client_Create(&cca);
-    if (!vcheck(gv_api, err)) return -1;
+    auto* err = api->PJRT_Client_Create(&cca);
+    if (!vcheck(api, err, "PJRT_Client_Create")) {
+        dlclose(handle);
+        return -1;
+    }
 
-    gv_client = cca.client;
+    gv_api     = api;
+    gv_client  = cca.client;
+    gv_dl_handle = handle;
     return 0;
+#else
+    (void)plugin;
+    return -1;
+#endif
 }
 
 void xla_vsa_shutdown(void) {
+    std::lock_guard<std::mutex> lock(gv_mutex);
+
+    if (!gv_api) {
+#ifdef __linux__
+        if (gv_dl_handle) {
+            dlclose(gv_dl_handle);
+            gv_dl_handle = nullptr;
+        }
+#endif
+        return;
+    }
+
     for (auto& kv : gv_execs) {
         PJRT_LoadedExecutable_Destroy_Args da{};
         da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
@@ -347,42 +446,62 @@ void xla_vsa_shutdown(void) {
         gv_api->PJRT_Client_Destroy(&da);
         gv_client = nullptr;
     }
+
+    gv_api = nullptr;
+
+#ifdef __linux__
+    if (gv_dl_handle) {
+        dlclose(gv_dl_handle);
+        gv_dl_handle = nullptr;
+    }
+#endif
 }
 
 int xla_vsa_bind(const double* a, const double* b, double* out, int n) {
-    if (n <= 0 || !gv_client) return -1;
+    std::lock_guard<std::mutex> lock(gv_mutex);
+
+    if (!a || !b || !out || n <= 0 || !gv_client) return -1;
 
     std::string key = "vsa_bind_" + std::to_string(n);
-    auto* exec = compile_module(key, elementwise_module("stablehlo.multiply", n));
+    std::string mlir = elementwise_module("stablehlo.multiply", n);
+    auto* exec = compile_module(key, mlir);
     if (!exec) return -1;
 
     return run_binary(exec, a, (size_t)n, b, (size_t)n, out, (size_t)n * sizeof(double));
 }
 
 int xla_vsa_bundle(const double** vecs, int num_vecs, double* out, int n) {
-    if (n <= 0 || num_vecs <= 0 || !gv_client) return -1;
+    std::lock_guard<std::mutex> lock(gv_mutex);
+
+    if (!vecs || !out || n <= 0 || num_vecs <= 0 || !gv_client) return -1;
+
+    for (int i = 0; i < num_vecs; i++) {
+        if (!vecs[i]) return -1;
+    }
 
     // Sum all vectors using repeated elementwise add
     std::vector<double> acc(n, 0.0);
     std::string add_key = "vsa_add_" + std::to_string(n);
-    auto* add_exec = compile_module(add_key, elementwise_module("stablehlo.add", n));
+    std::string add_mlir = elementwise_module("stablehlo.add", n);
+    auto* add_exec = compile_module(add_key, add_mlir);
     if (!add_exec) return -1;
 
     // First vector
     std::copy(vecs[0], vecs[0] + n, acc.data());
 
+    std::vector<double> tmp(n);
     // Accumulate remaining
     for (int v = 1; v < num_vecs; v++) {
-        std::vector<double> tmp(n);
         if (run_binary(add_exec, acc.data(), (size_t)n, vecs[v], (size_t)n,
                        tmp.data(), (size_t)n * sizeof(double)) != 0) return -1;
-        acc = std::move(tmp);
+        acc.swap(tmp);
     }
 
     // Compute norm: dot(acc, acc) via multiply then reduce
     std::vector<double> sq(n);
     std::string mul_key = "vsa_mul_" + std::to_string(n);
-    auto* mul_exec = compile_module(mul_key, elementwise_module("stablehlo.multiply", n));
+    std::string mul_mlir = elementwise_module("stablehlo.multiply", n);
+    auto* mul_exec = compile_module(mul_key, mul_mlir);
     if (!mul_exec) return -1;
     if (run_binary(mul_exec, acc.data(), (size_t)n, acc.data(), (size_t)n,
                    sq.data(), (size_t)n * sizeof(double)) != 0) return -1;
@@ -396,11 +515,13 @@ int xla_vsa_bundle(const double** vecs, int num_vecs, double* out, int n) {
 
     double norm = std::sqrt(sumsq);
 
-    if (norm > 1e-12) {
+    if (norm > kVsaNormEps) {
         double inv_norm = 1.0 / norm;
-        std::string sc_key = "vsa_scale_" + std::to_string(n) + "_" +
-                             std::to_string(inv_norm);
-        auto* sc_exec = compile_module(sc_key, scale_module(n, inv_norm));
+        long long inv_bucket = std::llround(inv_norm * kVsaInvNormQuant);
+        double inv_quant = static_cast<double>(inv_bucket) / kVsaInvNormQuant;
+        std::string sc_key =
+            "vsa_scale_" + std::to_string(n) + "_q" + std::to_string(inv_bucket);
+        auto* sc_exec = compile_module(sc_key, scale_module(n, inv_quant));
         if (!sc_exec) return -1;
         if (run_unary(sc_exec, acc.data(), (size_t)n, out, (size_t)n * sizeof(double)) != 0) return -1;
     } else {
@@ -411,11 +532,14 @@ int xla_vsa_bundle(const double** vecs, int num_vecs, double* out, int n) {
 }
 
 int xla_vsa_similarity(const double* a, const double* b, double* out, int n) {
-    if (n <= 0 || !gv_client) return -1;
+    std::lock_guard<std::mutex> lock(gv_mutex);
+
+    if (!a || !b || !out || n <= 0 || !gv_client) return -1;
 
     // Elementwise multiply then reduce-sum
     std::string mul_key = "vsa_mul_" + std::to_string(n);
-    auto* mul_exec = compile_module(mul_key, elementwise_module("stablehlo.multiply", n));
+    std::string mul_mlir = elementwise_module("stablehlo.multiply", n);
+    auto* mul_exec = compile_module(mul_key, mul_mlir);
     if (!mul_exec) return -1;
 
     std::vector<double> prod(n);
@@ -427,6 +551,13 @@ int xla_vsa_similarity(const double* a, const double* b, double* out, int n) {
     if (!red_exec) return -1;
 
     return run_unary(red_exec, prod.data(), (size_t)n, out, sizeof(double));
+}
+
+const char* xla_vsa_get_last_error(void) {
+    static char buf[4096];
+    std::lock_guard<std::mutex> lock(gv_err_mu);
+    std::snprintf(buf, sizeof buf, "%s", gv_last_err.c_str());
+    return buf;
 }
 
 } // extern "C"

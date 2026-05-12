@@ -40,64 +40,61 @@ __global__ void vsa_bundle_sum_kernel(double* out, const double* src, int n) {
 }
 
 // ---------------------------------------------------------------------------
-// bundle_normalize_kernel: out[i] /= norm (computed on host after reduction)
+// bundle_normalize_kernel: out[i] *= inv_norm (inv from prior kernel)
 // ---------------------------------------------------------------------------
 
-__global__ void vsa_normalize_kernel(double* out, double inv_norm, int n) {
+__global__ void vsa_inverse_l2_norm_kernel(const double* sumsq, double* inv_out) {
+    if (threadIdx.x != 0 || blockIdx.x != 0) return;
+
+    double s = sumsq[0];
+    double norm = sqrt(fmax(s, 0.0));
+    inv_out[0] = (norm > 1e-12) ? (1.0 / norm) : 0.0;
+}
+
+__global__ void vsa_normalize_global_inv_kernel(double* out, const double* inv_ptr, int n) {
+    double inv = inv_ptr[0];
     int idx = blockIdx.x * BLOCK_SIZE + threadIdx.x;
-    if (idx < n) out[idx] *= inv_norm;
+    if (idx < n) out[idx] *= inv;
 }
 
 // ---------------------------------------------------------------------------
 // sum_sq_kernel: partial sum-of-squares reduction using shared memory
 // ---------------------------------------------------------------------------
 
-__global__ void vsa_sum_sq_kernel(const double* a, double* partial, int n) {
+__global__ void vsa_sum_sq_kernel(const double* a, double* out_sum, int n) {
     extern __shared__ double sdata[];
     int tid = threadIdx.x;
     int idx = blockIdx.x * BLOCK_SIZE + tid;
     sdata[tid] = (idx < n) ? a[idx] * a[idx] : 0.0;
     __syncthreads();
 
+    #pragma unroll
     for (int s = BLOCK_SIZE / 2; s > 0; s >>= 1) {
         if (tid < s) sdata[tid] += sdata[tid + s];
         __syncthreads();
     }
 
-    if (tid == 0) partial[blockIdx.x] = sdata[0];
+    if (tid == 0) atomicAdd(out_sum, sdata[0]);
 }
 
 // ---------------------------------------------------------------------------
 // dot_kernel: partial dot-product reduction using shared memory
 // ---------------------------------------------------------------------------
 
-__global__ void vsa_dot_kernel(const double* a, const double* b, double* partial, int n) {
+__global__ void vsa_dot_kernel(const double* a, const double* b, double* out_sum, int n) {
     extern __shared__ double sdata[];
     int tid = threadIdx.x;
     int idx = blockIdx.x * BLOCK_SIZE + tid;
     sdata[tid] = (idx < n) ? a[idx] * b[idx] : 0.0;
     __syncthreads();
 
+    #pragma unroll
     for (int s = BLOCK_SIZE / 2; s > 0; s >>= 1) {
         if (tid < s) sdata[tid] += sdata[tid + s];
         __syncthreads();
     }
 
-    if (tid == 0) partial[blockIdx.x] = sdata[0];
-}
-
-// ---------------------------------------------------------------------------
-// Host-side reduction: sum the partial array on device -> host scalar
-// ---------------------------------------------------------------------------
-
-static double reduce_partials(double* d_partial, int num_blocks) {
-    double* h_partial = (double*)malloc(num_blocks * sizeof(double));
-    if (!h_partial) return 0.0;
-    cudaMemcpy(h_partial, d_partial, num_blocks * sizeof(double), cudaMemcpyDeviceToHost);
-    double sum = 0.0;
-    for (int i = 0; i < num_blocks; i++) sum += h_partial[i];
-    free(h_partial);
-    return sum;
+    if (tid == 0) atomicAdd(out_sum, sdata[0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -142,20 +139,22 @@ int cuda_vsa_bundle(const double** vecs, int num_vecs, double* out, int n) {
     }
 
     // Compute L2 norm via sum-of-squares reduction
-    double *dPartial;
-    VSA_CHECK(cudaMalloc((void**)&dPartial, blocks * sizeof(double)));
-    vsa_sum_sq_kernel<<<blocks, BLOCK_SIZE, BLOCK_SIZE * sizeof(double)>>>(dOut, dPartial, n);
+    double *dTotal = NULL;
+    VSA_CHECK(cudaMalloc((void**)&dTotal, sizeof(double)));
+    VSA_CHECK(cudaMemset(dTotal, 0, sizeof(double)));
+
+    vsa_sum_sq_kernel<<<blocks, BLOCK_SIZE, BLOCK_SIZE * sizeof(double)>>>(dOut, dTotal, n);
     VSA_CHECK(cudaGetLastError());
 
-    double sumsq = reduce_partials(dPartial, blocks);
-    cudaFree(dPartial);
+    double *dInv = NULL;
+    VSA_CHECK(cudaMalloc((void**)&dInv, sizeof(double)));
+    vsa_inverse_l2_norm_kernel<<<1, 1>>>(dTotal, dInv);
+    VSA_CHECK(cudaGetLastError());
 
-    double norm = sqrt(sumsq);
-    if (norm > 1e-12) {
-        double inv_norm = 1.0 / norm;
-        vsa_normalize_kernel<<<blocks, BLOCK_SIZE>>>(dOut, inv_norm, n);
-        VSA_CHECK(cudaGetLastError());
-    }
+    vsa_normalize_global_inv_kernel<<<blocks, BLOCK_SIZE>>>(dOut, dInv, n);
+    VSA_CHECK(cudaGetLastError());
+    cudaFree(dTotal);
+    cudaFree(dInv);
 
     VSA_CHECK(cudaMemcpy(out, dOut, nb, cudaMemcpyDeviceToHost));
     cudaFree(dOut);
@@ -163,21 +162,25 @@ int cuda_vsa_bundle(const double** vecs, int num_vecs, double* out, int n) {
 }
 
 int cuda_vsa_similarity(const double* a, const double* b, double* out, int n) {
-    double *dA, *dB, *dPartial;
+    double *dA, *dB;
     size_t nb = (size_t)n * sizeof(double);
 
     if (vsa_alloc_copy(a, (void**)&dA, nb)) return -1;
     if (vsa_alloc_copy(b, (void**)&dB, nb)) { cudaFree(dA); return -1; }
 
     int blocks = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    VSA_CHECK(cudaMalloc((void**)&dPartial, blocks * sizeof(double)));
 
-    vsa_dot_kernel<<<blocks, BLOCK_SIZE, BLOCK_SIZE * sizeof(double)>>>(dA, dB, dPartial, n);
+    double *dSum = NULL;
+    VSA_CHECK(cudaMalloc((void**)&dSum, sizeof(double)));
+    VSA_CHECK(cudaMemset(dSum, 0, sizeof(double)));
+
+    vsa_dot_kernel<<<blocks, BLOCK_SIZE, BLOCK_SIZE * sizeof(double)>>>(dA, dB, dSum, n);
     VSA_CHECK(cudaGetLastError());
 
-    out[0] = reduce_partials(dPartial, blocks);
+    VSA_CHECK(cudaMemcpy(out, dSum, sizeof(double), cudaMemcpyDeviceToHost));
 
-    cudaFree(dA); cudaFree(dB); cudaFree(dPartial);
+    cudaFree(dSum);
+    cudaFree(dA); cudaFree(dB);
     return 0;
 }
 

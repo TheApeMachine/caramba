@@ -1,8 +1,10 @@
 #include "textflag.h"
 
+// ARM64 *NEON entrypoints: 2-wide scalar-FP unrolling for throughput (FMOVD.P / FMULD / FADDD).
+// Names retain the NEON suffix as the platform SIMD path; they are not LD1/ST1 vector-lane kernels.
+
 // bindNEON(dst, a, b []float64)
 // ABI0: dst+0(FP)..16, a+24(FP)..40, b+48(FP)..64
-// Processes 2 float64 per iteration using NEON 128-bit lanes.
 TEXT ·bindNEON(SB), NOSPLIT, $0-72
 	MOVD a+24(FP), R1
 	MOVD a_len+32(FP), R3

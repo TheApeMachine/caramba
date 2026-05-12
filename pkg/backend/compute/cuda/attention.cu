@@ -14,12 +14,14 @@
 // ---------------------------------------------------------------------------
 
 __device__ static inline double warp_reduce_max(double val) {
+    #pragma unroll
     for (int offset = 16; offset > 0; offset >>= 1)
         val = max(val, __shfl_down_sync(0xffffffff, val, offset));
     return val;
 }
 
 __device__ static inline double warp_reduce_sum(double val) {
+    #pragma unroll
     for (int offset = 16; offset > 0; offset >>= 1)
         val += __shfl_down_sync(0xffffffff, val, offset);
     return val;

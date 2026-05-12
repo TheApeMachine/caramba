@@ -1,5 +1,5 @@
-#ifndef METAL_MATH_H
-#define METAL_MATH_H
+#ifndef METAL_KERNEL_MATH_H
+#define METAL_KERNEL_MATH_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -84,4 +84,4 @@ int metal_clamp_vec(float* dst, float lo, float hi, int n);
 }
 #endif
 
-#endif /* METAL_MATH_H */
+#endif /* METAL_KERNEL_MATH_H */
