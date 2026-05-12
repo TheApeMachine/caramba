@@ -2,6 +2,8 @@ package qpool
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -39,5 +41,74 @@ func TestQPoolScheduleSimple(t *testing.T) {
 				So(result.Value, ShouldEqual, "success")
 			}
 		})
+	})
+}
+
+func TestSchedule_circuitBreakerOpenRejectsFurtherSchedules(t *testing.T) {
+	Convey("Given Q with circuit breaker jobs", t, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+
+		poolConfig := &Config{
+			Scaler:            nil,
+			SchedulingTimeout: 5 * time.Second,
+		}
+
+		q := NewQ(ctx, 2, 2, poolConfig)
+
+		Reset(func() {
+			cancel()
+
+			if q != nil {
+				q.Close()
+			}
+		})
+
+		cases := []struct {
+			name           string
+			maxFailures    int
+			failuresToOpen int
+		}{
+			{name: "opens after one recorded failure", maxFailures: 1, failuresToOpen: 1},
+			{name: "opens after two recorded failures", maxFailures: 2, failuresToOpen: 2},
+		}
+
+		for _, row := range cases {
+			label := row.name
+
+			Convey(fmt.Sprintf("When %s", label), func() {
+				circuitID := fmt.Sprintf("cb-%d-%s", row.maxFailures, label)
+
+				for failureIndex := range row.failuresToOpen {
+					jobID := fmt.Sprintf("%s-fail-%d", circuitID, failureIndex)
+
+					resultChannel := q.Schedule(jobID, func(jobCtx context.Context) (any, error) {
+						return nil, errors.New("intentional failure")
+					}, WithCircuitBreaker(circuitID, row.maxFailures, time.Minute))
+
+					select {
+					case result := <-resultChannel:
+						So(result, ShouldNotBeNil)
+						So(result.Error, ShouldNotBeNil)
+					case <-time.After(6 * time.Second):
+						So("failed job completion", ShouldEqual, "timed out")
+					}
+				}
+
+				blockedChannel := q.Schedule(fmt.Sprintf("%s-blocked", circuitID), func(jobCtx context.Context) (any, error) {
+					return "skipped", nil
+				}, WithCircuitBreaker(circuitID, row.maxFailures, time.Minute))
+
+				select {
+				case result := <-blockedChannel:
+					So(result, ShouldNotBeNil)
+					So(result.Error, ShouldNotBeNil)
+					So(result.Error.Error(), ShouldContainSubstring, "circuit breaker")
+					So(result.Error.Error(), ShouldContainSubstring, circuitID)
+					So(result.Error.Error(), ShouldContainSubstring, "open")
+				case <-time.After(time.Second):
+					So("circuit rejection", ShouldEqual, "timed out")
+				}
+			})
+		}
 	})
 }

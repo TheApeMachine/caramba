@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -12,6 +13,8 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/architecture"
 	"github.com/theapemachine/caramba/pkg/backend/compute"
 	"github.com/theapemachine/caramba/pkg/backend/modelscope"
+	"github.com/theapemachine/caramba/pkg/config"
+	"github.com/theapemachine/caramba/pkg/devteam"
 )
 
 /*
@@ -42,7 +45,8 @@ func NewServer() *Server {
 }
 
 /*
-Up starts the server and listens for requests.
+Up starts the server, launches the AI dev team orchestrator if configured, and
+listens for requests.
 */
 func (server *Server) Up() error {
 	server.app.Use(
@@ -51,6 +55,9 @@ func (server *Server) Up() error {
 		cors.New(),
 		favicon.New(),
 	)
+
+	clerkConfig := config.NewClerkConfig()
+	server.app.Use("/backend", RequireClerkSession(clerkConfig))
 
 	wrap := func(h func(fiber.Ctx) error) fiber.Handler {
 		return timeout.New(h, timeout.Config{Timeout: 2 * time.Second})
@@ -68,6 +75,16 @@ func (server *Server) Up() error {
 	server.app.Get("/backend/architecture", wrap(server.architecture.List))
 	server.app.Get("/backend/architecture/:name", wrap(server.architecture.Load))
 	server.app.Post("/backend/architecture/:name", wrap(server.architecture.Save))
+
+	devteamCfg := config.NewDevTeamConfig()
+
+	if devteamCfg.Active {
+		orchestrator, err := devteam.NewOrchestrator(context.Background(), devteamCfg)
+
+		if err == nil {
+			go orchestrator.Run()
+		}
+	}
 
 	return server.app.Listen(":8118")
 }

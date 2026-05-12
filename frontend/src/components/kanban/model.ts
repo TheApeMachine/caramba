@@ -12,6 +12,8 @@ export interface KanbanCard {
 	columnId: string;
 	order: number;
 	createdAt: string;
+	researchProjectId?: string;
+	sourceProjectName?: string;
 }
 
 export interface KanbanColumn {

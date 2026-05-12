@@ -1,8 +1,4 @@
-import type {
-	KanbanBoard,
-	KanbanCard,
-	KanbanColumn,
-} from "./model";
+import type { KanbanBoard, KanbanCard, KanbanColumn } from "./model";
 
 export type BoardAction =
 	| { type: "ADD_COLUMN"; title: string; color: string }
@@ -18,6 +14,7 @@ export type BoardAction =
 	| {
 			type: "ADD_CARD";
 			columnId: string;
+			preferredCardId?: string;
 			card: Omit<KanbanCard, "id" | "createdAt" | "order" | "columnId">;
 	  }
 	| {
@@ -101,7 +98,7 @@ export function boardReducer(
 		}
 
 		case "ADD_CARD": {
-			const id = uid();
+			const id = action.preferredCardId ?? uid();
 			const column = state.columns.find((col) => col.id === action.columnId);
 			if (!column) return state;
 			const newCard: KanbanCard = {

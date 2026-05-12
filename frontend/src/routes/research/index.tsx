@@ -9,7 +9,7 @@ const ResearchIndex = () => {
 			<ResearchProjectsList />
 		</ClientOnly>
 	);
-}
+};
 
 const ResearchIndexPending = () => {
 	return (
@@ -19,7 +19,7 @@ const ResearchIndexPending = () => {
 			</Typography.Paragraph>
 		</Flex.Center>
 	);
-}
+};
 
 export const Route = createFileRoute("/research/")({
 	component: ResearchIndex,

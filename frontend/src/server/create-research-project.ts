@@ -33,9 +33,25 @@ async function insertResearchProjectRow(
 	try {
 		await client.query("BEGIN");
 		await client.query(
-			`INSERT INTO research_projects (id, name, description, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5)`,
-			[data.id, data.name, data.description, data.created_at, data.updated_at],
+			`INSERT INTO research_projects (
+        id,
+        name,
+        description,
+        organization_slug,
+        project_slug,
+        created_at,
+        updated_at
+      )
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			[
+				data.id,
+				data.name,
+				data.description,
+				data.organization_slug ?? "",
+				data.project_slug ?? null,
+				data.created_at,
+				data.updated_at,
+			],
 		);
 		const txidRes = await client.query<{ txid: string }>(
 			"SELECT pg_current_xact_id()::xid::text AS txid",
@@ -68,6 +84,8 @@ async function insertResearchProjectViaHttp(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
 			...data,
+			organization_slug: data.organization_slug ?? "",
+			project_slug: data.project_slug ?? null,
 			created_at: data.created_at.toISOString(),
 			updated_at: data.updated_at.toISOString(),
 		}),

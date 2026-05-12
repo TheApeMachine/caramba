@@ -9,9 +9,12 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as KanbanRouteImport } from './routes/kanban'
+import { Route as SignUpRouteImport } from './routes/sign-up'
+import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as RequestFeatureRouteImport } from './routes/request-feature'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResearchIndexRouteImport } from './routes/research/index'
+import { Route as KanbanIndexRouteImport } from './routes/kanban/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as ResearchPaperRouteImport } from './routes/research/paper'
 import { Route as ResearchNewRouteImport } from './routes/research/new'
@@ -22,11 +25,23 @@ import { Route as ResearchEditRouteRouteImport } from './routes/research/edit/ro
 import { Route as ResearchEditIndexRouteImport } from './routes/research/edit/index'
 import { Route as ResearchEditResearchPaperRouteImport } from './routes/research/edit/research-paper'
 import { Route as ResearchEditModelScopeRouteImport } from './routes/research/edit/model-scope'
+import { Route as KanbanProjectProjectIdRouteImport } from './routes/kanban/project.$projectId'
+import { Route as KanbanOrgOrganizationSlugRouteImport } from './routes/kanban/org.$organizationSlug'
 import { Route as ApiComputeOptimizerRouteImport } from './routes/api/compute/optimizer'
 
-const KanbanRoute = KanbanRouteImport.update({
-  id: '/kanban',
-  path: '/kanban',
+const SignUpRoute = SignUpRouteImport.update({
+  id: '/sign-up',
+  path: '/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RequestFeatureRoute = RequestFeatureRouteImport.update({
+  id: '/request-feature',
+  path: '/request-feature',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -37,6 +52,11 @@ const IndexRoute = IndexRouteImport.update({
 const ResearchIndexRoute = ResearchIndexRouteImport.update({
   id: '/research/',
   path: '/research/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KanbanIndexRoute = KanbanIndexRouteImport.update({
+  id: '/kanban/',
+  path: '/kanban/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsIndexRoute = DocsIndexRouteImport.update({
@@ -90,6 +110,17 @@ const ResearchEditModelScopeRoute = ResearchEditModelScopeRouteImport.update({
   path: '/model-scope',
   getParentRoute: () => ResearchEditRouteRoute,
 } as any)
+const KanbanProjectProjectIdRoute = KanbanProjectProjectIdRouteImport.update({
+  id: '/kanban/project/$projectId',
+  path: '/kanban/project/$projectId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KanbanOrgOrganizationSlugRoute =
+  KanbanOrgOrganizationSlugRouteImport.update({
+    id: '/kanban/org/$organizationSlug',
+    path: '/kanban/org/$organizationSlug',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
   id: '/api/compute/optimizer',
   path: '/api/compute/optimizer',
@@ -98,7 +129,9 @@ const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/kanban': typeof KanbanRoute
+  '/request-feature': typeof RequestFeatureRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
   '/research/edit': typeof ResearchEditRouteRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
@@ -106,23 +139,31 @@ export interface FileRoutesByFullPath {
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
   '/docs/': typeof DocsIndexRoute
+  '/kanban/': typeof KanbanIndexRoute
   '/research/': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
+  '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
   '/research/edit/model-scope': typeof ResearchEditModelScopeRoute
   '/research/edit/research-paper': typeof ResearchEditResearchPaperRoute
   '/research/edit/': typeof ResearchEditIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/kanban': typeof KanbanRoute
+  '/request-feature': typeof RequestFeatureRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
   '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
   '/project/edit': typeof ProjectEditRoute
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
   '/docs': typeof DocsIndexRoute
+  '/kanban': typeof KanbanIndexRoute
   '/research': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
+  '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
   '/research/edit/model-scope': typeof ResearchEditModelScopeRoute
   '/research/edit/research-paper': typeof ResearchEditResearchPaperRoute
   '/research/edit': typeof ResearchEditIndexRoute
@@ -130,7 +171,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/kanban': typeof KanbanRoute
+  '/request-feature': typeof RequestFeatureRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
   '/research/edit': typeof ResearchEditRouteRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
   '/paper/edit': typeof PaperEditRoute
@@ -138,8 +181,11 @@ export interface FileRoutesById {
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
   '/docs/': typeof DocsIndexRoute
+  '/kanban/': typeof KanbanIndexRoute
   '/research/': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
+  '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
   '/research/edit/model-scope': typeof ResearchEditModelScopeRoute
   '/research/edit/research-paper': typeof ResearchEditResearchPaperRoute
   '/research/edit/': typeof ResearchEditIndexRoute
@@ -148,7 +194,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/kanban'
+    | '/request-feature'
+    | '/sign-in'
+    | '/sign-up'
     | '/research/edit'
     | '/api/assistant'
     | '/paper/edit'
@@ -156,30 +204,40 @@ export interface FileRouteTypes {
     | '/research/new'
     | '/research/paper'
     | '/docs/'
+    | '/kanban/'
     | '/research/'
     | '/api/compute/optimizer'
+    | '/kanban/org/$organizationSlug'
+    | '/kanban/project/$projectId'
     | '/research/edit/model-scope'
     | '/research/edit/research-paper'
     | '/research/edit/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/kanban'
+    | '/request-feature'
+    | '/sign-in'
+    | '/sign-up'
     | '/api/assistant'
     | '/paper/edit'
     | '/project/edit'
     | '/research/new'
     | '/research/paper'
     | '/docs'
+    | '/kanban'
     | '/research'
     | '/api/compute/optimizer'
+    | '/kanban/org/$organizationSlug'
+    | '/kanban/project/$projectId'
     | '/research/edit/model-scope'
     | '/research/edit/research-paper'
     | '/research/edit'
   id:
     | '__root__'
     | '/'
-    | '/kanban'
+    | '/request-feature'
+    | '/sign-in'
+    | '/sign-up'
     | '/research/edit'
     | '/api/assistant'
     | '/paper/edit'
@@ -187,8 +245,11 @@ export interface FileRouteTypes {
     | '/research/new'
     | '/research/paper'
     | '/docs/'
+    | '/kanban/'
     | '/research/'
     | '/api/compute/optimizer'
+    | '/kanban/org/$organizationSlug'
+    | '/kanban/project/$projectId'
     | '/research/edit/model-scope'
     | '/research/edit/research-paper'
     | '/research/edit/'
@@ -196,7 +257,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  KanbanRoute: typeof KanbanRoute
+  RequestFeatureRoute: typeof RequestFeatureRoute
+  SignInRoute: typeof SignInRoute
+  SignUpRoute: typeof SignUpRoute
   ResearchEditRouteRoute: typeof ResearchEditRouteRouteWithChildren
   ApiAssistantRoute: typeof ApiAssistantRoute
   PaperEditRoute: typeof PaperEditRoute
@@ -204,17 +267,34 @@ export interface RootRouteChildren {
   ResearchNewRoute: typeof ResearchNewRoute
   ResearchPaperRoute: typeof ResearchPaperRoute
   DocsIndexRoute: typeof DocsIndexRoute
+  KanbanIndexRoute: typeof KanbanIndexRoute
   ResearchIndexRoute: typeof ResearchIndexRoute
   ApiComputeOptimizerRoute: typeof ApiComputeOptimizerRoute
+  KanbanOrgOrganizationSlugRoute: typeof KanbanOrgOrganizationSlugRoute
+  KanbanProjectProjectIdRoute: typeof KanbanProjectProjectIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/kanban': {
-      id: '/kanban'
-      path: '/kanban'
-      fullPath: '/kanban'
-      preLoaderRoute: typeof KanbanRouteImport
+    '/sign-up': {
+      id: '/sign-up'
+      path: '/sign-up'
+      fullPath: '/sign-up'
+      preLoaderRoute: typeof SignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/request-feature': {
+      id: '/request-feature'
+      path: '/request-feature'
+      fullPath: '/request-feature'
+      preLoaderRoute: typeof RequestFeatureRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -229,6 +309,13 @@ declare module '@tanstack/react-router' {
       path: '/research'
       fullPath: '/research/'
       preLoaderRoute: typeof ResearchIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kanban/': {
+      id: '/kanban/'
+      path: '/kanban'
+      fullPath: '/kanban/'
+      preLoaderRoute: typeof KanbanIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs/': {
@@ -301,6 +388,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResearchEditModelScopeRouteImport
       parentRoute: typeof ResearchEditRouteRoute
     }
+    '/kanban/project/$projectId': {
+      id: '/kanban/project/$projectId'
+      path: '/kanban/project/$projectId'
+      fullPath: '/kanban/project/$projectId'
+      preLoaderRoute: typeof KanbanProjectProjectIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kanban/org/$organizationSlug': {
+      id: '/kanban/org/$organizationSlug'
+      path: '/kanban/org/$organizationSlug'
+      fullPath: '/kanban/org/$organizationSlug'
+      preLoaderRoute: typeof KanbanOrgOrganizationSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/compute/optimizer': {
       id: '/api/compute/optimizer'
       path: '/api/compute/optimizer'
@@ -328,7 +429,9 @@ const ResearchEditRouteRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  KanbanRoute: KanbanRoute,
+  RequestFeatureRoute: RequestFeatureRoute,
+  SignInRoute: SignInRoute,
+  SignUpRoute: SignUpRoute,
   ResearchEditRouteRoute: ResearchEditRouteRouteWithChildren,
   ApiAssistantRoute: ApiAssistantRoute,
   PaperEditRoute: PaperEditRoute,
@@ -336,18 +439,22 @@ const rootRouteChildren: RootRouteChildren = {
   ResearchNewRoute: ResearchNewRoute,
   ResearchPaperRoute: ResearchPaperRoute,
   DocsIndexRoute: DocsIndexRoute,
+  KanbanIndexRoute: KanbanIndexRoute,
   ResearchIndexRoute: ResearchIndexRoute,
   ApiComputeOptimizerRoute: ApiComputeOptimizerRoute,
+  KanbanOrgOrganizationSlugRoute: KanbanOrgOrganizationSlugRoute,
+  KanbanProjectProjectIdRoute: KanbanProjectProjectIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }

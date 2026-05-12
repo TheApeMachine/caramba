@@ -12,12 +12,17 @@ OpType specifies the type of mathematical operation for the node.
 type OpType string
 
 const (
-	OpInput  OpType = "Input"
-	OpMatmul OpType = "Matmul"
-	OpAdd    OpType = "Add"
-	OpReLU   OpType = "ReLU"
-	OpGELU   OpType = "GELU"
-	OpFused  OpType = "Fused"
+	OpInput     OpType = "Input"
+	OpMatmul    OpType = "Matmul"
+	OpAdd       OpType = "Add"
+	OpMul       OpType = "Mul"
+	OpReLU      OpType = "ReLU"
+	OpLeakyReLU OpType = "LeakyReLU"
+	OpGELU      OpType = "GELU"
+	OpTanh      OpType = "Tanh"
+	OpSigmoid   OpType = "Sigmoid"
+	OpSwiGLU    OpType = "SwiGLU"
+	OpFused     OpType = "Fused"
 )
 
 /*

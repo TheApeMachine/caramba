@@ -1,3 +1,55 @@
+clerk:
+  active: false
+  secret_key: ${CLERK_SECRET_KEY}
+  # Organizations: JWT org_slug + org:admin on this slug elevates Go API (matches Clerk default Admin role).
+  privileged_organization_slug: ""
+  # Dashboard → Users → [user] → Metadata → Public: { "role": "admin" }
+  # Optional: Clerk user IDs (JWT sub, e.g. user_abc123) with elevated API privileges:
+  admin_subject_ids: []
+
+devteam:
+  active: false
+  database_url: ${DATABASE_URL}
+  github_token: ${GITHUB_TOKEN}
+  github_owner: ${GITHUB_OWNER}
+  github_repo: ${GITHUB_REPO}
+  requests_project_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+  docker_image: "ubuntu:24.04"
+  # How many developer+reviewer pairs can run concurrently.
+  max_concurrent: 3
+  # Each agent role has its own provider config.
+  # provider: "anthropic" | "openai" | anything else (OpenAI-compatible).
+  # base_url: override for local/self-hosted endpoints (Ollama, vLLM, LM Studio, etc.)
+  developer:
+    provider: anthropic
+    api_key: ${ANTHROPIC_API_KEY}
+    base_url: ""
+    model: claude-sonnet-4-6
+  reviewer:
+    provider: anthropic
+    api_key: ${ANTHROPIC_API_KEY}
+    base_url: ""
+    model: claude-sonnet-4-6
+
+compute:
+  metal:
+    activation_metallib: ${CARAMBA_METAL_ACTIVATION_METALLIB}
+    active_inference_metallib: ${CARAMBA_METAL_ACTIVE_INFERENCE_METALLIB}
+    attention_metallib: ${CARAMBA_METAL_ATTENTION_METALLIB}
+    causal_metallib: ${CARAMBA_METAL_CAUSAL_METALLIB}
+    convolution_metallib: ${CARAMBA_METAL_CONVOLUTION_METALLIB}
+    embedding_metallib: ${CARAMBA_METAL_EMBEDDING_METALLIB}
+    hawkes_metallib: ${CARAMBA_METAL_HAWKES_METALLIB}
+    markov_blanket_metallib: ${CARAMBA_METAL_MARKOV_BLANKET_METALLIB}
+    masking_metallib: ${CARAMBA_METAL_MASKING_METALLIB}
+    math_metallib: ${CARAMBA_METAL_MATH_METALLIB}
+    pooling_metallib: ${CARAMBA_METAL_POOLING_METALLIB}
+    positional_metallib: ${CARAMBA_METAL_POSITIONAL_METALLIB}
+    predictive_coding_metallib: ${CARAMBA_METAL_PREDICTIVE_CODING_METALLIB}
+    projection_metallib: ${CARAMBA_METAL_PROJECTION_METALLIB}
+    shape_metallib: ${CARAMBA_METAL_SHAPE_METALLIB}
+    vsa_metallib: ${CARAMBA_METAL_VSA_METALLIB}
+
 errnie:
   level: debug
   file: 

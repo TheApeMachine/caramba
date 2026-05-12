@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@clerk/tanstack-react-start";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { Flex } from "#/components/ui/flex";
 import {
 	Select,
@@ -10,25 +11,38 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "#/components/ui/select";
-import { Graph } from "./core/graph";
+import {
+	backendAuthHeaders,
+	backendBaseURL,
+	type ClerkGetToken,
+} from "#/lib/backend-http";
 import { ModelScope } from "./component";
+import { Graph } from "./core/graph";
 
-const BASE = "http://localhost:8118";
-
-function useModelList() {
+function useModelList(getToken: ClerkGetToken) {
 	return useQuery<string[]>({
 		queryKey: ["modelscope"],
-		queryFn: () => fetch(`${BASE}/backend/modelscope`).then((r) => r.json()),
+		queryFn: async () => {
+			const headers = await backendAuthHeaders(getToken);
+			const response = await fetch(`${backendBaseURL()}/backend/modelscope`, {
+				headers,
+			});
+
+			return response.json();
+		},
 	});
 }
 
-function useInspectModel(name: string) {
+function useInspectModel(name: string, getToken: ClerkGetToken) {
 	return useQuery({
 		queryKey: ["modelscope", name],
-		queryFn: () =>
-			fetch(
-				`${BASE}/backend/modelscope/inspect?path=${encodeURIComponent(`models/${name}`)}`,
-			).then((r) => r.json()),
+		queryFn: async () => {
+			const headers = await backendAuthHeaders(getToken);
+			const inspectURL = `${backendBaseURL()}/backend/modelscope/inspect?path=${encodeURIComponent(`models/${name}`)}`;
+			const response = await fetch(inspectURL, { headers });
+
+			return response.json();
+		},
 		enabled: Boolean(name),
 	});
 }
@@ -42,10 +56,17 @@ reads inside ModelScope.
 export function ModelScopeInspector() {
 	const [mounted, setMounted] = useState(false);
 	const [selected, setSelected] = useState("");
-	const { data: modelNames = [] } = useModelList();
-	const { data: graphData, isLoading, error } = useInspectModel(selected);
+	const { getToken } = useAuth();
+	const { data: modelNames = [] } = useModelList(getToken);
+	const {
+		data: graphData,
+		isLoading,
+		error,
+	} = useInspectModel(selected, getToken);
 
-	useEffect(() => { setMounted(true); }, []);
+	useEffect(() => {
+		setMounted(true);
+	}, []);
 
 	const graph = useMemo(() => {
 		if (!graphData) return undefined;
@@ -66,13 +87,20 @@ export function ModelScopeInspector() {
 				<span className="whitespace-nowrap text-muted-foreground text-xs">
 					Model
 				</span>
-				<Select onValueChange={(v) => { if (v) setSelected(v); }} value={selected}>
+				<Select
+					onValueChange={(v) => {
+						if (v) setSelected(v);
+					}}
+					value={selected}
+				>
 					<SelectTrigger className="min-w-64" size="sm">
 						<SelectValue placeholder="Select a model…" />
 					</SelectTrigger>
 					<SelectPopup>
 						{modelNames.map((name) => (
-							<SelectItem key={name} value={name}>{name}</SelectItem>
+							<SelectItem key={name} value={name}>
+								{name}
+							</SelectItem>
 						))}
 					</SelectPopup>
 				</Select>

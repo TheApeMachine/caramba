@@ -75,15 +75,68 @@ func TestLoadBalancerObserveAndLimit(t *testing.T) {
 	})
 }
 
-func TestLoadBalancerSelectWorker(t *testing.T) {
-	Convey("LoadBalancer SelectWorker returns modulo routing hint", t, func() {
-		lb := NewLoadBalancer(3, 5)
+func TestLoadBalancer_SelectWorker(t *testing.T) {
+	Convey("Given LoadBalancer.SelectWorker", t, func() {
+		cases := []struct {
+			name        string
+			reading     *MetricReading
+			wantWorker  int
+			wantFailure bool
+		}{
+			{
+				name:        "nil reading returns ErrNoAvailableWorkers",
+				reading:     nil,
+				wantWorker:  -1,
+				wantFailure: true,
+			},
+			{
+				name:        "zero WorkerCount returns ErrNoAvailableWorkers",
+				reading:     &MetricReading{WorkerCount: 0, TotalJobs: 5},
+				wantWorker:  -1,
+				wantFailure: true,
+			},
+			{
+				name:        "negative WorkerCount returns ErrNoAvailableWorkers",
+				reading:     &MetricReading{WorkerCount: -2, TotalJobs: 3},
+				wantWorker:  -1,
+				wantFailure: true,
+			},
+			{
+				name:        "positive WorkerCount returns TotalJobs modulo WorkerCount",
+				reading:     &MetricReading{WorkerCount: 3, JobQueueSize: 2, TotalJobs: 10},
+				wantWorker:  1,
+				wantFailure: false,
+			},
+			{
+				name:        "modulo zero total jobs",
+				reading:     &MetricReading{WorkerCount: 4, TotalJobs: 12},
+				wantWorker:  0,
+				wantFailure: false,
+			},
+		}
 
-		lb.Observe(&MetricReading{WorkerCount: 3, JobQueueSize: 2, TotalJobs: 10})
+		for _, row := range cases {
+			label := row.name
 
-		id, err := lb.SelectWorker()
+			Convey(fmt.Sprintf("When %s", label), func() {
+				loadBalancer := NewLoadBalancer(9, 5)
 
-		So(err, ShouldBeNil)
-		So(id, ShouldEqual, 1)
+				if row.reading != nil {
+					loadBalancer.Observe(row.reading)
+				}
+
+				workerID, err := loadBalancer.SelectWorker()
+
+				So(workerID, ShouldEqual, row.wantWorker)
+
+				if row.wantFailure {
+					So(err, ShouldEqual, ErrNoAvailableWorkers)
+				}
+
+				if !row.wantFailure {
+					So(err, ShouldBeNil)
+				}
+			})
+		}
 	})
 }

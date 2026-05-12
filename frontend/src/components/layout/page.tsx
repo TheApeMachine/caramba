@@ -30,8 +30,8 @@ export const Page = ({ children }: { children?: React.ReactNode }) => {
 
 Page.Header = ({ children }: { children?: React.ReactNode }) => {
 	return (
-		<header className="grid-area-header shrink-0 p-4">
-			<Breadcrumb>
+		<header className="grid-area-header flex shrink-0 flex-wrap items-center justify-between gap-4 p-4">
+			<Breadcrumb className="min-w-0 flex-1">
 				<BreadcrumbList>
 					<BreadcrumbItem>
 						<Sheet>

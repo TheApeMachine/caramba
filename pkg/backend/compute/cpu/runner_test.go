@@ -31,11 +31,15 @@ func TestRunner(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			node := ir.NewNode("in", ir.OpInput, shape)
+			node.SetMetadata("values", []float64{1, 2, 3, 4})
 			graph.AddNode(node)
 
 			results, err := runner.Execute(ctx, graph, []*ir.Node{node})
 			So(err, ShouldBeNil)
 			So(results, ShouldNotBeNil)
+			values, err := results["in"].CloneFloat64()
+			So(err, ShouldBeNil)
+			So(values, ShouldResemble, []float64{1, 2, 3, 4})
 		})
 	})
 }
@@ -51,6 +55,7 @@ func BenchmarkRunner(b *testing.B) {
 	b.Run("SimpleGraph", func(b *testing.B) {
 		graph := ir.NewGraph()
 		node := ir.NewNode("in", ir.OpInput, shape)
+		node.SetMetadata("values", []float64{1, 2, 3, 4})
 		graph.AddNode(node)
 		targets := []*ir.Node{node}
 
@@ -66,7 +71,8 @@ func BenchmarkRunner(b *testing.B) {
 	b.Run("ComplexGraph", func(b *testing.B) {
 		graph := ir.NewGraph()
 		nodeIn := ir.NewNode("in", ir.OpInput, shape)
-		nodeMath := ir.NewNode("add", ir.OpAdd, shape)
+		nodeIn.SetMetadata("values", []float64{-1, 2, -3, 4})
+		nodeMath := ir.NewNode("relu", ir.OpReLU, shape)
 		nodeMath.AddInput(nodeIn)
 		graph.AddNode(nodeIn)
 		graph.AddNode(nodeMath)

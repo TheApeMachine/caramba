@@ -1,2 +1,14 @@
 frontend/
+.DS_Store
+*.o
+caramba
+.pnpm-store/
+*.metallib
+*.air
+.vscode/
+.env
 models/
+code-dump.txt
+caramba.txt
+__pycache__/
+.git/

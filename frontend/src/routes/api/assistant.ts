@@ -1,4 +1,4 @@
-import { chat, toServerSentEventsResponse, toolDefinition } from "@tanstack/ai";
+import { chat, toolDefinition, toServerSentEventsResponse } from "@tanstack/ai";
 import { OPENAI_CHAT_MODELS, openaiText } from "@tanstack/ai-openai";
 import { createFileRoute } from "@tanstack/react-router";
 
@@ -17,7 +17,10 @@ const buckets = new Map<string, number[]>();
 
 function pruneAndCount(timestamps: number[], nowMs: number) {
 	let index = 0;
-	while (index < timestamps.length && nowMs - timestamps[index] > RATE_LIMIT_WINDOW_MS) {
+	while (
+		index < timestamps.length &&
+		nowMs - timestamps[index] > RATE_LIMIT_WINDOW_MS
+	) {
 		index += 1;
 	}
 	timestamps.splice(0, index);
@@ -73,17 +76,19 @@ happens on the client via the tool-call stream events.
 const PAPER_EDITOR_TOOL_SCHEMAS = {
 	paper_list_blocks: toolDefinition({
 		name: "paper_list_blocks",
-		description: "Returns the current list of blocks in the paper with their IDs, types, and content. Call this first before inserting or editing blocks.",
+		description:
+			"Returns the current list of blocks in the paper with their IDs, types, and content. Call this first before inserting or editing blocks.",
 		inputSchema: { type: "object" as const, properties: {} },
 	}),
 	paper_update_metadata: toolDefinition({
 		name: "paper_update_metadata",
-		description: "Updates the paper metadata (title, authors, abstract, keywords). Pass only the fields you want to change.",
+		description:
+			"Updates the paper metadata (title, authors, abstract, keywords). Pass only the fields you want to change.",
 		inputSchema: {
 			type: "object" as const,
 			properties: {
-				title:    { type: "string" },
-				authors:  { type: "string", description: "One author per line." },
+				title: { type: "string" },
+				authors: { type: "string", description: "One author per line." },
 				abstract: { type: "string" },
 				keywords: { type: "string", description: "Comma-separated." },
 			},
@@ -91,16 +96,23 @@ const PAPER_EDITOR_TOOL_SCHEMAS = {
 	}),
 	paper_insert_block: toolDefinition({
 		name: "paper_insert_block",
-		description: "Inserts a new block (paragraph, heading, or equation) after the given block ID. Use afterId 'last' to append at end.",
+		description:
+			"Inserts a new block (paragraph, heading, or equation) after the given block ID. Use afterId 'last' to append at end.",
 		inputSchema: {
 			type: "object" as const,
 			required: ["afterId", "blockType"],
 			properties: {
-				afterId:   { type: "string", description: "ID of the block to insert after, or 'last'." },
-				blockType: { type: "string", enum: ["paragraph", "heading", "equation"] },
-				text:      { type: "string" },
-				level:     { type: "number", enum: [1, 2, 3] },
-				latex:     { type: "string" },
+				afterId: {
+					type: "string",
+					description: "ID of the block to insert after, or 'last'.",
+				},
+				blockType: {
+					type: "string",
+					enum: ["paragraph", "heading", "equation"],
+				},
+				text: { type: "string" },
+				level: { type: "number", enum: [1, 2, 3] },
+				latex: { type: "string" },
 			},
 		},
 	}),
@@ -111,8 +123,8 @@ const PAPER_EDITOR_TOOL_SCHEMAS = {
 			type: "object" as const,
 			required: ["id"],
 			properties: {
-				id:    { type: "string" },
-				text:  { type: "string" },
+				id: { type: "string" },
+				text: { type: "string" },
 				latex: { type: "string" },
 			},
 		},
@@ -128,7 +140,8 @@ const PAPER_EDITOR_TOOL_SCHEMAS = {
 	}),
 	paper_scroll_to_block: toolDefinition({
 		name: "paper_scroll_to_block",
-		description: "Scrolls the paper editor to bring a specific block into view. Use this to direct the user's attention.",
+		description:
+			"Scrolls the paper editor to bring a specific block into view. Use this to direct the user's attention.",
 		inputSchema: {
 			type: "object" as const,
 			required: ["id"],
@@ -142,9 +155,12 @@ type ToolName = keyof typeof PAPER_EDITOR_TOOL_SCHEMAS;
 function resolveTools(requested: unknown) {
 	if (!Array.isArray(requested) || requested.length === 0) return undefined;
 	const valid = requested.filter(
-		(n): n is ToolName => typeof n === "string" && n in PAPER_EDITOR_TOOL_SCHEMAS,
+		(n): n is ToolName =>
+			typeof n === "string" && n in PAPER_EDITOR_TOOL_SCHEMAS,
 	);
-	return valid.length > 0 ? valid.map((n) => PAPER_EDITOR_TOOL_SCHEMAS[n]) : undefined;
+	return valid.length > 0
+		? valid.map((n) => PAPER_EDITOR_TOOL_SCHEMAS[n])
+		: undefined;
 }
 
 export const Route = createFileRoute("/api/assistant")({
@@ -171,10 +187,13 @@ export const Route = createFileRoute("/api/assistant")({
 					buckets.set(requesterFingerprint, history);
 
 					if (rateCount > RATE_LIMIT_MAX) {
-						return new Response(JSON.stringify({ error: "Too many requests" }), {
-							status: 429,
-							headers: { "Content-Type": "application/json" },
-						});
+						return new Response(
+							JSON.stringify({ error: "Too many requests" }),
+							{
+								status: 429,
+								headers: { "Content-Type": "application/json" },
+							},
+						);
 					}
 
 					if (!process.env.OPENAI_API_KEY) {
@@ -188,10 +207,13 @@ export const Route = createFileRoute("/api/assistant")({
 					try {
 						payload = (await request.json()) as Record<string, unknown>;
 					} catch {
-						return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-							status: 400,
-							headers: { "Content-Type": "application/json" },
-						});
+						return new Response(
+							JSON.stringify({ error: "Invalid JSON body" }),
+							{
+								status: 400,
+								headers: { "Content-Type": "application/json" },
+							},
+						);
 					}
 
 					const messages = payload.messages;
@@ -199,7 +221,8 @@ export const Route = createFileRoute("/api/assistant")({
 					const conversationFromData =
 						typeof dataField === "object" &&
 						dataField !== null &&
-						typeof (dataField as { conversationId?: unknown }).conversationId === "string"
+						typeof (dataField as { conversationId?: unknown })
+							.conversationId === "string"
 							? (dataField as { conversationId: string }).conversationId
 							: undefined;
 					const conversationId =
@@ -216,7 +239,10 @@ export const Route = createFileRoute("/api/assistant")({
 
 					if (!messages.every(isUIMessage)) {
 						return new Response(
-							JSON.stringify({ error: "messages must contain objects with string id + role plus parts[]" }),
+							JSON.stringify({
+								error:
+									"messages must contain objects with string id + role plus parts[]",
+							}),
 							{ status: 400, headers: { "Content-Type": "application/json" } },
 						);
 					}
@@ -228,13 +254,19 @@ export const Route = createFileRoute("/api/assistant")({
 						if (trimmed.length === 0) {
 							return new Response(
 								JSON.stringify({ error: "conversationId cannot be blank" }),
-								{ status: 400, headers: { "Content-Type": "application/json" } },
+								{
+									status: 400,
+									headers: { "Content-Type": "application/json" },
+								},
 							);
 						}
 						if (!conversationRegex.test(trimmed)) {
 							return new Response(
 								JSON.stringify({ error: "conversationId format invalid" }),
-								{ status: 400, headers: { "Content-Type": "application/json" } },
+								{
+									status: 400,
+									headers: { "Content-Type": "application/json" },
+								},
 							);
 						}
 						normalizedConversationId = trimmed;
@@ -244,7 +276,9 @@ export const Route = createFileRoute("/api/assistant")({
 					const requestedModel =
 						typeof payload.model === "string" ? payload.model : undefined;
 					const systemPrompts = Array.isArray(payload.systemPrompts)
-						? (payload.systemPrompts.filter((s) => typeof s === "string") as string[])
+						? (payload.systemPrompts.filter(
+								(s) => typeof s === "string",
+							) as string[])
 						: undefined;
 					const tools = resolveTools(payload.availableTools);
 
@@ -265,7 +299,9 @@ export const Route = createFileRoute("/api/assistant")({
 							messages,
 							conversationId: normalizedConversationId,
 							abortController,
-							...(systemPrompts && systemPrompts.length > 0 ? { systemPrompts } : {}),
+							...(systemPrompts && systemPrompts.length > 0
+								? { systemPrompts }
+								: {}),
 							...(tools ? { tools } : {}),
 						});
 
@@ -290,7 +326,10 @@ export const Route = createFileRoute("/api/assistant")({
 					});
 
 					return new Response(
-						JSON.stringify({ error: error instanceof Error ? error.message : "An error occurred" }),
+						JSON.stringify({
+							error:
+								error instanceof Error ? error.message : "An error occurred",
+						}),
 						{ status: 500, headers: { "Content-Type": "application/json" } },
 					);
 				}

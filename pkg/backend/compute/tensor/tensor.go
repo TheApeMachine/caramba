@@ -46,10 +46,11 @@ Location identifies where tensor storage is owned.
 type Location string
 
 const (
-	Host  Location = "host"
-	CUDA  Location = "cuda"
-	Metal Location = "metal"
-	XLA   Location = "xla"
+	Host    Location = "host"
+	CUDA    Location = "cuda"
+	Metal   Location = "metal"
+	XLA     Location = "xla"
+	Network Location = "network"
 )
 
 /*

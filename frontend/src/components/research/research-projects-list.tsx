@@ -13,6 +13,8 @@ export function ResearchProjectsList() {
 			id: project.id,
 			name: project.name,
 			description: project.description,
+			organization_slug: project.organization_slug,
+			project_slug: project.project_slug,
 			created_at: project.created_at,
 		})),
 	);
@@ -107,21 +109,41 @@ export function ResearchProjectsList() {
 									<p className="font-medium text-foreground text-sm">
 										{p.name}
 									</p>
+									{p.organization_slug ? (
+										<p className="text-muted-foreground text-xs">
+											Org slug: {p.organization_slug}
+											{p.project_slug ? ` · ${p.project_slug}` : ""}
+										</p>
+									) : null}
 									{p.description ? (
 										<p className="text-muted-foreground text-xs">
 											{p.description}
 										</p>
 									) : null}
 								</Flex.Column>
-								<Button
-									render={
-										<Link search={{ projectId: p.id }} to="/research/edit" />
-									}
-									size="sm"
-									variant="outline"
-								>
-									Graph
-								</Button>
+								<Flex.Row className="shrink-0 gap-2">
+									<Button
+										render={
+											<Link
+												params={{ projectId: p.id }}
+												to="/kanban/project/$projectId"
+											/>
+										}
+										size="sm"
+										variant="outline"
+									>
+										Kanban
+									</Button>
+									<Button
+										render={
+											<Link search={{ projectId: p.id }} to="/research/edit" />
+										}
+										size="sm"
+										variant="outline"
+									>
+										Graph
+									</Button>
+								</Flex.Row>
 							</Flex.Row>
 						</li>
 					))}

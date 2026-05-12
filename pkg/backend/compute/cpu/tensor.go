@@ -6,6 +6,7 @@ import (
 
 	cpuactivation "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/activation"
 	cpumath "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -81,6 +82,13 @@ Close releases the backend storage owner.
 */
 func (tensorBackend *TensorBackend) Close() error {
 	return tensorBackend.storage.Close()
+}
+
+/*
+OperationRegistry returns the complete CPU operation registry.
+*/
+func (tensorBackend *TensorBackend) OperationRegistry() *executor.Registry {
+	return NewOperationRegistry()
 }
 
 /*

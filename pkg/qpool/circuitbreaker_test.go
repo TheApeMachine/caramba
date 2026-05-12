@@ -38,8 +38,68 @@ func TestNewCircuitBreaker(t *testing.T) {
 }
 
 func BenchmarkNewCircuitBreaker(b *testing.B) {
-	for range b.N {
+	for b.Loop() {
 		_ = NewCircuitBreaker(5, time.Minute, 2)
+	}
+}
+
+func TestNewCircuitBreakerFromConfig(t *testing.T) {
+	Convey("Given newCircuitBreakerFromConfig", t, func() {
+		cases := []struct {
+			name         string
+			config       *CircuitBreakerConfig
+			wantFailures int
+			wantReset    time.Duration
+			wantHalfOpen int
+		}{
+			{
+				name: "copies fields from job circuit config",
+				config: &CircuitBreakerConfig{
+					MaxFailures:  4,
+					ResetTimeout: 33 * time.Second,
+					HalfOpenMax:  6,
+				},
+				wantFailures: 4,
+				wantReset:    33 * time.Second,
+				wantHalfOpen: 6,
+			},
+			{
+				name: "zero HalfOpenMax normalizes like NewCircuitBreaker",
+				config: &CircuitBreakerConfig{
+					MaxFailures:  2,
+					ResetTimeout: time.Millisecond,
+					HalfOpenMax:  0,
+				},
+				wantFailures: 2,
+				wantReset:    time.Millisecond,
+				wantHalfOpen: 1,
+			},
+		}
+
+		for _, row := range cases {
+			label := row.name
+
+			Convey(fmt.Sprintf("When %s", label), func() {
+				breaker := newCircuitBreakerFromConfig(row.config)
+
+				So(breaker.maxFailures, ShouldEqual, row.wantFailures)
+				So(breaker.resetTimeout, ShouldEqual, row.wantReset)
+				So(breaker.halfOpenMax, ShouldEqual, row.wantHalfOpen)
+				So(breaker.state.Load(), ShouldEqual, cbClosed)
+			})
+		}
+	})
+}
+
+func BenchmarkNewCircuitBreakerFromConfig(b *testing.B) {
+	cfg := &CircuitBreakerConfig{
+		MaxFailures:  3,
+		ResetTimeout: time.Minute,
+		HalfOpenMax:  2,
+	}
+
+	for range b.N {
+		_ = newCircuitBreakerFromConfig(cfg)
 	}
 }
 

@@ -52,7 +52,11 @@ function ResearchEditLayout() {
 	const activeTab = researchEditTabFromPathname(pathname);
 
 	// Expose the active tab as page context so the assistant knows where the user is.
-	const activeTabLabel = { architecture: "Research graph", "model-scope": "Model Scope", "research-paper": "Research Paper" }[activeTab];
+	const activeTabLabel = {
+		architecture: "Research graph",
+		"model-scope": "Model Scope",
+		"research-paper": "Research Paper",
+	}[activeTab];
 
 	return (
 		<Flex.Column className="min-h-0" fullHeight fullWidth>

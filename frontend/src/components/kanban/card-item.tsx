@@ -3,9 +3,15 @@
 import { CalendarIcon, GripVerticalIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "#/components/ui/avatar";
 import { Badge } from "#/components/ui/badge";
-import { Card, CardHeader, CardTitle, CardDescription, CardPanel } from "#/components/ui/card";
-import { PRIORITY_COLORS, type KanbanCard } from "./model";
+import {
+	Card,
+	CardDescription,
+	CardHeader,
+	CardPanel,
+	CardTitle,
+} from "#/components/ui/card";
 import { CardDialog } from "./card-dialog";
+import { type KanbanCard, PRIORITY_COLORS } from "./model";
 
 interface CardItemProps {
 	card: KanbanCard;
@@ -15,7 +21,13 @@ interface CardItemProps {
 	isDragging?: boolean;
 }
 
-export function CardItem({ card, draggable, onDragStart, onDragEnd, isDragging }: CardItemProps) {
+export function CardItem({
+	card,
+	draggable,
+	onDragStart,
+	onDragEnd,
+	isDragging,
+}: CardItemProps) {
 	const overdue = card.dueDate && new Date(card.dueDate) < new Date();
 
 	return (
@@ -34,8 +46,15 @@ export function CardItem({ card, draggable, onDragStart, onDragEnd, isDragging }
 					<CardHeader className="pb-2">
 						<div className="flex items-start gap-2">
 							<GripVerticalIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/40" />
-							<CardTitle className="text-sm leading-snug flex-1">{card.title}</CardTitle>
+							<CardTitle className="text-sm leading-snug flex-1">
+								{card.title}
+							</CardTitle>
 						</div>
+						{card.sourceProjectName ? (
+							<Badge className="ml-5 self-start" size="sm" variant="outline">
+								{card.sourceProjectName}
+							</Badge>
+						) : null}
 						<Badge
 							variant={PRIORITY_COLORS[card.priority]}
 							size="sm"
@@ -45,7 +64,10 @@ export function CardItem({ card, draggable, onDragStart, onDragEnd, isDragging }
 						</Badge>
 					</CardHeader>
 
-					{(card.description || card.labels.length > 0 || card.assignees.length > 0 || card.dueDate) && (
+					{(card.description ||
+						card.labels.length > 0 ||
+						card.assignees.length > 0 ||
+						card.dueDate) && (
 						<CardPanel className="pt-0 pb-3 flex flex-col gap-2">
 							{card.description && (
 								<CardDescription className="text-xs line-clamp-2 ml-5">
@@ -72,7 +94,9 @@ export function CardItem({ card, draggable, onDragStart, onDragEnd, isDragging }
 									<span
 										className={[
 											"flex items-center gap-1 text-[11px]",
-											overdue ? "text-destructive-foreground" : "text-muted-foreground",
+											overdue
+												? "text-destructive-foreground"
+												: "text-muted-foreground",
 										].join(" ")}
 									>
 										<CalendarIcon className="size-3" />
@@ -83,13 +107,20 @@ export function CardItem({ card, draggable, onDragStart, onDragEnd, isDragging }
 								{card.assignees.length > 0 && (
 									<div className="flex -space-x-1.5 ml-auto">
 										{card.assignees.slice(0, 3).map((a) => (
-											<Avatar key={a} className="size-5 border border-background text-[8px]">
-												<AvatarFallback>{a.slice(0, 2).toUpperCase()}</AvatarFallback>
+											<Avatar
+												key={a}
+												className="size-5 border border-background text-[8px]"
+											>
+												<AvatarFallback>
+													{a.slice(0, 2).toUpperCase()}
+												</AvatarFallback>
 											</Avatar>
 										))}
 										{card.assignees.length > 3 && (
 											<Avatar className="size-5 border border-background text-[8px]">
-												<AvatarFallback>+{card.assignees.length - 3}</AvatarFallback>
+												<AvatarFallback>
+													+{card.assignees.length - 3}
+												</AvatarFallback>
 											</Avatar>
 										)}
 									</div>

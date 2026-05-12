@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS research_projects (
   id UUID PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  organization_slug TEXT NOT NULL DEFAULT '',
+  project_slug TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
