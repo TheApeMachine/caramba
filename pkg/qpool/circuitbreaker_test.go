@@ -1,11 +1,47 @@
 package qpool
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 )
+
+func TestNewCircuitBreaker(t *testing.T) {
+	Convey("Given NewCircuitBreaker", t, func() {
+		reset := time.Minute
+
+		cases := []struct {
+			name            string
+			halfOpenMaxIn   int
+			halfOpenMaxWant int
+		}{
+			{name: "negative halfOpenMax normalizes to one", halfOpenMaxIn: -4, halfOpenMaxWant: 1},
+			{name: "zero halfOpenMax normalizes to one", halfOpenMaxIn: 0, halfOpenMaxWant: 1},
+			{name: "positive halfOpenMax preserved", halfOpenMaxIn: 5, halfOpenMaxWant: 5},
+		}
+
+		for _, row := range cases {
+			label := row.name
+
+			Convey(fmt.Sprintf("When %s", label), func() {
+				breaker := NewCircuitBreaker(3, reset, row.halfOpenMaxIn)
+
+				So(breaker.halfOpenMax, ShouldEqual, row.halfOpenMaxWant)
+				So(breaker.maxFailures, ShouldEqual, 3)
+				So(breaker.resetTimeout, ShouldEqual, reset)
+				So(breaker.state.Load(), ShouldEqual, cbClosed)
+			})
+		}
+	})
+}
+
+func BenchmarkNewCircuitBreaker(b *testing.B) {
+	for range b.N {
+		_ = NewCircuitBreaker(5, time.Minute, 2)
+	}
+}
 
 func TestCircuitBreakerRegulatorInterface(t *testing.T) {
 	Convey("Given a CircuitBreaker", t, func() {

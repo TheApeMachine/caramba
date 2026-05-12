@@ -1,11 +1,62 @@
 package qpool
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 )
+
+func TestNewRateLimiter(t *testing.T) {
+	Convey("Given NewRateLimiter constructor normalization", t, func() {
+		cases := []struct {
+			name            string
+			maxTokens       int
+			refill          time.Duration
+			wantCapacity    int64
+			wantRefill      time.Duration
+			wantFirstReject bool
+		}{
+			{
+				name:            "negative capacity clamps to zero and rejects immediately",
+				maxTokens:       -3,
+				refill:          100 * time.Millisecond,
+				wantCapacity:    0,
+				wantRefill:      100 * time.Millisecond,
+				wantFirstReject: true,
+			},
+			{
+				name:            "zero refill defaults to one second",
+				maxTokens:       2,
+				refill:          0,
+				wantCapacity:    2,
+				wantRefill:      time.Second,
+				wantFirstReject: false,
+			},
+			{
+				name:            "negative refill defaults to one second",
+				maxTokens:       1,
+				refill:          -time.Nanosecond,
+				wantCapacity:    1,
+				wantRefill:      time.Second,
+				wantFirstReject: false,
+			},
+		}
+
+		for _, row := range cases {
+			label := row.name
+
+			Convey(fmt.Sprintf("When %s", label), func() {
+				limiter := NewRateLimiter(row.maxTokens, row.refill)
+
+				So(limiter.maxTokens, ShouldEqual, row.wantCapacity)
+				So(limiter.refillRate, ShouldEqual, row.wantRefill)
+				So(limiter.Limit(), ShouldEqual, row.wantFirstReject)
+			})
+		}
+	})
+}
 
 func TestRateLimiter_NewRateLimiter_burstAndRefillInterval(t *testing.T) {
 	Convey("Given NewRateLimiter with burst 2 and 50ms refill", t, func() {
@@ -24,27 +75,6 @@ func TestRateLimiter_NewRateLimiter_burstAndRefillInterval(t *testing.T) {
 			time.Sleep(250 * time.Millisecond)
 
 			So(rl.Limit(), ShouldBeFalse)
-		})
-	})
-}
-
-func TestRateLimiter_NewRateLimiter_clampsNegativeCapacity(t *testing.T) {
-	Convey("Given NewRateLimiter with negative maxTokens", t, func() {
-		rl := NewRateLimiter(-3, 100*time.Millisecond)
-
-		Convey("It should clamp capacity to zero so Limit rejects immediately", func() {
-			So(rl.maxTokens, ShouldEqual, 0)
-			So(rl.Limit(), ShouldBeTrue)
-		})
-	})
-}
-
-func TestRateLimiter_NewRateLimiter_defaultRefillWhenNonPositive(t *testing.T) {
-	Convey("Given NewRateLimiter with non-positive refill duration", t, func() {
-		rl := NewRateLimiter(1, 0)
-
-		Convey("It should substitute a positive default refill interval", func() {
-			So(rl.refillRate, ShouldEqual, time.Second)
 		})
 	})
 }
