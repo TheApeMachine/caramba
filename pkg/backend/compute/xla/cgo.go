@@ -7,8 +7,7 @@ package xla
 // translation unit (no __XLA_BUILD__ defined). With -tags "cgo xla" the full
 // PJRT C++ sources are compiled.
 //
-// Required environment when building with -tags "cgo xla":
-//   CGO_CPPFLAGS="-I/path/to/xla"
+// PJRT runtime paths are loaded from compute.xla in cmd/asset/config.yml.
 
 // #cgo CXXFLAGS: -std=c++17
 // #cgo LDFLAGS: -ldl

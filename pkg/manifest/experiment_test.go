@@ -126,6 +126,120 @@ targets:
 				So(err, ShouldBeNil)
 				So(experiment.Targets[0].Graph, ShouldNotBeNil)
 			})
+
+			Convey("It should reject malformed targets instead of skipping them", func() {
+				write("bad-target.yml", `
+targets:
+  - not-a-map
+`)
+
+				experiment, err := compiler.CompileExperiment("bad-target.yml")
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "targets[0] must be a mapping")
+				So(experiment, ShouldBeNil)
+			})
+
+			Convey("It should reject missing target topology", func() {
+				write("missing-topology.yml", `
+targets:
+  - name: broken
+    system: {}
+`)
+
+				experiment, err := compiler.CompileExperiment("missing-topology.yml")
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "targets[0].system.topology is required")
+				So(experiment, ShouldBeNil)
+			})
+
+			Convey("It should reject malformed runs instead of skipping them", func() {
+				write("bad-run.yml", `
+targets:
+  - name: broken
+    system:
+      topology:
+        nodes:
+          - id: relu
+            op: activation.relu
+            out: [h]
+    runs:
+      - not-a-map
+`)
+
+				experiment, err := compiler.CompileExperiment("bad-run.yml")
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "targets[0].runs[0] must be a mapping")
+				So(experiment, ShouldBeNil)
+			})
+
+			Convey("It should reject non-integer run values", func() {
+				write("bad-run-int.yml", `
+targets:
+  - name: broken
+    system:
+      topology:
+        nodes:
+          - id: relu
+            op: activation.relu
+            out: [h]
+    runs:
+      - id: train
+        steps: 1.5
+`)
+
+				experiment, err := compiler.CompileExperiment("bad-run-int.yml")
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "targets[0].runs[0].steps")
+				So(err.Error(), ShouldContainSubstring, "must be an integer")
+				So(experiment, ShouldBeNil)
+			})
+
+			Convey("It should reject malformed datasets", func() {
+				write("bad-dataset.yml", `
+datasets:
+  - not-a-map
+targets:
+  - name: broken
+    system:
+      topology:
+        nodes:
+          - id: relu
+            op: activation.relu
+            out: [h]
+`)
+
+				experiment, err := compiler.CompileExperiment("bad-dataset.yml")
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "datasets[0] must be a mapping")
+				So(experiment, ShouldBeNil)
+			})
+
+			Convey("It should reject missing required operation dimensions", func() {
+				write("bad-op.yml", `
+targets:
+  - name: broken
+    system:
+      topology:
+        nodes:
+          - id: proj
+            op: projection.linear
+            config:
+              in_features: 64
+            out: [h]
+`)
+
+				experiment, err := compiler.CompileExperiment("bad-op.yml")
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "projection.linear config.out_features")
+				So(err.Error(), ShouldContainSubstring, "missing required integer")
+				So(experiment, ShouldBeNil)
+			})
 		})
 	})
 }
@@ -154,7 +268,7 @@ targets:
 
 	b.ResetTimer()
 
-	for range b.N {
+	for b.Loop() {
 		_, _ = compiler.CompileExperiment("bench.yml")
 	}
 }

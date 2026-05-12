@@ -33,8 +33,16 @@ func (runner *Runner) Execute(ctx context.Context, graph *ir.Graph, targets []*i
 		return nil, err
 	}
 
+	if graph == nil {
+		return nil, fmt.Errorf("cpu runner: graph is required")
+	}
+
 	if len(targets) == 0 {
 		return nil, fmt.Errorf("cpu runner: no execution targets provided")
+	}
+
+	if err := validateTargets(graph, targets); err != nil {
+		return nil, err
 	}
 
 	nodes, tensors, err := runner.specs(graph, targets)
@@ -49,7 +57,7 @@ func (runner *Runner) Execute(ctx context.Context, graph *ir.Graph, targets []*i
 		return nil, err
 	}
 
-	return runner.results(outputs)
+	return outputs, nil
 }
 
 /*
@@ -142,50 +150,6 @@ func inputTensorSpec(node *ir.Node, metadata map[string]any) (executor.TensorSpe
 	}, nil
 }
 
-func (runner *Runner) results(
-	outputs []executor.TensorSpec,
-) (map[string]tensor.Float64Tensor, error) {
-	results := make(map[string]tensor.Float64Tensor, len(outputs))
-
-	for _, output := range outputs {
-		if output.DType != tensor.Float64 {
-			return nil, fmt.Errorf("cpu runner: unsupported output dtype %q", output.DType)
-		}
-
-		values, err := executor.DecodeFloat64(output.Data)
-
-		if err != nil {
-			return nil, err
-		}
-
-		shape, err := tensorShape(output.Shape)
-
-		if err != nil {
-			return nil, err
-		}
-
-		uploaded, err := runner.backend.UploadFloat64(shape, values)
-
-		if err != nil {
-			return nil, err
-		}
-
-		results[output.ID] = uploaded
-	}
-
-	return results, nil
-}
-
-func tensorShape(shape []int64) (tensor.Shape, error) {
-	dimensions := make([]int, len(shape))
-
-	for index, dimension := range shape {
-		dimensions[index] = int(dimension)
-	}
-
-	return tensor.NewShape(dimensions)
-}
-
 func targetSet(targets []*ir.Node) map[string]bool {
 	set := make(map[string]bool, len(targets))
 
@@ -194,4 +158,24 @@ func targetSet(targets []*ir.Node) map[string]bool {
 	}
 
 	return set
+}
+
+func validateTargets(graph *ir.Graph, targets []*ir.Node) error {
+	index, err := graph.Index()
+
+	if err != nil {
+		return err
+	}
+
+	for _, target := range targets {
+		if target == nil {
+			return fmt.Errorf("cpu runner: nil execution target")
+		}
+
+		if index.Node(target.ID()) == nil {
+			return fmt.Errorf("cpu runner: target node %q is not registered in graph", target.ID())
+		}
+	}
+
+	return nil
 }

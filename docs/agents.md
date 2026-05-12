@@ -113,6 +113,30 @@ Every output that could cause a system action is a **proposal**. The human must 
 
 ---
 
+## Developer Sub-Agents
+
+The developer agent has a `sub_agent` tool for short-lived parallel delegation. Each call submits one or more tasks through `qpool`; every task gets its own provider conversation, its own system prompt, and its own user prompt.
+
+Sub-agents are intentionally read-only. They can search code and view files, but they cannot edit files, create files, run shell commands, or signal task completion. Their output is returned to the parent developer agent in the same order the tasks were requested, so the parent keeps responsibility for synthesis and any code changes.
+
+Each `sub_agent` call also creates a qpool broadcast group shared by the sibling agents in that call. Sub-agents can use `publish_finding` to share discoveries, `read_peer_findings` to drain messages from other agents, and `list_peers` to see who is subscribed. This keeps coordination inside qpool while preserving isolated LLM context windows.
+
+Tool payload shape:
+
+```json
+{
+  "tasks": [
+    {
+      "name": "api-reader",
+      "system_prompt": "You map package boundaries and report only facts.",
+      "user_prompt": "Find the provider-neutral tool interfaces and summarize how tool calls are dispatched."
+    }
+  ]
+}
+```
+
+---
+
 ## Non-Negotiable Rules
 
 - **No hidden authority.** Agent outputs never silently change manifests or run configs.

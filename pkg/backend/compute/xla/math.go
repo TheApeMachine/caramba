@@ -4,13 +4,7 @@ package xla
 
 // XLA math backend via the PJRT C API.
 //
-// Build requirements:
-//   - XLA headers on the include path (set XLA_INCLUDE via CGO_CPPFLAGS)
-//   - PJRT plugin shared library on LD_LIBRARY_PATH
-//
-// Example build:
-//   CGO_CPPFLAGS="-I/path/to/xla" \
-//   go build -tags "cgo xla" ./pkg/backend/compute/xla
+// Configure PJRT paths under compute.xla in cmd/asset/config.yml before runtime validation.
 
 // #include <stdlib.h>
 // #include "xla_math.h"

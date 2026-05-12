@@ -12,6 +12,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/theapemachine/caramba/pkg/config"
+	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 /*
@@ -19,9 +20,10 @@ Orchestrator watches the kanban board for the "requests" project and manages
 the full AI development team lifecycle for each card that enters the TODO column.
 
 Flow per card:
-  todo → Planner decomposes into subtasks → subtasks fan out to Developer agents
-       → each subtask runs its own developer→reviewer loop in its own sandbox
-       → card moves to review only when all subtasks reach done
+
+	todo → Planner decomposes into subtasks → subtasks fan out to Developer agents
+	     → each subtask runs its own developer→reviewer loop in its own sandbox
+	     → card moves to review only when all subtasks reach done
 
 A shared FileLockRegistry prevents concurrent developer agents from
 unknowingly generating conflicting changes to the same logical file path.
@@ -33,11 +35,17 @@ type Orchestrator struct {
 	db        *sql.DB
 	subtasks  *SubtaskStore
 	github    *github.Client
-	watcher   *Watcher
+	watcher   eventWatcher
 	locks     *FileLockRegistry
 	extractor *ContextExtractor
 	sem       chan struct{}
 	wg        sync.WaitGroup
+}
+
+type eventWatcher interface {
+	Events() <-chan ColumnEvent
+	Errors() <-chan error
+	Watch() error
 }
 
 /*
@@ -85,15 +93,38 @@ func (orchestrator *Orchestrator) Run() error {
 
 	go func() {
 		defer orchestrator.wg.Done()
-		_ = orchestrator.watcher.Watch()
+
+		if err := orchestrator.watcher.Watch(); err != nil {
+			orchestrator.cancel()
+		}
 	}()
+
+	events := orchestrator.watcher.Events()
+	errors := orchestrator.watcher.Errors()
 
 	for {
 		select {
 		case <-orchestrator.ctx.Done():
 			return nil
 
-		case event := <-orchestrator.watcher.Events():
+		case err, ok := <-errors:
+			if !ok {
+				return nil
+			}
+
+			if err != nil {
+				orchestrator.cancel()
+
+				return fmt.Errorf("orchestrator: watcher: %w", err)
+			}
+
+		case event, ok := <-events:
+			if !ok {
+				orchestrator.cancel()
+
+				return fmt.Errorf("orchestrator: watcher events closed")
+			}
+
 			if !orchestrator.isRelevant(event) {
 				continue
 			}
@@ -136,19 +167,21 @@ handle is the top-level card lifecycle:
  4. Wait for all subtasks; move card to review (or backlog on failure).
 */
 func (orchestrator *Orchestrator) handle(event ColumnEvent) {
-	orchestrator.moveCard(event.ID, "in-progress", "")
+	if err := orchestrator.moveCard(event.ID, "in-progress", ""); err != nil {
+		return
+	}
 
 	blastContext := orchestrator.extractContext(event)
 
 	subtaskDrafts, err := orchestrator.runPlanner(event, blastContext)
 
 	if err != nil {
-		orchestrator.moveCard(event.ID, "backlog", "planner error: "+err.Error())
+		_ = orchestrator.moveCard(event.ID, "backlog", "planner error: "+err.Error())
 		return
 	}
 
 	if len(subtaskDrafts) == 0 {
-		orchestrator.moveCard(event.ID, "backlog", "planner produced no subtasks")
+		_ = orchestrator.moveCard(event.ID, "backlog", "planner produced no subtasks")
 		return
 	}
 
@@ -157,7 +190,7 @@ func (orchestrator *Orchestrator) handle(event ColumnEvent) {
 	subtaskIDs, err := orchestrator.persistSubtasks(event, subtaskDrafts, blastContext)
 
 	if err != nil {
-		orchestrator.moveCard(event.ID, "backlog", "subtask persist error: "+err.Error())
+		_ = orchestrator.moveCard(event.ID, "backlog", "subtask persist error: "+err.Error())
 		return
 	}
 
@@ -169,7 +202,7 @@ func (orchestrator *Orchestrator) handle(event ColumnEvent) {
 	allSubtasks, err := orchestrator.subtasks.ListForCard(orchestrator.ctx, event.ID)
 
 	if err != nil {
-		orchestrator.moveCard(event.ID, "backlog", "subtask list error: "+err.Error())
+		_ = orchestrator.moveCard(event.ID, "backlog", "subtask list error: "+err.Error())
 		return
 	}
 
@@ -199,7 +232,7 @@ func (orchestrator *Orchestrator) handle(event ColumnEvent) {
 	}
 
 	if len(errs) > 0 {
-		orchestrator.moveCard(event.ID, "backlog", "subtask failures: "+strings.Join(errs, "; "))
+		_ = orchestrator.moveCard(event.ID, "backlog", "subtask failures: "+strings.Join(errs, "; "))
 		return
 	}
 
@@ -207,7 +240,7 @@ func (orchestrator *Orchestrator) handle(event ColumnEvent) {
 	// We use a final scratch sandbox just for the commit/push since each
 	// subtask sandbox was destroyed after its own work.
 	if err := orchestrator.finalise(event, branch); err != nil {
-		orchestrator.moveCard(event.ID, "backlog", "finalise error: "+err.Error())
+		_ = orchestrator.moveCard(event.ID, "backlog", "finalise error: "+err.Error())
 		return
 	}
 }
@@ -374,25 +407,38 @@ func (orchestrator *Orchestrator) finalise(event ColumnEvent, branch string) err
 		return err
 	}
 
-	orchestrator.moveCard(event.ID, "review", prURL)
-
-	return nil
+	return orchestrator.moveCard(event.ID, "review", prURL)
 }
 
-func (orchestrator *Orchestrator) moveCard(cardID, columnKey, note string) {
+func (orchestrator *Orchestrator) moveCard(cardID, columnKey, note string) error {
 	q := `UPDATE kanban_cards SET column_key = $1, updated_at = NOW() WHERE id = $2`
-	_, _ = orchestrator.db.ExecContext(orchestrator.ctx, q, columnKey, cardID)
+
+	if _, err := orchestrator.db.ExecContext(orchestrator.ctx, q, columnKey, cardID); err != nil {
+		return errnie.Error(
+			fmt.Errorf("orchestrator: move card %s to %s: %w", cardID, columnKey, err),
+			"card_id", cardID,
+			"column_key", columnKey,
+		)
+	}
 
 	if note == "" {
-		return
+		return nil
 	}
 
 	desc := fmt.Sprintf("[devteam] %s", note)
-	_, _ = orchestrator.db.ExecContext(
+	if _, err := orchestrator.db.ExecContext(
 		orchestrator.ctx,
 		`UPDATE kanban_cards SET description = description || E'\n' || $1 WHERE id = $2`,
 		desc, cardID,
-	)
+	); err != nil {
+		return errnie.Error(
+			fmt.Errorf("orchestrator: append card %s move note: %w", cardID, err),
+			"card_id", cardID,
+			"column_key", columnKey,
+		)
+	}
+
+	return nil
 }
 
 func (orchestrator *Orchestrator) openPR(event ColumnEvent, branch string) (string, error) {

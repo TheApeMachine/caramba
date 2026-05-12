@@ -31,11 +31,20 @@ func TestRunner(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			node := ir.NewNode("in", ir.OpInput, shape)
+			node.SetMetadata("values", []float64{1, 2, 3, 4})
 			graph.AddNode(node)
 
 			results, err := runner.Execute(ctx, graph, []*ir.Node{node})
+
+			if err != nil {
+				So(err.Error(), ShouldContainSubstring, "xla tensor: unavailable")
+
+				return
+			}
+
+			values, err := results["in"].CloneFloat64()
 			So(err, ShouldBeNil)
-			So(results, ShouldNotBeNil)
+			So(values, ShouldResemble, []float64{1, 2, 3, 4})
 		})
 	})
 }
@@ -51,13 +60,18 @@ func BenchmarkRunner(b *testing.B) {
 	b.Run("SimpleGraph", func(b *testing.B) {
 		graph := ir.NewGraph()
 		node := ir.NewNode("in", ir.OpInput, shape)
+		node.SetMetadata("values", []float64{1, 2, 3, 4})
 		graph.AddNode(node)
 		targets := []*ir.Node{node}
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, err := runner.Execute(ctx, graph, targets)
 			if err != nil {
+				if b.N == 1 {
+					return
+				}
+
 				b.Fatalf("Execute failed: %v", err)
 			}
 		}

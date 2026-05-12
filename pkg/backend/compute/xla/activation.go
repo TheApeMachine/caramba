@@ -4,14 +4,7 @@ package xla
 
 // XLA activation backend via the PJRT C API.
 //
-// Build requirements:
-//   - XLA headers on the include path (set XLA_INCLUDE via CGO_CPPFLAGS)
-//   - PJRT plugin shared library for your platform on LD_LIBRARY_PATH / DYLD_LIBRARY_PATH
-//   - Compile _activation_xla.cpp alongside this package (CGo picks it up automatically)
-//
-// Example build:
-//   CGO_CPPFLAGS="-I/path/to/xla" \
-//   go build -tags "cgo xla" ./pkg/backend/compute/xla
+// Configure PJRT paths under compute.xla in cmd/asset/config.yml before runtime validation.
 
 // #include <stdlib.h>
 // #include "activation.h"

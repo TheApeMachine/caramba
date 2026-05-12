@@ -59,6 +59,22 @@ func TestScheduler(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "no runner registered")
 		})
 
+		Convey("It should stop before pipeline work when context is cancelled", func() {
+			cancelledContext, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			graph := ir.NewGraph()
+			shape, err := tensor.NewShape([]int{1})
+			So(err, ShouldBeNil)
+			graph.AddNode(ir.NewNode("a", ir.OpInput, shape))
+
+			results, err := scheduler.Execute(cancelledContext, graph, nil, tensor.Host)
+
+			So(err, ShouldEqual, context.Canceled)
+			So(results, ShouldBeNil)
+			So(mockRunner.executed.Load(), ShouldBeFalse)
+		})
+
 		Convey("It should remap explicit targets after fusion", func() {
 			shape, err := tensor.NewShape([]int{1, 1})
 			So(err, ShouldBeNil)
@@ -104,7 +120,7 @@ func BenchmarkScheduler(b *testing.B) {
 
 	b.Run("SimpleGraph", func(b *testing.B) {
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			b.StopTimer()
 			graph := ir.NewGraph()
 			graph.AddNode(ir.NewNode("a", ir.OpInput, shape))

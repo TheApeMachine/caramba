@@ -7,6 +7,14 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 )
 
+func checkContext(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+
+	return ctx.Err()
+}
+
 type DiagnosticLevel string
 
 const (
@@ -94,7 +102,7 @@ func (pipeline *Pipeline) Run(
 	}
 
 	for _, pass := range pipeline.passes {
-		if err := ctx.Err(); err != nil {
+		if err := checkContext(ctx); err != nil {
 			return PassResult{}, err
 		}
 
@@ -129,7 +137,7 @@ func (pass *VerifierPass) Run(
 	ctx context.Context,
 	input PassInput,
 ) (PassResult, error) {
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx); err != nil {
 		return PassResult{}, err
 	}
 

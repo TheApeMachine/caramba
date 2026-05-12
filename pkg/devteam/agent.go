@@ -89,6 +89,32 @@ new_lines replaces that block verbatim.`,
 		},
 	},
 	{
+		Name: "sub_agent",
+		Description: `Deploy one or more short-lived read-only sub-agents in parallel.
+Each sub-agent receives its own system prompt and user prompt, runs in a separate
+context window, and returns a concise result. Use this for isolated repository
+research, code reading, or parallel analysis. Sub-agents cannot edit files or run
+shell commands.`,
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"tasks": map[string]any{
+					"type": "array",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"name":          map[string]any{"type": "string", "description": "Short stable name for this sub-agent task"},
+							"system_prompt": map[string]any{"type": "string", "description": "Persona and constraints for the sub-agent"},
+							"user_prompt":   map[string]any{"type": "string", "description": "Specific task the sub-agent should perform"},
+						},
+						"required": []string{"name", "system_prompt", "user_prompt"},
+					},
+				},
+			},
+			"required": []string{"tasks"},
+		},
+	},
+	{
 		Name: "done",
 		Description: `Signal that the feature implementation is complete.
 Before calling this you MUST:
@@ -118,8 +144,10 @@ iterating until it believes the feature is complete or the iteration cap is hit.
 */
 type Developer struct {
 	ctx    context.Context
+	cfg    devcfg.ProviderConfig
 	llm    Provider
 	editor *VirtualEditor
+	subs   *SubAgentPool
 }
 
 /*
@@ -132,8 +160,10 @@ func NewDeveloper(
 ) *Developer {
 	return &Developer{
 		ctx:    ctx,
+		cfg:    cfg,
 		llm:    NewProvider(cfg),
 		editor: editor,
+		subs:   NewSubAgentPool(ctx, cfg, editor),
 	}
 }
 
@@ -303,6 +333,9 @@ func (developer *Developer) dispatchTool(call ToolCall) (string, bool, error) {
 		out, err := developer.editor.sandbox.Exec(cmd)
 
 		return out, false, err
+
+	case "sub_agent":
+		return developer.subs.Dispatch(call.Input)
 
 	case "done":
 		rejection := developer.checkDoneGate(call.Input)

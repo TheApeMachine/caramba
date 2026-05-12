@@ -21,7 +21,7 @@ func (pass *CanonicalizePass) Run(
 	ctx context.Context,
 	input PassInput,
 ) (PassResult, error) {
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx); err != nil {
 		return PassResult{}, err
 	}
 
@@ -32,6 +32,10 @@ func (pass *CanonicalizePass) Run(
 	}
 
 	for _, node := range graph.Nodes() {
+		if err := checkContext(ctx); err != nil {
+			return PassResult{}, err
+		}
+
 		if node.OperationID() == "" {
 			node.SetOperationID(ir.OpID(node.OpType()))
 		}
@@ -63,7 +67,7 @@ func (pass *AlgebraicSimplifyPass) Run(
 	ctx context.Context,
 	input PassInput,
 ) (PassResult, error) {
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx); err != nil {
 		return PassResult{}, err
 	}
 
@@ -93,7 +97,7 @@ func (pass *MemoryPlanPass) Run(
 	ctx context.Context,
 	input PassInput,
 ) (PassResult, error) {
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx); err != nil {
 		return PassResult{}, err
 	}
 
@@ -103,7 +107,15 @@ func (pass *MemoryPlanPass) Run(
 		return PassResult{}, err
 	}
 
+	if err := checkContext(ctx); err != nil {
+		return PassResult{}, err
+	}
+
 	for _, node := range input.Graph.Nodes() {
+		if err := checkContext(ctx); err != nil {
+			return PassResult{}, err
+		}
+
 		node.SetMetadata("memory_buffer", plan.Buffer(node.ID()))
 	}
 
@@ -138,7 +150,7 @@ func (pass *SchedulePass) Run(
 	ctx context.Context,
 	input PassInput,
 ) (PassResult, error) {
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx); err != nil {
 		return PassResult{}, err
 	}
 
@@ -150,7 +162,15 @@ func (pass *SchedulePass) Run(
 
 	order := 0
 	for layerIndex, layer := range layers {
+		if err := checkContext(ctx); err != nil {
+			return PassResult{}, err
+		}
+
 		for _, node := range layer {
+			if err := checkContext(ctx); err != nil {
+				return PassResult{}, err
+			}
+
 			cost := pass.capabilities.Cost(node)
 			node.SetMetadata("schedule_layer", layerIndex)
 			node.SetMetadata("schedule_order", order)
@@ -182,7 +202,7 @@ func (pass *LoweringPass) Run(
 	ctx context.Context,
 	input PassInput,
 ) (PassResult, error) {
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx); err != nil {
 		return PassResult{}, err
 	}
 
@@ -191,6 +211,10 @@ func (pass *LoweringPass) Run(
 	}
 
 	for _, node := range input.Graph.Nodes() {
+		if err := checkContext(ctx); err != nil {
+			return PassResult{}, err
+		}
+
 		if !pass.capabilities.Supports(node.OpType()) && node.IsPure() {
 			return PassResult{}, fmt.Errorf("lowering: backend does not support %q", node.OpType())
 		}

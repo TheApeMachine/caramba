@@ -19,12 +19,13 @@ func TestGraph_Execute(t *testing.T) {
 	Convey("Given a single-node graph with a passthrough op", t, func() {
 		graph := newGraph()
 
-		graph.addNode(&Node{
+		So(graph.addNode(&Node{
 			ID:  "copy",
 			Op:  &passthroughOp{},
 			In:  []string{"x"},
 			Out: []string{"y"},
-		})
+		}), ShouldBeNil)
+		graph.externalInputs["x"] = true
 
 		So(graph.rebuildEdgesFromNodes(), ShouldBeNil)
 
@@ -47,12 +48,13 @@ func TestGraph_rebuildEdgesFromNodes(t *testing.T) {
 	Convey("Given a single-node graph wired only from graph inputs", t, func() {
 		graph := newGraph()
 
-		graph.addNode(&Node{
+		So(graph.addNode(&Node{
 			ID:  "copy",
 			Op:  &passthroughOp{},
 			In:  []string{"x"},
 			Out: []string{"y"},
-		})
+		}), ShouldBeNil)
+		graph.externalInputs["x"] = true
 
 		Convey("rebuildEdgesFromNodes", func() {
 			Convey("It should produce no edges", func() {
@@ -65,19 +67,20 @@ func TestGraph_rebuildEdgesFromNodes(t *testing.T) {
 	Convey("Given a two-node chain sharing a binding", t, func() {
 		graph := newGraph()
 
-		graph.addNode(&Node{
+		So(graph.addNode(&Node{
 			ID:  "upstream",
 			Op:  &passthroughOp{},
 			In:  []string{"x"},
 			Out: []string{"y"},
-		})
+		}), ShouldBeNil)
 
-		graph.addNode(&Node{
+		So(graph.addNode(&Node{
 			ID:  "downstream",
 			Op:  &passthroughOp{},
 			In:  []string{"y"},
 			Out: []string{"z"},
-		})
+		}), ShouldBeNil)
+		graph.externalInputs["x"] = true
 
 		Convey("rebuildEdgesFromNodes", func() {
 			Convey("It should add one edge from producer to consumer", func() {
@@ -94,19 +97,20 @@ func TestGraph_rebuildEdgesFromNodes(t *testing.T) {
 	Convey("Given two nodes that publish the same binding", t, func() {
 		graph := newGraph()
 
-		graph.addNode(&Node{
+		So(graph.addNode(&Node{
 			ID:  "a",
 			Op:  &passthroughOp{},
 			In:  []string{"x"},
 			Out: []string{"y"},
-		})
+		}), ShouldBeNil)
 
-		graph.addNode(&Node{
+		So(graph.addNode(&Node{
 			ID:  "b",
 			Op:  &passthroughOp{},
 			In:  []string{"x"},
 			Out: []string{"y"},
-		})
+		}), ShouldBeNil)
+		graph.externalInputs["x"] = true
 
 		Convey("rebuildEdgesFromNodes", func() {
 			Convey("It should return an error", func() {
@@ -114,17 +118,71 @@ func TestGraph_rebuildEdgesFromNodes(t *testing.T) {
 			})
 		})
 	})
+
+	Convey("Given duplicate node IDs", t, func() {
+		graph := newGraph()
+		So(graph.addNode(&Node{ID: "dup", Op: &passthroughOp{}, Out: []string{"a"}}), ShouldBeNil)
+
+		Convey("addNode should reject the duplicate", func() {
+			err := graph.addNode(&Node{ID: "dup", Op: &passthroughOp{}, Out: []string{"b"}})
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "duplicate node id")
+		})
+	})
+
+	Convey("Given a missing producer", t, func() {
+		graph := newGraph()
+		So(graph.addNode(&Node{ID: "consumer", Op: &passthroughOp{}, In: []string{"missing"}, Out: []string{"y"}}), ShouldBeNil)
+
+		Convey("rebuildEdgesFromNodes should reject the unresolved binding", func() {
+			err := graph.rebuildEdgesFromNodes()
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "has no producer or declared external input")
+		})
+	})
+
+	Convey("Given a multi-output node", t, func() {
+		graph := newGraph()
+
+		Convey("addNode should reject unsupported multi-output declarations", func() {
+			err := graph.addNode(&Node{ID: "multi", Op: &passthroughOp{}, Out: []string{"a", "b"}})
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "multi-output operations are not supported")
+		})
+	})
+}
+
+func TestGraph_ExecuteTopology(t *testing.T) {
+	Convey("Given nodes added out of topological order", t, func() {
+		graph := newGraph()
+		graph.externalInputs["x"] = true
+
+		So(graph.addNode(&Node{ID: "downstream", Op: &passthroughOp{}, In: []string{"mid"}, Out: []string{"y"}}), ShouldBeNil)
+		So(graph.addNode(&Node{ID: "upstream", Op: &passthroughOp{}, In: []string{"x"}, Out: []string{"mid"}}), ShouldBeNil)
+		So(graph.rebuildEdgesFromNodes(), ShouldBeNil)
+
+		Convey("Execute should run in dependency order", func() {
+			state, err := graph.Execute(map[string][]float64{"x": {1, 2, 3}}, []int{3})
+
+			So(err, ShouldBeNil)
+			So(state["y"], ShouldResemble, []float64{1, 2, 3})
+		})
+	})
 }
 
 func BenchmarkGraph_Execute(b *testing.B) {
 	graph := newGraph()
 
-	graph.addNode(&Node{
+	_ = graph.addNode(&Node{
 		ID:  "copy",
 		Op:  &passthroughOp{},
 		In:  []string{"x"},
 		Out: []string{"y"},
 	})
+	graph.externalInputs["x"] = true
 
 	_ = graph.rebuildEdgesFromNodes()
 
@@ -133,7 +191,7 @@ func BenchmarkGraph_Execute(b *testing.B) {
 
 	b.ResetTimer()
 
-	for repeat := 0; repeat < b.N; repeat++ {
+	for b.Loop() {
 		_, _ = graph.Execute(inputs, shape)
 	}
 }

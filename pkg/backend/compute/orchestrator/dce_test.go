@@ -60,6 +60,64 @@ func TestDCEOptimizer(t *testing.T) {
 				}
 			}
 		})
+
+		Convey("It should stop when context is cancelled", func() {
+			cancelledContext, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			optimized, err := optimizer.Optimize(cancelledContext, graph, []*ir.Node{nodeSink})
+
+			So(err, ShouldEqual, context.Canceled)
+			So(optimized, ShouldBeNil)
+		})
+
+		Convey("It should preserve dependencies for side-effecting nodes", func() {
+			nodeSideEffectInput := ir.NewNode("side_effect_input", ir.OpInput, shape)
+			nodeSideEffect := ir.NewNode("side_effect", ir.OpAdd, shape)
+			nodeSideEffect.SetOperationID("custom.state.write")
+			nodeSideEffect.SetValueType(ir.ValueType{
+				Shape:       shape,
+				DType:       tensor.Float64,
+				Layout:      ir.LayoutColumnMajor,
+				MemoryClass: ir.MemoryUnified,
+			})
+			nodeSideEffect.SetEffect(ir.EffectStateWrite)
+			nodeSideEffect.SetAlias(ir.Alias{Kind: ir.AliasInput, InPlace: true, InputIndex: 0})
+			nodeSideEffect.SetInPlace(true)
+			nodeSideEffect.SetAttribute("checkpoint", ir.BoolAttribute(true))
+			nodeSideEffect.SetMetadata("semantic", "kept")
+			nodeSideEffect.AddInput(nodeSideEffectInput)
+
+			graph.AddNode(nodeSideEffectInput)
+			graph.AddNode(nodeSideEffect)
+
+			optimized, err := optimizer.Optimize(ctx, graph, []*ir.Node{nodeSink})
+			So(err, ShouldBeNil)
+
+			var ids []string
+			var sideEffect *ir.Node
+
+			for _, node := range optimized.Nodes() {
+				ids = append(ids, node.ID())
+
+				if node.ID() == "side_effect" {
+					sideEffect = node
+				}
+			}
+
+			So(ids, ShouldContain, "side_effect_input")
+			So(ids, ShouldContain, "side_effect")
+			So(sideEffect, ShouldNotBeNil)
+			So(sideEffect.Inputs()[0].ID(), ShouldEqual, "side_effect_input")
+			So(sideEffect.OperationID(), ShouldEqual, ir.OpID("custom.state.write"))
+			So(sideEffect.ValueType().Layout, ShouldEqual, ir.LayoutColumnMajor)
+			So(sideEffect.ValueType().MemoryClass, ShouldEqual, ir.MemoryUnified)
+			So(sideEffect.Effect(), ShouldEqual, ir.EffectStateWrite)
+			So(sideEffect.Alias(), ShouldResemble, ir.Alias{Kind: ir.AliasInput, InPlace: true, InputIndex: 0})
+			So(sideEffect.InPlace(), ShouldBeTrue)
+			So(sideEffect.Attribute("checkpoint"), ShouldEqual, ir.BoolAttribute(true))
+			So(sideEffect.Metadata()["semantic"], ShouldEqual, "kept")
+		})
 	})
 }
 
@@ -72,7 +130,7 @@ func BenchmarkDCEOptimizer(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		b.StopTimer()
 		graph := ir.NewGraph()
 		nodeInput := ir.NewNode("in", ir.OpInput, shape)

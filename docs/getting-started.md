@@ -37,7 +37,7 @@ caramba serve
 
 The frontend is available at `http://localhost:3000` (or whichever port is configured). The API is available at `http://localhost:8080/api`.
 
-Configuration is loaded from environment variables and a config file via Viper. See `.env.example` for available settings.
+Configuration is loaded from `cmd/asset/config.yml` through `pkg/config`; edit that file or pass `--config` to use an alternate YAML file.
 
 ---
 
@@ -190,10 +190,7 @@ CGO_ENABLED=1 go run -tags "cgo cuda" . serve
 # Metal (macOS only)
 CGO_ENABLED=1 go run . serve
 
-# XLA
-export CARAMBA_XLA_INCLUDE_DIR=/path/to/xla/include
-export CGO_CPPFLAGS="-I${CARAMBA_XLA_INCLUDE_DIR}"
-export CARAMBA_PJRT_CPU_PLUGIN=/path/to/pjrt_c_api_cpu_plugin.so
+# XLA (configure compute.xla in cmd/asset/config.yml first)
 CGO_ENABLED=1 go run -tags "cgo xla" . serve
 ```
 

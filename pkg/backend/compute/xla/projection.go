@@ -4,9 +4,7 @@ package xla
 
 // XLA projection backend via the PJRT C API.
 //
-// Build requirements (same as activation.go):
-//   CGO_CPPFLAGS="-I/path/to/xla"
-//   go build -tags "cgo xla" ./pkg/backend/compute/xla
+// Configure PJRT paths under compute.xla in cmd/asset/config.yml before runtime validation.
 
 // #include <stdlib.h>
 // #include "projection.h"

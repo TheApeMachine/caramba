@@ -12,6 +12,7 @@ var (
 	clerkSecret               = clerkRootKey + ".secret_key"
 	clerkAdminSubjectsKey     = clerkRootKey + ".admin_subject_ids"
 	clerkPrivilegedOrgSlugKey = clerkRootKey + ".privileged_organization_slug"
+	clerkRequireAuthKey       = clerkRootKey + ".require_auth"
 )
 
 /*
@@ -31,6 +32,7 @@ type ClerkConfig struct {
 	SecretKey                  string
 	AdminSubjectIDs            []string
 	PrivilegedOrganizationSlug string
+	RequireAuth                bool
 }
 
 /*
@@ -120,9 +122,10 @@ NewClerkConfig reads Clerk settings from viper-loaded config.yml.
 */
 func NewClerkConfig() *ClerkConfig {
 	return &ClerkConfig{
-		Active:                     WithDefault(clerkActive, false),
+		Active:                     WithDefault(clerkActive, true),
 		SecretKey:                  WithDefault(clerkSecret, ""),
 		AdminSubjectIDs:            adminSubjectIDsFromViper(),
 		PrivilegedOrganizationSlug: WithDefault(clerkPrivilegedOrgSlugKey, ""),
+		RequireAuth:                WithDefault(clerkRequireAuthKey, true),
 	}
 }

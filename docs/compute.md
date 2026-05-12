@@ -130,27 +130,26 @@ The build constraint is `//go:build darwin && cgo`. On non-Darwin platforms, the
 
 XLA is accessed through the PJRT C API. The backend exposes resident PJRT buffers for activation, elementwise math, matmul, and fused matmul+bias(+GELU).
 
-### Environment Setup
+### Configuration
 
-```bash
-# Required: XLA include directory
-export CARAMBA_XLA_INCLUDE_DIR=/path/to/xla/include
-export CGO_CPPFLAGS="-I${CARAMBA_XLA_INCLUDE_DIR}"
+PJRT paths are loaded through `pkg/config` from `cmd/asset/config.yml`:
 
-# CPU plugin (Linux .so or macOS .dylib)
-export CARAMBA_PJRT_CPU_PLUGIN=/path/to/pjrt_c_api_cpu_plugin.so
-
-# GPU plugin (optional, when a GPU PJRT plugin is available)
-export CARAMBA_PJRT_GPU_PLUGIN=/path/to/pjrt_c_api_gpu_plugin.so
-
-# Shared fallback (when one plugin serves all platforms)
-export CARAMBA_PJRT_PLUGIN=/path/to/pjrt_c_api.so
+```yaml
+compute:
+  xla:
+    include_dir: /path/to/xla/include
+    cpu_plugin_file: /path/to/pjrt_c_api_cpu_plugin.so
+    gpu_plugin_file: /path/to/pjrt_c_api_gpu_plugin.so
+    tpu_plugin_file: ""
+    shared_plugin_file: ""
+    library_dirs:
+      - /path/to/pjrt/plugins
 ```
 
 Plugin lookup order:
-1. `CARAMBA_PJRT_CPU_PLUGIN` / `CARAMBA_PJRT_GPU_PLUGIN` (platform-specific)
-2. `CARAMBA_PJRT_PLUGIN` (shared fallback)
-3. Legacy `PJRT_PLUGIN_PATH`
+1. `compute.xla.<platform>_plugin_file`
+2. `compute.xla.shared_plugin_file`
+3. `compute.xla.library_dirs` searched for platform plugin names
 
 ### Building
 

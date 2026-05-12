@@ -1,5 +1,7 @@
 package manifest
 
+import "fmt"
+
 /*
 Run is a single named execution within a Target — one seed, one mode,
 one set of training or evaluation parameters.
@@ -52,143 +54,283 @@ func (compiler *Compiler) CompileExperiment(path string) (*Experiment, error) {
 
 	experiment := &Experiment{}
 
-	experiment.Datasets = extractDatasets(document)
-	experiment.Trainer = extractOptionalMap(document, "trainer")
-	experiment.Tuner = extractOptionalMap(document, "tuner")
-	experiment.Deployment = extractOptionalMap(document, "deployment")
+	experiment.Datasets, err = extractDatasets(document)
 
-	rawTargets, ok := document["targets"].([]any)
+	if err != nil {
+		return nil, err
+	}
 
-	if ok {
-		for _, rawTarget := range rawTargets {
-			targetMap, ok := rawTarget.(map[string]any)
+	experiment.Trainer, err = extractOptionalMap(document, "trainer")
 
-			if !ok {
-				continue
-			}
+	if err != nil {
+		return nil, err
+	}
 
-			target, err := compiler.buildTarget(targetMap)
+	experiment.Tuner, err = extractOptionalMap(document, "tuner")
 
-			if err != nil {
-				return nil, err
-			}
+	if err != nil {
+		return nil, err
+	}
 
-			experiment.Targets = append(experiment.Targets, target)
+	experiment.Deployment, err = extractOptionalMap(document, "deployment")
+
+	if err != nil {
+		return nil, err
+	}
+
+	rawTargets, err := compiler.requireSequence(document, "targets")
+
+	if err != nil {
+		return nil, err
+	}
+
+	for targetIndex, rawTarget := range rawTargets {
+		targetMap, ok := rawTarget.(map[string]any)
+
+		if !ok {
+			return nil, fmt.Errorf("experiment: targets[%d] must be a mapping, got %T", targetIndex, rawTarget)
 		}
+
+		target, err := compiler.buildTarget(targetIndex, targetMap)
+
+		if err != nil {
+			return nil, err
+		}
+
+		experiment.Targets = append(experiment.Targets, target)
 	}
 
 	return experiment, nil
 }
 
-func (compiler *Compiler) buildTarget(targetMap map[string]any) (Target, error) {
+func (compiler *Compiler) buildTarget(targetIndex int, targetMap map[string]any) (Target, error) {
+	path := fmt.Sprintf("targets[%d]", targetIndex)
+	name, err := optionalStringField(targetMap, "name", path)
+
+	if err != nil {
+		return Target{}, err
+	}
+
+	description, err := optionalStringField(targetMap, "description", path)
+
+	if err != nil {
+		return Target{}, err
+	}
+
+	backend, err := optionalStringField(targetMap, "backend", path)
+
+	if err != nil {
+		return Target{}, err
+	}
+
+	data, err := extractOptionalMapAt(targetMap, "data", path)
+
+	if err != nil {
+		return Target{}, err
+	}
+
+	system, err := extractOptionalMapAt(targetMap, "system", path)
+
+	if err != nil {
+		return Target{}, err
+	}
+
 	target := Target{
-		Name:        stringField(targetMap, "name"),
-		Description: stringField(targetMap, "description"),
-		Backend:     stringField(targetMap, "backend"),
-		Data:        extractOptionalMap(targetMap, "data"),
-		System:      extractOptionalMap(targetMap, "system"),
+		Name:        name,
+		Description: description,
+		Backend:     backend,
+		Data:        data,
+		System:      system,
 	}
 
 	systemBlock := target.System
 
-	if topologyRaw, ok := systemBlock["topology"]; ok {
-		topologyMap, ok := topologyRaw.(map[string]any)
-
-		if ok {
-			graph, err := compiler.buildGraph(topologyMap)
-
-			if err != nil {
-				return Target{}, err
-			}
-
-			target.Graph = graph
-		}
+	if systemBlock == nil {
+		return Target{}, fmt.Errorf("experiment: %s.system is required", path)
 	}
 
-	rawRuns, ok := targetMap["runs"].([]any)
+	topologyRaw, ok := systemBlock["topology"]
 
-	if ok {
-		for _, rawRun := range rawRuns {
-			runMap, ok := rawRun.(map[string]any)
+	if !ok {
+		return Target{}, fmt.Errorf("experiment: %s.system.topology is required", path)
+	}
 
-			if !ok {
-				continue
-			}
+	topologyMap, ok := topologyRaw.(map[string]any)
 
-			target.Runs = append(target.Runs, buildRun(runMap))
+	if !ok {
+		return Target{}, fmt.Errorf("experiment: %s.system.topology must be a mapping, got %T", path, topologyRaw)
+	}
+
+	graph, err := compiler.buildGraph(topologyMap)
+
+	if err != nil {
+		return Target{}, fmt.Errorf("experiment: %s.system.topology: %w", path, err)
+	}
+
+	target.Graph = graph
+	rawRuns, err := requireOptionalSequenceAt(targetMap, "runs", path)
+
+	if err != nil {
+		return Target{}, err
+	}
+
+	for runIndex, rawRun := range rawRuns {
+		runMap, ok := rawRun.(map[string]any)
+
+		if !ok {
+			return Target{}, fmt.Errorf("experiment: %s.runs[%d] must be a mapping, got %T", path, runIndex, rawRun)
 		}
+
+		run, err := buildRun(fmt.Sprintf("%s.runs[%d]", path, runIndex), runMap)
+
+		if err != nil {
+			return Target{}, err
+		}
+
+		target.Runs = append(target.Runs, run)
 	}
 
 	return target, nil
 }
 
-func buildRun(runMap map[string]any) Run {
+func buildRun(path string, runMap map[string]any) (Run, error) {
+	id, err := optionalStringField(runMap, "id", path)
+
+	if err != nil {
+		return Run{}, err
+	}
+
+	mode, err := optionalStringField(runMap, "mode", path)
+
+	if err != nil {
+		return Run{}, err
+	}
+
+	train, err := extractOptionalMapAt(runMap, "train", path)
+
+	if err != nil {
+		return Run{}, err
+	}
+
 	run := Run{
-		ID:    stringField(runMap, "id"),
-		Mode:  stringField(runMap, "mode"),
-		Train: extractOptionalMap(runMap, "train"),
+		ID:    id,
+		Mode:  mode,
+		Train: train,
 	}
 
 	if seed, ok := runMap["seed"]; ok {
-		run.Seed = anyInt(seed)
+		parsedSeed, err := strictInt(seed)
+
+		if err != nil {
+			return Run{}, fmt.Errorf("experiment: %s.seed: %w", path, err)
+		}
+
+		run.Seed = parsedSeed
 	}
 
 	if steps, ok := runMap["steps"]; ok {
-		run.Steps = anyInt(steps)
+		parsedSteps, err := strictInt(steps)
+
+		if err != nil {
+			return Run{}, fmt.Errorf("experiment: %s.steps: %w", path, err)
+		}
+
+		run.Steps = parsedSteps
 	}
 
-	return run
+	return run, nil
 }
 
-func extractDatasets(document map[string]any) []map[string]any {
-	raw, ok := document["datasets"].([]any)
+func extractDatasets(document map[string]any) ([]map[string]any, error) {
+	rawValue, ok := document["datasets"]
 
 	if !ok {
-		return nil
+		return nil, nil
+	}
+
+	raw, ok := rawValue.([]any)
+
+	if !ok {
+		return nil, fmt.Errorf("experiment: datasets must be a sequence, got %T", rawValue)
 	}
 
 	out := make([]map[string]any, 0, len(raw))
 
-	for _, item := range raw {
-		if m, ok := item.(map[string]any); ok {
-			out = append(out, m)
+	for index, item := range raw {
+		m, ok := item.(map[string]any)
+
+		if !ok {
+			return nil, fmt.Errorf("experiment: datasets[%d] must be a mapping, got %T", index, item)
 		}
+
+		out = append(out, m)
 	}
 
-	return out
+	return out, nil
 }
 
-func extractOptionalMap(m map[string]any, key string) map[string]any {
+func extractOptionalMap(m map[string]any, key string) (map[string]any, error) {
+	return extractOptionalMapAt(m, key, "experiment")
+}
+
+func extractOptionalMapAt(m map[string]any, key string, path string) (map[string]any, error) {
 	raw, ok := m[key]
 
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	result, ok := raw.(map[string]any)
 	if !ok {
-		return nil
+		return nil, fmt.Errorf("experiment: %s.%s must be a mapping, got %T", path, key, raw)
 	}
 
-	return result
+	return result, nil
 }
 
-func stringField(m map[string]any, key string) string {
-	v, ok := m[key].(string)
+func requireOptionalSequenceAt(m map[string]any, key string, path string) ([]any, error) {
+	raw, ok := m[key]
+
 	if !ok {
-		return ""
+		return nil, nil
 	}
 
-	return v
+	sequence, ok := raw.([]any)
+
+	if !ok {
+		return nil, fmt.Errorf("experiment: %s.%s must be a sequence, got %T", path, key, raw)
+	}
+
+	return sequence, nil
 }
 
-func anyInt(v any) int {
+func optionalStringField(m map[string]any, key string, path string) (string, error) {
+	v, ok := m[key]
+
+	if !ok {
+		return "", nil
+	}
+
+	text, ok := v.(string)
+
+	if !ok {
+		return "", fmt.Errorf("experiment: %s.%s must be a string, got %T", path, key, v)
+	}
+
+	return text, nil
+}
+
+func strictInt(v any) (int, error) {
 	switch cast := v.(type) {
 	case int:
-		return cast
+		return cast, nil
 	case float64:
-		return int(cast)
+		if cast != float64(int(cast)) {
+			return 0, fmt.Errorf("must be an integer, got %v", cast)
+		}
+
+		return int(cast), nil
 	default:
-		return 0
+		return 0, fmt.Errorf("must be an integer, got %T", v)
 	}
 }

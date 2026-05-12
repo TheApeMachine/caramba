@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
+
+	"github.com/theapemachine/caramba/pkg/config"
 )
 
 const pjrtHeaderPath = "xla/pjrt/c/pjrt_c_api.h"
@@ -21,7 +22,7 @@ type PJRTConfig struct {
 }
 
 /*
-NewPJRTConfig reads the environment used by the XLA backend.
+ NewPJRTConfig reads PJRT paths from the compute section of the project config.
 
 Platform must be one of: cpu, gpu, cuda (cuda aliases to gpu), or tpu.
 */
@@ -32,11 +33,13 @@ func NewPJRTConfig(platform string) (PJRTConfig, error) {
 		return PJRTConfig{}, err
 	}
 
+	computeConfig := config.NewComputeConfig()
+
 	return PJRTConfig{
 		Platform:    normalizedPlatform,
-		IncludeDir:  pjrtIncludeDir(),
-		PluginFile:  pjrtPluginFile(normalizedPlatform),
-		LibraryDirs: pjrtLibraryDirs(),
+		IncludeDir:  strings.TrimSpace(computeConfig.XLA.IncludeDir),
+		PluginFile:  strings.TrimSpace(computeConfig.XLA.PluginFile(normalizedPlatform)),
+		LibraryDirs: computeConfig.XLA.LibraryDirs,
 	}, nil
 }
 
@@ -100,7 +103,7 @@ ValidateBuild verifies that the PJRT C API header is present.
 func (config PJRTConfig) ValidateBuild() error {
 	if config.IncludeDir == "" {
 		return fmt.Errorf(
-			"xla: missing PJRT include directory; set CARAMBA_XLA_INCLUDE_DIR or CGO_CPPFLAGS=-I/path/to/xla",
+			"xla: missing PJRT include directory; set compute.xla.include_dir in cmd/asset/config.yml",
 		)
 	}
 
@@ -128,8 +131,8 @@ func (config PJRTConfig) ValidateRuntime() error {
 	}
 
 	return fmt.Errorf(
-		"xla: %s not found; set CARAMBA_PJRT_%s_PLUGIN, CARAMBA_PJRT_PLUGIN, or CARAMBA_PJRT_LIBRARY_DIR",
-		config.PluginName(), strings.ToUpper(config.Platform),
+		"xla: %s not found; set compute.xla.%s_plugin_file, compute.xla.shared_plugin_file, or compute.xla.library_dirs in cmd/asset/config.yml",
+		config.PluginName(), config.Platform,
 	)
 }
 
@@ -169,73 +172,6 @@ func normalizedPJRTPlatform(platform string) (string, error) {
 			platform,
 		)
 	}
-}
-
-func pjrtIncludeDir() string {
-	for _, envName := range []string{"CARAMBA_XLA_INCLUDE_DIR", "XLA_INCLUDE_DIR", "XLA_INCLUDE"} {
-		if value := strings.TrimSpace(os.Getenv(envName)); value != "" {
-			return value
-		}
-	}
-
-	return pjrtIncludeDirFromCGOFlags(os.Getenv("CGO_CPPFLAGS"))
-}
-
-func pjrtIncludeDirFromCGOFlags(cgoFlags string) string {
-	fields := strings.Fields(cgoFlags)
-
-	for fieldIndex, field := range fields {
-		if strings.HasPrefix(field, "-I") && len(field) > 2 {
-			return strings.TrimPrefix(field, "-I")
-		}
-
-		if field == "-I" && fieldIndex+1 < len(fields) {
-			return fields[fieldIndex+1]
-		}
-	}
-
-	return ""
-}
-
-// pjrtPluginFile expects normalizedPlatform ("cpu", "gpu", or "tpu").
-func pjrtPluginFile(normalizedPlatform string) string {
-	platformEnvName := "CARAMBA_PJRT_CPU_PLUGIN"
-
-	if normalizedPlatform == "gpu" {
-		platformEnvName = "CARAMBA_PJRT_GPU_PLUGIN"
-	}
-
-	if normalizedPlatform == "tpu" {
-		platformEnvName = "CARAMBA_PJRT_TPU_PLUGIN"
-	}
-
-	for _, envName := range []string{platformEnvName, "CARAMBA_PJRT_PLUGIN", "PJRT_PLUGIN_PATH"} {
-		if value := strings.TrimSpace(os.Getenv(envName)); value != "" {
-			return value
-		}
-	}
-
-	return ""
-}
-
-func pjrtLibraryDirs() []string {
-	var libraryDirs []string
-
-	for _, envName := range []string{
-		"CARAMBA_PJRT_LIBRARY_DIR",
-		"LD_LIBRARY_PATH",
-		"DYLD_LIBRARY_PATH",
-	} {
-		for _, libraryDir := range filepath.SplitList(os.Getenv(envName)) {
-			if libraryDir == "" || slices.Contains(libraryDirs, libraryDir) {
-				continue
-			}
-
-			libraryDirs = append(libraryDirs, libraryDir)
-		}
-	}
-
-	return libraryDirs
 }
 
 func pjrtFileExists(path string) bool {

@@ -21,10 +21,11 @@ import (
 Server is the main server for the API.
 */
 type Server struct {
-	app          *fiber.App
-	compute      *compute.Service
-	architecture *architecture.Service
-	modelscope   *modelscope.Service
+	app              *fiber.App
+	compute          *compute.Service
+	architecture     *architecture.Service
+	modelscope       *modelscope.Service
+	researchProjects *ResearchProjectService
 }
 
 /*
@@ -38,9 +39,10 @@ func NewServer() *Server {
 			ServerHeader:  "Fiber",
 			AppName:       "Caramba v1.0.0",
 		}),
-		compute:      compute.NewService(),
-		architecture: architecture.NewService(),
-		modelscope:   modelscope.NewService(),
+		compute:          compute.NewService(),
+		architecture:     architecture.NewService(),
+		modelscope:       modelscope.NewService(),
+		researchProjects: NewResearchProjectService(config.NewDevTeamConfig().DatabaseURL),
 	}
 }
 
@@ -74,7 +76,8 @@ func (server *Server) Up() error {
 
 	server.app.Get("/backend/architecture", wrap(server.architecture.List))
 	server.app.Get("/backend/architecture/:name", wrap(server.architecture.Load))
-	server.app.Post("/backend/architecture/:name", wrap(server.architecture.Save))
+	server.app.Post("/backend/architecture/:name", RequireClerkAdmin(), wrap(server.architecture.Save))
+	server.app.Post("/backend/research-projects", RequireClerkAdmin(), wrap(server.researchProjects.Create))
 
 	devteamCfg := config.NewDevTeamConfig()
 

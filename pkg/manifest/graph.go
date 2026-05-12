@@ -35,18 +35,40 @@ Graph is an ordered, executable computation graph built from a topology manifest
 Nodes are stored in topological order so Execute can run them left-to-right.
 */
 type Graph struct {
-	nodes []*Node
-	edges []*Edge
-	index map[string]*Node
+	nodes          []*Node
+	edges          []*Edge
+	index          map[string]*Node
+	externalInputs map[string]bool
 }
 
 func newGraph() *Graph {
-	return &Graph{index: make(map[string]*Node)}
+	return &Graph{
+		index:          make(map[string]*Node),
+		externalInputs: make(map[string]bool),
+	}
 }
 
-func (graph *Graph) addNode(node *Node) {
+func (graph *Graph) addNode(node *Node) error {
+	if node == nil {
+		return fmt.Errorf("graph: nil node")
+	}
+
+	if node.ID == "" {
+		return fmt.Errorf("graph: node id is required")
+	}
+
+	if _, exists := graph.index[node.ID]; exists {
+		return fmt.Errorf("graph: duplicate node id %q", node.ID)
+	}
+
+	if len(node.Out) > 1 {
+		return fmt.Errorf("graph: node %q declares %d outputs; multi-output operations are not supported", node.ID, len(node.Out))
+	}
+
 	graph.nodes = append(graph.nodes, node)
 	graph.index[node.ID] = node
+
+	return nil
 }
 
 func (graph *Graph) addEdge(edge *Edge) {
@@ -103,7 +125,11 @@ func (graph *Graph) rebuildEdgesFromNodes() error {
 			producerID, found := producerByBinding[inputBinding]
 
 			if !found {
-				continue
+				if graph.externalInputs[inputBinding] {
+					continue
+				}
+
+				return fmt.Errorf("graph: node %q input %q has no producer or declared external input", consumer.ID, inputBinding)
 			}
 
 			if producerID == consumer.ID {
@@ -131,7 +157,13 @@ func (graph *Graph) Execute(inputs map[string][]float64, shape []int) (map[strin
 
 	maps.Copy(state, inputs)
 
-	for _, node := range graph.nodes {
+	order, err := graph.executionOrder()
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, node := range order {
 		data, err := graph.gatherInputsForNode(node, state)
 
 		if err != nil {
@@ -146,10 +178,58 @@ func (graph *Graph) Execute(inputs map[string][]float64, shape []int) (map[strin
 			continue
 		}
 
+		if len(node.Out) != 1 {
+			return nil, fmt.Errorf("graph: node %q must publish exactly one output", node.ID)
+		}
+
 		state[node.Out[0]] = output
 	}
 
 	return state, nil
+}
+
+func (graph *Graph) executionOrder() ([]*Node, error) {
+	indegree := make(map[string]int, len(graph.nodes))
+	dependents := make(map[string][]string, len(graph.nodes))
+
+	for _, node := range graph.nodes {
+		indegree[node.ID] = 0
+	}
+
+	for _, edge := range graph.edges {
+		indegree[edge.To]++
+		dependents[edge.From] = append(dependents[edge.From], edge.To)
+	}
+
+	queue := make([]*Node, 0, len(graph.nodes))
+
+	for _, node := range graph.nodes {
+		if indegree[node.ID] == 0 {
+			queue = append(queue, node)
+		}
+	}
+
+	ordered := make([]*Node, 0, len(graph.nodes))
+
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+		ordered = append(ordered, node)
+
+		for _, dependentID := range dependents[node.ID] {
+			indegree[dependentID]--
+
+			if indegree[dependentID] == 0 {
+				queue = append(queue, graph.index[dependentID])
+			}
+		}
+	}
+
+	if len(ordered) != len(graph.nodes) {
+		return nil, fmt.Errorf("graph: cycle detected")
+	}
+
+	return ordered, nil
 }
 
 /*

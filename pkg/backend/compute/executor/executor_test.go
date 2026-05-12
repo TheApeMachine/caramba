@@ -51,11 +51,20 @@ func TestExecutor(t *testing.T) {
 			Convey("It should execute through the backend kernels", func() {
 				So(err, ShouldBeNil)
 				So(outputs, ShouldHaveLength, 1)
-				So(outputs[0].ID, ShouldEqual, "relu")
 
-				values, err := executor.DecodeFloat64(outputs[0].Data)
+				values, err := outputs["relu"].CloneFloat64()
 				So(err, ShouldBeNil)
 				So(values, ShouldResemble, []float64{0, 2})
+			})
+		})
+
+		Convey("When executing repeatedly with closed caller outputs", func() {
+			Convey("It should release executor-owned inputs and intermediates", func() {
+				for range 256 {
+					outputs, err := executor.New(backend).Execute(context.Background(), nodes, tensors)
+					So(err, ShouldBeNil)
+					So(outputs["relu"].Close(), ShouldBeNil)
+				}
 			})
 		})
 	})

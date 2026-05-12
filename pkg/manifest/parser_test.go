@@ -84,6 +84,59 @@ func TestParser_Parse(t *testing.T) {
 				_, err := parser.Parse("nonexistent.yml")
 				So(err, ShouldNotBeNil)
 			})
+
+			Convey("It should reject paths outside the parser root", func() {
+				_, err := parser.Parse("../outside.yml")
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "escapes parser root")
+			})
+
+			Convey("It should reject include cycles", func() {
+				write("a.yml", "next: !!include b\n")
+				write("b.yml", "next: !!include a\n")
+
+				_, err := parser.Parse("a.yml")
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "include cycle detected")
+			})
+
+			Convey("It should reject repeat counts above the configured limit", func() {
+				write("repeat-limit.yml", "nodes:\n  - repeat: 4097\n    template:\n      id: too_many_${i}\n")
+
+				_, err := parser.Parse("repeat-limit.yml")
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "repeat count 4097 exceeds limit")
+			})
+
+			Convey("ParseBytes should resolve variables, repeats, and includes like Parse", func() {
+				write("block/value.yml", "name: ${include.name}\n")
+				content := []byte(`
+variables:
+  model:
+    name: alpha
+items:
+  - repeat: 2
+    index: item
+    template:
+      - id: node_${item}
+include_result:
+  include: block.value
+  variables:
+    name: ${model.name}
+`)
+				write("bytes.yml", string(content))
+
+				fromFile, err := parser.Parse("bytes.yml")
+				So(err, ShouldBeNil)
+
+				fromBytes, err := parser.ParseBytes(content)
+				So(err, ShouldBeNil)
+
+				So(fromBytes, ShouldResemble, fromFile)
+			})
 		})
 	})
 }
@@ -99,7 +152,7 @@ func BenchmarkParser_Parse(b *testing.B) {
 
 	b.ResetTimer()
 
-	for repeat := 0; repeat < b.N; repeat++ {
+	for b.Loop() {
 		_, _ = parser.Parse("bench.yml")
 	}
 }

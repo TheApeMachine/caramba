@@ -6,12 +6,19 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 var substitutionPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
+
+const (
+	defaultMaxIncludes   = 128
+	defaultMaxRepeat     = 4096
+	defaultMaxExpansions = 65536
+)
 
 /*
 Parser loads a manifest file, resolves include directives and ${var.path}
@@ -31,15 +38,43 @@ Parameterised includes pass a scoped variable namespace to the included file:
 Inside the included file, those variables are reachable as ${include.d_model}.
 */
 type Parser struct {
-	root string
-	vars map[string]any
+	root          string
+	maxIncludes   int
+	maxRepeat     int
+	maxExpansions int
 }
 
 /*
 NewParser creates a Parser anchored at projectRoot for path resolution.
 */
 func NewParser(projectRoot string) *Parser {
-	return &Parser{root: projectRoot, vars: make(map[string]any)}
+	root, err := filepath.Abs(projectRoot)
+
+	if err != nil {
+		root = projectRoot
+	}
+
+	return &Parser{
+		root:          filepath.Clean(root),
+		maxIncludes:   defaultMaxIncludes,
+		maxRepeat:     defaultMaxRepeat,
+		maxExpansions: defaultMaxExpansions,
+	}
+}
+
+type parseContext struct {
+	parser     *Parser
+	vars       map[string]any
+	stack      []string
+	includes   int
+	expansions int
+}
+
+func (parser *Parser) newContext() *parseContext {
+	return &parseContext{
+		parser: parser,
+		vars:   make(map[string]any),
+	}
 }
 
 /*
@@ -47,7 +82,12 @@ Parse loads path (relative to project root), merges variables, resolves includes
 and substitutes ${identifier.path} placeholders.
 */
 func (parser *Parser) Parse(relativePath string) (map[string]any, error) {
-	absolutePath := filepath.Join(parser.root, relativePath)
+	ctx := parser.newContext()
+	absolutePath, err := parser.resolveRootPath(relativePath)
+
+	if err != nil {
+		return nil, err
+	}
 
 	documentNode, err := parser.loadYAMLNode(absolutePath)
 
@@ -55,7 +95,38 @@ func (parser *Parser) Parse(relativePath string) (map[string]any, error) {
 		return nil, err
 	}
 
-	rawDocument, err := parser.nodeToAny(documentNode)
+	return ctx.resolveDocument(documentNode)
+}
+
+func (parser *Parser) resolveRootPath(relativePath string) (string, error) {
+	path := relativePath
+
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(parser.root, path)
+	}
+
+	absolutePath, err := filepath.Abs(path)
+
+	if err != nil {
+		return "", err
+	}
+
+	cleanPath := filepath.Clean(absolutePath)
+	relativeToRoot, err := filepath.Rel(parser.root, cleanPath)
+
+	if err != nil {
+		return "", err
+	}
+
+	if relativeToRoot == ".." || strings.HasPrefix(relativeToRoot, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("manifest: path %q escapes parser root %q", relativePath, parser.root)
+	}
+
+	return cleanPath, nil
+}
+
+func (ctx *parseContext) resolveDocument(documentNode *yaml.Node) (map[string]any, error) {
+	rawDocument, err := ctx.nodeToAny(documentNode)
 
 	if err != nil {
 		return nil, err
@@ -63,7 +134,7 @@ func (parser *Parser) Parse(relativePath string) (map[string]any, error) {
 
 	if document, ok := rawDocument.(map[string]any); ok {
 		if variablesField, present := document["variables"]; present {
-			err = parser.mergeVars(variablesField)
+			err = ctx.mergeVars(variablesField)
 
 			if err != nil {
 				return nil, err
@@ -71,7 +142,7 @@ func (parser *Parser) Parse(relativePath string) (map[string]any, error) {
 		}
 	}
 
-	resolved, err := parser.resolveNode(documentNode)
+	resolved, err := ctx.resolveNode(documentNode)
 
 	if err != nil {
 		return nil, err
@@ -114,14 +185,14 @@ func (parser *Parser) loadYAMLNode(absolutePath string) (*yaml.Node, error) {
 /*
 nodeToAny converts a yaml.Node to Go values without resolving includes or substitutions.
 */
-func (parser *Parser) nodeToAny(yamlNode *yaml.Node) (any, error) {
+func (ctx *parseContext) nodeToAny(yamlNode *yaml.Node) (any, error) {
 	switch yamlNode.Kind {
 	case yaml.MappingNode:
 		mapping := make(map[string]any, len(yamlNode.Content)/2)
 
 		for pairIndex := 0; pairIndex < len(yamlNode.Content)-1; pairIndex += 2 {
 			fieldName := yamlNode.Content[pairIndex].Value
-			fieldValue, err := parser.nodeToAny(yamlNode.Content[pairIndex+1])
+			fieldValue, err := ctx.nodeToAny(yamlNode.Content[pairIndex+1])
 
 			if err != nil {
 				return nil, err
@@ -136,7 +207,7 @@ func (parser *Parser) nodeToAny(yamlNode *yaml.Node) (any, error) {
 		sequence := make([]any, len(yamlNode.Content))
 
 		for entryIndex, child := range yamlNode.Content {
-			element, err := parser.nodeToAny(child)
+			element, err := ctx.nodeToAny(child)
 
 			if err != nil {
 				return nil, err
@@ -174,17 +245,29 @@ Two include forms are recognised:
     variables:
     d_model: 512
 */
-func (parser *Parser) resolveNode(yamlNode *yaml.Node) (any, error) {
+func (ctx *parseContext) resolveNode(yamlNode *yaml.Node) (any, error) {
+	if err := ctx.recordExpansion(); err != nil {
+		return nil, err
+	}
+
 	if yamlNode.Kind == yaml.ScalarNode && strings.HasSuffix(yamlNode.Tag, "include") {
-		return parser.loadIncludeTarget(yamlNode.Value, nil)
+		return ctx.loadIncludeTarget(yamlNode.Value, nil)
 	}
 
 	if yamlNode.Kind == yaml.MappingNode {
-		if dotPath, vars, ok := parser.extractIncludeMapping(yamlNode); ok {
-			return parser.loadIncludeTarget(dotPath, vars)
+		if dotPath, vars, ok, err := ctx.extractIncludeMapping(yamlNode); ok || err != nil {
+			if err != nil {
+				return nil, err
+			}
+
+			return ctx.loadIncludeTarget(dotPath, vars)
 		}
-		if count, indexVar, templateNode, ok := parser.extractRepeatMapping(yamlNode); ok {
-			return parser.expandRepeat(count, indexVar, templateNode)
+		if count, indexVar, templateNode, ok, err := ctx.extractRepeatMapping(yamlNode); ok || err != nil {
+			if err != nil {
+				return nil, err
+			}
+
+			return ctx.expandRepeat(count, indexVar, templateNode)
 		}
 	}
 
@@ -194,7 +277,7 @@ func (parser *Parser) resolveNode(yamlNode *yaml.Node) (any, error) {
 
 		for pairIndex := 0; pairIndex < len(yamlNode.Content)-1; pairIndex += 2 {
 			fieldName := yamlNode.Content[pairIndex].Value
-			fieldValue, err := parser.resolveNode(yamlNode.Content[pairIndex+1])
+			fieldValue, err := ctx.resolveNode(yamlNode.Content[pairIndex+1])
 
 			if err != nil {
 				return nil, err
@@ -209,14 +292,14 @@ func (parser *Parser) resolveNode(yamlNode *yaml.Node) (any, error) {
 		var sequence []any
 
 		for _, child := range yamlNode.Content {
-			element, err := parser.resolveNode(child)
+			element, err := ctx.resolveNode(child)
 
 			if err != nil {
 				return nil, err
 			}
 
 			if child.Kind == yaml.MappingNode {
-				if _, _, _, ok := parser.extractRepeatMapping(child); ok {
+				if _, _, _, ok, _ := ctx.extractRepeatMapping(child); ok {
 					if expSeq, ok := element.([]any); ok {
 						sequence = append(sequence, expSeq...)
 						continue
@@ -244,8 +327,18 @@ func (parser *Parser) resolveNode(yamlNode *yaml.Node) (any, error) {
 			return decoded, nil
 		}
 
-		return parser.interpolateString(text)
+		return ctx.interpolateString(text)
 	}
+}
+
+func (ctx *parseContext) recordExpansion() error {
+	ctx.expansions++
+
+	if ctx.expansions > ctx.parser.maxExpansions {
+		return fmt.Errorf("manifest: expansion limit exceeded (%d)", ctx.parser.maxExpansions)
+	}
+
+	return nil
 }
 
 /*
@@ -257,9 +350,9 @@ extractIncludeMapping detects a parameterised include mapping of the form:
 
 Returns the dot-path, the resolved variables map, and true when found.
 */
-func (parser *Parser) extractIncludeMapping(
+func (ctx *parseContext) extractIncludeMapping(
 	yamlNode *yaml.Node,
-) (dotPath string, vars map[string]any, ok bool) {
+) (dotPath string, vars map[string]any, ok bool, err error) {
 	rawMap := make(map[string]*yaml.Node, len(yamlNode.Content)/2)
 
 	for pairIndex := 0; pairIndex < len(yamlNode.Content)-1; pairIndex += 2 {
@@ -270,7 +363,7 @@ func (parser *Parser) extractIncludeMapping(
 	pathNode, hasInclude := rawMap["include"]
 
 	if !hasInclude || pathNode.Kind != yaml.ScalarNode {
-		return "", nil, false
+		return "", nil, false, nil
 	}
 
 	dotPath = pathNode.Value
@@ -279,24 +372,24 @@ func (parser *Parser) extractIncludeMapping(
 	varsNode, hasVars := rawMap["variables"]
 
 	if !hasVars {
-		return dotPath, vars, true
+		return dotPath, vars, true, nil
 	}
 
-	resolved, err := parser.resolveNode(varsNode)
+	resolved, err := ctx.resolveNode(varsNode)
 
 	if err != nil {
-		return "", nil, false
+		return "", nil, false, err
 	}
 
 	varMap, ok := resolved.(map[string]any)
 
 	if !ok {
-		return "", nil, false
+		return "", nil, false, fmt.Errorf("manifest: include variables must be a mapping, got %T", resolved)
 	}
 
 	maps.Copy(vars, varMap)
 
-	return dotPath, vars, true
+	return dotPath, vars, true, nil
 }
 
 /*
@@ -309,9 +402,9 @@ extractRepeatMapping detects a repeat mapping of the form:
 
 Returns the count, index variable name, template node, and true when found.
 */
-func (parser *Parser) extractRepeatMapping(
+func (ctx *parseContext) extractRepeatMapping(
 	yamlNode *yaml.Node,
-) (count int, indexVar string, templateNode *yaml.Node, ok bool) {
+) (count int, indexVar string, templateNode *yaml.Node, ok bool, err error) {
 	rawMap := make(map[string]*yaml.Node, len(yamlNode.Content)/2)
 
 	for pairIndex := 0; pairIndex < len(yamlNode.Content)-1; pairIndex += 2 {
@@ -322,28 +415,29 @@ func (parser *Parser) extractRepeatMapping(
 	repeatNode, hasRepeat := rawMap["repeat"]
 
 	if !hasRepeat {
-		return 0, "", nil, false
+		return 0, "", nil, false, nil
 	}
 
 	templateNode, hasTemplate := rawMap["template"]
 
 	if !hasTemplate {
-		return 0, "", nil, false
+		return 0, "", nil, false, fmt.Errorf("manifest: repeat block requires template")
 	}
 
-	resolvedCount, err := parser.resolveNode(repeatNode)
+	resolvedCount, err := ctx.resolveNode(repeatNode)
 
 	if err != nil {
-		return 0, "", nil, false
+		return 0, "", nil, false, err
 	}
 
-	switch v := resolvedCount.(type) {
-	case int:
-		count = v
-	case float64:
-		count = int(v)
-	case string:
-		fmt.Sscanf(v, "%d", &count)
+	count, err = parseRepeatCount(resolvedCount)
+
+	if err != nil {
+		return 0, "", nil, false, err
+	}
+
+	if count > ctx.parser.maxRepeat {
+		return 0, "", nil, false, fmt.Errorf("manifest: repeat count %d exceeds limit %d", count, ctx.parser.maxRepeat)
 	}
 
 	indexNode, hasIndex := rawMap["index"]
@@ -354,27 +448,58 @@ func (parser *Parser) extractRepeatMapping(
 		indexVar = "i"
 	}
 
-	return count, indexVar, templateNode, true
+	return count, indexVar, templateNode, true, nil
+}
+
+func parseRepeatCount(value any) (int, error) {
+	switch cast := value.(type) {
+	case int:
+		return cast, nil
+	case float64:
+		if cast != float64(int(cast)) {
+			return 0, fmt.Errorf("manifest: repeat count must be an integer, got %v", cast)
+		}
+
+		return int(cast), nil
+	case string:
+		parsed, err := strconv.Atoi(cast)
+
+		if err != nil {
+			return 0, fmt.Errorf("manifest: repeat count must be an integer, got %q", cast)
+		}
+
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("manifest: repeat count must be an integer, got %T", value)
+	}
 }
 
 /*
 expandRepeat evaluates the template node 'count' times, injecting the current
 iteration index into the parser variables under 'indexVar'.
 */
-func (parser *Parser) expandRepeat(count int, indexVar string, templateNode *yaml.Node) (any, error) {
+func (ctx *parseContext) expandRepeat(count int, indexVar string, templateNode *yaml.Node) (any, error) {
+	if count < 0 {
+		return nil, fmt.Errorf("manifest: repeat count must be non-negative")
+	}
+
 	var result []any
 
 	for i := 0; i < count; i++ {
-		child := &Parser{
-			root: parser.root,
-			vars: make(map[string]any, len(parser.vars)+2),
+		child := &parseContext{
+			parser:     ctx.parser,
+			vars:       make(map[string]any, len(ctx.vars)+2),
+			stack:      ctx.stack,
+			includes:   ctx.includes,
+			expansions: ctx.expansions,
 		}
 
-		maps.Copy(child.vars, parser.vars)
+		maps.Copy(child.vars, ctx.vars)
 		child.vars[indexVar] = i
 		child.vars["next_"+indexVar] = i + 1
 
 		resolved, err := child.resolveNode(templateNode)
+		ctx.expansions = child.expansions
 
 		if err != nil {
 			return nil, err
@@ -394,34 +519,57 @@ func (parser *Parser) expandRepeat(count int, indexVar string, templateNode *yam
 loadIncludeTarget loads a dot-path as YAML and resolves it with a child parser
 that inherits current vars plus an "include" namespace for any passed variables.
 */
-func (parser *Parser) loadIncludeTarget(dotPath string, includeVars map[string]any) (any, error) {
-	relativePath := strings.ReplaceAll(dotPath, ".", string(filepath.Separator)) + ".yml"
-	includedPath := filepath.Join(parser.root, relativePath)
+func (ctx *parseContext) loadIncludeTarget(dotPath string, includeVars map[string]any) (any, error) {
+	ctx.includes++
 
-	childNode, err := parser.loadYAMLNode(includedPath)
+	if ctx.includes > ctx.parser.maxIncludes {
+		return nil, fmt.Errorf("manifest: include limit exceeded (%d)", ctx.parser.maxIncludes)
+	}
+
+	relativePath := strings.ReplaceAll(dotPath, ".", string(filepath.Separator)) + ".yml"
+	includedPath, err := ctx.parser.resolveRootPath(relativePath)
 
 	if err != nil {
 		return nil, err
 	}
 
-	child := &Parser{
-		root: parser.root,
-		vars: make(map[string]any, len(parser.vars)+1),
+	for _, stackedPath := range ctx.stack {
+		if stackedPath == includedPath {
+			return nil, fmt.Errorf("manifest: include cycle detected at %s", includedPath)
+		}
 	}
 
-	maps.Copy(child.vars, parser.vars)
+	childNode, err := ctx.parser.loadYAMLNode(includedPath)
+
+	if err != nil {
+		return nil, err
+	}
+
+	child := &parseContext{
+		parser:     ctx.parser,
+		vars:       make(map[string]any, len(ctx.vars)+1),
+		stack:      append(append([]string(nil), ctx.stack...), includedPath),
+		includes:   ctx.includes,
+		expansions: ctx.expansions,
+	}
+
+	maps.Copy(child.vars, ctx.vars)
 
 	if len(includeVars) > 0 {
 		child.vars["include"] = includeVars
 	}
 
-	return child.resolveNode(childNode)
+	resolved, err := child.resolveNode(childNode)
+	ctx.includes = child.includes
+	ctx.expansions = child.expansions
+
+	return resolved, err
 }
 
 /*
 interpolateString replaces ${var.path} using parser.vars; missing keys are an error.
 */
-func (parser *Parser) interpolateString(scalar string) (any, error) {
+func (ctx *parseContext) interpolateString(scalar string) (any, error) {
 	matches := substitutionPattern.FindAllStringSubmatchIndex(scalar, -1)
 
 	if len(matches) == 0 {
@@ -435,7 +583,7 @@ func (parser *Parser) interpolateString(scalar string) (any, error) {
 		builder.WriteString(scalar[writeOffset:matchIndexes[0]])
 
 		placeholderKey := strings.TrimSpace(scalar[matchIndexes[2]:matchIndexes[3]])
-		replacement, found := parser.lookupSubstitutionValue(placeholderKey)
+		replacement, found := ctx.lookupSubstitutionValue(placeholderKey)
 
 		if !found {
 			return nil, fmt.Errorf("manifest: undefined variable reference ${%s}", placeholderKey)
@@ -453,9 +601,9 @@ func (parser *Parser) interpolateString(scalar string) (any, error) {
 /*
 lookupSubstitutionValue resolves a dot path against parser.vars.
 */
-func (parser *Parser) lookupSubstitutionValue(dotPath string) (string, bool) {
+func (ctx *parseContext) lookupSubstitutionValue(dotPath string) (string, bool) {
 	segments := strings.SplitN(dotPath, ".", 2)
-	raw, ok := parser.vars[segments[0]]
+	raw, ok := ctx.vars[segments[0]]
 
 	if !ok {
 		return "", false
@@ -471,7 +619,7 @@ func (parser *Parser) lookupSubstitutionValue(dotPath string) (string, bool) {
 		return "", false
 	}
 
-	child := Parser{root: parser.root, vars: nested}
+	child := &parseContext{parser: ctx.parser, vars: nested}
 
 	return child.lookupSubstitutionValue(segments[1])
 }
@@ -479,14 +627,14 @@ func (parser *Parser) lookupSubstitutionValue(dotPath string) (string, bool) {
 /*
 mergeVars stores the variables block into parser.vars.
 */
-func (parser *Parser) mergeVars(variablesField any) error {
+func (ctx *parseContext) mergeVars(variablesField any) error {
 	rawMap, ok := variablesField.(map[string]any)
 
 	if !ok {
 		return fmt.Errorf("manifest: variables must be a mapping, got %T", variablesField)
 	}
 
-	maps.Copy(parser.vars, rawMap)
+	maps.Copy(ctx.vars, rawMap)
 
 	return nil
 }
@@ -500,19 +648,9 @@ func (parser *Parser) ParseBytes(data []byte) (map[string]any, error) {
 		return nil, err
 	}
 
-	rawDocument, err := parser.nodeToAny(&documentNode)
-	if err != nil {
-		return nil, err
+	if documentNode.Kind == yaml.DocumentNode && len(documentNode.Content) > 0 {
+		return parser.newContext().resolveDocument(documentNode.Content[0])
 	}
 
-	if document, ok := rawDocument.(map[string]any); ok {
-		if variablesField, present := document["variables"]; present {
-			if err := parser.mergeVars(variablesField); err != nil {
-				return nil, err
-			}
-		}
-		return document, nil
-	}
-
-	return nil, fmt.Errorf("manifest: root must be a mapping")
+	return parser.newContext().resolveDocument(&documentNode)
 }

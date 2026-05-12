@@ -1,6 +1,9 @@
 package manifest
 
 import (
+	"fmt"
+	"strconv"
+
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/activation"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/active_inference"
@@ -80,19 +83,48 @@ func registerAttention() {
 		return attention.NewMQA(), nil
 	})
 	Register("attention.sliding_window", func(config map[string]any) (operation.Operation, error) {
-		window, _ := config["window"].(int)
+		window, err := requiredIntParam(config, "window")
+
+		if err != nil {
+			return nil, fmt.Errorf("attention.sliding_window config.window: %w", err)
+		}
+
 		return attention.NewSlidingWindow(window), nil
 	})
 }
 
 func registerConvolution() {
 	Register("convolution.conv1d", func(config map[string]any) (operation.Operation, error) {
+		inChannels, err := requiredIntParam(config, "in_channels")
+
+		if err != nil {
+			return nil, fmt.Errorf("convolution.conv1d config.in_channels: %w", err)
+		}
+
+		outChannels, err := requiredIntParam(config, "out_channels")
+
+		if err != nil {
+			return nil, fmt.Errorf("convolution.conv1d config.out_channels: %w", err)
+		}
+
+		kernelSize, err := requiredIntParam(config, "kernel_size")
+
+		if err != nil {
+			return nil, fmt.Errorf("convolution.conv1d config.kernel_size: %w", err)
+		}
+
+		padding, err := requiredIntParam(config, "padding")
+
+		if err != nil {
+			return nil, fmt.Errorf("convolution.conv1d config.padding: %w", err)
+		}
+
 		return convolution.NewConv1d(
-			intParam(config, "in_channels"),
-			intParam(config, "out_channels"),
-			intParam(config, "kernel_size"),
+			inChannels,
+			outChannels,
+			kernelSize,
 			intParamDefault(config, "stride", 1),
-			intParam(config, "padding"),
+			padding,
 			intParamDefault(config, "dilation", 1),
 			intParamDefault(config, "groups", 1),
 		), nil
@@ -152,8 +184,18 @@ func registerConvolution() {
 
 func registerEmbedding() {
 	Register("embedding.token", func(config map[string]any) (operation.Operation, error) {
-		vocabSize := intParam(config, "vocab_size")
-		dModel := intParam(config, "d_model")
+		vocabSize, err := requiredIntParam(config, "vocab_size")
+
+		if err != nil {
+			return nil, fmt.Errorf("embedding.token config.vocab_size: %w", err)
+		}
+
+		dModel, err := requiredIntParam(config, "d_model")
+
+		if err != nil {
+			return nil, fmt.Errorf("embedding.token config.d_model: %w", err)
+		}
+
 		initStd, _ := config["init_std"].(float64)
 
 		if initStd == 0 {
@@ -255,15 +297,39 @@ func registerPooling() {
 		), nil
 	})
 	Register("pooling.adaptive_avg_pool2d", func(config map[string]any) (operation.Operation, error) {
+		outH, err := requiredIntParam(config, "out_h")
+
+		if err != nil {
+			return nil, fmt.Errorf("pooling.adaptive_avg_pool2d config.out_h: %w", err)
+		}
+
+		outW, err := requiredIntParam(config, "out_w")
+
+		if err != nil {
+			return nil, fmt.Errorf("pooling.adaptive_avg_pool2d config.out_w: %w", err)
+		}
+
 		return pooling.NewAdaptiveAvgPool2d(
-			intParam(config, "out_h"),
-			intParam(config, "out_w"),
+			outH,
+			outW,
 		), nil
 	})
 	Register("pooling.adaptive_max_pool2d", func(config map[string]any) (operation.Operation, error) {
+		outH, err := requiredIntParam(config, "out_h")
+
+		if err != nil {
+			return nil, fmt.Errorf("pooling.adaptive_max_pool2d config.out_h: %w", err)
+		}
+
+		outW, err := requiredIntParam(config, "out_w")
+
+		if err != nil {
+			return nil, fmt.Errorf("pooling.adaptive_max_pool2d config.out_w: %w", err)
+		}
+
 		return pooling.NewAdaptiveMaxPool2d(
-			intParam(config, "out_h"),
-			intParam(config, "out_w"),
+			outH,
+			outW,
 		), nil
 	})
 }
@@ -284,9 +350,21 @@ func registerPositional() {
 
 func registerProjection() {
 	Register("projection.linear", func(config map[string]any) (operation.Operation, error) {
+		inFeatures, err := requiredIntParam(config, "in_features")
+
+		if err != nil {
+			return nil, fmt.Errorf("projection.linear config.in_features: %w", err)
+		}
+
+		outFeatures, err := requiredIntParam(config, "out_features")
+
+		if err != nil {
+			return nil, fmt.Errorf("projection.linear config.out_features: %w", err)
+		}
+
 		return projection.NewLinear(
-			intParam(config, "in_features"),
-			intParam(config, "out_features"),
+			inFeatures,
+			outFeatures,
 		), nil
 	})
 	Register("projection.fused_qkv", func(config map[string]any) (operation.Operation, error) {
@@ -307,11 +385,22 @@ func registerShape() {
 		), nil
 	})
 	Register("shape.reshape", func(config map[string]any) (operation.Operation, error) {
-		raw, _ := config["shape"].([]any)
+		raw, ok := config["shape"].([]any)
+
+		if !ok {
+			return nil, fmt.Errorf("shape.reshape config.shape: must be a sequence")
+		}
+
 		target := make([]int, len(raw))
 
 		for idx, val := range raw {
-			target[idx] = anyToInt(val)
+			dimension, err := strictManifestInt(val)
+
+			if err != nil {
+				return nil, fmt.Errorf("shape.reshape config.shape[%d]: %w", idx, err)
+			}
+
+			target[idx] = dimension
 		}
 
 		return shape.NewReshape(target), nil
@@ -459,6 +548,16 @@ func floatParamDefault(config map[string]any, key string, defaultVal float64) fl
 
 func intParam(config map[string]any, key string) int {
 	return anyToInt(config[key])
+}
+
+func requiredIntParam(config map[string]any, key string) (int, error) {
+	value, ok := config[key]
+
+	if !ok {
+		return 0, fmt.Errorf("missing required integer")
+	}
+
+	return strictManifestInt(value)
 }
 
 func intParamDefault(config map[string]any, key string, defaultVal int) int {
@@ -672,6 +771,31 @@ func floatFromAny(v any) float64 {
 		return float64(cast)
 	default:
 		return 0
+	}
+}
+
+func strictManifestInt(value any) (int, error) {
+	switch typed := value.(type) {
+	case int:
+		return typed, nil
+	case int64:
+		return int(typed), nil
+	case float64:
+		if typed != float64(int(typed)) {
+			return 0, fmt.Errorf("must be an integer, got %v", typed)
+		}
+
+		return int(typed), nil
+	case string:
+		parsed, err := strconv.Atoi(typed)
+
+		if err != nil {
+			return 0, fmt.Errorf("must be an integer, got %q", typed)
+		}
+
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("must be an integer, got %T", value)
 	}
 }
 

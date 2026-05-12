@@ -29,6 +29,10 @@ func (optimizer *DCEOptimizer) Run(
 	ctx context.Context,
 	input PassInput,
 ) (PassResult, error) {
+	if err := checkContext(ctx); err != nil {
+		return PassResult{}, err
+	}
+
 	graph, err := optimizer.Optimize(ctx, input.Graph, input.Targets)
 
 	if err != nil {
@@ -56,38 +60,34 @@ func (optimizer *DCEOptimizer) Optimize(ctx context.Context, graph *ir.Graph, ta
 		return nil, fmt.Errorf("dce optimizer: nil graph")
 	}
 
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+
 	if len(targets) == 0 {
+		if err := checkContext(ctx); err != nil {
+			return nil, err
+		}
+
 		targets = graph.Sinks()
 	}
 
 	reachable := make(map[string]bool)
-	var queue []*ir.Node
-	queue = append(queue, targets...)
+	queue := append([]*ir.Node{}, targets...)
 
-	head := 0
-	for head < len(queue) {
-		if err := ctx.Err(); err != nil {
+	for _, node := range graph.Nodes() {
+		if err := checkContext(ctx); err != nil {
 			return nil, err
 		}
 
-		current := queue[head]
-		head++
-
-		if !reachable[current.ID()] {
-			reachable[current.ID()] = true
-			queue = append(queue, current.Inputs()...)
-		}
-	}
-
-	for _, node := range graph.Nodes() {
 		if !node.IsPure() {
-			reachable[node.ID()] = true
-			queue = append(queue, node.Inputs()...)
+			queue = append(queue, node)
 		}
 	}
 
+	head := 0
 	for head < len(queue) {
-		if err := ctx.Err(); err != nil {
+		if err := checkContext(ctx); err != nil {
 			return nil, err
 		}
 
@@ -104,7 +104,7 @@ func (optimizer *DCEOptimizer) Optimize(ctx context.Context, graph *ir.Graph, ta
 	replacements := make(map[string]*ir.Node)
 
 	for _, node := range graph.Nodes() {
-		if err := ctx.Err(); err != nil {
+		if err := checkContext(ctx); err != nil {
 			return nil, err
 		}
 
@@ -112,19 +112,13 @@ func (optimizer *DCEOptimizer) Optimize(ctx context.Context, graph *ir.Graph, ta
 			continue
 		}
 
-		newNode := ir.NewNode(node.ID(), node.OpType(), node.Shape())
-		newNode.SetInPlace(node.InPlace())
-
-		for k, v := range node.Metadata() {
-			newNode.SetMetadata(k, v)
-		}
-
+		newNode := cloneNodeSemantics(node)
 		replacements[node.ID()] = newNode
 		optimizedGraph.AddNode(newNode)
 	}
 
 	for _, node := range graph.Nodes() {
-		if err := ctx.Err(); err != nil {
+		if err := checkContext(ctx); err != nil {
 			return nil, err
 		}
 

@@ -178,16 +178,13 @@ CGO_ENABLED=1 go test  -tags "cgo cuda" ./pkg/backend/compute/cuda/...
 CGO_ENABLED=1 go build -tags cgo ./pkg/backend/compute/metal/...
 CGO_ENABLED=1 go test  -tags cgo ./pkg/backend/compute/metal/...
 
-# XLA via PJRT (requires headers and plugin library)
-export CARAMBA_XLA_INCLUDE_DIR=/path/to/xla/include
-export CGO_CPPFLAGS="-I${CARAMBA_XLA_INCLUDE_DIR}"
-export CARAMBA_PJRT_CPU_PLUGIN=/path/to/pjrt_c_api_cpu_plugin.so
+# XLA via PJRT (configure compute.xla in cmd/asset/config.yml first)
 go test -tags "cgo xla" ./pkg/backend/compute/xla/...
 ```
 
 Metal uses `//go:build darwin && cgo`—there is no separate `metal` tag; Darwin + CGO selects the Metal implementation automatically.
 
-For XLA, `CARAMBA_PJRT_CPU_PLUGIN` and `CARAMBA_PJRT_GPU_PLUGIN` are checked first; `CARAMBA_PJRT_PLUGIN` serves as a shared fallback for single-plugin environments.
+For XLA, PJRT include/plugin paths are loaded from `compute.xla` in `cmd/asset/config.yml`; direct environment-variable shadow config is intentionally not used.
 
 → [Deep dive: Compute Backends](./docs/compute.md)
 

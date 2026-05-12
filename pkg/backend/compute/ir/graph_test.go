@@ -97,7 +97,7 @@ func BenchmarkGraph_Sinks(b *testing.B) {
 	var benchSinks []*Node
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		benchSinks = graph.Sinks()
 	}
 	_ = benchSinks
@@ -117,7 +117,7 @@ func BenchmarkGraph_TopologyLayers(b *testing.B) {
 	graph.AddNode(nodeB)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = graph.TopologyLayers()
 	}
 }
@@ -136,7 +136,30 @@ func BenchmarkGraph_Nodes(b *testing.B) {
 	graph.AddNode(nodeB)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = graph.Nodes()
+	}
+}
+
+func BenchmarkGraph_Verify(b *testing.B) {
+	shape, err := tensor.NewShape([]int{2, 2})
+	if err != nil {
+		b.Fatalf("NewShape failed: %v", err)
+	}
+
+	graph := NewGraph()
+	nodeA := NewNode("a", OpInput, shape)
+	nodeB := NewNode("b", OpInput, shape)
+	nodeC := NewNode("c", OpAdd, shape)
+	nodeC.AddInput(nodeA)
+	nodeC.AddInput(nodeB)
+	graph.AddNode(nodeA)
+	graph.AddNode(nodeB)
+	graph.AddNode(nodeC)
+
+	for b.Loop() {
+		if err := graph.Verify(); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

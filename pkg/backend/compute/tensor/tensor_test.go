@@ -186,6 +186,56 @@ func TestHostBackend_UploadFloat64(t *testing.T) {
 			convey.So(uploaded, convey.ShouldBeNil)
 		})
 	})
+
+	convey.Convey("Given an upload larger than the remaining arena", t, func() {
+		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
+		shape, err := NewShape([]int{hostArenaFloat64Elements + 1})
+		convey.So(err, convey.ShouldBeNil)
+
+		convey.Convey("It should reject the upload instead of falling back to heap storage", func() {
+			uploaded, err := hostBackend.UploadFloat64(shape, make([]float64, shape.Len()))
+
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(err.Error(), convey.ShouldContainSubstring, "host arena exhausted")
+			convey.So(uploaded, convey.ShouldBeNil)
+		})
+	})
+
+	convey.Convey("Given an upload that exactly fills the arena", t, func() {
+		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
+		shape, err := NewShape([]int{hostArenaFloat64Elements})
+		convey.So(err, convey.ShouldBeNil)
+
+		convey.Convey("It should use the arena without reporting exhaustion", func() {
+			uploaded, err := hostBackend.UploadFloat64(shape, make([]float64, shape.Len()))
+
+			convey.So(err, convey.ShouldBeNil)
+			defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
+
+			convey.So(uploaded.Len(), convey.ShouldEqual, hostArenaFloat64Elements)
+		})
+	})
+
+	convey.Convey("Given an empty tensor upload", t, func() {
+		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
+		shape, err := NewShape([]int{0})
+		convey.So(err, convey.ShouldBeNil)
+
+		convey.Convey("It should succeed without consuming arena capacity", func() {
+			uploaded, err := hostBackend.UploadFloat64(shape, []float64{})
+
+			convey.So(err, convey.ShouldBeNil)
+			defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
+
+			convey.So(uploaded.Len(), convey.ShouldEqual, 0)
+		})
+	})
 }
 
 func TestHostBackend_AdoptFloat64(t *testing.T) {
@@ -267,6 +317,80 @@ func TestHostBackend_Close(t *testing.T) {
 	})
 }
 
+func TestHostBackend_Reset(t *testing.T) {
+	convey.Convey("Given a host backend with a live arena tensor", t, func() {
+		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
+		shape, err := NewShape([]int{2})
+		convey.So(err, convey.ShouldBeNil)
+
+		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2})
+		convey.So(err, convey.ShouldBeNil)
+		defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
+
+		convey.Convey("It should reject reset while the tensor can still alias arena memory", func() {
+			err := hostBackend.Reset()
+
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(err.Error(), convey.ShouldContainSubstring, "host arena still has live tensors")
+		})
+	})
+
+	convey.Convey("Given all arena tensors are closed", t, func() {
+		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
+		shape, err := NewShape([]int{2})
+		convey.So(err, convey.ShouldBeNil)
+
+		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(uploaded.Close(), convey.ShouldBeNil)
+
+		convey.Convey("It should reset arena capacity", func() {
+			err := hostBackend.Reset()
+			convey.So(err, convey.ShouldBeNil)
+
+			reused, err := hostBackend.UploadFloat64(shape, []float64{3, 4})
+			convey.So(err, convey.ShouldBeNil)
+			defer func() { convey.So(reused.Close(), convey.ShouldBeNil) }()
+
+			values, err := reused.CloneFloat64()
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(values, convey.ShouldResemble, []float64{3, 4})
+		})
+	})
+
+	convey.Convey("Given an adopted tensor", t, func() {
+		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
+		shape, err := NewShape([]int{2})
+		convey.So(err, convey.ShouldBeNil)
+
+		adopted, err := hostBackend.AdoptFloat64(shape, []float64{1, 2})
+		convey.So(err, convey.ShouldBeNil)
+		defer func() { convey.So(adopted.Close(), convey.ShouldBeNil) }()
+
+		convey.Convey("It should not block arena reset because it does not alias arena memory", func() {
+			convey.So(hostBackend.Reset(), convey.ShouldBeNil)
+		})
+	})
+
+	convey.Convey("Given a closed host backend", t, func() {
+		hostBackend := NewHostBackend()
+		convey.So(hostBackend.Close(), convey.ShouldBeNil)
+
+		convey.Convey("It should reject reset", func() {
+			err := hostBackend.Reset()
+
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(err, convey.ShouldEqual, errClosedBackend)
+		})
+	})
+}
+
 func TestHostTensor_Float64(t *testing.T) {
 	convey.Convey("Given a host tensor", t, func() {
 		hostBackend := NewHostBackend()
@@ -338,7 +462,7 @@ func BenchmarkHostBackend_UploadFloat64(benchmark *testing.B) {
 	benchmark.SetBytes(int64(shape.Len() * 8))
 	benchmark.ResetTimer()
 
-	for iteration := 0; iteration < benchmark.N; iteration++ {
+	for benchmark.Loop() {
 		uploaded, err := hostBackend.UploadFloat64(shape, values)
 
 		if err != nil {
@@ -346,6 +470,10 @@ func BenchmarkHostBackend_UploadFloat64(benchmark *testing.B) {
 		}
 
 		if err := uploaded.Close(); err != nil {
+			benchmark.Fatal(err)
+		}
+
+		if err := hostBackend.Reset(); err != nil {
 			benchmark.Fatal(err)
 		}
 	}
@@ -373,7 +501,7 @@ func BenchmarkHostBackend_DownloadFloat64(benchmark *testing.B) {
 	benchmark.ReportAllocs()
 	benchmark.SetBytes(int64(shape.Len() * 8))
 
-	for iteration := 0; iteration < benchmark.N; iteration++ {
+	for benchmark.Loop() {
 		_, err := hostBackend.DownloadFloat64(uploaded)
 
 		if err != nil {

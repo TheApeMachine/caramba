@@ -19,9 +19,21 @@ matches clerk.admin_subject_ids or session active org matches
 clerk.privileged_organization_slug with org admin role (org:admin / admin).
 */
 func RequireClerkSession(clerkConfig *config.ClerkConfig) fiber.Handler {
-	if !clerkConfig.Active || strings.TrimSpace(clerkConfig.SecretKey) == "" {
+	if !clerkConfig.Active {
 		return func(ctx fiber.Ctx) error {
 			return ctx.Next()
+		}
+	}
+
+	if strings.TrimSpace(clerkConfig.SecretKey) == "" {
+		return func(ctx fiber.Ctx) error {
+			if !clerkConfig.RequireAuth {
+				return ctx.Next()
+			}
+
+			return ctx.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": "clerk secret key is required",
+			})
 		}
 	}
 
@@ -47,6 +59,8 @@ func RequireClerkSession(clerkConfig *config.ClerkConfig) fiber.Handler {
 		}
 
 		ctx.Locals("clerkSubject", claims.Subject)
+		ctx.Locals("clerkOrganizationSlug", claims.ActiveOrganizationSlug)
+		ctx.Locals("clerkOrganizationRole", claims.ActiveOrganizationRole)
 		ctx.Locals(
 			"clerkAdmin",
 			clerkConfig.SubjectHasElevatedAdminPrivileges(
@@ -57,6 +71,20 @@ func RequireClerkSession(clerkConfig *config.ClerkConfig) fiber.Handler {
 		)
 
 		return ctx.Next()
+	}
+}
+
+func RequireClerkAdmin() fiber.Handler {
+	return func(ctx fiber.Ctx) error {
+		clerkAdmin, ok := ctx.Locals("clerkAdmin").(bool)
+
+		if ok && clerkAdmin {
+			return ctx.Next()
+		}
+
+		return ctx.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "admin privileges required",
+		})
 	}
 }
 

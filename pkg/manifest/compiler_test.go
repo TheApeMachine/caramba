@@ -45,9 +45,10 @@ func TestCompiler_Compile(t *testing.T) {
 			Convey("It should build a graph from a valid manifest", func() {
 				write("master.yml", `
 system:
-  topology:
-    type: GraphTopology
-    nodes:
+    topology:
+      type: GraphTopology
+      inputs: [x]
+      nodes:
       - id: scale
         op: math.scale
         in: [x]
@@ -64,9 +65,10 @@ system:
 			Convey("It should execute the graph correctly", func() {
 				write("master.yml", `
 system:
-  topology:
-    type: GraphTopology
-    nodes:
+    topology:
+      type: GraphTopology
+      inputs: [x]
+      nodes:
       - id: scale
         op: math.scale
         in: [x]
@@ -86,6 +88,7 @@ system:
 				write("bad.yml", `
 system:
   topology:
+    inputs: [x]
     nodes:
       - id: mystery
         op: does.not.exist
@@ -107,6 +110,41 @@ system:
 				_, err := compiler.Compile("nonodes.yml")
 				So(err, ShouldNotBeNil)
 			})
+
+			Convey("It should reject undeclared external input bindings", func() {
+				write("missing-input.yml", `
+system:
+  topology:
+    nodes:
+      - id: scale
+        op: math.scale
+        in: [x]
+        out: [y]
+`)
+				_, err := compiler.Compile("missing-input.yml")
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "has no producer or declared external input")
+			})
+
+			Convey("It should reject duplicate node IDs", func() {
+				write("duplicate.yml", `
+system:
+  topology:
+    inputs: [x]
+    nodes:
+      - id: scale
+        op: math.scale
+        in: [x]
+        out: [y]
+      - id: scale
+        op: math.scale
+        in: [x]
+        out: [z]
+`)
+				_, err := compiler.Compile("duplicate.yml")
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "duplicate node id")
+			})
 		})
 	})
 }
@@ -122,6 +160,7 @@ func BenchmarkCompiler_Compile(b *testing.B) {
 	content := `
 system:
   topology:
+    inputs: [x]
     nodes:
       - id: s
         op: math.scale
@@ -139,7 +178,7 @@ system:
 
 	b.ResetTimer()
 
-	for repeat := 0; repeat < b.N; repeat++ {
+	for b.Loop() {
 		_, _ = compiler.Compile("bench.yml")
 	}
 }

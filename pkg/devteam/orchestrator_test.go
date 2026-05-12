@@ -2,11 +2,65 @@ package devteam
 
 import (
 	"context"
+	"database/sql"
+	"database/sql/driver"
+	"errors"
+	"io"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/config"
 )
+
+func init() {
+	sql.Register("devteam_orchestrator_test", &orchestratorTestDriver{})
+}
+
+func TestOrchestratorRun(t *testing.T) {
+	Convey("Given an Orchestrator with a failing watcher", t, func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		watcher := newOrchestratorTestWatcher(errors.New("watch failed"))
+		orchestrator := &Orchestrator{
+			ctx:     ctx,
+			cancel:  cancel,
+			watcher: watcher,
+			sem:     make(chan struct{}, 1),
+		}
+
+		Convey("It should return the watcher error instead of blocking", func() {
+			err := orchestrator.Run()
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "watch failed")
+		})
+	})
+
+	Convey("Given an Orchestrator with a closed events channel", t, func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		watcher := newOrchestratorTestWatcher(nil)
+		watcher.closeEvents()
+
+		orchestrator := &Orchestrator{
+			ctx:     ctx,
+			cancel:  cancel,
+			watcher: watcher,
+			sem:     make(chan struct{}, 1),
+		}
+
+		Convey("It should return instead of waiting forever", func() {
+			err := orchestrator.Run()
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "events closed")
+		})
+	})
+}
 
 func TestFeatureBranch(t *testing.T) {
 	Convey("Given a ColumnEvent with a feature title", t, func() {
@@ -82,6 +136,48 @@ func TestIsRelevant(t *testing.T) {
 	})
 }
 
+func TestOrchestrator_moveCard(t *testing.T) {
+	Convey("Given an orchestrator backed by a database", t, func() {
+		database, err := sql.Open("devteam_orchestrator_test", "")
+		So(err, ShouldBeNil)
+		defer func() { So(database.Close(), ShouldBeNil) }()
+
+		orchestrator := &Orchestrator{
+			ctx: context.Background(),
+			db:  database,
+		}
+
+		orchestratorTestExecCount.Store(0)
+		orchestratorTestExecFailure.Store(false)
+
+		Convey("It should update the card column and note", func() {
+			err := orchestrator.moveCard(
+				"f47ac10b-58cc-4372-a567-0e02b2c3d479",
+				"review",
+				"ready",
+			)
+
+			So(err, ShouldBeNil)
+			So(orchestratorTestExecCount.Load(), ShouldEqual, 2)
+		})
+
+		Convey("It should return SQL errors instead of swallowing them", func() {
+			orchestratorTestExecFailure.Store(true)
+
+			err := orchestrator.moveCard(
+				"f47ac10b-58cc-4372-a567-0e02b2c3d479",
+				"review",
+				"ready",
+			)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "move card")
+			So(err.Error(), ShouldContainSubstring, "test exec failure")
+			So(orchestratorTestExecCount.Load(), ShouldEqual, 1)
+		})
+	})
+}
+
 func BenchmarkFeatureBranch(b *testing.B) {
 	event := ColumnEvent{
 		ID:    "f47ac10b-58cc-4372-a567-0e02b2c3d479",
@@ -90,6 +186,29 @@ func BenchmarkFeatureBranch(b *testing.B) {
 
 	for b.Loop() {
 		_ = featureBranch(event)
+	}
+}
+
+func BenchmarkOrchestrator_moveCard(b *testing.B) {
+	database, err := sql.Open("devteam_orchestrator_test", "")
+
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	orchestrator := &Orchestrator{
+		ctx: context.Background(),
+		db:  database,
+	}
+	orchestratorTestExecFailure.Store(false)
+	b.ResetTimer()
+
+	for b.Loop() {
+		if err := orchestrator.moveCard("card", "review", "ready"); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
@@ -121,4 +240,104 @@ func splitBranchSlug(branch string) []string {
 	}
 
 	return words
+}
+
+var orchestratorTestExecCount atomic.Int64
+var orchestratorTestExecFailure atomic.Bool
+
+type orchestratorTestDriver struct{}
+
+func (driver *orchestratorTestDriver) Open(name string) (driver.Conn, error) {
+	return &orchestratorTestConn{}, nil
+}
+
+type orchestratorTestConn struct{}
+
+func (connection *orchestratorTestConn) Prepare(query string) (driver.Stmt, error) {
+	return nil, errors.New("prepare is not supported")
+}
+
+func (connection *orchestratorTestConn) Close() error {
+	return nil
+}
+
+func (connection *orchestratorTestConn) Begin() (driver.Tx, error) {
+	return nil, errors.New("transactions are not supported")
+}
+
+func (connection *orchestratorTestConn) ExecContext(
+	ctx context.Context,
+	query string,
+	args []driver.NamedValue,
+) (driver.Result, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	orchestratorTestExecCount.Add(1)
+
+	if orchestratorTestExecFailure.Load() {
+		return nil, errors.New("test exec failure")
+	}
+
+	return driver.RowsAffected(1), nil
+}
+
+func (connection *orchestratorTestConn) QueryContext(
+	ctx context.Context,
+	query string,
+	args []driver.NamedValue,
+) (driver.Rows, error) {
+	return orchestratorTestRows{}, nil
+}
+
+type orchestratorTestRows struct{}
+
+func (rows orchestratorTestRows) Columns() []string {
+	return nil
+}
+
+func (rows orchestratorTestRows) Close() error {
+	return nil
+}
+
+func (rows orchestratorTestRows) Next(dest []driver.Value) error {
+	return io.EOF
+}
+
+type orchestratorTestWatcher struct {
+	events chan ColumnEvent
+	errors chan error
+	err    error
+}
+
+func newOrchestratorTestWatcher(err error) *orchestratorTestWatcher {
+	return &orchestratorTestWatcher{
+		events: make(chan ColumnEvent),
+		errors: make(chan error, 1),
+		err:    err,
+	}
+}
+
+func (watcher *orchestratorTestWatcher) Events() <-chan ColumnEvent {
+	return watcher.events
+}
+
+func (watcher *orchestratorTestWatcher) Errors() <-chan error {
+	return watcher.errors
+}
+
+func (watcher *orchestratorTestWatcher) Watch() error {
+	if watcher.err == nil {
+		select {}
+	}
+
+	watcher.errors <- watcher.err
+	time.Sleep(time.Millisecond)
+
+	return nil
+}
+
+func (watcher *orchestratorTestWatcher) closeEvents() {
+	close(watcher.events)
 }

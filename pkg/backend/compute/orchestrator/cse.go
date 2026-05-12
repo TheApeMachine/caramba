@@ -32,7 +32,7 @@ func (optimizer *CSEOptimizer) Run(
 	ctx context.Context,
 	input PassInput,
 ) (PassResult, error) {
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx); err != nil {
 		return PassResult{}, err
 	}
 
@@ -98,50 +98,38 @@ func (optimizer *CSEOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[string]
 	for _, layer := range layers {
 		for _, node := range layer {
 			if node.OpType() == ir.OpInput || !node.IsPure() {
-				newNode := ir.NewNode(node.ID(), node.OpType(), node.Shape())
-				newNode.SetInPlace(node.InPlace())
-				newNode.SetOperationID(node.OperationID())
-				newNode.SetValueType(node.ValueType())
-				newNode.SetEffect(node.Effect())
-				newNode.SetAlias(node.Alias())
-				for k, v := range node.Metadata() {
-					newNode.SetMetadata(k, v)
-				}
-				for k, v := range node.Attributes() {
-					newNode.SetAttribute(k, v)
-				}
+				newNode := cloneNodeSemantics(node)
 				replacements[node.ID()] = newNode
 				optimizedGraph.AddNode(newNode)
 				continue
 			}
 
-			sig := generateSignature(node, replacements)
+			sig, err := generateSignature(node, replacements)
+
+			if err != nil {
+				return nil, nil, err
+			}
+
 			if existingID, found := signatures[sig]; found {
 				// Redundant calculation found! Point to the existing node.
 				replacements[node.ID()] = replacements[existingID]
 			} else {
 				signatures[sig] = node.ID()
 
-				newNode := ir.NewNode(node.ID(), node.OpType(), node.Shape())
-				newNode.SetInPlace(node.InPlace())
-				newNode.SetOperationID(node.OperationID())
-				newNode.SetValueType(node.ValueType())
-				newNode.SetEffect(node.Effect())
-				newNode.SetAlias(node.Alias())
-				for k, v := range node.Metadata() {
-					newNode.SetMetadata(k, v)
-				}
-				for k, v := range node.Attributes() {
-					newNode.SetAttribute(k, v)
-				}
+				newNode := cloneNodeSemantics(node)
 
 				// Add remapped inputs
 				for _, in := range node.Inputs() {
-					if rep, ok := replacements[in.ID()]; ok {
-						newNode.AddInput(rep)
-					} else {
-						newNode.AddInput(in) // Fallback
+					rep, ok := replacements[in.ID()]
+
+					if !ok {
+						return nil, nil, fmt.Errorf(
+							"cse optimizer: missing replacement for input %q of node %q",
+							in.ID(), node.ID(),
+						)
 					}
+
+					newNode.AddInput(rep)
 				}
 
 				replacements[node.ID()] = newNode
@@ -153,7 +141,7 @@ func (optimizer *CSEOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[string]
 	return optimizedGraph, replacements, nil
 }
 
-func generateSignature(node *ir.Node, replacements map[string]*ir.Node) string {
+func generateSignature(node *ir.Node, replacements map[string]*ir.Node) (string, error) {
 	var sb strings.Builder
 	sb.WriteString(string(node.OperationID()))
 	sb.WriteString("|")
@@ -170,31 +158,40 @@ func generateSignature(node *ir.Node, replacements map[string]*ir.Node) string {
 	sb.WriteString(node.CanonicalAttributes())
 	sb.WriteString("|")
 
-	inputIDs := canonicalInputIDs(node, replacements)
+	inputIDs, err := canonicalInputIDs(node, replacements)
+
+	if err != nil {
+		return "", err
+	}
 
 	for _, inputID := range inputIDs {
 		sb.WriteString(inputID)
 		sb.WriteString(",")
 	}
 
-	return sb.String()
+	return sb.String(), nil
 }
 
-func canonicalInputIDs(node *ir.Node, replacements map[string]*ir.Node) []string {
+func canonicalInputIDs(node *ir.Node, replacements map[string]*ir.Node) ([]string, error) {
 	inputs := node.Inputs()
 	inputIDs := make([]string, 0, len(inputs))
 
-	for _, in := range node.Inputs() {
-		if rep, ok := replacements[in.ID()]; ok {
-			inputIDs = append(inputIDs, rep.ID())
-		} else {
-			inputIDs = append(inputIDs, in.ID())
+	for _, input := range inputs {
+		replacement, ok := replacements[input.ID()]
+
+		if !ok {
+			return nil, fmt.Errorf(
+				"cse optimizer: missing replacement for input %q of node %q",
+				input.ID(), node.ID(),
+			)
 		}
+
+		inputIDs = append(inputIDs, replacement.ID())
 	}
 
 	if node.OpType() == ir.OpAdd || node.OpType() == ir.OpMul {
 		sort.Strings(inputIDs)
 	}
 
-	return inputIDs
+	return inputIDs, nil
 }

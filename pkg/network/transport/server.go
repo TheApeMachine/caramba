@@ -373,7 +373,7 @@ func (s *ComputeStreamServer) execute(ctx context.Context) ([]streamTensor, erro
 		return nil, err
 	}
 
-	return streamTensorsFromSpecs(outputs), nil
+	return streamTensorsFromOutputs(outputs)
 }
 
 func setExecutionError(res schema.ComputeStream_execute_Results, err error) error {
@@ -437,19 +437,38 @@ func tensorSpecs(tensors []streamTensor) []executor.TensorSpec {
 	return specs
 }
 
-func streamTensorsFromSpecs(specs []executor.TensorSpec) []streamTensor {
-	tensors := make([]streamTensor, len(specs))
+func streamTensorsFromOutputs(outputs map[string]computetensor.Float64Tensor) ([]streamTensor, error) {
+	tensors := make([]streamTensor, 0, len(outputs))
 
-	for index, spec := range specs {
-		tensors[index] = streamTensor{
-			ID:    spec.ID,
-			Shape: append([]int64(nil), spec.Shape...),
-			Data:  append([]byte(nil), spec.Data...),
-			Dtype: string(spec.DType),
+	for id, output := range outputs {
+		values, err := output.CloneFloat64()
+
+		if err != nil {
+			return nil, err
 		}
+
+		data, err := executor.EncodeFloat64(values)
+
+		if err != nil {
+			return nil, err
+		}
+
+		dimensions := output.Shape().Dims()
+		shape := make([]int64, len(dimensions))
+
+		for index, dimension := range dimensions {
+			shape[index] = int64(dimension)
+		}
+
+		tensors = append(tensors, streamTensor{
+			ID:    id,
+			Shape: shape,
+			Data:  data,
+			Dtype: string(output.DType()),
+		})
 	}
 
-	return tensors
+	return tensors, nil
 }
 
 /*

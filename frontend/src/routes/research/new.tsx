@@ -1,4 +1,3 @@
-import { useAuth } from "@clerk/tanstack-react-start";
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -13,7 +12,6 @@ import { researchProjectsCollection } from "#/lib/research-projects-collection";
 const RouteComponent = () => {
 	const navigate = useNavigate();
 	const [persistError, setPersistError] = useState<string | null>(null);
-	const { orgSlug } = useAuth();
 
 	const form = useForm({
 		defaultValues: {
@@ -28,7 +26,7 @@ const RouteComponent = () => {
 					id,
 					name: value.name.trim(),
 					description: value.description.trim(),
-					organization_slug: orgSlug ?? "",
+					organization_slug: "server-derived",
 					created_at: new Date(),
 					updated_at: new Date(),
 				});

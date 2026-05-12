@@ -47,6 +47,7 @@ type Executor struct {
 	values  map[string]tensor.Float64Tensor
 	nodes   map[string]NodeSpec
 	states  map[string]int
+	owned   map[string]bool
 }
 
 func New(backend Backend) *Executor {
@@ -55,15 +56,27 @@ func New(backend Backend) *Executor {
 		values:  make(map[string]tensor.Float64Tensor),
 		nodes:   make(map[string]NodeSpec),
 		states:  make(map[string]int),
+		owned:   make(map[string]bool),
 	}
 }
 
 func (executor *Executor) Execute(
 	ctx context.Context, nodes []NodeSpec, tensors []TensorSpec,
-) ([]TensorSpec, error) {
+) (map[string]tensor.Float64Tensor, error) {
+	if err := executor.reset(); err != nil {
+		return nil, err
+	}
+
 	if executor.backend == nil {
 		return nil, fmt.Errorf("executor: backend is required")
 	}
+
+	var callerOwnedOutputs map[string]tensor.Float64Tensor
+	defer func() {
+		if callerOwnedOutputs == nil {
+			_ = executor.closeOwnedExcept(nil)
+		}
+	}()
 
 	for _, node := range nodes {
 		executor.nodes[node.ID] = node
@@ -77,12 +90,14 @@ func (executor *Executor) Execute(
 		}
 
 		executor.values[tensorSpec.ID] = uploaded
+		executor.owned[tensorSpec.ID] = true
 	}
 
-	targets := targets(nodes)
-	outputs := make([]TensorSpec, len(targets))
+	targetSpecs := targets(nodes)
+	outputs := make(map[string]tensor.Float64Tensor, len(targetSpecs))
+	outputIDs := make(map[string]bool, len(targetSpecs))
 
-	for index, target := range targets {
+	for _, target := range targetSpecs {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -93,16 +108,55 @@ func (executor *Executor) Execute(
 			return nil, err
 		}
 
-		output, err := executor.download(target.ID, value)
-
-		if err != nil {
-			return nil, err
-		}
-
-		outputs[index] = output
+		outputs[target.ID] = value
+		outputIDs[target.ID] = true
 	}
 
+	if err := executor.closeOwnedExcept(outputIDs); err != nil {
+		return nil, err
+	}
+
+	callerOwnedOutputs = outputs
+
 	return outputs, nil
+}
+
+func (executor *Executor) reset() error {
+	if len(executor.values) != 0 {
+		if err := executor.closeOwnedExcept(nil); err != nil {
+			return err
+		}
+	}
+
+	executor.values = make(map[string]tensor.Float64Tensor)
+	executor.nodes = make(map[string]NodeSpec)
+	executor.states = make(map[string]int)
+	executor.owned = make(map[string]bool)
+
+	return nil
+}
+
+func (executor *Executor) closeOwnedExcept(keep map[string]bool) error {
+	var closeErr error
+
+	for id, value := range executor.values {
+		if keep[id] {
+			continue
+		}
+
+		if !executor.owned[id] || value == nil {
+			continue
+		}
+
+		if err := value.Close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+
+		delete(executor.owned, id)
+		delete(executor.values, id)
+	}
+
+	return closeErr
 }
 
 func (executor *Executor) upload(tensorSpec TensorSpec) (tensor.Float64Tensor, error) {
@@ -167,6 +221,7 @@ func (executor *Executor) evaluate(ctx context.Context, id string) (tensor.Float
 	}
 
 	executor.values[id] = output
+	executor.owned[id] = true
 	executor.states[id] = 2
 
 	return output, nil

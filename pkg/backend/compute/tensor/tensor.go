@@ -9,10 +9,13 @@ import (
 
 const maxInt = int(^uint(0) >> 1)
 
+const hostArenaFloat64Elements = 8 * 1024 * 1024
+
 var (
 	errClosedBackend = errors.New("tensor: backend is closed")
 	errClosedTensor  = errors.New("tensor: tensor is closed")
 	errInvalidShape  = errors.New("tensor: shape is invalid")
+	errLiveTensors   = errors.New("tensor: host arena still has live tensors")
 )
 
 /*
@@ -176,21 +179,24 @@ type Backend interface {
 
 /*
 HostBackend owns tensors backed by Go heap storage using a linear memory arena.
+The arena is fixed at 8,388,608 float64 elements (64 MiB); UploadFloat64 returns
+an error when that arena is exhausted instead of silently allocating elsewhere.
 */
 type HostBackend struct {
 	mu     sync.RWMutex
 	closed bool
 	arena  []float64
 	offset int
+	live   int
 }
 
 /*
 NewHostBackend creates a backend for native Go tensor ownership.
-It allocates a default 64MB memory arena to reduce garbage collection overhead.
+It allocates a fixed 64 MiB arena to keep allocation behavior explicit.
 */
 func NewHostBackend() *HostBackend {
 	return &HostBackend{
-		arena: make([]float64, 8*1024*1024), // 8M elements * 8 bytes = 64MB
+		arena: make([]float64, hostArenaFloat64Elements),
 	}
 }
 
@@ -252,21 +258,31 @@ func (hostBackend *HostBackend) createFloat64(
 	var dest []float64
 
 	if copyValues {
-		if shape.Len() > 0 && hostBackend.offset+shape.Len() <= len(hostBackend.arena) {
-			dest = hostBackend.arena[hostBackend.offset : hostBackend.offset+shape.Len()]
-			hostBackend.offset += shape.Len()
-			copy(dest, values)
-		} else {
-			dest = slices.Clone(values)
+		if shape.Len() == 0 {
+			return &HostTensor{bytes: bytes, shape: shape, values: nil}, nil
 		}
+
+		if shape.Len() > len(hostBackend.arena)-hostBackend.offset {
+			return nil, fmt.Errorf(
+				"tensor: host arena exhausted: requested %d float64 elements with %d remaining of %d",
+				shape.Len(), len(hostBackend.arena)-hostBackend.offset, len(hostBackend.arena),
+			)
+		}
+
+		dest = hostBackend.arena[hostBackend.offset : hostBackend.offset+shape.Len()]
+		hostBackend.offset += shape.Len()
+		copy(dest, values)
+		hostBackend.live++
 	} else {
 		dest = values
 	}
 
 	return &HostTensor{
-		bytes:  bytes,
-		shape:  shape,
-		values: dest,
+		backend: hostBackend,
+		arena:   copyValues && shape.Len() > 0,
+		bytes:   bytes,
+		shape:   shape,
+		values:  dest,
 	}, nil
 }
 
@@ -318,21 +334,43 @@ func (hostBackend *HostBackend) Close() error {
 /*
 Reset performs a one-shot reclamation of the memory arena for when all tensors are gone.
 */
-func (hostBackend *HostBackend) Reset() {
+func (hostBackend *HostBackend) Reset() error {
 	hostBackend.mu.Lock()
 	defer hostBackend.mu.Unlock()
+
+	if hostBackend.closed {
+		return errClosedBackend
+	}
+
+	if hostBackend.live != 0 {
+		return fmt.Errorf("%w: %d", errLiveTensors, hostBackend.live)
+	}
+
 	hostBackend.offset = 0
+
+	return nil
+}
+
+func (hostBackend *HostBackend) releaseArenaTensor() {
+	hostBackend.mu.Lock()
+	defer hostBackend.mu.Unlock()
+
+	if hostBackend.live > 0 {
+		hostBackend.live--
+	}
 }
 
 /*
 HostTensor is persistent tensor storage backed by a Go float64 slice.
 */
 type HostTensor struct {
-	mu     sync.RWMutex
-	bytes  int
-	shape  Shape
-	values []float64
-	closed bool
+	mu      sync.RWMutex
+	backend *HostBackend
+	arena   bool
+	bytes   int
+	shape   Shape
+	values  []float64
+	closed  bool
 }
 
 /*
@@ -422,9 +460,17 @@ func (hostTensor *HostTensor) Close() error {
 	}
 
 	hostTensor.closed = true
+	backend := hostTensor.backend
+	arena := hostTensor.arena
+	hostTensor.backend = nil
+	hostTensor.arena = false
 	hostTensor.bytes = 0
 	hostTensor.values = nil
 	hostTensor.shape = Shape{}
+
+	if arena && backend != nil {
+		backend.releaseArenaTensor()
+	}
 
 	return nil
 }

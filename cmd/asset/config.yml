@@ -34,6 +34,13 @@ devteam:
 compute:
   metal:
     metallib_directory: ${CARAMBA_METAL_METALLIB_DIRECTORY}
+  xla:
+    include_dir: ""
+    cpu_plugin_file: ""
+    gpu_plugin_file: ""
+    tpu_plugin_file: ""
+    shared_plugin_file: ""
+    library_dirs: []
 
 errnie:
   level: debug

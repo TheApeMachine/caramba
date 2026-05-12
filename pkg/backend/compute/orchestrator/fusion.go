@@ -38,11 +38,11 @@ func (optimizer *FusionOptimizer) Run(
 	ctx context.Context,
 	input PassInput,
 ) (PassResult, error) {
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx); err != nil {
 		return PassResult{}, err
 	}
 
-	graph, targets, err := optimizer.OptimizeWithTargets(input.Graph, input.Targets)
+	graph, targets, err := optimizer.OptimizeWithTargets(ctx, input.Graph, input.Targets)
 
 	if err != nil {
 		return PassResult{}, err
@@ -63,7 +63,7 @@ func (optimizer *FusionOptimizer) Run(
 Optimize traverses the graph and replaces fuseable node chains with a fused node.
 */
 func (optimizer *FusionOptimizer) Optimize(graph *ir.Graph) (*ir.Graph, error) {
-	optimizedGraph, _, err := optimizer.optimize(graph)
+	optimizedGraph, _, err := optimizer.optimize(context.Background(), graph)
 
 	return optimizedGraph, err
 }
@@ -73,10 +73,11 @@ OptimizeWithTargets returns an optimized graph and remaps requested targets
 through any fused kernels that replaced them.
 */
 func (optimizer *FusionOptimizer) OptimizeWithTargets(
+	ctx context.Context,
 	graph *ir.Graph,
 	targets []*ir.Node,
 ) (*ir.Graph, []*ir.Node, error) {
-	optimizedGraph, replacements, err := optimizer.optimize(graph)
+	optimizedGraph, replacements, err := optimizer.optimize(ctx, graph)
 
 	if err != nil {
 		return nil, nil, err
@@ -85,15 +86,23 @@ func (optimizer *FusionOptimizer) OptimizeWithTargets(
 	return optimizedGraph, remapTargets(targets, replacements), nil
 }
 
-func (optimizer *FusionOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[string]*ir.Node, error) {
+func (optimizer *FusionOptimizer) optimize(ctx context.Context, graph *ir.Graph) (*ir.Graph, map[string]*ir.Node, error) {
 	if graph == nil {
 		return nil, nil, fmt.Errorf("fusion optimizer: nil graph")
+	}
+
+	if err := checkContext(ctx); err != nil {
+		return nil, nil, err
 	}
 
 	optimizedGraph := ir.NewGraph()
 
 	dependents := make(map[string]int)
 	for _, node := range graph.Nodes() {
+		if err := checkContext(ctx); err != nil {
+			return nil, nil, err
+		}
+
 		for _, in := range node.Inputs() {
 			dependents[in.ID()]++
 		}
@@ -103,6 +112,10 @@ func (optimizer *FusionOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[stri
 	activationsToFuse := make(map[string]bool)
 
 	for _, node := range graph.Nodes() {
+		if err := checkContext(ctx); err != nil {
+			return nil, nil, err
+		}
+
 		isActivation := node.OpType() == ir.OpReLU || node.OpType() == ir.OpGELU
 
 		if isActivation && len(node.Inputs()) == 1 {
@@ -117,8 +130,13 @@ func (optimizer *FusionOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[stri
 	}
 
 	replacements := make(map[string]*ir.Node)
+	fusedNodes := make(map[string]*ir.Node)
 
 	for _, node := range graph.Nodes() {
+		if err := checkContext(ctx); err != nil {
+			return nil, nil, err
+		}
+
 		// Skip matmuls that are fused away
 		if _, ok := fusedAway[node.ID()]; ok {
 			continue
@@ -133,14 +151,6 @@ func (optimizer *FusionOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[stri
 			fusedNode.SetValueType(node.ValueType())
 			fusedNode.SetEffect(node.Effect())
 
-			for _, in := range inputNode.Inputs() {
-				if rep, ok := replacements[in.ID()]; ok {
-					fusedNode.AddInput(rep)
-				} else {
-					fusedNode.AddInput(in)
-				}
-			}
-
 			// Preserve metadata from original nodes
 			for k, v := range inputNode.Metadata() {
 				fusedNode.SetMetadata(k, v)
@@ -154,26 +164,36 @@ func (optimizer *FusionOptimizer) optimize(graph *ir.Graph) (*ir.Graph, map[stri
 
 			replacements[inputNode.ID()] = fusedNode
 			replacements[node.ID()] = fusedNode
+			fusedNodes[node.ID()] = fusedNode
 			optimizedGraph.AddNode(fusedNode)
 			continue
 		}
 
-		newNode := ir.NewNode(node.ID(), node.OpType(), node.Shape())
-		newNode.SetInPlace(node.InPlace())
-
-		for _, in := range node.Inputs() {
-			if rep, ok := replacements[in.ID()]; ok {
-				newNode.AddInput(rep)
-			} else {
-				newNode.AddInput(in)
-			}
-		}
-		for k, v := range node.Metadata() {
-			newNode.SetMetadata(k, v)
-		}
-
+		newNode := cloneNodeSemantics(node)
 		replacements[node.ID()] = newNode
 		optimizedGraph.AddNode(newNode)
+	}
+
+	for _, node := range graph.Nodes() {
+		if err := checkContext(ctx); err != nil {
+			return nil, nil, err
+		}
+
+		if _, ok := fusedAway[node.ID()]; ok {
+			continue
+		}
+
+		newNode := replacements[node.ID()]
+		inputNode := node
+
+		if fusedNode, ok := fusedNodes[node.ID()]; ok {
+			newNode = fusedNode
+			inputNode = node.Inputs()[0]
+		}
+
+		for _, in := range inputNode.Inputs() {
+			newNode.AddInput(replacements[in.ID()])
+		}
 	}
 
 	return optimizedGraph, replacements, nil

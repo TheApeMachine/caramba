@@ -35,6 +35,7 @@ type Watcher struct {
 	ctx         context.Context
 	databaseURL string
 	events      chan ColumnEvent
+	errors      chan error
 }
 
 /*
@@ -45,6 +46,7 @@ func NewWatcher(ctx context.Context, databaseURL string) *Watcher {
 		ctx:         ctx,
 		databaseURL: databaseURL,
 		events:      make(chan ColumnEvent, 64),
+		errors:      make(chan error, 1),
 	}
 }
 
@@ -55,23 +57,38 @@ func (watcher *Watcher) Events() <-chan ColumnEvent {
 	return watcher.events
 }
 
+func (watcher *Watcher) Errors() <-chan error {
+	return watcher.errors
+}
+
 /*
 Watch blocks, maintaining a LISTEN connection and forwarding decoded events.
 It returns when ctx is cancelled.
 */
 func (watcher *Watcher) Watch() error {
+	defer close(watcher.errors)
+
 	for {
 		if err := watcher.ctx.Err(); err != nil {
 			return nil
 		}
 
 		if err := watcher.listenLoop(); err != nil {
+			watcher.publishError(err)
+
 			select {
 			case <-watcher.ctx.Done():
 				return nil
 			case <-time.After(reconnectDelay):
 			}
 		}
+	}
+}
+
+func (watcher *Watcher) publishError(err error) {
+	select {
+	case watcher.errors <- err:
+	default:
 	}
 }
 

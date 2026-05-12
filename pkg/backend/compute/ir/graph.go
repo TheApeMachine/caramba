@@ -111,7 +111,210 @@ func (graph *Graph) Verify() error {
 		return err
 	}
 
+	return graph.verifyShapes()
+}
+
+func (graph *Graph) verifyShapes() error {
+	for _, node := range graph.Nodes() {
+		if err := verifyNodeShape(node); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func verifyNodeShape(node *Node) error {
+	if node == nil {
+		return fmt.Errorf("graph: nil node")
+	}
+
+	if !node.Shape().Valid() {
+		return fmt.Errorf("graph: node %q has invalid shape", node.ID())
+	}
+
+	inputs := node.Inputs()
+
+	switch node.OpType() {
+	case OpInput:
+		return verifyInputNode(node, inputs)
+	case OpAdd, OpMul:
+		return verifyElementwiseNode(node, inputs)
+	case OpMatmul:
+		return verifyMatmulNode(node, inputs)
+	case OpReLU, OpLeakyReLU, OpGELU, OpTanh, OpSigmoid:
+		return verifyUnarySameShapeNode(node, inputs)
+	case OpSwiGLU:
+		return verifySwiGLUNode(node, inputs)
+	case OpFused:
+		return verifyFusedNode(node, inputs)
+	default:
+		return nil
+	}
+}
+
+func verifyInputNode(node *Node, inputs []*Node) error {
+	if len(inputs) != 0 {
+		return fmt.Errorf("graph: input node %q requires 0 inputs, got %d", node.ID(), len(inputs))
+	}
+
+	return nil
+}
+
+func verifyElementwiseNode(node *Node, inputs []*Node) error {
+	if err := verifyInputCount(node, inputs, 2); err != nil {
+		return err
+	}
+
+	shape := node.Shape()
+
+	for _, input := range inputs {
+		if !input.Shape().Equal(shape) {
+			return fmt.Errorf(
+				"graph: %s node %q shape %v is incompatible with input %q shape %v",
+				node.OpType(), node.ID(), shape.Dims(), input.ID(), input.Shape().Dims(),
+			)
+		}
+	}
+
+	return nil
+}
+
+func verifyMatmulNode(node *Node, inputs []*Node) error {
+	if err := verifyInputCount(node, inputs, 2); err != nil {
+		return err
+	}
+
+	leftDims := inputs[0].Shape().Dims()
+	rightDims := inputs[1].Shape().Dims()
+	outputDims := node.Shape().Dims()
+
+	if len(leftDims) != 2 || len(rightDims) != 2 || len(outputDims) != 2 {
+		return fmt.Errorf("graph: Matmul node %q requires rank-2 input and output shapes", node.ID())
+	}
+
+	if leftDims[1] != rightDims[0] {
+		return fmt.Errorf(
+			"graph: Matmul node %q input shapes %v and %v have incompatible inner dimensions",
+			node.ID(), leftDims, rightDims,
+		)
+	}
+
+	if outputDims[0] != leftDims[0] || outputDims[1] != rightDims[1] {
+		return fmt.Errorf(
+			"graph: Matmul node %q output shape %v must equal [%d %d]",
+			node.ID(), outputDims, leftDims[0], rightDims[1],
+		)
+	}
+
+	return nil
+}
+
+func verifyUnarySameShapeNode(node *Node, inputs []*Node) error {
+	if err := verifyInputCount(node, inputs, 1); err != nil {
+		return err
+	}
+
+	if !inputs[0].Shape().Equal(node.Shape()) {
+		return fmt.Errorf(
+			"graph: %s node %q shape %v must equal input shape %v",
+			node.OpType(), node.ID(), node.Shape().Dims(), inputs[0].Shape().Dims(),
+		)
+	}
+
+	return nil
+}
+
+func verifySwiGLUNode(node *Node, inputs []*Node) error {
+	if err := verifyInputCount(node, inputs, 1); err != nil {
+		return err
+	}
+
+	inputDims := inputs[0].Shape().Dims()
+	outputDims := node.Shape().Dims()
+
+	if len(inputDims) == 0 {
+		if len(outputDims) != 1 || outputDims[0] != inputs[0].Shape().Len()/2 {
+			return fmt.Errorf("graph: SwiGLU node %q output shape %v is incompatible with scalar input", node.ID(), outputDims)
+		}
+
+		return nil
+	}
+
+	expected := append([]int(nil), inputDims...)
+	lastIndex := len(expected) - 1
+
+	if expected[lastIndex]%2 != 0 {
+		return fmt.Errorf("graph: SwiGLU node %q input final dimension must be even", node.ID())
+	}
+
+	expected[lastIndex] /= 2
+
+	if !sameDims(outputDims, expected) {
+		return fmt.Errorf(
+			"graph: SwiGLU node %q output shape %v must equal %v",
+			node.ID(), outputDims, expected,
+		)
+	}
+
+	return nil
+}
+
+func verifyFusedNode(node *Node, inputs []*Node) error {
+	if len(inputs) != 2 && len(inputs) != 3 {
+		return fmt.Errorf("graph: Fused node %q requires 2 or 3 inputs, got %d", node.ID(), len(inputs))
+	}
+
+	leftDims := inputs[0].Shape().Dims()
+	rightDims := inputs[1].Shape().Dims()
+	outputDims := node.Shape().Dims()
+
+	if len(leftDims) != 2 || len(rightDims) != 2 || len(outputDims) != 2 {
+		return fmt.Errorf("graph: Fused node %q requires rank-2 matmul shapes", node.ID())
+	}
+
+	if leftDims[1] != rightDims[0] || outputDims[0] != leftDims[0] || outputDims[1] != rightDims[1] {
+		return fmt.Errorf("graph: Fused node %q has incompatible matmul shapes", node.ID())
+	}
+
+	if len(inputs) == 2 {
+		return nil
+	}
+
+	biasLen := inputs[2].Shape().Len()
+	if biasLen != outputDims[1] && biasLen != outputDims[0]*outputDims[1] {
+		return fmt.Errorf(
+			"graph: Fused node %q bias length %d must equal N=%d or M*N=%d",
+			node.ID(), biasLen, outputDims[1], outputDims[0]*outputDims[1],
+		)
+	}
+
+	return nil
+}
+
+func verifyInputCount(node *Node, inputs []*Node, expected int) error {
+	if len(inputs) != expected {
+		return fmt.Errorf(
+			"graph: %s node %q requires %d inputs, got %d",
+			node.OpType(), node.ID(), expected, len(inputs),
+		)
+	}
+
+	return nil
+}
+
+func sameDims(left, right []int) bool {
+	if len(left) != len(right) {
+		return false
+	}
+
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (graph *Graph) Clone() (*Graph, map[string]*Node, error) {

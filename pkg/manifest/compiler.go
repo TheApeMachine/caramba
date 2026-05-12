@@ -68,6 +68,16 @@ func (compiler *Compiler) buildGraph(topology map[string]any) (*Graph, error) {
 		return nil, err
 	}
 
+	externalInputs, err := compiler.optionalStringList(topology, "inputs")
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, input := range externalInputs {
+		graph.externalInputs[input] = true
+	}
+
 	for _, rawEntry := range nodesField {
 		nodeMap, ok := rawEntry.(map[string]any)
 
@@ -81,7 +91,9 @@ func (compiler *Compiler) buildGraph(topology map[string]any) (*Graph, error) {
 			return nil, err
 		}
 
-		graph.addNode(node)
+		if err := graph.addNode(node); err != nil {
+			return nil, err
+		}
 	}
 
 	err = graph.rebuildEdgesFromNodes()
@@ -241,6 +253,22 @@ func (compiler *Compiler) stringListFromField(field any) ([]string, error) {
 		}
 
 		out = append(out, text)
+	}
+
+	return out, nil
+}
+
+func (compiler *Compiler) optionalStringList(mapping map[string]any, key string) ([]string, error) {
+	field, ok := mapping[key]
+
+	if !ok {
+		return nil, nil
+	}
+
+	out, err := compiler.stringListFromField(field)
+
+	if err != nil {
+		return nil, fmt.Errorf("compiler: key %q: %w", key, err)
 	}
 
 	return out, nil

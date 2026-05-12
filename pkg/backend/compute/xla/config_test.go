@@ -6,16 +6,15 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/spf13/viper"
 )
 
 func TestNewPJRTConfig(test *testing.T) {
-	Convey("Given PJRT environment variables", test, func() {
-		clearPJRTEnv(test)
-
+	Convey("Given PJRT settings in the compute config", test, func() {
 		includeDir := test.TempDir()
 		pluginFile := filepath.Join(test.TempDir(), "pjrt_c_api_gpu_plugin.so")
-		test.Setenv("CARAMBA_XLA_INCLUDE_DIR", includeDir)
-		test.Setenv("CARAMBA_PJRT_GPU_PLUGIN", pluginFile)
+		setConfigValue(test, "compute.xla.include_dir", includeDir)
+		setConfigValue(test, "compute.xla.gpu_plugin_file", pluginFile)
 
 		Convey("It should build a normalized GPU config", func() {
 			config, err := NewPJRTConfig("cuda")
@@ -23,6 +22,18 @@ func TestNewPJRTConfig(test *testing.T) {
 			So(err, ShouldBeNil)
 			So(config.Platform, ShouldEqual, "gpu")
 			So(config.IncludeDir, ShouldEqual, includeDir)
+			So(config.PluginFile, ShouldEqual, pluginFile)
+		})
+	})
+
+	Convey("Given only a shared PJRT plugin in the compute config", test, func() {
+		pluginFile := filepath.Join(test.TempDir(), "pjrt_c_api.so")
+		setConfigValue(test, "compute.xla.shared_plugin_file", pluginFile)
+
+		Convey("It should use the shared plugin for CPU", func() {
+			config, err := NewPJRTConfig("cpu")
+
+			So(err, ShouldBeNil)
 			So(config.PluginFile, ShouldEqual, pluginFile)
 		})
 	})
@@ -191,7 +202,7 @@ func BenchmarkPJRTConfig_ValidateRuntime(benchmark *testing.B) {
 
 	benchmark.ResetTimer()
 
-	for iteration := 0; iteration < benchmark.N; iteration++ {
+	for benchmark.Loop() {
 		if err := config.ValidateRuntime(); err != nil {
 			benchmark.Fatal(err)
 		}
@@ -213,7 +224,7 @@ func BenchmarkPJRTConfig_ResolvedPluginFile(benchmark *testing.B) {
 
 	benchmark.ResetTimer()
 
-	for iteration := 0; iteration < benchmark.N; iteration++ {
+	for benchmark.Loop() {
 		if resolved := config.ResolvedPluginFile(); resolved != pluginFile {
 			benchmark.Fatalf("unexpected resolved path %q want %q", resolved, pluginFile)
 		}
@@ -236,27 +247,18 @@ func BenchmarkPJRTConfig_ValidateBuild(benchmark *testing.B) {
 
 	benchmark.ResetTimer()
 
-	for iteration := 0; iteration < benchmark.N; iteration++ {
+	for benchmark.Loop() {
 		if err := config.ValidateBuild(); err != nil {
 			benchmark.Fatal(err)
 		}
 	}
 }
 
-func clearPJRTEnv(test *testing.T) {
-	for _, envName := range []string{
-		"CARAMBA_XLA_INCLUDE_DIR",
-		"XLA_INCLUDE_DIR",
-		"XLA_INCLUDE",
-		"CGO_CPPFLAGS",
-		"CARAMBA_PJRT_CPU_PLUGIN",
-		"CARAMBA_PJRT_GPU_PLUGIN",
-		"CARAMBA_PJRT_PLUGIN",
-		"PJRT_PLUGIN_PATH",
-		"CARAMBA_PJRT_LIBRARY_DIR",
-		"LD_LIBRARY_PATH",
-		"DYLD_LIBRARY_PATH",
-	} {
-		test.Setenv(envName, "")
-	}
+func setConfigValue(test *testing.T, key string, value any) {
+	test.Helper()
+
+	viper.Set(key, value)
+	test.Cleanup(func() {
+		viper.Set(key, nil)
+	})
 }

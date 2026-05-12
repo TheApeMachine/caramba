@@ -66,7 +66,7 @@ func BenchmarkOperationRegistry_Build(b *testing.B) {
 
 	b.ResetTimer()
 
-	for repeat := 0; repeat < b.N; repeat++ {
+	for b.Loop() {
 		_, _ = operationRegistry.Build("bench.stub", nil)
 	}
 }

@@ -29,12 +29,15 @@ func (runner *Runner) Execute(ctx context.Context, graph *ir.Graph, targets []*i
 		return nil, err
 	}
 
+	if graph == nil {
+		return nil, fmt.Errorf("metal runner: graph is required")
+	}
+
 	if len(targets) == 0 {
 		return nil, fmt.Errorf("metal runner: no execution targets provided")
 	}
 
-	results := make(map[string]tensor.Float64Tensor)
-	return results, nil
+	return nil, fmt.Errorf("metal runner: graph execution is not wired to the Metal tensor backend")
 }
 
 /*

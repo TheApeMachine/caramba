@@ -11,19 +11,19 @@ import (
 func TestLowerGraphToIR(t *testing.T) {
 	Convey("Given a manifest graph with operation IDs and port bindings", t, func() {
 		graph := newGraph()
-		graph.addNode(&Node{
+		So(graph.addNode(&Node{
 			ID:     "input",
 			OpID:   "data.input",
 			Config: map[string]any{"dtype": "float64"},
 			Out:    []string{"x"},
-		})
-		graph.addNode(&Node{
+		}), ShouldBeNil)
+		So(graph.addNode(&Node{
 			ID:     "activation",
 			OpID:   "activation.relu",
 			Config: map[string]any{"inplace": false},
 			In:     []string{"x"},
 			Out:    []string{"y"},
-		})
+		}), ShouldBeNil)
 		err := graph.rebuildEdgesFromNodes()
 		So(err, ShouldBeNil)
 
