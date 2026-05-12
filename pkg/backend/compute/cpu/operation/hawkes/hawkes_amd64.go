@@ -4,8 +4,6 @@ package hawkes
 
 import (
 	"golang.org/x/sys/cpu"
-
-	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
 )
 
 var (
@@ -30,6 +28,35 @@ func subVecAVX2(dst, a, b []float64)
 //go:noescape
 func subVecSSE2(dst, a, b []float64)
 
+//go:noescape
+func hawkesExcitationAVX2(events []float64, now, beta, alpha float64) float64
+
+//go:noescape
+func hawkesExcitationSSE2(events []float64, now, beta, alpha float64) float64
+
+//go:noescape
+func hawkesKernelRowAVX2(out, events []float64, ti, alpha, beta float64)
+
+//go:noescape
+func hawkesKernelRowSSE2(out, events []float64, ti, alpha, beta float64)
+
+func hawkesExcitation(events []float64, now, beta, alpha float64) float64 {
+	if useAVX2 && useFMA {
+		return hawkesExcitationAVX2(events, now, beta, alpha)
+	}
+
+	return hawkesExcitationSSE2(events, now, beta, alpha)
+}
+
+func hawkesKernelRow(out, events []float64, ti, alpha, beta float64) {
+	if useAVX2 && useFMA {
+		hawkesKernelRowAVX2(out, events, ti, alpha, beta)
+		return
+	}
+
+	hawkesKernelRowSSE2(out, events, ti, alpha, beta)
+}
+
 func applyIntensity(out, times, alpha, beta, mu []float64, t float64, K, T int) {
 	cutoff := 0
 
@@ -38,34 +65,14 @@ func applyIntensity(out, times, alpha, beta, mu []float64, t float64, K, T int) 
 	}
 
 	validTimes := times[:cutoff]
-	n := len(validTimes)
 
-	if n == 0 {
+	if len(validTimes) == 0 {
 		copy(out[:K], mu[:K])
 		return
 	}
 
-	expBuf := make([]float64, n)
-	scratch := make([]float64, n)
-
 	for k := 0; k < K; k++ {
-		bk := beta[k]
-
-		for i := 0; i < n; i++ {
-			scratch[i] = t - validTimes[i]
-		}
-
-		mathops.ScaleVec(scratch, -bk)
-		mathops.ExpVec(expBuf, scratch)
-
-		var sum float64
-		if useAVX2 {
-			sum = expSumAVX2(expBuf)
-		} else {
-			sum = expSumSSE2(expBuf)
-		}
-
-		out[k] = mu[k] + alpha[k]*sum
+		out[k] = mu[k] + hawkesExcitation(validTimes, t, beta[k], alpha[k])
 	}
 }
 
@@ -74,26 +81,18 @@ func applyKernelMatrix(out, times []float64, alpha, beta float64, T int) {
 		panic("hawkes: applyKernelMatrix: need T > 0, len(times) >= T, len(out) >= T*T")
 	}
 
-	tmp := make([]float64, T)
-	expOut := make([]float64, T)
-
 	for row := 0; row < T; row++ {
-		ti := times[row]
-		rowSlice := times[row+1:]
 		rowLen := T - row - 1
 
 		if rowLen <= 0 {
 			continue
 		}
 
-		tmpSlice := tmp[:rowLen]
-		expSlice := expOut[:rowLen]
-		copy(tmpSlice, rowSlice[:rowLen])
-		mathops.AddScalarVec(tmpSlice, -ti)
-		mathops.ScaleVec(tmpSlice, -beta)
-		mathops.ExpVec(expSlice, tmpSlice)
-		mathops.ScaleVec(expSlice, alpha)
-		copy(out[row*T+row+1:row*T+row+1+rowLen], expSlice)
+		hawkesKernelRow(
+			out[row*T+row+1:row*T+row+1+rowLen],
+			times[row+1:row+1+rowLen],
+			times[row], alpha, beta,
+		)
 	}
 }
 

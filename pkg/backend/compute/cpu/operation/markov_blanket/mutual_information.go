@@ -2,7 +2,6 @@ package markov_blanket
 
 import (
 	"fmt"
-	stdmath "math"
 
 	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
 )
@@ -191,33 +190,11 @@ func logDetCholesky(a []float64, n int) float64 {
 		L[diag*n+diag] += eps
 	}
 
-	// In-place Cholesky: L lower-triangular such that A = L L^T.
-	for col := range n {
-		sum := L[col*n+col]
-
-		for k := range col {
-			sum -= L[col*n+k] * L[col*n+k]
-		}
-
-		if sum <= 0 {
-			panic(fmt.Sprintf(
-				"markov_blanket: logDetCholesky: diagonal pivot non-positive at col=%d/%d (sum=%g); matrix may be non-PD after regularisation",
-				col, n, sum,
-			))
-		}
-
-		L[col*n+col] = stdmath.Sqrt(sum)
-		invDiag := 1.0 / L[col*n+col]
-
-		for row := col + 1; row < n; row++ {
-			s := L[row*n+col]
-
-			for k := range col {
-				s -= L[row*n+k] * L[col*n+k]
-			}
-
-			L[row*n+col] = s * invDiag
-		}
+	if !choleskyDecomp(L, n) {
+		panic(fmt.Sprintf(
+			"markov_blanket: logDetCholesky: non-positive pivot during decomposition (n=%d); matrix may be non-PD after regularisation",
+			n,
+		))
 	}
 
 	// log|A| = 2 * sum_i log(L[i,i]) — gather diagonal then SIMD log+sum.

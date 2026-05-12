@@ -200,27 +200,15 @@ invertSymPD inverts a symmetric positive-definite matrix using Cholesky decompos
 Operates on a flat row-major [n*n] slice.
 */
 func invertSymPD(a []float64, n int) []float64 {
-	// Cholesky: A = L L^T
+	// Cholesky: A = L L^T  (fused AVX2/SSE2/NEON kernel, regularised pivot)
 	lower := make([]float64, n*n)
-
+	copy(lower, a)
+	choleskyReg(lower, n, 1e-10)
+	// Zero out the upper triangle so subsequent substitution sees a pure
+	// lower-triangular L (the kernel only writes the lower triangle).
 	for row := 0; row < n; row++ {
-		for col := 0; col <= row; col++ {
-			sum := a[row*n+col]
-
-			for k := 0; k < col; k++ {
-				sum -= lower[row*n+k] * lower[col*n+k]
-			}
-
-			if row == col {
-				if sum <= 0 {
-					// Not positive definite — add regularization.
-					sum = 1e-10
-				}
-
-				lower[row*n+col] = math.Sqrt(sum)
-			} else {
-				lower[row*n+col] = sum / lower[col*n+col]
-			}
+		for col := row + 1; col < n; col++ {
+			lower[row*n+col] = 0
 		}
 	}
 

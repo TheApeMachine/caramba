@@ -152,8 +152,11 @@ export const NodeEditor = React.forwardRef(
 			translate: { x: 0, y: 0 },
 		});
 
-		scaleRef.current = stageState.scale;
-		const obstacleIndex = useObstacleIndex(editorId, scaleRef);
+		React.useLayoutEffect(() => {
+			scaleRef.current = stageState.scale;
+		}, [stageState.scale]);
+
+		const obstacleIndex = useObstacleIndex(editorId, stageState.scale);
 		const recalculateWorker = useConnectionWorker(
 			editorId,
 			edgeRoutingMode,
@@ -244,105 +247,105 @@ export const NodeEditor = React.forwardRef(
 				fullWidth
 			>
 				<ObstacleIndexContext.Provider value={obstacleIndex}>
-				<RecalculateConnectionsWorkerContext.Provider value={recalculateWorker}>
-				<NodeMapContext.Provider value={nodes}>
-				<EdgeRoutingContext.Provider value={edgeRoutingMode}>
-					<PortTypesContext.Provider value={portTypes}>
-						<NodeTypesContext.Provider value={nodeTypes}>
-							<NodeDispatchContext.Provider value={dispatchNodes}>
-								<ConnectionRecalculateContext.Provider
-									value={triggerRecalculation}
-								>
-									<ContextContext.Provider value={context}>
-										<StageContext.Provider value={stageState}>
-											<CacheContext.Provider value={cache}>
-												<EditorIdContext.Provider value={editorId}>
-													<RecalculateStageRectContext.Provider
-														value={recalculateStageRect}
-													>
-														<Stage
-															editorId={editorId}
-															scale={stageState.scale}
-															translate={stageState.translate}
-															spaceToPan={spaceToPan}
-															disablePan={disablePan}
-															disableZoom={disableZoom}
-															dispatchStageState={dispatchStageState}
-															dispatchComments={dispatchComments}
-															disableComments={disableComments || hideComments}
-															disableFocusCapture={disableFocusCapture}
-															stageRef={stage}
-															numNodes={Object.keys(nodes).length}
-															outerStageChildren={
-																debug ? (
-																	<div className={styles.debugWrapper}>
-																		<Button
-																			type="button"
-																			variant="outline"
-																			size="sm"
-																			onClick={() => console.log(nodes)}
-																		>
-																			Log Nodes
-																		</Button>
-																		<Button
-																			type="button"
-																			variant="outline"
-																			size="sm"
-																			onClick={() =>
-																				console.log(JSON.stringify(nodes))
-																			}
-																		>
-																			Export Nodes
-																		</Button>
-																		<Button
-																			type="button"
-																			variant="outline"
-																			size="sm"
-																			onClick={() => console.log(comments)}
-																		>
-																			Log Comments
-																		</Button>
-																	</div>
-																) : null
-															}
-														>
-															{!hideComments &&
-																Object.values(comments).map((comment) => (
-																	<Comment
-																		{...comment}
-																		stageRect={stage}
-																		dispatch={dispatchComments}
-																		onDragStart={recalculateStageRect}
-																		key={comment.id}
-																	/>
-																))}
-															{Object.values(nodes).map((node) => (
-																<Node
-																	{...node}
-																	stageRect={stage}
-																	onDragStart={recalculateStageRect}
-																	renderNodeHeader={renderNodeHeader}
-																	key={node.id}
-																/>
-															))}
-															<Connections editorId={editorId} />
-															<div
-																className={styles.dragWrapper}
-																id={`${DRAG_CONNECTION_ID}${editorId}`}
-															></div>
-														</Stage>
-													</RecalculateStageRectContext.Provider>
-												</EditorIdContext.Provider>
-											</CacheContext.Provider>
-										</StageContext.Provider>
-									</ContextContext.Provider>
-								</ConnectionRecalculateContext.Provider>
-							</NodeDispatchContext.Provider>
-						</NodeTypesContext.Provider>
-					</PortTypesContext.Provider>
-				</EdgeRoutingContext.Provider>
-				</NodeMapContext.Provider>
-				</RecalculateConnectionsWorkerContext.Provider>
+					<RecalculateConnectionsWorkerContext.Provider value={recalculateWorker}>
+						<NodeMapContext.Provider value={nodes}>
+							<EdgeRoutingContext.Provider value={edgeRoutingMode}>
+								<PortTypesContext.Provider value={portTypes}>
+									<NodeTypesContext.Provider value={nodeTypes}>
+										<NodeDispatchContext.Provider value={dispatchNodes}>
+											<ConnectionRecalculateContext.Provider
+												value={triggerRecalculation}
+											>
+												<ContextContext.Provider value={context}>
+													<StageContext.Provider value={stageState}>
+														<CacheContext.Provider value={cache}>
+															<EditorIdContext.Provider value={editorId}>
+																<RecalculateStageRectContext.Provider
+																	value={recalculateStageRect}
+																>
+																	<Stage
+																		editorId={editorId}
+																		scale={stageState.scale}
+																		translate={stageState.translate}
+																		spaceToPan={spaceToPan}
+																		disablePan={disablePan}
+																		disableZoom={disableZoom}
+																		dispatchStageState={dispatchStageState}
+																		dispatchComments={dispatchComments}
+																		disableComments={disableComments || hideComments}
+																		disableFocusCapture={disableFocusCapture}
+																		stageRef={stage}
+																		numNodes={Object.keys(nodes).length}
+																		outerStageChildren={
+																			debug ? (
+																				<div className={styles.debugWrapper}>
+																					<Button
+																						type="button"
+																						variant="outline"
+																						size="sm"
+																						onClick={() => console.log(nodes)}
+																					>
+																						Log Nodes
+																					</Button>
+																					<Button
+																						type="button"
+																						variant="outline"
+																						size="sm"
+																						onClick={() =>
+																							console.log(JSON.stringify(nodes))
+																						}
+																					>
+																						Export Nodes
+																					</Button>
+																					<Button
+																						type="button"
+																						variant="outline"
+																						size="sm"
+																						onClick={() => console.log(comments)}
+																					>
+																						Log Comments
+																					</Button>
+																				</div>
+																			) : null
+																		}
+																	>
+																		{!hideComments &&
+																			Object.values(comments).map((comment) => (
+																				<Comment
+																					{...comment}
+																					stageRect={stage}
+																					dispatch={dispatchComments}
+																					onDragStart={recalculateStageRect}
+																					key={comment.id}
+																				/>
+																			))}
+																		{Object.values(nodes).map((node) => (
+																			<Node
+																				{...node}
+																				stageRect={stage}
+																				onDragStart={recalculateStageRect}
+																				renderNodeHeader={renderNodeHeader}
+																				key={node.id}
+																			/>
+																		))}
+																		<Connections editorId={editorId} />
+																		<div
+																			className={styles.dragWrapper}
+																			id={`${DRAG_CONNECTION_ID}${editorId}`}
+																		/>
+																	</Stage>
+																</RecalculateStageRectContext.Provider>
+															</EditorIdContext.Provider>
+														</CacheContext.Provider>
+													</StageContext.Provider>
+												</ContextContext.Provider>
+											</ConnectionRecalculateContext.Provider>
+										</NodeDispatchContext.Provider>
+									</NodeTypesContext.Provider>
+								</PortTypesContext.Provider>
+							</EdgeRoutingContext.Provider>
+						</NodeMapContext.Provider>
+					</RecalculateConnectionsWorkerContext.Provider>
 				</ObstacleIndexContext.Provider>
 			</Flex.Column>
 		);

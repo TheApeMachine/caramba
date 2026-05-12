@@ -1,8 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { ResearchIndex } from "#/routes/research";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-const Home = () => {
-	return <ResearchIndex />;
-};
-
-export const Route = createFileRoute("/")({ component: Home });
+export const Route = createFileRoute("/")({
+	beforeLoad: () => redirect({ to: "/research" }),
+});

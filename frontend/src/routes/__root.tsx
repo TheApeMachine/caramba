@@ -1,12 +1,12 @@
 import { ClerkProvider } from "@clerk/tanstack-react-start";
 import { auth } from "@clerk/tanstack-react-start/server";
+import type { QueryClient } from "@tanstack/react-query";
 import { TanStackDevtools } from "@tanstack/react-devtools";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-	createRootRoute,
 	HeadContent,
-	redirect,
 	Scripts,
+	createRootRouteWithContext,
+	redirect,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import type React from "react";
@@ -18,8 +18,6 @@ import { ToastProvider } from "#/components/ui/toast";
 import { isAuthenticationPublicPath } from "#/lib/authentication-public-path";
 import appCss from "../styles.css?url";
 
-const queryClient = new QueryClient();
-
 const RootDocument = ({ children }: { children: React.ReactNode }) => {
 	return (
 		<html lang="en" className="dark">
@@ -28,43 +26,41 @@ const RootDocument = ({ children }: { children: React.ReactNode }) => {
 			</head>
 			<body className="flex h-full min-h-svh flex-col">
 				<ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up">
-					<QueryClientProvider client={queryClient}>
-						<ToastProvider>
-							<Page>
-								<Page.Header>
-									<SessionControls />
-								</Page.Header>
-								<Page.Nav />
-								<Page.Main>
-									<div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
-										<AuthenticatedBoundary>{children}</AuthenticatedBoundary>
-									</div>
-								</Page.Main>
-								<Page.Aside></Page.Aside>
-								<Page.Footer />
-							</Page>
-							<Assistant />
-						</ToastProvider>
-						<TanStackDevtools
-							config={{
-								position: "bottom-right",
-							}}
-							plugins={[
-								{
-									name: "Tanstack Router",
-									render: <TanStackRouterDevtoolsPanel />,
-								},
-							]}
-						/>
-						<Scripts />
-					</QueryClientProvider>
+					<ToastProvider>
+						<Page>
+							<Page.Header>
+								<SessionControls />
+							</Page.Header>
+							<Page.Nav />
+							<Page.Main>
+								<div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
+									<AuthenticatedBoundary>{children}</AuthenticatedBoundary>
+								</div>
+							</Page.Main>
+							<Page.Aside></Page.Aside>
+							<Page.Footer />
+						</Page>
+						<Assistant />
+					</ToastProvider>
+					<TanStackDevtools
+						config={{
+							position: "bottom-right",
+						}}
+						plugins={[
+							{
+								name: "Tanstack Router",
+								render: <TanStackRouterDevtoolsPanel />,
+							},
+						]}
+					/>
+					<Scripts />
 				</ClerkProvider>
 			</body>
 		</html>
 	);
 };
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
 	beforeLoad: async ({ location }) => {
 		if (isAuthenticationPublicPath(location.pathname)) {
 			return;
@@ -88,23 +84,11 @@ export const Route = createRootRoute({
 	},
 	head: () => ({
 		meta: [
-			{
-				charSet: "utf-8",
-			},
-			{
-				name: "viewport",
-				content: "width=device-width, initial-scale=1",
-			},
-			{
-				title: "caramba",
-			},
+			{ charSet: "utf-8" },
+			{ name: "viewport", content: "width=device-width, initial-scale=1" },
+			{ title: "caramba" },
 		],
-		links: [
-			{
-				rel: "stylesheet",
-				href: appCss,
-			},
-		],
+		links: [{ rel: "stylesheet", href: appCss }],
 	}),
 	shellComponent: RootDocument,
 	notFoundComponent: () => (

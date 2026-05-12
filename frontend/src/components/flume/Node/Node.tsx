@@ -137,8 +137,8 @@ const Node = ({
 				const toHalfW = (toRect?.width ?? 0) / 2;
 				const toHalfH = (toRect?.height ?? 0) / 2;
 				const combined = isOutput
-					? id + portName + output.nodeId + output.portName
-					: output.nodeId + output.portName + id + portName;
+					? `${id}|${portName}|${output.nodeId}|${output.portName}`
+					: `${output.nodeId}|${output.portName}|${id}|${portName}`;
 				let cnx: SVGPathElement | Connections | null;
 				const cachedConnection = cache?.current?.connections[combined];
 				if (cachedConnection) {

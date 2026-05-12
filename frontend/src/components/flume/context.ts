@@ -4,6 +4,8 @@ import type FlumeCache from "#/components/flume/Cache";
 import type { EdgeRoutingMode } from "#/components/flume/connectionCalculator";
 import type { NodesAction } from "#/components/flume/nodesReducer";
 import type {
+	FlumeNode,
+	NodeMap,
 	NodeTypeMap,
 	PortTypeMap,
 	StageState,
@@ -33,17 +35,16 @@ export const RecalculateStageRectContext = React.createContext<
 >(null);
 export const EditorIdContext = React.createContext<string>("");
 
-import type { FlumeNode, NodeMap } from "#/components/flume/types";
+/** Maps node IDs to their full node data for consumers that need the full graph. */
+export const NodeMapContext = React.createContext<NodeMap>({});
 
 /*
 RecalculateConnectionsWorkerContext is a callback that dispatches a full
 connection-path recalculation to the off-thread Web Worker. Nodes call this
 after each drag move so path math never blocks the main thread.
 */
-export const NodeMapContext = React.createContext<NodeMap>({});
-
 export const RecalculateConnectionsWorkerContext = React.createContext<
-	((nodes: Record<string, FlumeNode>) => void) | null
+	((nodes: NodeMap) => void) | null
 >(null);
 
 /*
@@ -54,3 +55,6 @@ parent node's subGraph field, keeping the outer graph in sync.
 export const SubGraphContext = React.createContext<
 	((subGraph: import("./types").NodeMap) => void) | null
 >(null);
+
+// Re-export FlumeNode so callers that import from context don't need a second import.
+export type { FlumeNode, NodeMap };

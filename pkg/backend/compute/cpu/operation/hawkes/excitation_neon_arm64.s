@@ -1,0 +1,110 @@
+#include "textflag.h"
+
+DATA ·hexLog2E+0(SB)/8, $1.4426950408889634
+GLOBL ·hexLog2E(SB), RODATA, $8
+DATA ·hexLn2Hi+0(SB)/8, $0.6931471803691864
+GLOBL ·hexLn2Hi(SB), RODATA, $8
+DATA ·hexLn2Lo+0(SB)/8, $1.9082149292705877e-10
+GLOBL ·hexLn2Lo(SB), RODATA, $8
+DATA ·hexMaxArg+0(SB)/8, $709.0
+GLOBL ·hexMaxArg(SB), RODATA, $8
+DATA ·hexMinArg+0(SB)/8, $-708.0
+GLOBL ·hexMinArg(SB), RODATA, $8
+DATA ·hexC0+0(SB)/8, $1.0
+GLOBL ·hexC0(SB), RODATA, $8
+DATA ·hexC1+0(SB)/8, $1.0
+GLOBL ·hexC1(SB), RODATA, $8
+DATA ·hexC2+0(SB)/8, $0.5
+GLOBL ·hexC2(SB), RODATA, $8
+DATA ·hexC3+0(SB)/8, $0.16666666666666666
+GLOBL ·hexC3(SB), RODATA, $8
+DATA ·hexC4+0(SB)/8, $0.041666666666666664
+GLOBL ·hexC4(SB), RODATA, $8
+DATA ·hexC5+0(SB)/8, $0.008333333333333333
+GLOBL ·hexC5(SB), RODATA, $8
+DATA ·hexC6+0(SB)/8, $0.001388888888888889
+GLOBL ·hexC6(SB), RODATA, $8
+DATA ·hexC7+0(SB)/8, $0.0001984126984126984
+GLOBL ·hexC7(SB), RODATA, $8
+DATA ·hexC8+0(SB)/8, $2.4801587301587302e-5
+GLOBL ·hexC8(SB), RODATA, $8
+DATA ·hexC9+0(SB)/8, $2.7557319223985893e-6
+GLOBL ·hexC9(SB), RODATA, $8
+DATA ·hexC10+0(SB)/8, $2.7557319223985894e-7
+GLOBL ·hexC10(SB), RODATA, $8
+DATA ·hexC11+0(SB)/8, $2.5052108385441718e-8
+GLOBL ·hexC11(SB), RODATA, $8
+
+// hawkesExcitationNEON(events []float64, now, beta, alpha float64) float64
+TEXT ·hawkesExcitationNEON(SB), NOSPLIT, $0-56
+	MOVD events+0(FP), R0
+	MOVD events_len+8(FP), R1
+	CBZ R1, hex_done
+
+	FMOVD now+24(FP), F20
+	FMOVD beta+32(FP), F21
+	FMOVD ·hexLog2E(SB), F22
+	FMOVD ·hexLn2Hi(SB), F23
+	FMOVD ·hexLn2Lo(SB), F24
+	FMOVD ·hexMaxArg(SB), F25
+	FMOVD ·hexMinArg(SB), F26
+	FMOVD $0.0, F14
+	MOVD  $1023, R10
+
+hex_loop:
+	FMOVD (R0), F0
+	FSUBD F0, F20, F0                          // now - event
+	FMULD F21, F0, F0                          // *beta
+	FNEGD F0, F0                               // negate → -beta*(now-event)
+	FMINNMD F25, F0, F0
+	FMAXNMD F26, F0, F0
+
+	FMULD F22, F0, F1
+	FRINTND F1, F1
+	FMSUBD F1, F0, F23, F0
+	FMSUBD F1, F0, F24, F0
+
+	FMOVD ·hexC11(SB), F2
+	FMOVD ·hexC10(SB), F3
+	FMADDD F2, F3, F0, F2
+	FMOVD ·hexC9(SB), F3
+	FMADDD F2, F3, F0, F2
+	FMOVD ·hexC8(SB), F3
+	FMADDD F2, F3, F0, F2
+	FMOVD ·hexC7(SB), F3
+	FMADDD F2, F3, F0, F2
+	FMOVD ·hexC6(SB), F3
+	FMADDD F2, F3, F0, F2
+	FMOVD ·hexC5(SB), F3
+	FMADDD F2, F3, F0, F2
+	FMOVD ·hexC4(SB), F3
+	FMADDD F2, F3, F0, F2
+	FMOVD ·hexC3(SB), F3
+	FMADDD F2, F3, F0, F2
+	FMOVD ·hexC2(SB), F3
+	FMADDD F2, F3, F0, F2
+	FMOVD ·hexC1(SB), F3
+	FMADDD F2, F3, F0, F2
+	FMOVD ·hexC0(SB), F3
+	FMADDD F2, F3, F0, F2
+
+	FCVTZSD F1, R5
+	ADD R10, R5, R5
+	LSL $52, R5, R5
+	FMOVD R5, F4
+	FMULD F4, F2, F2
+	FADDD F2, F14, F14
+
+	ADD $8, R0, R0
+	SUBS $1, R1, R1
+	BNE hex_loop
+
+	FMOVD alpha+40(FP), F0
+	FMULD F0, F14, F14
+	FMOVD F14, ret+48(FP)
+	RET
+
+hex_done:
+	FMOVD $0.0, F0
+	FMOVD F0, ret+48(FP)
+	RET

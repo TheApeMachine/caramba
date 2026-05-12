@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { BoxIcon, HouseIcon, PanelsTopLeftIcon } from "lucide-react";
 import { z } from "zod";
+import { researchProjectQueryOptions } from "#/queries/research-projects";
 import { Flex } from "#/components/ui/flex";
 import { Tabs } from "#/components/ui/tabs";
 
@@ -29,17 +30,21 @@ const researchEditTabPaths = {
 type ResearchEditTabId = keyof typeof researchEditTabPaths;
 
 function researchEditTabFromPathname(pathname: string): ResearchEditTabId {
-	if (pathname.endsWith("/model-scope")) {
-		return "model-scope";
-	}
-	if (pathname.endsWith("/research-paper")) {
-		return "research-paper";
-	}
+	if (pathname.endsWith("/model-scope")) return "model-scope";
+	if (pathname.endsWith("/research-paper")) return "research-paper";
 	return "architecture";
 }
 
 export const Route = createFileRoute("/research/edit")({
 	validateSearch: parseEditSearch,
+	loader: ({ context, location }) => {
+		const search = parseEditSearch(location.search as Record<string, unknown>);
+		if (search.projectId) {
+			void context.queryClient.ensureQueryData(
+				researchProjectQueryOptions(search.projectId),
+			);
+		}
+	},
 	component: ResearchEditLayout,
 });
 
@@ -51,7 +56,6 @@ function ResearchEditLayout() {
 	const navigate = useNavigate();
 	const activeTab = researchEditTabFromPathname(pathname);
 
-	// Expose the active tab as page context so the assistant knows where the user is.
 	const activeTabLabel = {
 		architecture: "Research graph",
 		"model-scope": "Model Scope",
@@ -65,9 +69,7 @@ function ResearchEditLayout() {
 				className="items-center"
 				onValueChange={(value) => {
 					const targetTo = researchEditTabPaths[value as ResearchEditTabId];
-					if (!targetTo) {
-						return;
-					}
+					if (!targetTo) return;
 					void navigate({ to: targetTo, search });
 				}}
 			>

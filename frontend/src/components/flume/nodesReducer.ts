@@ -384,8 +384,7 @@ const nodesReducer = (
 
 		case NodesActionType.REMOVE_CONNECTION: {
 			const { input, output } = action;
-			const id =
-				output.nodeId + output.portName + input.nodeId + input.portName;
+			const id = `${output.nodeId}|${output.portName}|${input.nodeId}|${input.portName}`;
 			if (cache?.current?.connections) {
 				delete cache.current.connections[id];
 			}
@@ -408,8 +407,7 @@ const nodesReducer = (
 			return connections.reduce((nodes, cnx) => {
 				const [input, output] =
 					transputType === "input" ? [transput, cnx] : [cnx, transput];
-				const id =
-					output.nodeId + output.portName + input.nodeId + input.portName;
+				const id = `${output.nodeId}|${output.portName}|${input.nodeId}|${input.portName}`;
 				if (cache?.current?.connections) {
 					delete cache.current.connections[id];
 				}

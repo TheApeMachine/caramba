@@ -69,7 +69,7 @@ export const getPortRectsByNodes = (
 								forEachConnection({
 									to: toRect,
 									from: fromRect,
-									name: output.nodeId + output.portName + node.id + inputName,
+									name: `${output.nodeId}|${output.portName}|${node.id}|${inputName}`,
 								});
 							}
 							obj[node.id + inputName] = toRect;
@@ -515,8 +515,7 @@ export const createConnections = (
 								const fromHalfH = fromPort.height / 2;
 								const toHalfW = toPort.width / 2;
 								const toHalfH = toPort.height / 2;
-								const id =
-									output.nodeId + output.portName + node.id + inputName;
+								const id = `${output.nodeId}|${output.portName}|${node.id}|${inputName}`;
 								const fromCoord = {
 									x: byScale(
 										fromPort.x - stage.x + fromHalfW - stageHalfWidth,

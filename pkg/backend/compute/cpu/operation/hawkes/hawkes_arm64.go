@@ -2,12 +2,22 @@
 
 package hawkes
 
-import (
-	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
-)
-
 //go:noescape
 func expSumNEON(expBuf []float64) float64
+
+//go:noescape
+func hawkesExcitationNEON(events []float64, now, beta, alpha float64) float64
+
+//go:noescape
+func hawkesKernelRowNEON(out, events []float64, ti, alpha, beta float64)
+
+func hawkesExcitation(events []float64, now, beta, alpha float64) float64 {
+	return hawkesExcitationNEON(events, now, beta, alpha)
+}
+
+func hawkesKernelRow(out, events []float64, ti, alpha, beta float64) {
+	hawkesKernelRowNEON(out, events, ti, alpha, beta)
+}
 
 func applyIntensity(out, times, alpha, beta, mu []float64, t float64, K, T int) {
 	cutoff := 0
@@ -17,27 +27,14 @@ func applyIntensity(out, times, alpha, beta, mu []float64, t float64, K, T int) 
 	}
 
 	validTimes := times[:cutoff]
-	n := len(validTimes)
 
-	if n == 0 {
+	if len(validTimes) == 0 {
 		copy(out[:K], mu[:K])
 		return
 	}
 
-	expBuf := make([]float64, n)
-	scratch := make([]float64, n)
-
 	for k := 0; k < K; k++ {
-		bk := beta[k]
-
-		for i := 0; i < n; i++ {
-			scratch[i] = t - validTimes[i]
-		}
-
-		mathops.ScaleVec(scratch, -bk)
-		mathops.ExpVec(expBuf, scratch)
-
-		out[k] = mu[k] + alpha[k]*expSumNEON(expBuf)
+		out[k] = mu[k] + hawkesExcitation(validTimes, t, beta[k], alpha[k])
 	}
 }
 
@@ -52,24 +49,17 @@ func applyKernelMatrix(out, times []float64, alpha, beta float64, T int) {
 		}
 	}
 
-	tmp := make([]float64, T)
-	expOut := make([]float64, T)
-
 	for row := 0; row < T; row++ {
-		ti := times[row]
 		rowLen := T - row - 1
 
 		if rowLen <= 0 {
 			continue
 		}
 
-		tmpSlice := tmp[:rowLen]
-		expSlice := expOut[:rowLen]
-		copy(tmpSlice, times[row+1:row+1+rowLen])
-		mathops.AddScalarVec(tmpSlice, -ti)
-		mathops.ScaleVec(tmpSlice, -beta)
-		mathops.ExpVec(expSlice, tmpSlice)
-		mathops.ScaleVec(expSlice, alpha)
-		copy(out[row*T+row+1:row*T+row+1+rowLen], expSlice)
+		hawkesKernelRow(
+			out[row*T+row+1:row*T+row+1+rowLen],
+			times[row+1:row+1+rowLen],
+			times[row], alpha, beta,
+		)
 	}
 }

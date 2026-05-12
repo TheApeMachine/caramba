@@ -80,3 +80,33 @@ func divScalar(dst []float64, s float64) {
 		divScalarSSE2(dst, s)
 	}
 }
+
+//go:noescape
+func attentionRowScoresAVX2(scores, q, K []float64, seqLen, headDim int, scale float64)
+
+//go:noescape
+func attentionRowScoresSSE2(scores, q, K []float64, seqLen, headDim int, scale float64)
+
+//go:noescape
+func attentionRowOutputAVX2(out, scores, V []float64, seqLen, headDim int)
+
+//go:noescape
+func attentionRowOutputSSE2(out, scores, V []float64, seqLen, headDim int)
+
+func attentionRowScoresKernel(scores, q, K []float64, seqLen, headDim int, scale float64) {
+	if useAVX2 && useFMA {
+		attentionRowScoresAVX2(scores, q, K, seqLen, headDim, scale)
+		return
+	}
+
+	attentionRowScoresSSE2(scores, q, K, seqLen, headDim, scale)
+}
+
+func attentionRowOutputKernel(out, scores, V []float64, seqLen, headDim int) {
+	if useAVX2 && useFMA {
+		attentionRowOutputAVX2(out, scores, V, seqLen, headDim)
+		return
+	}
+
+	attentionRowOutputSSE2(out, scores, V, seqLen, headDim)
+}

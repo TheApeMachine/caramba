@@ -1,59 +1,55 @@
-import { useAuth } from "@clerk/tanstack-react-start";
-import { ClientOnly, createFileRoute } from "@tanstack/react-router";
+import { useCollection } from "@tanstack/react-db";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { researchProjectCollection } from "#/collections/research_project";
-import { CollectionTable } from "#/components/ui/datatable/component";
-import { Spinner } from "#/components/ui/spinner";
+import { Button } from "#/components/ui/button";
+import { Flex } from "#/components/ui/flex";
 
-function ResearchIndexInner() {
-	const { orgSlug } = useAuth();
+export const Route = createFileRoute("/research/")({ component: ResearchIndex });
 
-	if (!orgSlug) {
-		return <Spinner />;
-	}
+function ResearchIndex() {
+	const { rows: projects } = useCollection(researchProjectCollection, {
+		select: (row) => row,
+	});
 
 	return (
-		<CollectionTable
-			query={(q) =>
-				q
-					.from({ project: researchProjectCollection })
-					.select(({ project }) => ({
-						id: project.id,
-						name: project.name,
-						description: project.description,
-						organization_slug: project.organization_slug,
-						project_slug: project.project_slug,
-						created_at: project.created_at,
-					}))
-			}
-			columns={[
-				"id",
-				"name",
-				"description",
-				"organization_slug",
-				"project_slug",
-				"created_at",
-			]}
-			selectable
-			defaultSortKey="created_at"
-			defaultSortDesc
-			errorMessage="Could not sync research projects. Check VITE_ELECTRIC_SHAPE_URL."
-		/>
+		<Flex.Column gap={4} padding={6}>
+			<Flex.Row className="items-center justify-between">
+				<h1 className="font-semibold text-foreground text-lg">
+					Research projects
+				</h1>
+				<Button render={<Link to="/research/new" />} size="sm">
+					New project
+				</Button>
+			</Flex.Row>
+			{projects.length === 0 ? (
+				<p className="text-muted-foreground text-sm">No projects yet.</p>
+			) : (
+				<ul className="flex flex-col gap-2">
+					{projects.map((project) => (
+						<li key={project.id}>
+							<Button
+								className="h-auto w-full justify-start py-3"
+								render={
+									<Link
+										to="/research/edit"
+										search={{ projectId: project.id }}
+									/>
+								}
+								variant="outline"
+							>
+								<Flex.Column className="items-start gap-0.5">
+									<span className="font-medium text-sm">{project.name}</span>
+									{project.description ? (
+										<span className="font-normal text-muted-foreground text-xs">
+											{project.description}
+										</span>
+									) : null}
+								</Flex.Column>
+							</Button>
+						</li>
+					))}
+				</ul>
+			)}
+		</Flex.Column>
 	);
 }
-
-export const ResearchIndex = () => {
-	return (
-		<div className="flex flex-col gap-4 p-6">
-			<h1 className="font-semibold text-foreground text-lg">
-				Research projects
-			</h1>
-			<ClientOnly fallback={<Spinner />}>
-				<ResearchIndexInner />
-			</ClientOnly>
-		</div>
-	);
-};
-
-export const Route = createFileRoute("/research/")({
-	component: ResearchIndex,
-});

@@ -12,7 +12,7 @@ export type ObstacleIndex = Map<string, ObstacleRect>;
 
 export const ObstacleIndexContext = React.createContext<
 	React.RefObject<ObstacleIndex>
->({ current: new Map() });
+>(React.createRef<ObstacleIndex>());
 
 function getStageContainer(editorId: string): HTMLDivElement | null {
 	return document.getElementById(
@@ -20,16 +20,25 @@ function getStageContainer(editorId: string): HTMLDivElement | null {
 	) as HTMLDivElement | null;
 }
 
+function safeInv(scale: number | null | undefined): number {
+	const s = scale ?? 1;
+	return 1 / (s === 0 ? 1 : s);
+}
+
 /*
 useObstacleIndex maintains a Map<nodeId, ObstacleRect> in canvas-space using
 ResizeObserver and MutationObserver. Reads during drag are zero-cost — no
 synchronous layout queries on the hot path.
+
+scale is accepted as a plain number (not a ref) so the effect re-runs when it
+changes and obstacle positions are remeasured at the new zoom level.
 */
 export function useObstacleIndex(
 	editorId: string,
-	scaleRef: React.RefObject<number>,
+	scale: number,
 ): React.RefObject<ObstacleIndex> {
 	const indexRef = React.useRef<ObstacleIndex>(new Map());
+	const measureRef = React.useRef<((el: Element) => void) | null>(null);
 
 	React.useEffect(() => {
 		const container = getStageContainer(editorId);
@@ -43,7 +52,7 @@ export function useObstacleIndex(
 			const rect = el.getBoundingClientRect();
 			const hw = stageRect.width / 2;
 			const hh = stageRect.height / 2;
-			const inv = 1 / (scaleRef.current ?? 1);
+			const inv = safeInv(scale);
 
 			indexRef.current.set(nid, {
 				left:   inv * (rect.left   - stageRect.x - hw),
@@ -52,6 +61,8 @@ export function useObstacleIndex(
 				bottom: inv * (rect.bottom - stageRect.y - hh),
 			});
 		};
+
+		measureRef.current = measure;
 
 		const resizeObserver = new ResizeObserver((entries) => {
 			for (const entry of entries) measure(entry.target);
@@ -80,7 +91,10 @@ export function useObstacleIndex(
 				for (const node of record.removedNodes) {
 					if (!(node instanceof Element)) continue;
 					const nid = node.getAttribute("data-node-id");
-					if (nid) indexRef.current.delete(nid);
+					if (nid) {
+						resizeObserver.unobserve(node);
+						indexRef.current.delete(nid);
+					}
 				}
 			}
 		});
@@ -93,7 +107,7 @@ export function useObstacleIndex(
 			mutationObserver.disconnect();
 			indexRef.current.clear();
 		};
-	}, [editorId, scaleRef]);
+	}, [editorId, scale]);
 
 	return indexRef;
 }
@@ -141,7 +155,11 @@ export function useConnectionWorker(
 			const stageRect = container.getBoundingClientRect();
 			const hw = stageRect.width / 2;
 			const hh = stageRect.height / 2;
-			const inv = 1 / (scaleRef.current ?? 1);
+			const inv = safeInv(scaleRef.current);
+
+			// obstaclesVertical includes all nodes — prevents vertical segment overlap.
+			// obstaclesHorizontal excludes the two endpoint nodes so the wire can
+			// approach them horizontally without immediately hitting their own bounding boxes.
 			const allObstacles = Array.from(indexRef.current.entries());
 			const connections: ConnectionPathRequest[] = [];
 
@@ -171,7 +189,8 @@ export function useConnectionWorker(
 						};
 
 						connections.push({
-							id: output.nodeId + output.portName + node.id + inputName,
+							// Delimited to avoid ambiguous concatenation collisions.
+							id: `${output.nodeId}|${output.portName}|${node.id}|${inputName}`,
 							from,
 							to,
 							routingMode,

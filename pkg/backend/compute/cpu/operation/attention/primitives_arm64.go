@@ -2,8 +2,6 @@
 
 package attention
 
-import "math"
-
 //go:noescape
 func dotProductNEON(a, b []float64) float64
 
@@ -19,40 +17,36 @@ func reduceSumNEON(a []float64) float64
 //go:noescape
 func divScalarNEON(dst []float64, s float64)
 
+//go:noescape
+func attentionRowScoresNEON(scores, q, K []float64, seqLen, headDim int, scale float64)
+
+//go:noescape
+func attentionRowOutputNEON(out, scores, V []float64, seqLen, headDim int)
+
 func dotProduct(a, b []float64) float64 {
-	var s float64
-	for i := range a {
-		s += a[i] * b[i]
-	}
-	return s
+	return dotProductNEON(a, b)
 }
 
 func scaledAdd(dst, src []float64, scale float64) {
-	for i := range dst {
-		dst[i] += src[i] * scale
-	}
+	scaledAddNEON(dst, src, scale)
 }
 
 func reduceMax(a []float64) float64 {
-	m := math.Inf(-1)
-	for _, v := range a {
-		if v > m {
-			m = v
-		}
-	}
-	return m
+	return reduceMaxNEON(a)
 }
 
 func reduceSum(a []float64) float64 {
-	var s float64
-	for _, v := range a {
-		s += v
-	}
-	return s
+	return reduceSumNEON(a)
 }
 
 func divScalar(dst []float64, s float64) {
-	for i := range dst {
-		dst[i] /= s
-	}
+	divScalarNEON(dst, s)
+}
+
+func attentionRowScoresKernel(scores, q, K []float64, seqLen, headDim int, scale float64) {
+	attentionRowScoresNEON(scores, q, K, seqLen, headDim, scale)
+}
+
+func attentionRowOutputKernel(out, scores, V []float64, seqLen, headDim int) {
+	attentionRowOutputNEON(out, scores, V, seqLen, headDim)
 }
