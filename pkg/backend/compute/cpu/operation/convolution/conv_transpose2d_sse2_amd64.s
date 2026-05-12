@@ -1,2 +1,2 @@
 #include "textflag.h"
-// ConvTranspose2d SSE2 helpers are provided by primitives_sse2_amd64.s. Intentionally empty.
+// convTranspose2dSSE2 is defined in conv_transpose2d_avx2_amd64.s.

@@ -4,9 +4,10 @@ package active_inference
 
 import (
 	"fmt"
-	"math"
 
 	"golang.org/x/sys/cpu"
+
+	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
 )
 
 var useAVX2 bool
@@ -29,9 +30,14 @@ func precisionWeightMulAVX2(dst, errVec, prec []float64)
 //go:noescape
 func precisionWeightMulSSE2(dst, errVec, prec []float64)
 
+//go:noescape
+func beliefUpdateMuAVX2(dst, mu, predErr []float64, lr float64)
+
+//go:noescape
+func beliefUpdateMuSSE2(dst, mu, predErr []float64, lr float64)
+
+// applyFreeEnergy: F = 0.5 * sum(mu^2 + exp(logSigma) - logSigma - 1)
 func applyFreeEnergy(mu, logSigma []float64, n int, expScratch []float64) float64 {
-	// SIMD computes: sum(mu^2 + exp(logSigma) - logSigma - 1) * 0.5
-	// exp is scalar so we build an exp buffer and then run SIMD on remainder terms.
 	if n < 0 {
 		panic("active_inference: applyFreeEnergy: n < 0")
 	}
@@ -58,9 +64,7 @@ func applyFreeEnergy(mu, logSigma []float64, n int, expScratch []float64) float6
 		expBuf = make([]float64, n)
 	}
 
-	for idx := 0; idx < n; idx++ {
-		expBuf[idx] = math.Exp(logSigmaUse[idx])
-	}
+	mathops.ExpVec(expBuf, logSigmaUse)
 
 	var sum float64
 
@@ -70,13 +74,14 @@ func applyFreeEnergy(mu, logSigma []float64, n int, expScratch []float64) float6
 		sum = freeEnergySSE2(muUse, expBuf)
 	}
 
-	for idx := 0; idx < n; idx++ {
-		sum -= logSigmaUse[idx] + 1.0
-	}
+	sum -= mathops.ReduceSum(logSigmaUse) + float64(n)
 
 	return 0.5 * sum
 }
 
+// applyBeliefUpdate:
+//   muOut[i]      = mu[i] - lr * (mu[i] + predErr[i])
+//   logSigOut[i]  = logSigma[i] - lr * (exp(logSigma[i]) - 1)
 func applyBeliefUpdate(muOut, logSigOut, mu, logSigma, predErr []float64, lr float64, n int) {
 	if n < 0 {
 		panic("active_inference: applyBeliefUpdate: n < 0")
@@ -89,8 +94,6 @@ func applyBeliefUpdate(muOut, logSigOut, mu, logSigma, predErr []float64, lr flo
 		))
 	}
 
-	// mu_new = mu - lr*(mu + pred_err)  → mu*(1-lr) - lr*pred_err
-	// We use SIMD for the mu update (addVec + scale) and scalar loop for logSigma (requires exp).
 	limit := alignedLen(n)
 
 	if useAVX2 && useFMA {
@@ -105,17 +108,14 @@ func applyBeliefUpdate(muOut, logSigOut, mu, logSigma, predErr []float64, lr flo
 		muOut[idx] = mu[idx] - lr*(mu[idx]+predErr[idx])
 	}
 
-	for idx := 0; idx < n; idx++ {
-		logSigOut[idx] = logSigma[idx] - lr*(math.Exp(logSigma[idx])-1.0)
-	}
+	expBuf := make([]float64, n)
+	mathops.ExpVec(expBuf, logSigma[:n])
+	mathops.AddScalarVec(expBuf, -1.0)
+	copy(logSigOut[:n], logSigma[:n])
+	mathops.AddScaledVec(logSigOut[:n], expBuf, -lr)
 }
 
-//go:noescape
-func beliefUpdateMuAVX2(dst, mu, predErr []float64, lr float64)
-
-//go:noescape
-func beliefUpdateMuSSE2(dst, mu, predErr []float64, lr float64)
-
+// applyPrecisionWeight: dst[i] = errVec[i] * exp(logPrec[i])
 func applyPrecisionWeight(dst, errVec, logPrec []float64, n int, precScratch []float64) {
 	if n < 0 {
 		panic("active_inference: applyPrecisionWeight: n < 0")
@@ -142,8 +142,8 @@ func applyPrecisionWeight(dst, errVec, logPrec []float64, n int, precScratch []f
 
 	fillCount := min(n, len(logPrec))
 
-	for idx := 0; idx < fillCount; idx++ {
-		prec[idx] = math.Exp(logPrec[idx])
+	if fillCount > 0 {
+		mathops.ExpVec(prec[:fillCount], logPrec[:fillCount])
 	}
 
 	for idx := fillCount; idx < n; idx++ {
@@ -165,6 +165,7 @@ func applyPrecisionWeight(dst, errVec, logPrec []float64, n int, precScratch []f
 	}
 }
 
+// applyExpectedFreeEnergy: out[k] = -sum_i q_i,k * log(q_i,k + eps), with q clamped to [0,1].
 func applyExpectedFreeEnergy(out, qOutcomes []float64, n, k int) {
 	if n <= 0 || k <= 0 {
 		panic(fmt.Sprintf("active_inference: applyExpectedFreeEnergy: need n > 0 and k > 0 (got n=%d k=%d)", n, k))
@@ -185,24 +186,21 @@ func applyExpectedFreeEnergy(out, qOutcomes []float64, n, k int) {
 
 	const eps = 1e-12
 
+	col := make([]float64, n)
+	logBuf := make([]float64, n)
+	prod := make([]float64, n)
+
 	for kIdx := 0; kIdx < k; kIdx++ {
-		g := 0.0
-
 		for iIdx := 0; iIdx < n; iIdx++ {
-			q := qOutcomes[iIdx*k+kIdx]
-
-			if q < 0 {
-				q = 0
-			}
-
-			if q > 1 {
-				q = 1
-			}
-
-			g -= q * math.Log(q+eps)
+			col[iIdx] = qOutcomes[iIdx*k+kIdx]
 		}
 
-		out[kIdx] = g
+		mathops.ClampVec(col, 0, 1)
+		copy(logBuf, col)
+		mathops.AddScalarVec(logBuf, eps)
+		mathops.LogVec(logBuf, logBuf)
+		mathops.MulVec(prod, col, logBuf)
+		out[kIdx] = -mathops.ReduceSum(prod)
 	}
 }
 

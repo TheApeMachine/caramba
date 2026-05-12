@@ -3,9 +3,12 @@ package tuner
 import (
 	"fmt"
 	"math"
+	"math/rand"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/active_inference"
 )
+
+const banditNumStates = 8
 
 /*
 Arm represents a single candidate in the hyperparameter tuning or
@@ -22,59 +25,212 @@ When configured with strategy="active_inference", it uses Expected Free Energy
 to balance exploration and exploitation across the available arms.
 */
 type Bandit struct {
-	strategy string
-	arms     []Arm
-	efe      *active_inference.ExpectedFreeEnergy
+	strategy  string
+	arms      []Arm
+	efe       *active_inference.ExpectedFreeEnergy
+	posterior []float64
+	means     []float64
+	m2        []float64
+	counts    []int
+	numStates int
+	random    *rand.Rand
 }
 
 /*
 NewBandit instantiates a multi-armed bandit tuner.
 */
-func NewBandit(strategy string, arms []Arm) (*Bandit, error) {
+func NewBandit(strategy string, arms []Arm, seed int64) (*Bandit, error) {
 	if len(arms) == 0 {
 		return nil, fmt.Errorf("tuner: cannot create bandit with 0 arms")
 	}
 
+	if strategy != "active_inference" {
+		return nil, fmt.Errorf("tuner: unsupported bandit strategy %q", strategy)
+	}
+
+	posterior := make([]float64, len(arms))
+	uniform := 1.0 / float64(len(arms))
+
+	for index := range posterior {
+		posterior[index] = uniform
+	}
+
 	return &Bandit{
-		strategy: strategy,
-		arms:     arms,
-		efe:      active_inference.NewExpectedFreeEnergy(),
+		strategy:  strategy,
+		arms:      arms,
+		efe:       active_inference.NewExpectedFreeEnergy(),
+		posterior: posterior,
+		means:     make([]float64, len(arms)),
+		m2:        make([]float64, len(arms)),
+		counts:    make([]int, len(arms)),
+		numStates: banditNumStates,
+		random:    rand.New(rand.NewSource(seed)),
 	}, nil
 }
 
 /*
-SelectArm chooses the optimal arm given the state probabilities for each arm.
-stateProbs must be a 1D slice of size N * K, where N is the number of outcome
-states and K is the number of arms.
+SelectArm chooses the next arm to evaluate.
 Returns the selected Arm and its corresponding Expected Free Energy score.
 */
-func (bandit *Bandit) SelectArm(stateProbs []float64, numStates int) (Arm, float64, error) {
-	numArms := len(bandit.arms)
-
-	if len(stateProbs) != numStates*numArms {
-		return Arm{}, 0.0, fmt.Errorf(
-			"tuner: stateProbs length %d must equal numStates*numArms (%d*%d=%d)",
-			len(stateProbs), numStates, numArms, numStates*numArms,
-		)
+func (bandit *Bandit) SelectArm() (Arm, float64, error) {
+	for index, count := range bandit.counts {
+		if count == 0 {
+			return bandit.arms[index], bandit.score(index), nil
+		}
 	}
 
-	if bandit.strategy == "active_inference" {
-		efeValues := bandit.efe.Forward([]int{numStates, numArms}, stateProbs)
+	threshold := bandit.random.Float64()
+	cumulative := 0.0
 
-		bestIdx := 0
-		minEFE := math.MaxFloat64
+	for index, probability := range bandit.posterior {
+		cumulative += probability
 
-		for i, efe := range efeValues {
-			if efe < minEFE {
-				minEFE = efe
-				bestIdx = i
-			}
+		if threshold <= cumulative {
+			return bandit.arms[index], bandit.score(index), nil
+		}
+	}
+
+	lastIndex := len(bandit.arms) - 1
+
+	return bandit.arms[lastIndex], bandit.score(lastIndex), nil
+}
+
+/*
+Update records the observed metric for the most recent trial of armID.
+Lower metric is better.
+*/
+func (bandit *Bandit) Update(armID string, metric float64) error {
+	index, err := bandit.index(armID)
+
+	if err != nil {
+		return err
+	}
+
+	bandit.counts[index]++
+	delta := metric - bandit.means[index]
+	bandit.means[index] += delta / float64(bandit.counts[index])
+	bandit.m2[index] += delta * (metric - bandit.means[index])
+	bandit.recomputePosterior()
+
+	return nil
+}
+
+func (bandit *Bandit) index(armID string) (int, error) {
+	for index, arm := range bandit.arms {
+		if arm.ID == armID {
+			return index, nil
+		}
+	}
+
+	return 0, fmt.Errorf("tuner: unknown arm ID %q", armID)
+}
+
+func (bandit *Bandit) score(index int) float64 {
+	return -math.Log(bandit.posterior[index])
+}
+
+func (bandit *Bandit) recomputePosterior() {
+	stateProbs := bandit.stateProbabilities()
+	efeValues := bandit.efe.Forward([]int{bandit.numStates, len(bandit.arms)}, stateProbs)
+	bestIndex := bandit.bestObservedIndex()
+
+	for index := range efeValues {
+		efeValues[index] += bandit.means[index] - bandit.means[bestIndex]
+	}
+
+	bandit.softmaxNegate(efeValues)
+}
+
+func (bandit *Bandit) stateProbabilities() []float64 {
+	numArms := len(bandit.arms)
+	stateProbs := make([]float64, bandit.numStates*numArms)
+	minMetric, maxMetric := bandit.metricRange()
+
+	for armIndex, count := range bandit.counts {
+		if count == 0 {
+			bandit.distributeUniform(stateProbs, armIndex)
+
+			continue
 		}
 
-		return bandit.arms[bestIdx], minEFE, nil
+		bucket := bandit.bucket(bandit.means[armIndex], minMetric, maxMetric)
+		stateProbs[bucket*numArms+armIndex] = 1.0
 	}
 
-	// Fallback to random or basic greedy if strategy is not active_inference.
-	// For simplicity, we just return the first arm if not using active_inference.
-	return bandit.arms[0], 0.0, nil
+	return stateProbs
+}
+
+func (bandit *Bandit) metricRange() (float64, float64) {
+	minMetric := math.MaxFloat64
+	maxMetric := -math.MaxFloat64
+
+	for index, count := range bandit.counts {
+		if count == 0 {
+			continue
+		}
+
+		minMetric = math.Min(minMetric, bandit.means[index])
+		maxMetric = math.Max(maxMetric, bandit.means[index])
+	}
+
+	if minMetric == math.MaxFloat64 {
+		return 0.0, 0.0
+	}
+
+	return minMetric, maxMetric
+}
+
+func (bandit *Bandit) bucket(metric float64, minMetric float64, maxMetric float64) int {
+	if minMetric == maxMetric {
+		return 0
+	}
+
+	ratio := (metric - minMetric) / (maxMetric - minMetric)
+	bucket := int(ratio * float64(bandit.numStates-1))
+
+	return min(max(bucket, 0), bandit.numStates-1)
+}
+
+func (bandit *Bandit) distributeUniform(stateProbs []float64, armIndex int) {
+	numArms := len(bandit.arms)
+	probability := 1.0 / float64(bandit.numStates)
+
+	for bucket := range bandit.numStates {
+		stateProbs[bucket*numArms+armIndex] = probability
+	}
+}
+
+func (bandit *Bandit) bestObservedIndex() int {
+	bestIndex := 0
+	bestMetric := math.MaxFloat64
+
+	for index, count := range bandit.counts {
+		if count == 0 || bandit.means[index] >= bestMetric {
+			continue
+		}
+
+		bestMetric = bandit.means[index]
+		bestIndex = index
+	}
+
+	return bestIndex
+}
+
+func (bandit *Bandit) softmaxNegate(values []float64) {
+	maxValue := -math.MaxFloat64
+
+	for _, value := range values {
+		maxValue = math.Max(maxValue, -value)
+	}
+
+	total := 0.0
+
+	for index, value := range values {
+		bandit.posterior[index] = math.Exp(-value - maxValue)
+		total += bandit.posterior[index]
+	}
+
+	for index := range bandit.posterior {
+		bandit.posterior[index] /= total
+	}
 }

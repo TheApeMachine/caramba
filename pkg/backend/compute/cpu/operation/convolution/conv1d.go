@@ -63,52 +63,10 @@ func NewConv1d(inC, outC, kernelSize, stride, padding, dilation, groups int) *Co
 // Returns output flattened as [N, OutC, L_out].
 func (c *Conv1d) Forward(shape []int, data ...[]float64) []float64 {
 	n, inC, l := shape[0], shape[1], shape[2]
-	x := data[0]
 
-	if c.Dilation == 1 && c.Padding == 0 {
-		return conv1dForwardFast(x, n, inC, l,
-			c.Weight, c.Bias,
-			c.OutChannels, c.KernelSize, c.Stride, c.Groups,
-		)
-	}
-
-	k := c.KernelSize
-	lOut := (l+2*c.Padding-c.Dilation*(k-1)-1)/c.Stride + 1
-	outC := c.OutChannels
-	icPerGroup := inC / c.Groups
-	ocPerGroup := outC / c.Groups
-
-	out := make([]float64, n*outC*lOut)
-
-	for ni := 0; ni < n; ni++ {
-		for g := 0; g < c.Groups; g++ {
-			ocStart := g * ocPerGroup
-			icStart := g * icPerGroup
-			for oc := ocStart; oc < ocStart+ocPerGroup; oc++ {
-				// weight row for this output channel: [icPerGroup * k]
-				wRow := c.Weight[oc*icPerGroup*k : (oc+1)*icPerGroup*k]
-				bias := c.Bias[oc]
-				for lo := 0; lo < lOut; lo++ {
-					sum := bias
-					// inline dot over (ic, kk)
-					// Build input slice on the fly using direct loop (SIMD
-					// dot product requires contiguous slice; we use the scalar
-					// path here to avoid an allocation per output element).
-					wIdx := 0
-					for ic := 0; ic < icPerGroup; ic++ {
-						absIC := icStart + ic
-						for kk := 0; kk < k; kk++ {
-							li := lo*c.Stride + kk*c.Dilation - c.Padding
-							if li >= 0 && li < l {
-								sum += x[ni*inC*l+absIC*l+li] * wRow[wIdx]
-							}
-							wIdx++
-						}
-					}
-					out[ni*outC*lOut+oc*lOut+lo] = sum
-				}
-			}
-		}
-	}
-	return out
+	return conv1dForward(
+		data[0], n, inC, l,
+		c.Weight, c.Bias,
+		c.OutChannels, c.KernelSize, c.Stride, c.Padding, c.Dilation, c.Groups,
+	)
 }

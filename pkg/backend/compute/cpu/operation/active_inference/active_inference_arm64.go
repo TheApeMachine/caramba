@@ -4,7 +4,8 @@ package active_inference
 
 import (
 	"fmt"
-	"math"
+
+	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
 )
 
 //go:noescape
@@ -43,15 +44,10 @@ func applyFreeEnergy(mu, logSigma []float64, n int, expScratch []float64) float6
 		expBuf = make([]float64, n)
 	}
 
-	for idx := 0; idx < n; idx++ {
-		expBuf[idx] = math.Exp(logSigmaUse[idx])
-	}
+	mathops.ExpVec(expBuf, logSigmaUse)
 
 	sum := freeEnergyNEON(muUse, expBuf)
-
-	for idx := 0; idx < n; idx++ {
-		sum -= logSigmaUse[idx] + 1.0
-	}
+	sum -= mathops.ReduceSum(logSigmaUse) + float64(n)
 
 	return 0.5 * sum
 }
@@ -78,9 +74,11 @@ func applyBeliefUpdate(muOut, logSigOut, mu, logSigma, predErr []float64, lr flo
 		muOut[idx] = mu[idx] - lr*(mu[idx]+predErr[idx])
 	}
 
-	for idx := 0; idx < n; idx++ {
-		logSigOut[idx] = logSigma[idx] - lr*(math.Exp(logSigma[idx])-1.0)
-	}
+	expBuf := make([]float64, n)
+	mathops.ExpVec(expBuf, logSigma[:n])
+	mathops.AddScalarVec(expBuf, -1.0)
+	copy(logSigOut[:n], logSigma[:n])
+	mathops.AddScaledVec(logSigOut[:n], expBuf, -lr)
 }
 
 func applyPrecisionWeight(dst, errVec, logPrec []float64, n int, precScratch []float64) {
@@ -109,8 +107,8 @@ func applyPrecisionWeight(dst, errVec, logPrec []float64, n int, precScratch []f
 
 	fillCount := min(n, len(logPrec))
 
-	for idx := 0; idx < fillCount; idx++ {
-		prec[idx] = math.Exp(logPrec[idx])
+	if fillCount > 0 {
+		mathops.ExpVec(prec[:fillCount], logPrec[:fillCount])
 	}
 
 	for idx := fillCount; idx < n; idx++ {
@@ -148,23 +146,20 @@ func applyExpectedFreeEnergy(out, qOutcomes []float64, n, k int) {
 
 	const eps = 1e-12
 
+	col := make([]float64, n)
+	logBuf := make([]float64, n)
+	prod := make([]float64, n)
+
 	for kIdx := 0; kIdx < k; kIdx++ {
-		g := 0.0
-
 		for iIdx := 0; iIdx < n; iIdx++ {
-			q := qOutcomes[iIdx*k+kIdx]
-
-			if q < 0 {
-				q = 0
-			}
-
-			if q > 1 {
-				q = 1
-			}
-
-			g -= q * math.Log(q+eps)
+			col[iIdx] = qOutcomes[iIdx*k+kIdx]
 		}
 
-		out[kIdx] = g
+		mathops.ClampVec(col, 0, 1)
+		copy(logBuf, col)
+		mathops.AddScalarVec(logBuf, eps)
+		mathops.LogVec(logBuf, logBuf)
+		mathops.MulVec(prod, col, logBuf)
+		out[kIdx] = -mathops.ReduceSum(prod)
 	}
 }

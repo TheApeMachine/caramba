@@ -45,3 +45,18 @@ func SoftmaxSlice(row []float64) {
 	}
 	softmaxRow(row)
 }
+
+// ExpVec: dst[i] = exp(src[i]) via vectorized polynomial approximation.
+func ExpVec(dst, src []float64) { expVec(dst, src) }
+
+// LogVec: dst[i] = log(src[i]) for src[i] > 0.
+func LogVec(dst, src []float64) { logVec(dst, src) }
+
+// ReduceSum: returns sum of all elements in a.
+func ReduceSum(a []float64) float64 { return reduceSum(a) }
+
+// ReduceMax: returns max of a; returns -math.MaxFloat64 for empty input.
+func ReduceMax(a []float64) float64 { return reduceMax(a) }
+
+// SignVec: dst[i] = sign(src[i])  (-1, 0, +1).
+func SignVec(dst, src []float64) { signVec(dst, src) }

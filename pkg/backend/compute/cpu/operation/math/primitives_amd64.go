@@ -9,9 +9,11 @@ import (
 )
 
 var useAVX2 bool
+var useFMA bool
 
 func init() {
 	useAVX2 = cpu.X86.HasAVX2
+	useFMA = cpu.X86.HasFMA
 }
 
 //go:noescape
@@ -204,14 +206,24 @@ func outerRowAVX2(dst, b []float64, scale float64)
 func outerRowSSE2(dst, b []float64, scale float64)
 
 func signVec(dst, src []float64) {
-	for i := range src {
+	limit := alignedLen(len(src))
+
+	if useAVX2 {
+		if limit > 0 {
+			signVecAVX2(dst[:limit], src[:limit])
+		}
+	} else if limit > 0 {
+		signVecSSE2(dst[:limit], src[:limit])
+	}
+
+	for index := limit; index < len(src); index++ {
 		switch {
-		case src[i] > 0:
-			dst[i] = 1
-		case src[i] < 0:
-			dst[i] = -1
+		case src[index] > 0:
+			dst[index] = 1
+		case src[index] < 0:
+			dst[index] = -1
 		default:
-			dst[i] = 0
+			dst[index] = 0
 		}
 	}
 }
@@ -264,6 +276,18 @@ func clampVecAVX2(dst []float64, lo, hi float64)
 
 //go:noescape
 func clampVecSSE2(dst []float64, lo, hi float64)
+
+//go:noescape
+func expVecAVX2(dst, src []float64)
+
+//go:noescape
+func expVecSSE2(dst, src []float64)
+
+//go:noescape
+func logVecAVX2(dst, src []float64)
+
+//go:noescape
+func logVecSSE2(dst, src []float64)
 
 // addScaledVec: dst[i] += scale * src[i]  (AXPY)
 func addScaledVec(dst, src []float64, scale float64) {
@@ -339,6 +363,40 @@ func l2NormSq(a []float64) float64 {
 		return l2NormSqAVX2(a)
 	}
 	return l2NormSqSSE2(a)
+}
+
+// expVec: dst[i] = exp(src[i]).  Fully SIMD via polynomial range-reduction.
+func expVec(dst, src []float64) {
+	limit := alignedLen(len(src))
+
+	if useAVX2 {
+		if limit > 0 {
+			expVecAVX2(dst[:limit], src[:limit])
+		}
+	} else if limit > 0 {
+		expVecSSE2(dst[:limit], src[:limit])
+	}
+
+	for index := limit; index < len(src); index++ {
+		dst[index] = math.Exp(src[index])
+	}
+}
+
+// logVec: dst[i] = log(src[i]).
+func logVec(dst, src []float64) {
+	limit := alignedLen(len(src))
+
+	if useAVX2 {
+		if limit > 0 {
+			logVecAVX2(dst[:limit], src[:limit])
+		}
+	} else if limit > 0 {
+		logVecSSE2(dst[:limit], src[:limit])
+	}
+
+	for index := limit; index < len(src); index++ {
+		dst[index] = math.Log(src[index])
+	}
 }
 
 // clampVec: dst[i] = clamp(dst[i], lo, hi)

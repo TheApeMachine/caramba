@@ -1,2 +1,2 @@
 #include "textflag.h"
-// Intentionally empty — SSE2 symbols live in primitives_avx2_amd64.s.
+// conv1dDotSSE2 is defined in conv1d_avx2_amd64.s.

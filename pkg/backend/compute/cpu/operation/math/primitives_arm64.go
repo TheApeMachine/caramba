@@ -129,6 +129,20 @@ func divVecNEON(dst, a, b []float64)
 //go:noescape
 func clampVecNEON(dst []float64, lo, hi float64)
 
+//go:noescape
+func expVecNEON(dst, src []float64)
+
+//go:noescape
+func logVecNEON(dst, src []float64)
+
+func expVec(dst, src []float64) {
+	expVecNEON(dst, src)
+}
+
+func logVec(dst, src []float64) {
+	logVecNEON(dst, src)
+}
+
 func addScaledVec(dst, src []float64, scale float64) {
 	n := len(src)
 	addScaledVecNEON(dst, src, scale)

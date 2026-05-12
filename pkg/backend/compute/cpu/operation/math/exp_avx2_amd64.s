@@ -1,0 +1,118 @@
+#include "textflag.h"
+
+// Vectorized double-precision exp via range reduction + degree-7 polynomial.
+//   r = round(x * log2(e))
+//   f = x - r*ln2_hi - r*ln2_lo                 // f in [-ln2/2, ln2/2]
+//   p(f) ≈ exp(f) via Taylor polynomial
+//   result = p(f) * 2^r                          // 2^r assembled from int exponent
+
+DATA ·expLog2E+0(SB)/8, $1.4426950408889634
+GLOBL ·expLog2E(SB), RODATA, $8
+DATA ·expLn2Hi+0(SB)/8, $0.6931471805599453
+GLOBL ·expLn2Hi(SB), RODATA, $8
+DATA ·expLn2Lo+0(SB)/8, $1.9082149292705877e-10
+GLOBL ·expLn2Lo(SB), RODATA, $8
+DATA ·expMaxArg+0(SB)/8, $709.0
+GLOBL ·expMaxArg(SB), RODATA, $8
+DATA ·expMinArg+0(SB)/8, $-708.0
+GLOBL ·expMinArg(SB), RODATA, $8
+
+DATA ·expC0+0(SB)/8, $1.0
+GLOBL ·expC0(SB), RODATA, $8
+DATA ·expC1+0(SB)/8, $1.0
+GLOBL ·expC1(SB), RODATA, $8
+DATA ·expC2+0(SB)/8, $0.5
+GLOBL ·expC2(SB), RODATA, $8
+DATA ·expC3+0(SB)/8, $0.16666666666666666
+GLOBL ·expC3(SB), RODATA, $8
+DATA ·expC4+0(SB)/8, $0.041666666666666664
+GLOBL ·expC4(SB), RODATA, $8
+DATA ·expC5+0(SB)/8, $0.008333333333333333
+GLOBL ·expC5(SB), RODATA, $8
+DATA ·expC6+0(SB)/8, $0.001388888888888889
+GLOBL ·expC6(SB), RODATA, $8
+DATA ·expC7+0(SB)/8, $0.0001984126984126984
+GLOBL ·expC7(SB), RODATA, $8
+DATA ·expC8+0(SB)/8, $2.4801587301587302e-5
+GLOBL ·expC8(SB), RODATA, $8
+DATA ·expC9+0(SB)/8, $2.7557319223985893e-6
+GLOBL ·expC9(SB), RODATA, $8
+DATA ·expC10+0(SB)/8, $2.7557319223985894e-7
+GLOBL ·expC10(SB), RODATA, $8
+DATA ·expC11+0(SB)/8, $2.5052108385441718e-8
+GLOBL ·expC11(SB), RODATA, $8
+
+DATA ·expBias32+0(SB)/4, $1023
+DATA ·expBias32+4(SB)/4, $1023
+DATA ·expBias32+8(SB)/4, $1023
+DATA ·expBias32+12(SB)/4, $1023
+GLOBL ·expBias32(SB), RODATA, $16
+
+// expVecAVX2(dst, src []float64)
+// dst[i] = exp(src[i])
+TEXT ·expVecAVX2(SB), NOSPLIT, $0-48
+	MOVQ dst+0(FP), AX
+	MOVQ src+24(FP), DI
+	MOVQ src_len+32(FP), BX
+
+	VBROADCASTSD ·expLog2E(SB), Y10
+	VBROADCASTSD ·expLn2Hi(SB), Y11
+	VBROADCASTSD ·expLn2Lo(SB), Y12
+	VBROADCASTSD ·expMaxArg(SB), Y13
+	VBROADCASTSD ·expMinArg(SB), Y14
+	VMOVDQU ·expBias32(SB), X15
+
+	CMPQ BX, $4
+	JL   done_exp_avx2
+loop_exp_avx2:
+	VMOVUPD (DI), Y0
+	VMINPD  Y13, Y0, Y0
+	VMAXPD  Y14, Y0, Y0
+
+	VMULPD   Y10, Y0, Y1
+	VROUNDPD $0, Y1, Y1
+
+	VFNMADD231PD Y11, Y1, Y0
+	VFNMADD231PD Y12, Y1, Y0
+
+	VBROADCASTSD ·expC11(SB), Y2
+	VBROADCASTSD ·expC10(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·expC9(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·expC8(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·expC7(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·expC6(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·expC5(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·expC4(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·expC3(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·expC2(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·expC1(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·expC0(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+
+	VCVTPD2DQY Y1, X3
+	VPADDD    X15, X3, X3
+	VPMOVSXDQ X3, Y4
+	VPSLLQ    $52, Y4, Y4
+
+	VMULPD  Y4, Y2, Y2
+	VMOVUPD Y2, (AX)
+
+	ADDQ $32, AX
+	ADDQ $32, DI
+	SUBQ $4, BX
+	CMPQ BX, $4
+	JGE  loop_exp_avx2
+
+done_exp_avx2:
+	VZEROUPPER
+	RET

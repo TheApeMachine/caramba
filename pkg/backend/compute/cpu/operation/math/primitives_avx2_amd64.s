@@ -334,11 +334,41 @@ done_ssq2:
 	MOVSD  X0, ret+24(FP)
 	RET
 
+DATA ·signOne_amd64+0(SB)/8, $1.0
+GLOBL ·signOne_amd64(SB), RODATA, $8
+DATA ·signNegOne_amd64+0(SB)/8, $-1.0
+GLOBL ·signNegOne_amd64(SB), RODATA, $8
+
 // signVecAVX2(dst, src []float64)
 // ABI0: dst+0(FP), dst_len+8(FP), dst_cap+16(FP),
 //       src+24(FP), src_len+32(FP), src_cap+40(FP)
+// dst[i] = +1 if src[i] > 0, -1 if src[i] < 0, 0 if src[i] == 0
 // Strategy: cmp > 0 → mask1, cmp < 0 → mask2, blend +1/-1/0 via masks.
 TEXT ·signVecAVX2(SB), NOSPLIT, $0-48
+	MOVQ dst+0(FP), AX
+	MOVQ src+24(FP), DI
+	MOVQ src_len+32(FP), BX
+	VXORPD Y1, Y1, Y1
+	VMOVSD ·signOne_amd64(SB), X2
+	VBROADCASTSD X2, Y2
+	VMOVSD ·signNegOne_amd64(SB), X3
+	VBROADCASTSD X3, Y3
+	CMPQ BX, $4
+	JL   done_sv_avx2
+loop_sv_avx2:
+	VMOVUPD (DI), Y0
+	VCMPPD  $14, Y1, Y0, Y4         // Y4 = (Y0 > 0) mask
+	VCMPPD  $1,  Y1, Y0, Y5         // Y5 = (Y0 < 0) mask
+	VANDPD  Y2, Y4, Y4
+	VANDPD  Y3, Y5, Y5
+	VORPD   Y5, Y4, Y0
+	VMOVUPD Y0, (AX)
+	ADDQ $32, AX
+	ADDQ $32, DI
+	SUBQ $4, BX
+	CMPQ BX, $4
+	JGE  loop_sv_avx2
+done_sv_avx2:
 	VZEROUPPER
 	RET
 
@@ -346,6 +376,32 @@ TEXT ·signVecAVX2(SB), NOSPLIT, $0-48
 // ABI0: dst+0(FP), dst_len+8(FP), dst_cap+16(FP),
 //       src+24(FP), src_len+32(FP), src_cap+40(FP)
 TEXT ·signVecSSE2(SB), NOSPLIT, $0-48
+	MOVQ dst+0(FP), AX
+	MOVQ src+24(FP), DI
+	MOVQ src_len+32(FP), BX
+	XORPD X1, X1
+	MOVSD ·signOne_amd64(SB), X2
+	SHUFPD $0, X2, X2
+	MOVSD ·signNegOne_amd64(SB), X3
+	SHUFPD $0, X3, X3
+	CMPQ BX, $2
+	JL   done_sv_sse2
+loop_sv_sse2:
+	MOVUPD (DI), X0
+	MOVAPD X1, X4
+	CMPPD X0, X4, $1                // X4 = (X4 < X0) ? -1 : 0   (= 0 < X0)
+	MOVAPD X0, X5
+	CMPPD X1, X5, $1                // X5 = (X5 < X1) ? -1 : 0   (= X0 < 0)
+	ANDPD  X2, X4
+	ANDPD  X3, X5
+	ORPD   X5, X4
+	MOVUPD X4, (AX)
+	ADDQ $16, AX
+	ADDQ $16, DI
+	SUBQ $2, BX
+	CMPQ BX, $2
+	JGE  loop_sv_sse2
+done_sv_sse2:
 	RET
 
 // outerRowAVX2(dst, b []float64, scale float64)

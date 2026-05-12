@@ -360,7 +360,10 @@ func (backend *MetalStreamBackend) applyOperation(
 	case "projection.fused_qkv", "projection.linear":
 		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.projection.Forward)
 	case "shape.concat", "shape.merge_heads", "shape.reshape", "shape.split", "shape.transpose", "shape.view_as_heads":
-		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.shape.Forward)
+		req := computemetal.ShapeForwardRequest{Op: string(node.Op), Metadata: node.Metadata}
+		return executor.RunErrorOperation(ctx, backend, node, inputs, func(shape []int, data ...[]float64) ([]float64, error) {
+			return backend.shape.Forward(req, shape, data...)
+		})
 	case "vsa.bind":
 		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.vsa.Bind)
 	case "vsa.bundle":

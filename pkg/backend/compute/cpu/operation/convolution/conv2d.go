@@ -77,59 +77,12 @@ func NewConv2d(inC, outC, kH, kW, strideH, strideW, padH, padW, dilH, dilW, grou
 // Returns [N, OutC, H_out, W_out].
 func (c *Conv2d) Forward(shape []int, data ...[]float64) []float64 {
 	n, inC, h, w := shape[0], shape[1], shape[2], shape[3]
-	x := data[0]
 
-	if c.DilationH == 1 && c.DilationW == 1 && c.PadH == 0 && c.PadW == 0 {
-		return conv2dForwardFast(x, n, inC, h, w,
-			c.Weight, c.Bias,
-			c.OutChannels, c.KernelH, c.KernelW,
-			c.StrideH, c.StrideW, c.Groups,
-		)
-	}
-
-	kH, kW := c.KernelH, c.KernelW
-	hOut := (h+2*c.PadH-c.DilationH*(kH-1)-1)/c.StrideH + 1
-	wOut := (w+2*c.PadW-c.DilationW*(kW-1)-1)/c.StrideW + 1
-	outC := c.OutChannels
-	icPerGroup := inC / c.Groups
-	ocPerGroup := outC / c.Groups
-
-	out := make([]float64, n*outC*hOut*wOut)
-
-	for ni := 0; ni < n; ni++ {
-		for g := 0; g < c.Groups; g++ {
-			ocStart := g * ocPerGroup
-			icStart := g * icPerGroup
-			for oc := ocStart; oc < ocStart+ocPerGroup; oc++ {
-				wKernelSize := icPerGroup * kH * kW
-				wRow := c.Weight[oc*wKernelSize : (oc+1)*wKernelSize]
-				bias := c.Bias[oc]
-				for ho := 0; ho < hOut; ho++ {
-					for wo := 0; wo < wOut; wo++ {
-						sum := bias
-						wIdx := 0
-						for ic := 0; ic < icPerGroup; ic++ {
-							absIC := icStart + ic
-							for kh := 0; kh < kH; kh++ {
-								hi := ho*c.StrideH + kh*c.DilationH - c.PadH
-								if hi < 0 || hi >= h {
-									wIdx += kW
-									continue
-								}
-								for kw := 0; kw < kW; kw++ {
-									wi := wo*c.StrideW + kw*c.DilationW - c.PadW
-									if wi >= 0 && wi < w {
-										sum += x[ni*inC*h*w+absIC*h*w+hi*w+wi] * wRow[wIdx]
-									}
-									wIdx++
-								}
-							}
-						}
-						out[ni*outC*hOut*wOut+oc*hOut*wOut+ho*wOut+wo] = sum
-					}
-				}
-			}
-		}
-	}
-	return out
+	return conv2dForward(
+		data[0], n, inC, h, w,
+		c.Weight, c.Bias,
+		c.OutChannels, c.KernelH, c.KernelW,
+		c.StrideH, c.StrideW, c.PadH, c.PadW, c.DilationH, c.DilationW,
+		c.Groups,
+	)
 }
