@@ -33,7 +33,13 @@ system:
           vocab_size: 128256
           d_model: 2048
 
-      - repeat: 16
+      - id: transformer_layers
+        op: control.repeat
+        in:
+          - h_0
+        out:
+          - h_16
+        repeat: 16
         index: i
         template:
           - id: input_layernorm_${i}

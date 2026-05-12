@@ -19,6 +19,10 @@ export type TopologyNode = {
 	op: string;
 	in: string[];
 	out: string[];
+	config?: Record<string, unknown>;
+	repeat?: number;
+	index?: string;
+	template?: TopologyNode[];
 };
 
 export type Schema = {

@@ -55,6 +55,7 @@ export function buildSubGraph(
 			y: row * 140,
 			inputData: {},
 			connections: { inputs: {}, outputs: {} },
+			...(node.template && node.template.length > 0 ? { subGraph: buildSubGraph(node.template, schemas) } : {}),
 		};
 	}
 

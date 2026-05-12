@@ -41,7 +41,13 @@ system:
           in_features: 1536
           out_features: 1536
 
-      - repeat: 24
+      - id: transformer_layers
+        op: control.repeat
+        in:
+          - h_0
+        out:
+          - h_24
+        repeat: 24
         index: i
         template:
           - id: input_layernorm_${i}

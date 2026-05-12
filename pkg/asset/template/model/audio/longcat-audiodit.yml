@@ -40,7 +40,13 @@ system:
           in_features: 2048
           out_features: 2048
 
-      - repeat: 32
+      - id: transformer_layers
+        op: control.repeat
+        in:
+          - h_0
+        out:
+          - h_32
+        repeat: 32
         index: i
         template:
           - id: input_layernorm_${i}
