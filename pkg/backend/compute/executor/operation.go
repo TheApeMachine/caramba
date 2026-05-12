@@ -55,6 +55,32 @@ func RunErrorOperation(
 	return UploadOutput(backend, node, inputs, output)
 }
 
+func RunForwardErrorOperation(
+	ctx context.Context,
+	backend Backend,
+	node NodeSpec,
+	inputs []tensor.Float64Tensor,
+	operation interface {
+		Forward(shape []int, data ...[]float64) ([]float64, error)
+	},
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	values, err := InputValues(inputs)
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := operation.Forward(OutputShape(node, inputs), values...)
+	if err != nil {
+		return nil, err
+	}
+
+	return UploadOutput(backend, node, inputs, output)
+}
+
 func UploadOutput(
 	backend Backend,
 	node NodeSpec,

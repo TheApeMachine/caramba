@@ -139,6 +139,10 @@ func (node *Node) SetValueType(valueType ValueType) {
 		valueType.DType = tensor.Float64
 	}
 
+	if valueType.Precision == "" {
+		valueType.Precision = valueType.DType
+	}
+
 	if valueType.Layout == "" {
 		valueType.Layout = LayoutDense
 	}

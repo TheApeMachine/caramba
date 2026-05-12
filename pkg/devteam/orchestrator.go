@@ -38,7 +38,9 @@ type Orchestrator struct {
 	watcher   eventWatcher
 	locks     *FileLockRegistry
 	extractor *ContextExtractor
-	sem       chan struct{}
+	cardSem   chan struct{}
+	subtaskSem chan struct{}
+	integrationMu sync.Mutex
 	wg        sync.WaitGroup
 }
 
@@ -80,7 +82,8 @@ func NewOrchestrator(ctx context.Context, cfg *config.DevTeamConfig) (*Orchestra
 		watcher:   NewWatcher(ctx, cfg.DatabaseURL),
 		locks:     NewFileLockRegistry(ctx),
 		extractor: extractor,
-		sem:       make(chan struct{}, cfg.MaxConcurrent),
+		cardSem:   make(chan struct{}, maxConcurrent(cfg.MaxConcurrent)),
+		subtaskSem: make(chan struct{}, maxConcurrent(cfg.MaxConcurrent)),
 	}, nil
 }
 
@@ -129,12 +132,15 @@ func (orchestrator *Orchestrator) Run() error {
 				continue
 			}
 
-			orchestrator.sem <- struct{}{}
+			if err := orchestrator.acquire(orchestrator.cardSem); err != nil {
+				return err
+			}
+
 			orchestrator.wg.Add(1)
 
 			go func(ev ColumnEvent) {
 				defer func() {
-					<-orchestrator.sem
+					orchestrator.release(orchestrator.cardSem)
 					orchestrator.wg.Done()
 				}()
 				orchestrator.handle(ev)
@@ -157,6 +163,30 @@ func (orchestrator *Orchestrator) Stop() {
 func (orchestrator *Orchestrator) isRelevant(event ColumnEvent) bool {
 	return event.ColumnKey == "todo" &&
 		event.ResearchProjectID == orchestrator.cfg.RequestsProjectID
+}
+
+func (orchestrator *Orchestrator) acquire(semaphore chan struct{}) error {
+	select {
+	case semaphore <- struct{}{}:
+		return nil
+	case <-orchestrator.ctx.Done():
+		return orchestrator.ctx.Err()
+	}
+}
+
+func (orchestrator *Orchestrator) release(semaphore chan struct{}) {
+	select {
+	case <-semaphore:
+	default:
+	}
+}
+
+func maxConcurrent(value int) int {
+	if value > 0 {
+		return value
+	}
+
+	return 1
 }
 
 /*
@@ -194,8 +224,8 @@ func (orchestrator *Orchestrator) handle(event ColumnEvent) {
 		return
 	}
 
-	// Fan out: each subtask gets its own goroutine bounded by the semaphore.
-	// All subtasks share the same feature branch and the same file lock registry.
+	// Fan out: subtasks have their own semaphore so card slots are never held
+	// while child work waits for capacity.
 	var subtaskWG sync.WaitGroup
 	errCh := make(chan error, len(subtaskIDs))
 
@@ -207,12 +237,16 @@ func (orchestrator *Orchestrator) handle(event ColumnEvent) {
 	}
 
 	for _, subtask := range allSubtasks {
-		orchestrator.sem <- struct{}{}
+		if err := orchestrator.acquire(orchestrator.subtaskSem); err != nil {
+			errCh <- err
+			break
+		}
+
 		subtaskWG.Add(1)
 
 		go func(st Subtask) {
 			defer func() {
-				<-orchestrator.sem
+				orchestrator.release(orchestrator.subtaskSem)
 				subtaskWG.Done()
 			}()
 
@@ -385,6 +419,8 @@ func (orchestrator *Orchestrator) runSubtask(
 	}
 
 	commitMsg := fmt.Sprintf("feat(%s): %s", event.ID[:8], subtask.Title)
+	orchestrator.integrationMu.Lock()
+	defer orchestrator.integrationMu.Unlock()
 
 	if err := sandbox.CommitAndPush(commitMsg); err != nil {
 		_ = orchestrator.subtasks.SetStatus(orchestrator.ctx, subtask.ID, "failed", agentID)

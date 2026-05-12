@@ -45,13 +45,15 @@ func (m *MetalMasking) NewCausalMask() *MetalCausalMask {
 	return &MetalCausalMask{m: m}
 }
 
-// Forward generates a causal mask.
-// shape must contain seq_len as its last element.
-// data is unused.
-// Returns a flat []float64 of length seq_len*seq_len.
-func (op *MetalCausalMask) Forward(shape []int, data ...[]float64) []float64 {
+// Forward generates a causal mask on Metal and reports kernel failures.
+func (op *MetalCausalMask) Forward(shape []int, data ...[]float64) ([]float64, error) {
 	seqLen := shape[len(shape)-1]
 	n := seqLen * seqLen
+
+	if n == 0 {
+		return []float64{}, nil
+	}
+
 	dst32 := make([]float32, n)
 
 	rc := C.metal_causal_mask(
@@ -59,26 +61,9 @@ func (op *MetalCausalMask) Forward(shape []int, data ...[]float64) []float64 {
 		C.int(seqLen),
 	)
 	if rc != 0 {
-		// Fallback: scalar Go implementation
-		return causalMaskScalarGo(seqLen)
+		return nil, fmt.Errorf("metal_causal_mask failed (rc=%d)", rc)
 	}
-	return toFloat64(dst32)
-}
-
-// causalMaskScalarGo is the pure-Go fallback for Metal failures.
-func causalMaskScalarGo(seqLen int) []float64 {
-	const negInf = -3.4028234663852886e+38 // -FLT_MAX as float64
-	out := make([]float64, seqLen*seqLen)
-	for i := 0; i < seqLen; i++ {
-		base := i * seqLen
-		for j := 0; j <= i; j++ {
-			out[base+j] = 0.0
-		}
-		for j := i + 1; j < seqLen; j++ {
-			out[base+j] = negInf
-		}
-	}
-	return out
+	return toFloat64(dst32), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -94,14 +79,13 @@ func (m *MetalMasking) NewApplyMask() *MetalApplyMask {
 	return &MetalApplyMask{m: m}
 }
 
-// Forward computes scores + mask elementwise.
-// data[0] = scores, data[1] = mask
-func (op *MetalApplyMask) Forward(shape []int, data ...[]float64) []float64 {
+// Forward computes scores + mask elementwise on Metal and reports kernel failures.
+func (op *MetalApplyMask) Forward(shape []int, data ...[]float64) ([]float64, error) {
 	scores := data[0]
 	mask := data[1]
 	n := len(scores)
 	if n == 0 {
-		return []float64{}
+		return []float64{}, nil
 	}
 
 	src32 := toFloat32(scores)
@@ -115,12 +99,7 @@ func (op *MetalApplyMask) Forward(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		// Fallback
-		out := make([]float64, n)
-		for i := range scores {
-			out[i] = scores[i] + mask[i]
-		}
-		return out
+		return nil, fmt.Errorf("metal_apply_mask failed (rc=%d)", rc)
 	}
-	return toFloat64(dst32)
+	return toFloat64(dst32), nil
 }

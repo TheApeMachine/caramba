@@ -4,13 +4,9 @@ package hawkes
 
 import "math"
 
-// expSumNEON is defined in hawkes_neon_arm64.s; not yet wired into applyIntensity (scalar path only).
-//
 //go:noescape
 func expSumNEON(expBuf []float64) float64
 
-// applyIntensity delegates to applyIntensityScalar. TODO: replace with a NEON vectorized
-// intensity routine (see applyIntensityScalar) when a correct asm kernel is ready.
 func applyIntensity(out, times, alpha, beta, mu []float64, t float64, K, T int) {
 	cutoff := 0
 	for cutoff < T && times[cutoff] < t {
@@ -39,9 +35,7 @@ func applyIntensity(out, times, alpha, beta, mu []float64, t float64, K, T int) 
 	}
 }
 
-// applyKernelMatrix fills the upper-triangular excitation kernel. times must be non-decreasing;
-// callers (e.g. Hawkes Forward) should sort event times before invoking. TODO: optional NEON
-// exp for the inner loop once numerical parity with scalar Exp is validated.
+// applyKernelMatrix fills the upper-triangular excitation kernel. times must be non-decreasing.
 func applyKernelMatrix(out, times []float64, alpha, beta float64, T int) {
 	if T <= 0 || len(times) < T || len(out) < T*T {
 		panic("hawkes: applyKernelMatrix: need T > 0, len(times) >= T, len(out) >= T*T")
@@ -53,11 +47,32 @@ func applyKernelMatrix(out, times []float64, alpha, beta float64, T int) {
 		}
 	}
 
-	for row := 0; row < T; row++ {
-		ti := times[row]
+	exponents := make([]float64, T)
 
-		for col := row + 1; col < T; col++ {
-			out[row*T+col] = alpha * math.Exp(-beta*(times[col]-ti))
+	for row := 0; row < T; row++ {
+		rowLen := T - row - 1
+
+		if rowLen == 0 {
+			continue
 		}
+
+		applyKernelMatrixRowNEON(
+			out[row*T+row+1:row*T+T],
+			exponents[:rowLen],
+			times[row+1:T],
+			alpha,
+			beta,
+			times[row],
+		)
+	}
+}
+
+func applyKernelMatrixRowNEON(out, exponents, times []float64, alpha, beta, origin float64) {
+	for index, eventTime := range times {
+		exponents[index] = math.Exp(-beta * (eventTime - origin))
+	}
+
+	for index, exponent := range exponents {
+		out[index] = alpha * exponent
 	}
 }

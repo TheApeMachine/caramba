@@ -218,6 +218,10 @@ func (pass *LoweringPass) Run(
 		if !pass.capabilities.Supports(node.OpType()) && node.IsPure() {
 			return PassResult{}, fmt.Errorf("lowering: backend does not support %q", node.OpType())
 		}
+
+		if err := validatePrecision(pass.capabilities, node); err != nil {
+			return PassResult{}, err
+		}
 	}
 
 	input.Diagnostics.Add(pass.Name(), DiagnosticInfo, "validated backend lowering legality")
@@ -228,4 +232,31 @@ func (pass *LoweringPass) Run(
 		TargetMap:   input.TargetMap,
 		Diagnostics: input.Diagnostics,
 	}, nil
+}
+
+func validatePrecision(capabilities Capabilities, node *ir.Node) error {
+	if !node.IsPure() {
+		return nil
+	}
+
+	required := node.ValueType().Precision
+
+	if required == "" {
+		required = node.ValueType().DType
+	}
+
+	if required == "" {
+		required = "float64"
+	}
+
+	actual := capabilities.Precision(node.OpType())
+
+	if required == actual {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"lowering: backend %s executes %q at %s precision, but node %q requires %s precision",
+		capabilities.Location(), node.OpType(), actual, node.ID(), required,
+	)
 }

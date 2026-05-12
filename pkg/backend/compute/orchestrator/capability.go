@@ -14,6 +14,7 @@ type Cost struct {
 type Capabilities interface {
 	Location() tensor.Location
 	Supports(op ir.OpType) bool
+	Precision(op ir.OpType) tensor.DType
 	CanFuse(pattern string, fused ir.OpType) bool
 	Cost(node *ir.Node) Cost
 }
@@ -25,14 +26,16 @@ type CapabilityProvider interface {
 type StaticCapabilities struct {
 	location tensor.Location
 	ops      map[ir.OpType]bool
+	precision map[ir.OpType]tensor.DType
 	fusions  map[string]map[ir.OpType]bool
 }
 
 func NewStaticCapabilities(location tensor.Location) *StaticCapabilities {
 	return &StaticCapabilities{
-		location: location,
-		ops:      make(map[ir.OpType]bool),
-		fusions:  make(map[string]map[ir.OpType]bool),
+		location:  location,
+		ops:       make(map[ir.OpType]bool),
+		precision: make(map[ir.OpType]tensor.DType),
+		fusions:   make(map[string]map[ir.OpType]bool),
 	}
 }
 
@@ -68,6 +71,30 @@ func (capabilities *StaticCapabilities) Register(ops ...ir.OpType) {
 
 func (capabilities *StaticCapabilities) Supports(op ir.OpType) bool {
 	return capabilities.ops["*"] || capabilities.ops[op]
+}
+
+func (capabilities *StaticCapabilities) Precision(op ir.OpType) tensor.DType {
+	if precision := capabilities.precision[op]; precision != "" {
+		return precision
+	}
+
+	if precision := capabilities.precision["*"]; precision != "" {
+		return precision
+	}
+
+	return tensor.Float64
+}
+
+func (capabilities *StaticCapabilities) SetPrecision(precision tensor.DType, ops ...ir.OpType) {
+	if len(ops) == 0 {
+		capabilities.precision["*"] = precision
+
+		return
+	}
+
+	for _, op := range ops {
+		capabilities.precision[op] = precision
+	}
 }
 
 func (capabilities *StaticCapabilities) RegisterFusion(pattern string, fused ir.OpType) {

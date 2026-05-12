@@ -69,6 +69,26 @@ func TestIntensity(t *testing.T) {
 	})
 }
 
+func TestApplyIntensity(t *testing.T) {
+	Convey("Given the architecture-specific Hawkes intensity path", t, func() {
+		times := []float64{0.0, 0.2, 0.4, 0.8, 1.0}
+		alpha := []float64{0.5, 1.2}
+		beta := []float64{1.0, 0.7}
+		mu := []float64{0.1, 0.3}
+		actual := make([]float64, len(alpha))
+		expected := make([]float64, len(alpha))
+
+		Convey("It should match the scalar reference within 1e-12", func() {
+			applyIntensity(actual, times, alpha, beta, mu, 1.1, len(alpha), len(times))
+			applyIntensityScalar(expected, times, alpha, beta, mu, 1.1, len(alpha), len(times))
+
+			for index := range actual {
+				So(actual[index], ShouldAlmostEqual, expected[index], 1e-12)
+			}
+		})
+	})
+}
+
 func TestKernelMatrix(t *testing.T) {
 	Convey("Given a KernelMatrix operation", t, func() {
 		op := NewKernelMatrix()
@@ -105,6 +125,23 @@ func TestKernelMatrix(t *testing.T) {
 				expected := 2.0 * math.Exp(-1.0)
 				So(out[1], ShouldAlmostEqual, expected, 1e-9)
 			})
+		})
+	})
+}
+
+func TestApplyKernelMatrix(t *testing.T) {
+	Convey("Given the architecture-specific Hawkes kernel matrix path", t, func() {
+		times := []float64{0.0, 0.25, 0.75, 1.5, 2.25}
+		actual := make([]float64, len(times)*len(times))
+		expected := make([]float64, len(times)*len(times))
+
+		Convey("It should match the scalar reference within 1e-12", func() {
+			applyKernelMatrix(actual, times, 0.8, 0.4, len(times))
+			applyKernelMatrixScalar(expected, times, 0.8, 0.4, len(times))
+
+			for index := range actual {
+				So(actual[index], ShouldAlmostEqual, expected[index], 1e-12)
+			}
 		})
 	})
 }
@@ -228,7 +265,7 @@ func BenchmarkIntensity_Forward(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		op.Forward(shape, times, alpha, beta, mu, tVal)
 	}
 }
@@ -249,7 +286,7 @@ func BenchmarkKernelMatrix_Forward(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		op.Forward(shape, times, alpha, beta)
 	}
 }
@@ -270,7 +307,7 @@ func BenchmarkLogLikelihood_Forward(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		op.Forward(shape, times, intensities, integral)
 	}
 }
@@ -287,7 +324,7 @@ func BenchmarkSimulate_Forward(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for range b.N {
+	for b.Loop() {
 		op.Forward(shape, mu, alpha, beta, tMax)
 	}
 }

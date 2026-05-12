@@ -14,10 +14,11 @@ func TestNewClerkConfig(t *testing.T) {
 
 			clerkConfig := NewClerkConfig()
 
-			So(clerkConfig.Active, ShouldBeFalse)
+			So(clerkConfig.Active, ShouldBeTrue)
 			So(clerkConfig.SecretKey, ShouldEqual, "")
 			So(clerkConfig.AdminSubjectIDs, ShouldBeEmpty)
 			So(clerkConfig.PrivilegedOrganizationSlug, ShouldEqual, "")
+			So(clerkConfig.RequireAuth, ShouldBeTrue)
 		})
 
 		Convey("When viper sets overrides they should appear on the struct", func() {

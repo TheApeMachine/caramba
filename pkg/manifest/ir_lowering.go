@@ -29,6 +29,14 @@ func LowerGraphToIR(graph *Graph, defaultShape tensor.Shape) (*ir.Graph, error) 
 			node.SetAttribute(key, attributeFromValue(value))
 		}
 
+		if precision, ok := manifestNode.Config["precision"].(string); ok {
+			node.SetValueType(ir.ValueType{
+				Shape:     defaultShape,
+				DType:     tensor.Float64,
+				Precision: tensor.DType(precision),
+			})
+		}
+
 		for index, port := range manifestNode.In {
 			node.SetAttribute(fmt.Sprintf("in.%d", index), ir.StringAttribute(port))
 		}

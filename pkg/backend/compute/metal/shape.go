@@ -8,12 +8,20 @@ import "C"
 
 import (
 	"fmt"
+	"strings"
 	"unsafe"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 )
 
 // MetalShapeOps dispatches shape manipulation kernels to the GPU via Metal.
 type MetalShapeOps struct {
 	metallib string
+}
+
+type ShapeForwardRequest struct {
+	Op       string
+	Metadata map[string]any
 }
 
 // NewShapeOps creates and initializes a MetalShapeOps.
@@ -62,14 +70,65 @@ func (m *MetalShapeOps) Transpose(shape []int, dim0, dim1 int, data []float64) (
 	return toFloat64(dst32), nil
 }
 
-// Forward satisfies the universal Forward signature as a no-op copy fallback.
-// shape is metadata only; data[0] supplies the buffer to copy.
-func (m *MetalShapeOps) Forward(_ []int, data ...[]float64) ([]float64, error) {
-	if len(data) == 0 {
-		return nil, fmt.Errorf("metal shape Forward: missing data argument")
-	}
+func (m *MetalShapeOps) Forward(
+	request ShapeForwardRequest,
+	shape []int,
+	data ...[]float64,
+) ([]float64, error) {
+	node := executor.NodeSpec{Shape: shape, Metadata: request.Metadata}
 
-	return m.Copy(data[0])
+	switch strings.ToLower(request.Op) {
+	case "shape.reshape":
+		if len(data) != 1 {
+			return nil, fmt.Errorf("metal shape Forward reshape: requires one input buffer")
+		}
+
+		return m.Copy(data[0])
+	case "shape.transpose":
+		if len(data) != 1 {
+			return nil, fmt.Errorf("metal shape Forward transpose: requires one input buffer")
+		}
+
+		return m.Transpose(
+			shape,
+			metalIntConfig(node, "dim0", 0),
+			metalIntConfig(node, "dim1", 1),
+			data[0],
+		)
+	case "shape.concat":
+		if len(data) != 2 {
+			return nil, fmt.Errorf("metal shape Forward concat: requires two input buffers")
+		}
+
+		return m.Concat(data[0], data[1])
+	case "shape.view_as_heads":
+		if len(data) != 1 {
+			return nil, fmt.Errorf("metal shape Forward view_as_heads: requires one input buffer")
+		}
+
+		if len(shape) != 3 {
+			return nil, fmt.Errorf("metal shape Forward view_as_heads: shape must be [B,T,D]")
+		}
+
+		numHeads := metalIntConfig(node, "num_heads", 1)
+		if numHeads <= 0 || shape[2]%numHeads != 0 {
+			return nil, fmt.Errorf("metal shape Forward view_as_heads: D must divide num_heads")
+		}
+
+		return m.ViewAsHeads(data[0], shape[0], shape[1], numHeads, shape[2]/numHeads)
+	case "shape.merge_heads":
+		if len(data) != 1 {
+			return nil, fmt.Errorf("metal shape Forward merge_heads: requires one input buffer")
+		}
+
+		if len(shape) != 4 {
+			return nil, fmt.Errorf("metal shape Forward merge_heads: shape must be [B,H,T,headDim]")
+		}
+
+		return m.MergeHeads(data[0], shape[0], shape[1], shape[2], shape[3])
+	default:
+		return nil, fmt.Errorf("metal shape Forward: unsupported operation %q", request.Op)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -170,4 +229,25 @@ func (m *MetalShapeOps) MergeHeads(input []float64, B, H, T, headDim int) ([]flo
 		return nil, fmt.Errorf("metal_merge_heads failed (rc=%d)", rc)
 	}
 	return toFloat64(dst32), nil
+}
+
+func metalIntConfig(node executor.NodeSpec, key string, fallback int) int {
+	value, ok := node.Metadata[key]
+
+	if !ok {
+		return fallback
+	}
+
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case float32:
+		return int(typed)
+	default:
+		return fallback
+	}
 }

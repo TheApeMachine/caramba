@@ -47,6 +47,7 @@ func acceleratorTensorCapabilities(location tensor.Location) *StaticCapabilities
 
 func metalCapabilities() *StaticCapabilities {
 	capabilities := acceleratorTensorCapabilities(tensor.Metal)
+	capabilities.SetPrecision(tensor.Float32)
 	capabilities.Register(
 		"active_inference.belief_update",
 		"active_inference.expected_free_energy",

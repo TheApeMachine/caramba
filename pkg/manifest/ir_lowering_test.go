@@ -43,5 +43,14 @@ func TestLowerGraphToIR(t *testing.T) {
 			So(nodes[1].Attribute("out.0").String(), ShouldEqual, "s:y")
 			So(nodes[1].Inputs()[0].ID(), ShouldEqual, "input")
 		})
+
+		Convey("It should lower explicit precision opt-in", func() {
+			graph.nodes[1].Config["precision"] = "float32"
+
+			irGraph, err := LowerGraphToIR(graph, shape)
+
+			So(err, ShouldBeNil)
+			So(irGraph.Nodes()[1].ValueType().Precision, ShouldEqual, tensor.Float32)
+		})
 	})
 }

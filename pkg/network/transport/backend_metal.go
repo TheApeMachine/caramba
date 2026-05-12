@@ -342,9 +342,9 @@ func (backend *MetalStreamBackend) applyOperation(
 	case "markov_blanket.partition":
 		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.markovBlanket.Partition)
 	case "masking.apply":
-		return executor.RunOperation(ctx, backend, node, inputs, backend.masking.NewApplyMask())
+		return executor.RunForwardErrorOperation(ctx, backend, node, inputs, backend.masking.NewApplyMask())
 	case "masking.causal":
-		return executor.RunOperation(ctx, backend, node, inputs, backend.masking.NewCausalMask())
+		return executor.RunForwardErrorOperation(ctx, backend, node, inputs, backend.masking.NewCausalMask())
 	case "pooling.adaptive_avg_pool2d", "pooling.adaptive_max_pool2d", "pooling.avg_pool2d", "pooling.max_pool2d":
 		return executor.RunErrorOperation(ctx, backend, node, inputs, backend.pooling.Forward)
 	case "positional.alibi", "positional.rope":

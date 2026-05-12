@@ -110,6 +110,19 @@ The `cuda` build tag gates all cgo imports. Without it, the package compiles to 
 
 The Metal backend exposes resident `MTLBuffer` tensors. Compute pipelines are compiled from Metal Shading Language sources embedded in the package.
 
+### Precision Contract
+
+Metal currently stores and executes tensor values as `float32`, then exposes them through the shared `Float64Tensor` API at host boundaries. This is an explicit backend contract, not a claim of `float64` arithmetic.
+
+The orchestrator treats IR nodes as requiring `float64` precision by default. Because Metal advertises `float32` precision for its operation families, lowering to Metal is rejected unless the manifest or IR node explicitly opts into `float32` precision:
+
+```yaml
+config:
+  precision: float32
+```
+
+This prevents silent precision degradation. CPU, CUDA, and XLA remain `float64` routes unless their capability contracts declare otherwise. A future double-single Metal path can be added as a separate `float64`-equivalent capability without changing the default safety rule.
+
 ### Building
 
 ```bash

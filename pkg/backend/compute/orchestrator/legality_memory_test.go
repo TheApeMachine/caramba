@@ -70,6 +70,40 @@ func TestBackendCapabilities(t *testing.T) {
 			So(metal.Supports("attention.sdpa"), ShouldBeTrue)
 			So(metal.Supports("vsa.bind"), ShouldBeTrue)
 			So(metal.Supports("train.optimizer.adam"), ShouldBeFalse)
+			So(metal.Precision("attention.sdpa"), ShouldEqual, tensor.Float32)
+		})
+	})
+}
+
+func TestLoweringPass_Precision(t *testing.T) {
+	Convey("Given Metal f32 capabilities", t, func() {
+		shape, err := tensor.NewShape([]int{1})
+		So(err, ShouldBeNil)
+
+		graph := ir.NewGraph()
+		node := ir.NewNode("relu", ir.OpReLU, shape)
+		graph.AddNode(node)
+
+		input := PassInput{
+			Graph:       graph,
+			Targets:     []*ir.Node{node},
+			TargetMap:   targetMap([]*ir.Node{node}),
+			Diagnostics: &Diagnostics{},
+		}
+
+		Convey("It should reject default f64 precision requirements", func() {
+			_, err := NewLoweringPass(CapabilitiesForLocation(tensor.Metal)).Run(context.Background(), input)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "requires float64 precision")
+		})
+
+		Convey("It should allow explicit f32 precision opt-in", func() {
+			node.SetValueType(ir.ValueType{Shape: shape, DType: tensor.Float64, Precision: tensor.Float32})
+
+			_, err := NewLoweringPass(CapabilitiesForLocation(tensor.Metal)).Run(context.Background(), input)
+
+			So(err, ShouldBeNil)
 		})
 	})
 }

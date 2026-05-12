@@ -25,10 +25,11 @@ func TestOrchestratorRun(t *testing.T) {
 
 		watcher := newOrchestratorTestWatcher(errors.New("watch failed"))
 		orchestrator := &Orchestrator{
-			ctx:     ctx,
-			cancel:  cancel,
-			watcher: watcher,
-			sem:     make(chan struct{}, 1),
+			ctx:        ctx,
+			cancel:     cancel,
+			watcher:    watcher,
+			cardSem:    make(chan struct{}, 1),
+			subtaskSem: make(chan struct{}, 1),
 		}
 
 		Convey("It should return the watcher error instead of blocking", func() {
@@ -47,10 +48,11 @@ func TestOrchestratorRun(t *testing.T) {
 		watcher.closeEvents()
 
 		orchestrator := &Orchestrator{
-			ctx:     ctx,
-			cancel:  cancel,
-			watcher: watcher,
-			sem:     make(chan struct{}, 1),
+			ctx:        ctx,
+			cancel:     cancel,
+			watcher:    watcher,
+			cardSem:    make(chan struct{}, 1),
+			subtaskSem: make(chan struct{}, 1),
 		}
 
 		Convey("It should return instead of waiting forever", func() {
@@ -102,9 +104,10 @@ func TestIsRelevant(t *testing.T) {
 		}
 
 		orchestrator := &Orchestrator{
-			ctx: context.Background(),
-			cfg: cfg,
-			sem: make(chan struct{}, 1),
+			ctx:        context.Background(),
+			cfg:        cfg,
+			cardSem:    make(chan struct{}, 1),
+			subtaskSem: make(chan struct{}, 1),
 		}
 
 		Convey("It should accept todo events on the requests project", func() {
@@ -175,6 +178,89 @@ func TestOrchestrator_moveCard(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "test exec failure")
 			So(orchestratorTestExecCount.Load(), ShouldEqual, 1)
 		})
+	})
+}
+
+func TestOrchestratorConcurrency(t *testing.T) {
+	Convey("Given separate card and subtask semaphores", t, func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		orchestrator := &Orchestrator{
+			ctx:        ctx,
+			cardSem:    make(chan struct{}, 1),
+			subtaskSem: make(chan struct{}, 1),
+		}
+
+		Convey("It should acquire a subtask slot while a card slot is held", func() {
+			So(orchestrator.acquire(orchestrator.cardSem), ShouldBeNil)
+			defer orchestrator.release(orchestrator.cardSem)
+
+			done := make(chan error, 1)
+			go func() {
+				done <- orchestrator.acquire(orchestrator.subtaskSem)
+			}()
+
+			select {
+			case err := <-done:
+				So(err, ShouldBeNil)
+				orchestrator.release(orchestrator.subtaskSem)
+			case <-time.After(250 * time.Millisecond):
+				t.Fatal("subtask semaphore acquisition deadlocked behind card semaphore")
+			}
+		})
+
+		Convey("It should return context cancellation while waiting for capacity", func() {
+			So(orchestrator.acquire(orchestrator.cardSem), ShouldBeNil)
+			cancel()
+
+			err := orchestrator.acquire(orchestrator.cardSem)
+
+			So(err, ShouldEqual, context.Canceled)
+			orchestrator.release(orchestrator.cardSem)
+		})
+	})
+
+	Convey("Given invalid concurrency", t, func() {
+		Convey("It should clamp to one slot", func() {
+			So(maxConcurrent(0), ShouldEqual, 1)
+			So(maxConcurrent(-4), ShouldEqual, 1)
+			So(maxConcurrent(3), ShouldEqual, 3)
+		})
+	})
+}
+
+func TestOrchestratorIntegrationLock(t *testing.T) {
+	Convey("Given concurrent branch integration attempts", t, func() {
+		orchestrator := &Orchestrator{}
+		entered := make(chan int, 2)
+		release := make(chan struct{})
+		done := make(chan struct{}, 2)
+
+		integrate := func(id int) {
+			orchestrator.integrationMu.Lock()
+			defer orchestrator.integrationMu.Unlock()
+
+			entered <- id
+			<-release
+			done <- struct{}{}
+		}
+
+		go integrate(1)
+		So(<-entered, ShouldEqual, 1)
+
+		go integrate(2)
+
+		select {
+		case <-entered:
+			t.Fatal("second integration entered before first released")
+		case <-time.After(100 * time.Millisecond):
+		}
+
+		close(release)
+		<-done
+		So(<-entered, ShouldEqual, 2)
+		<-done
 	})
 }
 

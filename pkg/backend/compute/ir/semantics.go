@@ -53,6 +53,7 @@ type ValueType struct {
 	DType       tensor.DType
 	Layout      Layout
 	MemoryClass MemoryClass
+	Precision   tensor.DType
 }
 
 type AttributeKind string
