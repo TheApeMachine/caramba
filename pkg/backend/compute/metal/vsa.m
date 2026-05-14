@@ -1,6 +1,7 @@
 #include <math.h>
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#include <stdint.h>
 #include <stddef.h>
 #include <string.h>
 #include "vsa.h"
@@ -395,7 +396,16 @@ int metal_vsa_bundle(const float *vectors, float *out, int count, int n) {
 			return;
 		}
 
-		NSUInteger vectorBytes = (NSUInteger)count * (NSUInteger)n * sizeof(float);
+		size_t countSize = (size_t)count;
+		size_t nSize = (size_t)n;
+
+		if (countSize > SIZE_MAX / nSize || countSize * nSize > SIZE_MAX / sizeof(float)) {
+			vsa_fail(-1, "bundle size overflow");
+			rc = -1;
+			return;
+		}
+
+		size_t vectorBytes = countSize * nSize * sizeof(float);
 		NSUInteger nb = (NSUInteger)n * sizeof(float);
 		id<MTLBuffer> bufVectors = vsa_buf_ro(vectors, vectorBytes);
 		id<MTLBuffer> bufSum = vsa_buf_rw(nb);

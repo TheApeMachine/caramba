@@ -260,6 +260,9 @@ func (metalCausalOps *MetalCausalOps) CATE(shape []int, data ...[]float64) ([]fl
 /*
 Counterfactual runs a heterogeneous linear SCM counterfactual query.
 shape=[N, N_cf], data[0]=X_obs, data[1]=Y_obs, data[2]=beta, data[3]=X_cf.
+Returns a row-major flattened [N, N_cf] matrix. N is the number of observed SCM
+equations, N_cf is the number of counterfactual scenarios, and element
+out[i*N_cf+j] is equation i evaluated at counterfactual input j.
 */
 func (metalCausalOps *MetalCausalOps) Counterfactual(
 	shape []int, data ...[]float64,
@@ -282,7 +285,11 @@ func (metalCausalOps *MetalCausalOps) Counterfactual(
 	}
 
 	if len(data[0]) != n || len(data[1]) != n || len(data[2]) != n || len(data[3]) != nCF {
-		return nil, fmt.Errorf("MetalCausalOps.Counterfactual: input length mismatch")
+		return nil, fmt.Errorf(
+			"MetalCausalOps.Counterfactual: input length mismatch "+
+				"expected X_obs=%d Y_obs=%d beta=%d X_cf=%d got X_obs=%d Y_obs=%d beta=%d X_cf=%d",
+			n, n, n, nCF, len(data[0]), len(data[1]), len(data[2]), len(data[3]),
+		)
 	}
 
 	xObs := toFloat32(data[0])
@@ -308,7 +315,10 @@ func (metalCausalOps *MetalCausalOps) Counterfactual(
 
 /*
 FrontdoorAdjustment computes the frontdoor causal effect with equal-frequency binning.
-shape=[N_x, N_m, N_y, T], data[0]=X, data[1]=M, data[2]=Y.
+shape=[N_x, N_m, N_y, T], data[0]=X, data[1]=M, data[2]=Y. N_x and N_m are
+bin counts, N_y must be 1 because the Metal kernel models univariate Y, and T
+is the number of samples. Returns a length-N_x slice containing the estimated
+frontdoor causal effect for each X bin in ascending bin order.
 */
 func (metalCausalOps *MetalCausalOps) FrontdoorAdjustment(
 	shape []int, data ...[]float64,
@@ -320,10 +330,14 @@ func (metalCausalOps *MetalCausalOps) FrontdoorAdjustment(
 		return nil, fmt.Errorf("MetalCausalOps.FrontdoorAdjustment: need shape [N_x,N_m,N_y,T]")
 	}
 
-	nx, nm, samples := shape[0], shape[1], shape[3]
+	nx, nm, ny, samples := shape[0], shape[1], shape[2], shape[3]
 
 	if nx <= 0 || nm <= 0 || samples <= 0 {
 		return nil, fmt.Errorf("MetalCausalOps.FrontdoorAdjustment: invalid dimensions")
+	}
+
+	if ny != 1 {
+		return nil, fmt.Errorf("MetalCausalOps.FrontdoorAdjustment: N_y must be 1, got %d", ny)
 	}
 
 	if len(data) < 3 {
@@ -331,7 +345,10 @@ func (metalCausalOps *MetalCausalOps) FrontdoorAdjustment(
 	}
 
 	if len(data[0]) < samples || len(data[1]) < samples || len(data[2]) < samples {
-		return nil, fmt.Errorf("MetalCausalOps.FrontdoorAdjustment: data lengths must be >= %d", samples)
+		return nil, fmt.Errorf(
+			"MetalCausalOps.FrontdoorAdjustment: data lengths must be >= T=%d got X=%d M=%d Y=%d",
+			samples, len(data[0]), len(data[1]), len(data[2]),
+		)
 	}
 
 	x := toFloat32(data[0][:samples])

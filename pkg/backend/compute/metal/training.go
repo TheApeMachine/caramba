@@ -8,6 +8,8 @@ import "C"
 
 import (
 	"fmt"
+	"runtime"
+	"sync"
 	"unsafe"
 )
 
@@ -17,8 +19,12 @@ math.metallib. The kernels live beside MathOps because they share the same primi
 reductions and elementwise math pipeline.
 */
 type MetalTrainingOps struct {
+	mu       sync.Mutex
 	metallib string
+	closed   bool
 }
+
+var metalTrainingOpsShutdownMu sync.Mutex
 
 /*
 NewTrainingOps creates and initializes MetalTrainingOps.
@@ -31,13 +37,50 @@ func NewTrainingOps(metallib string) (*MetalTrainingOps, error) {
 		return nil, fmt.Errorf("metal_math_init failed (rc=%d): check %q exists", rc, metallib)
 	}
 
-	return &MetalTrainingOps{metallib: metallib}, nil
+	trainingOps := &MetalTrainingOps{metallib: metallib}
+	runtime.SetFinalizer(trainingOps, func(trainingOps *MetalTrainingOps) {
+		_ = trainingOps.Close()
+	})
+
+	return trainingOps, nil
+}
+
+/*
+Close releases Metal math resources initialized for MetalTrainingOps.
+*/
+func (trainingOps *MetalTrainingOps) Close() error {
+	trainingOps.mu.Lock()
+	defer trainingOps.mu.Unlock()
+
+	if trainingOps.closed {
+		return nil
+	}
+
+	trainingOps.closed = true
+	trainingOps.metallib = ""
+	runtime.SetFinalizer(trainingOps, nil)
+
+	metalTrainingOpsShutdownMu.Lock()
+	defer metalTrainingOpsShutdownMu.Unlock()
+
+	if rc := C.metal_math_shutdown(); rc != 0 {
+		return fmt.Errorf("metal_math_shutdown failed (rc=%d)", rc)
+	}
+
+	return nil
 }
 
 /*
 MSELoss computes mean squared error on the GPU.
 */
 func (trainingOps *MetalTrainingOps) MSELoss(predictions, targets []float64) ([]float64, error) {
+	if len(predictions) != len(targets) {
+		return nil, fmt.Errorf(
+			"MetalTrainingOps.MSELoss: length mismatch predictions=%d targets=%d",
+			len(predictions), len(targets),
+		)
+	}
+
 	if len(predictions) == 0 {
 		return []float64{0}, nil
 	}
@@ -65,6 +108,17 @@ CrossEntropyLoss computes softmax cross-entropy on the GPU.
 func (trainingOps *MetalTrainingOps) CrossEntropyLoss(
 	logits, targets []float64,
 ) ([]float64, error) {
+	if len(logits) == 0 || len(targets) == 0 {
+		return nil, fmt.Errorf("MetalTrainingOps.CrossEntropyLoss: logits and targets must be non-empty")
+	}
+
+	if len(logits) != len(targets) {
+		return nil, fmt.Errorf(
+			"MetalTrainingOps.CrossEntropyLoss: length mismatch logits=%d targets=%d",
+			len(logits), len(targets),
+		)
+	}
+
 	output := make([]float32, 1)
 	logits32 := toFloat32(logits)
 	target32 := toFloat32(targets)
@@ -86,6 +140,13 @@ func (trainingOps *MetalTrainingOps) CrossEntropyLoss(
 MSEGrad computes the MSE gradient on the GPU.
 */
 func (trainingOps *MetalTrainingOps) MSEGrad(predictions, targets []float64) ([]float64, error) {
+	if len(predictions) != len(targets) {
+		return nil, fmt.Errorf(
+			"MetalTrainingOps.MSEGrad: length mismatch predictions=%d targets=%d",
+			len(predictions), len(targets),
+		)
+	}
+
 	if len(predictions) == 0 {
 		return []float64{}, nil
 	}
@@ -113,6 +174,13 @@ CrossEntropyGrad computes softmax cross-entropy gradient on the GPU.
 func (trainingOps *MetalTrainingOps) CrossEntropyGrad(
 	logits, targets []float64,
 ) ([]float64, error) {
+	if len(logits) != len(targets) {
+		return nil, fmt.Errorf(
+			"MetalTrainingOps.CrossEntropyGrad: length mismatch logits=%d targets=%d",
+			len(logits), len(targets),
+		)
+	}
+
 	if len(logits) == 0 {
 		return []float64{}, nil
 	}
@@ -138,6 +206,17 @@ func (trainingOps *MetalTrainingOps) CrossEntropyGrad(
 Accuracy computes single-sample argmax equality on the GPU.
 */
 func (trainingOps *MetalTrainingOps) Accuracy(predictions, targets []float64) ([]float64, error) {
+	if len(predictions) == 0 || len(targets) == 0 {
+		return nil, fmt.Errorf("MetalTrainingOps.Accuracy: predictions and targets must be non-empty")
+	}
+
+	if len(predictions) != len(targets) {
+		return nil, fmt.Errorf(
+			"MetalTrainingOps.Accuracy: length mismatch predictions=%d targets=%d",
+			len(predictions), len(targets),
+		)
+	}
+
 	output := make([]float32, 1)
 	prediction32 := toFloat32(predictions)
 	target32 := toFloat32(targets)
@@ -163,6 +242,13 @@ func (trainingOps *MetalTrainingOps) F1Counts(predictions, targets []float64) ([
 
 	if len(predictions) == 0 {
 		return toFloat64(output), nil
+	}
+
+	if len(predictions) != len(targets) {
+		return nil, fmt.Errorf(
+			"MetalTrainingOps.F1Counts: length mismatch predictions=%d targets=%d",
+			len(predictions), len(targets),
+		)
 	}
 
 	prediction32 := toFloat32(predictions)

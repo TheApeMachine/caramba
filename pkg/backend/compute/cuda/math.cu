@@ -155,7 +155,12 @@ __global__ void softmax_kernel(const double* src, double* dst,
     extern __shared__ double smem[];
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lmax;
     __syncthreads();
-    if (threadIdx.x < blockDim.x / warpSize) lmax = smem[threadIdx.x];
+    int warp_count = (blockDim.x + warpSize - 1) / warpSize;
+    if (threadIdx.x < warp_count) {
+        lmax = smem[threadIdx.x];
+    } else {
+        lmax = -1e300;
+    }
     #pragma unroll
     #pragma unroll
     for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
@@ -180,7 +185,11 @@ __global__ void softmax_kernel(const double* src, double* dst,
         lsum += __shfl_down_sync(0xffffffff, lsum, offset);
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lsum;
     __syncthreads();
-    if (threadIdx.x < blockDim.x / warpSize) lsum = smem[threadIdx.x];
+    if (threadIdx.x < warp_count) {
+        lsum = smem[threadIdx.x];
+    } else {
+        lsum = 0.0;
+    }
     #pragma unroll
     for (int offset = warpSize / 2; offset > 0; offset >>= 1)
         lsum += __shfl_down_sync(0xffffffff, lsum, offset);
@@ -303,7 +312,12 @@ __global__ void layernorm_kernel(const double* src, double* dst,
         lsum += __shfl_down_sync(0xffffffff, lsum, offset);
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lsum;
     __syncthreads();
-    if (threadIdx.x < blockDim.x / warpSize) lsum = smem[threadIdx.x];
+    int warp_count = (blockDim.x + warpSize - 1) / warpSize;
+    if (threadIdx.x < warp_count) {
+        lsum = smem[threadIdx.x];
+    } else {
+        lsum = 0.0;
+    }
     #pragma unroll
     for (int offset = warpSize/2; offset > 0; offset >>= 1)
         lsum += __shfl_down_sync(0xffffffff, lsum, offset);
@@ -323,7 +337,11 @@ __global__ void layernorm_kernel(const double* src, double* dst,
         lvar += __shfl_down_sync(0xffffffff, lvar, offset);
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lvar;
     __syncthreads();
-    if (threadIdx.x < blockDim.x / warpSize) lvar = smem[threadIdx.x];
+    if (threadIdx.x < warp_count) {
+        lvar = smem[threadIdx.x];
+    } else {
+        lvar = 0.0;
+    }
     #pragma unroll
     for (int offset = warpSize/2; offset > 0; offset >>= 1)
         lvar += __shfl_down_sync(0xffffffff, lvar, offset);
@@ -358,7 +376,12 @@ __global__ void rmsnorm_kernel(const double* src, double* dst,
         lss += __shfl_down_sync(0xffffffff, lss, offset);
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lss;
     __syncthreads();
-    if (threadIdx.x < blockDim.x / warpSize) lss = smem[threadIdx.x];
+    int warp_count = (blockDim.x + warpSize - 1) / warpSize;
+    if (threadIdx.x < warp_count) {
+        lss = smem[threadIdx.x];
+    } else {
+        lss = 0.0;
+    }
     #pragma unroll
     for (int offset = warpSize/2; offset > 0; offset >>= 1)
         lss += __shfl_down_sync(0xffffffff, lss, offset);
@@ -542,38 +565,44 @@ int cuda_softmax(const double* src, double* dst, int num_rows, int dim_size) {
 }
 
 int cuda_logsumexp(const double* src, double* dst, int num_rows, int dim_size) {
-    double *dSrc, *dDst;
+    double *dSrc = NULL, *dDst = NULL;
     size_t srcBytes = (size_t)num_rows * dim_size * sizeof(double);
     size_t dstBytes = (size_t)num_rows * sizeof(double);
+    int rc = -1;
+
     if (alloc_copy_free(src, (void**)&dSrc, srcBytes)) return -1;
-    if (cudaMalloc((void**)&dDst, dstBytes) != cudaSuccess) {
-        cudaFree(dSrc);
-        return -1;
-    }
+    if (cudaMalloc((void**)&dDst, dstBytes) != cudaSuccess) goto cleanup;
     int tgs = dim_size < BLOCK_SIZE ? dim_size : BLOCK_SIZE;
     int warps = (tgs + 31) / 32;
     logsumexp_kernel<<<num_rows, tgs, warps*sizeof(double)>>>(dSrc, dDst, dim_size);
-    CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaMemcpy(dst, dDst, dstBytes, cudaMemcpyDeviceToHost));
-    cudaFree(dSrc); cudaFree(dDst);
-    return 0;
+    if (cudaGetLastError() != cudaSuccess) goto cleanup;
+    if (cudaMemcpy(dst, dDst, dstBytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto cleanup;
+
+    rc = 0;
+cleanup:
+    cudaFree(dDst);
+    cudaFree(dSrc);
+    return rc;
 }
 
 int cuda_dropout(const double* src, double* dst, int n, double p, int training, int seed) {
-    double *dSrc, *dDst;
+    double *dSrc = NULL, *dDst = NULL;
     size_t bytes = (size_t)n * sizeof(double);
+    int rc = -1;
+
     if (alloc_copy_free(src, (void**)&dSrc, bytes)) return -1;
-    if (cudaMalloc((void**)&dDst, bytes) != cudaSuccess) {
-        cudaFree(dSrc);
-        return -1;
-    }
+    if (cudaMalloc((void**)&dDst, bytes) != cudaSuccess) goto cleanup;
     dropout_kernel<<<(n+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(
         dSrc, dDst, n, p, training, seed
     );
-    CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaMemcpy(dst, dDst, bytes, cudaMemcpyDeviceToHost));
-    cudaFree(dSrc); cudaFree(dDst);
-    return 0;
+    if (cudaGetLastError() != cudaSuccess) goto cleanup;
+    if (cudaMemcpy(dst, dDst, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto cleanup;
+
+    rc = 0;
+cleanup:
+    cudaFree(dDst);
+    cudaFree(dSrc);
+    return rc;
 }
 
 int cuda_layernorm(const double* src, double* dst,

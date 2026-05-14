@@ -53,6 +53,12 @@ func TestGraph_Execute(t *testing.T) {
 				_, err := graph.Execute(map[string][]float64{}, []int{3})
 				So(err, ShouldNotBeNil)
 			})
+
+			Convey("It should reject nil external input slices", func() {
+				_, err := graph.Execute(map[string][]float64{"x": nil}, []int{3})
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "input[0] is required")
+			})
 		})
 	})
 }

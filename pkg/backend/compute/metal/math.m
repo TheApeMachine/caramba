@@ -103,6 +103,43 @@ int metal_math_init(const char* metallib_path) {
     }
 }
 
+int metal_math_shutdown(void) {
+    @autoreleasepool {
+        gPSO_matmul = nil;
+        gPSO_matmul_add = nil;
+        gPSO_matmul_add_gelu = nil;
+        gPSO_add = nil;
+        gPSO_mul = nil;
+        gPSO_isdscale = nil;
+        gPSO_exp = nil;
+        gPSO_log = nil;
+        gPSO_softmax = nil;
+        gPSO_logsumexp = nil;
+        gPSO_dropout = nil;
+        gPSO_layernorm = nil;
+        gPSO_rmsnorm = nil;
+        gPSO_sign = nil;
+        gPSO_outer = nil;
+        gPSO_axpy = nil;
+        gPSO_scale2 = nil;
+        gPSO_sqrt_vec = nil;
+        gPSO_add_scalar = nil;
+        gPSO_div_vec = nil;
+        gPSO_clamp_vec = nil;
+        gPSO_mse_loss = nil;
+        gPSO_mse_grad = nil;
+        gPSO_ce_stats = nil;
+        gPSO_ce_loss = nil;
+        gPSO_ce_grad = nil;
+        gPSO_accuracy = nil;
+        gPSO_f1_counts = nil;
+        gMQueue = nil;
+        gMDevice = nil;
+
+        return 0;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -716,7 +753,12 @@ int metal_clamp_vec(float* dst, float lo, float hi, int n) {
 
 int metal_train_mse_loss(const float* predictions, const float* targets, float* out, int n) {
     @autoreleasepool {
-        if (!predictions || !targets || !out || n <= 0 || !gPSO_mse_loss) return -1;
+        if (!out || n < 0 || !gPSO_mse_loss) return -1;
+        if (n == 0) {
+            out[0] = 0.0f;
+            return 0;
+        }
+        if (!predictions || !targets) return -1;
 
         NSUInteger nb = (NSUInteger)n * sizeof(float);
         float zero = 0.0f;
@@ -804,7 +846,7 @@ static int metal_cross_entropy_common(
         [enc setBuffer:bLogits offset:0 atIndex:0];
         [enc setBuffer:bStats offset:0 atIndex:1];
         [enc setBytes:&un length:sizeof(unsigned int) atIndex:2];
-        [enc dispatchThreads:MTLSizeMake(1,1,1) threadsPerThreadgroup:MTLSizeMake(1,1,1)];
+        [enc dispatchThreads:MTLSizeMake(256,1,1) threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [enc endEncoding];
 
         id<MTLComputePipelineState> cePSO = gradient ? gPSO_ce_grad : gPSO_ce_loss;

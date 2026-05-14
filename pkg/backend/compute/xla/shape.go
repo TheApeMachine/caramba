@@ -13,6 +13,7 @@ import "C"
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 )
 
@@ -166,6 +167,33 @@ func (x *XLAShapeOps) Split(
 		return []float64{}, nil
 	}
 
+	if outer <= 0 || dimSize <= 0 || splitSize <= 0 || inner <= 0 {
+		return nil, fmt.Errorf(
+			"xla_split: outer, dimSize, splitSize, and inner must be positive, got %d %d %d %d",
+			outer, dimSize, splitSize, inner,
+		)
+	}
+
+	if splitSize > dimSize {
+		return nil, fmt.Errorf("xla_split: splitSize %d exceeds dimSize %d", splitSize, dimSize)
+	}
+
+	if dimSize%splitSize != 0 {
+		return nil, fmt.Errorf("xla_split: dimSize %d is not divisible by splitSize %d", dimSize, splitSize)
+	}
+
+	expected := int64(outer) * int64(dimSize) * int64(inner)
+	if expected != int64(len(input)) {
+		return nil, fmt.Errorf(
+			"xla_split: input length %d does not match outer*dimSize*inner=%d",
+			len(input), expected,
+		)
+	}
+
+	if expected > math.MaxInt32 {
+		return nil, fmt.Errorf("xla_split: input length %d exceeds int32", len(input))
+	}
+
 	dst := make([]float64, len(input))
 	rc := C.xla_split(
 		(*C.double)(unsafe.Pointer(&input[0])),
@@ -174,6 +202,7 @@ func (x *XLAShapeOps) Split(
 		C.int(dimSize),
 		C.int(splitSize),
 		C.int(inner),
+		C.int(len(input)),
 	)
 	if rc != 0 {
 		return nil, fmt.Errorf("xla_split failed")

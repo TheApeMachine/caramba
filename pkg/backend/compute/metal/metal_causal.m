@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
@@ -37,6 +38,13 @@ static id<MTLComputePipelineState> gPSO_dag_score = nil;
 
 static int gCInited = 0;
 static dispatch_queue_t gCSerial = NULL;
+
+static int compare_float_values(const void *left, const void *right) {
+	float a = *(const float *)left;
+	float b = *(const float *)right;
+
+	return (a > b) - (a < b);
+}
 
 static void c_ensure_serial(void) {
 	static dispatch_once_t onceToken;
@@ -570,7 +578,8 @@ int metal_causal_counterfactual(
 		[enc setBuffer:bOut offset:0 atIndex:4];
 		[enc setBytes:&N length:sizeof(N) atIndex:5];
 		[enc setBytes:&N_cf length:sizeof(N_cf) atIndex:6];
-		[enc dispatchThreads:MTLSizeMake((NSUInteger)(N * N_cf), 1, 1)
+		NSUInteger totalThreads = (NSUInteger)N * (NSUInteger)N_cf;
+		[enc dispatchThreads:MTLSizeMake(totalThreads, 1, 1)
 		 threadsPerThreadgroup:MTLSizeMake(gPSO_counterfactual.threadExecutionWidth, 1, 1)];
 		[enc endEncoding];
 		rc = c_wait(cb);
@@ -594,10 +603,40 @@ int metal_causal_frontdoor(
 		size_t xBytes = (size_t)nx * sizeof(float);
 		size_t matrixBytes = (size_t)nx * (size_t)nm * sizeof(float);
 		size_t binBytes = (size_t)T * sizeof(int);
+		float *sortedX = NULL;
+		float *sortedM = NULL;
+
+		if (nx > 1) {
+			sortedX = malloc(sampleBytes);
+			if (!sortedX) { rc = -4; return; }
+			memcpy(sortedX, X, sampleBytes);
+			qsort(sortedX, (size_t)T, sizeof(float), compare_float_values);
+		}
+
+		if (nm > 1) {
+			sortedM = malloc(sampleBytes);
+			if (!sortedM) {
+				free(sortedX);
+				rc = -4;
+				return;
+			}
+			memcpy(sortedM, M, sampleBytes);
+			qsort(sortedM, (size_t)T, sizeof(float), compare_float_values);
+		}
 
 		id<MTLBuffer> bX = [gCDevice newBufferWithBytes:X length:sampleBytes options:MTLResourceStorageModeShared];
 		id<MTLBuffer> bM = [gCDevice newBufferWithBytes:M length:sampleBytes options:MTLResourceStorageModeShared];
 		id<MTLBuffer> bY = [gCDevice newBufferWithBytes:Y length:sampleBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bXSorted = nil;
+		id<MTLBuffer> bMSorted = nil;
+		if (sortedX) {
+			bXSorted = [gCDevice newBufferWithBytes:sortedX length:sampleBytes options:MTLResourceStorageModeShared];
+		}
+		if (sortedM) {
+			bMSorted = [gCDevice newBufferWithBytes:sortedM length:sampleBytes options:MTLResourceStorageModeShared];
+		}
+		free(sortedX);
+		free(sortedM);
 		id<MTLBuffer> bXBoundaries = [gCDevice newBufferWithLength:xBoundaryBytes options:MTLResourceStorageModeShared];
 		id<MTLBuffer> bMBoundaries = [gCDevice newBufferWithLength:mBoundaryBytes options:MTLResourceStorageModeShared];
 		id<MTLBuffer> bXBins = [gCDevice newBufferWithLength:binBytes options:MTLResourceStorageModeShared];
@@ -614,6 +653,10 @@ int metal_causal_frontdoor(
 			rc = -4;
 			return;
 		}
+		if ((nx > 1 && !bXSorted) || (nm > 1 && !bMSorted)) {
+			rc = -4;
+			return;
+		}
 
 		id<MTLCommandBuffer> cb = [gCQueue commandBuffer];
 		id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
@@ -627,7 +670,7 @@ int metal_causal_frontdoor(
 		if (nx > 1) {
 			id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
 			[enc setComputePipelineState:gPSO_frontdoor_boundaries];
-			[enc setBuffer:bX offset:0 atIndex:0];
+			[enc setBuffer:bXSorted offset:0 atIndex:0];
 			[enc setBuffer:bXBoundaries offset:0 atIndex:1];
 			[enc setBytes:&T length:sizeof(T) atIndex:2];
 			[enc setBytes:&nx length:sizeof(nx) atIndex:3];
@@ -639,7 +682,7 @@ int metal_causal_frontdoor(
 		if (nm > 1) {
 			id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
 			[enc setComputePipelineState:gPSO_frontdoor_boundaries];
-			[enc setBuffer:bM offset:0 atIndex:0];
+			[enc setBuffer:bMSorted offset:0 atIndex:0];
 			[enc setBuffer:bMBoundaries offset:0 atIndex:1];
 			[enc setBytes:&T length:sizeof(T) atIndex:2];
 			[enc setBytes:&nm length:sizeof(nm) atIndex:3];
@@ -697,7 +740,8 @@ int metal_causal_frontdoor(
 		[encN setBytes:&T length:sizeof(T) atIndex:5];
 		[encN setBytes:&nx length:sizeof(nx) atIndex:6];
 		[encN setBytes:&nm length:sizeof(nm) atIndex:7];
-		[encN dispatchThreads:MTLSizeMake((NSUInteger)(nx * nm), 1, 1)
+		NSUInteger normalizeThreads = (NSUInteger)nx * (NSUInteger)nm;
+		[encN dispatchThreads:MTLSizeMake(normalizeThreads, 1, 1)
 		 threadsPerThreadgroup:MTLSizeMake(gPSO_frontdoor_normalize.threadExecutionWidth, 1, 1)];
 		[encN endEncoding];
 

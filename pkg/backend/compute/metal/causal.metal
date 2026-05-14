@@ -1,3 +1,5 @@
+#include <metal_stdlib>
+
 using namespace metal;
 
 // --- Parallel LA Kernels ---
@@ -354,7 +356,7 @@ kernel void counterfactual_kernel(
 }
 
 kernel void frontdoor_boundaries_kernel(
-    device const float* values [[buffer(0)]],
+    device const float* sorted_values [[buffer(0)]],
     device float* boundaries [[buffer(1)]],
     constant int& samples [[buffer(2)]],
     constant int& bins [[buffer(3)]],
@@ -366,28 +368,7 @@ kernel void frontdoor_boundaries_kernel(
     int position = int((float(boundaryIndex) / float(bins)) * float(samples));
     if (position >= samples) position = samples - 1;
 
-    float boundary = values[0];
-    for (int candidateIndex = 0; candidateIndex < samples; candidateIndex++) {
-        float candidate = values[candidateIndex];
-        int less = 0;
-        int equal = 0;
-
-        for (int sample = 0; sample < samples; sample++) {
-            float value = values[sample];
-            if (value < candidate) {
-                less++;
-            } else if (value == candidate) {
-                equal++;
-            }
-        }
-
-        if (less <= position && position < less + equal) {
-            boundary = candidate;
-            break;
-        }
-    }
-
-    boundaries[boundaryIndex - 1] = boundary;
+    boundaries[boundaryIndex - 1] = sorted_values[position];
 }
 
 kernel void frontdoor_assign_bins_kernel(

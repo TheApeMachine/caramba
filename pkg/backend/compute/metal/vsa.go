@@ -188,7 +188,7 @@ Permute cyclically shifts a vector by shift positions on the GPU.
 func (metalVSAOps *MetalVSAOps) Permute(
 	shape []int, shift int, data ...[]float64,
 ) ([]float64, error) {
-	return metalVSAOps.permute(shape, shift, false, data...)
+	return metalVSAOps.permute("Permute", shape, shift, false, data...)
 }
 
 /*
@@ -197,34 +197,36 @@ InversePermute reverses Permute by shifting by the inverse offset on the GPU.
 func (metalVSAOps *MetalVSAOps) InversePermute(
 	shape []int, shift int, data ...[]float64,
 ) ([]float64, error) {
-	return metalVSAOps.permute(shape, shift, true, data...)
+	return metalVSAOps.permute("InversePermute", shape, shift, true, data...)
 }
 
 func (metalVSAOps *MetalVSAOps) permute(
-	shape []int, shift int, inverse bool, data ...[]float64,
+	opName string, shape []int, shift int, inverse bool, data ...[]float64,
 ) ([]float64, error) {
 	metalVSAOps.mu.Lock()
 	defer metalVSAOps.mu.Unlock()
 
 	if len(shape) < 1 || shape[0] <= 0 {
-		return nil, fmt.Errorf("MetalVSAOps.Permute: need shape[0] > 0")
+		return nil, fmt.Errorf("MetalVSAOps.%s: need shape[0] > 0", opName)
 	}
 
 	n := shape[0]
 
 	if len(data) < 1 {
-		return nil, fmt.Errorf("MetalVSAOps.Permute: need one input vector")
+		return nil, fmt.Errorf("MetalVSAOps.%s: need one input vector", opName)
 	}
 
 	if len(data[0]) < n {
-		return nil, fmt.Errorf("MetalVSAOps.Permute: vector length must be >= %d", n)
+		return nil, fmt.Errorf("MetalVSAOps.%s: vector length must be >= %d", opName, n)
 	}
 
 	src := toFloat32(data[0][:n])
 	out := make([]float32, n)
 	var rc C.int
+	operationName := "metal_vsa_permute"
 
 	if inverse {
+		operationName = "metal_vsa_inverse_permute"
 		rc = C.metal_vsa_inverse_permute(
 			(*C.float)(unsafe.Pointer(&src[0])),
 			(*C.float)(unsafe.Pointer(&out[0])),
@@ -241,7 +243,7 @@ func (metalVSAOps *MetalVSAOps) permute(
 	}
 
 	if rc != 0 {
-		return nil, fmt.Errorf("metal_vsa_permute failed (rc=%d)", rc)
+		return nil, fmt.Errorf("%s failed (rc=%d)", operationName, rc)
 	}
 
 	return toFloat64(out), nil

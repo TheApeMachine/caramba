@@ -20,7 +20,10 @@ int metal_vsa_bind(const float* a, const float* b, float* out, int n);
 // L2-normalise: out[i] = in[i] / ||in||
 int metal_vsa_l2normalize(const float* in, float* out, int n);
 
-// Bundle count vectors laid out as count consecutive length-n vectors, then L2-normalise.
+// Bundle count vectors laid out as count consecutive length-n vectors. The
+// function computes out[i] = sum_j vectors[j*n + i], then L2-normalises that
+// summed vector in out. vectors must contain count*n floats and out must have
+// room for n floats.
 int metal_vsa_bundle(const float* vectors, float* out, int count, int n);
 
 // Dot product: out[0] = dot(a, b)  (cosine sim assuming unit-norm inputs)

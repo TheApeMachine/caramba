@@ -1157,7 +1157,7 @@ int cuda_causal_counterfactual(
 
     size_t total = (size_t)N * (size_t)N_cf;
 
-    if (total == 0 || total > INT_MAX) return -1;
+    if (total > INT_MAX) return -1;
 
     double *dX = NULL, *dY = NULL, *dBeta = NULL, *dXcf = NULL, *dOut = NULL;
     size_t nBytes = (size_t)N * sizeof(double);
@@ -1206,7 +1206,7 @@ int cuda_causal_frontdoor(
     size_t xBytes = (size_t)nx * sizeof(double);
     size_t matrixItems = (size_t)nx * (size_t)nm;
 
-    if (matrixItems == 0 || matrixItems > INT_MAX) return -1;
+    if (matrixItems > INT_MAX) return -1;
 
     size_t matrixBytes = matrixItems * sizeof(double);
     int sampleBlocks = (T + BLOCK_SIZE - 1) / BLOCK_SIZE;

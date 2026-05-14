@@ -1,6 +1,7 @@
 #include <cuda_runtime.h>
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include "training.h"
 
 #define BLOCK_SIZE 256
@@ -22,6 +23,12 @@ static int training_alloc_copy(const void* host, void** device, size_t bytes) {
         return -1;
     }
     return 0;
+}
+
+static int training_blocks(int count) {
+    int64_t total = (int64_t)count + (int64_t)BLOCK_SIZE - 1;
+
+    return (int)(total / BLOCK_SIZE);
 }
 
 __global__ void mse_loss_kernel(
@@ -213,7 +220,7 @@ static int cross_entropy_common(
     double *dLogits = NULL, *dTargets = NULL, *dOut = NULL;
     double *dMax = NULL, *dSum = NULL;
     size_t bytes = (size_t)n * sizeof(double);
-    int blocks = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int blocks = training_blocks(n);
     double max_value = 0.0, sum_value = 0.0;
 
     if (training_alloc_copy(logits, (void**)&dLogits, bytes)) return -1;
@@ -261,7 +268,7 @@ int cuda_train_mse_loss(const double* predictions, const double* targets, double
     int count = (int)n;
     double *dPredictions = NULL, *dTargets = NULL, *dSum = NULL;
     size_t bytes = n * sizeof(double);
-    int blocks = (count + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int blocks = training_blocks(count);
 
     if (training_alloc_copy(predictions, (void**)&dPredictions, bytes)) return -1;
     if (training_alloc_copy(targets, (void**)&dTargets, bytes)) goto fail;
@@ -298,7 +305,7 @@ int cuda_train_mse_grad(const double* predictions, const double* targets, double
     if (training_alloc_copy(targets, (void**)&dTargets, bytes)) goto fail;
     if (cudaMalloc((void**)&dOut, bytes) != cudaSuccess) goto fail;
 
-    mse_grad_kernel<<<(count + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
+    mse_grad_kernel<<<training_blocks(count), BLOCK_SIZE>>>(
         dPredictions, dTargets, dOut, count
     );
     if (cudaGetLastError() != cudaSuccess) goto fail;
@@ -350,7 +357,7 @@ int cuda_metric_f1_counts(const double* predictions, const double* targets, doub
     if (cudaMalloc((void**)&dOut, 4 * sizeof(double)) != cudaSuccess) goto fail;
     if (cudaMemset(dOut, 0, 4 * sizeof(double)) != cudaSuccess) goto fail;
 
-    f1_counts_kernel<<<(count + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
+    f1_counts_kernel<<<training_blocks(count), BLOCK_SIZE>>>(
         dPredictions, dTargets, dOut, count
     );
     if (cudaGetLastError() != cudaSuccess) goto fail;

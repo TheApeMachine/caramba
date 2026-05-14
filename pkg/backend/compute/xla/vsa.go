@@ -264,59 +264,33 @@ func (xlaVSAOps *XLAVSAOps) Similarity(shape []int, data ...[]float64) ([]float6
 	return out, nil
 }
 
+// Permute applies a circular permutation to flattened tensor data.
+// shape provides the vector length in shape[0], shift is the signed circular
+// offset, and data must contain one input vector. It returns the shifted vector
+// or an error when the runtime is closed or inputs are invalid.
 func (xlaVSAOps *XLAVSAOps) Permute(
 	shape []int,
 	shift int,
 	data ...[]float64,
 ) ([]float64, error) {
-	xlaVSAOps.mu.Lock()
-	defer xlaVSAOps.mu.Unlock()
-
-	if xlaVSAOps.closed.Load() {
-		return nil, fmt.Errorf("Permute: XLAVSAOps shut down")
-	}
-
-	if len(shape) < 1 {
-		return nil, fmt.Errorf("Permute: len(shape) < 1")
-	}
-
-	n := shape[0]
-	if n <= 0 {
-		return nil, fmt.Errorf("Permute: n must be > 0")
-	}
-
-	cn, err := cIntVSA("Permute.n", n)
-	if err != nil {
-		return nil, err
-	}
-
-	cshift, err := cSignedIntVSA("Permute.shift", shift)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(data) < 1 || len(data[0]) < n {
-		return nil, fmt.Errorf("Permute: input slice shorter than n=%d", n)
-	}
-
-	out := make([]float64, n)
-	rc := C.xla_vsa_permute(
-		(*C.double)(unsafe.Pointer(&data[0][0])),
-		(*C.double)(unsafe.Pointer(&out[0])),
-		cn,
-		cshift,
-	)
-	runtime.KeepAlive(data)
-	runtime.KeepAlive(out)
-
-	if rc != 0 {
-		return nil, vsaPJRTError("xla_vsa_permute", rc)
-	}
-
-	return out, nil
+	return xlaVSAOps.permute("Permute", false, shape, shift, data...)
 }
 
+// InversePermute applies the inverse circular permutation to flattened tensor data.
+// shape provides the vector length in shape[0], shift is the signed circular
+// offset to reverse, and data must contain one input vector. It returns the
+// recovered vector or an error when the runtime is closed or inputs are invalid.
 func (xlaVSAOps *XLAVSAOps) InversePermute(
+	shape []int,
+	shift int,
+	data ...[]float64,
+) ([]float64, error) {
+	return xlaVSAOps.permute("InversePermute", true, shape, shift, data...)
+}
+
+func (xlaVSAOps *XLAVSAOps) permute(
+	opName string,
+	inverse bool,
 	shape []int,
 	shift int,
 	data ...[]float64,
@@ -325,44 +299,58 @@ func (xlaVSAOps *XLAVSAOps) InversePermute(
 	defer xlaVSAOps.mu.Unlock()
 
 	if xlaVSAOps.closed.Load() {
-		return nil, fmt.Errorf("InversePermute: XLAVSAOps shut down")
+		return nil, fmt.Errorf("%s: XLAVSAOps shut down", opName)
 	}
 
 	if len(shape) < 1 {
-		return nil, fmt.Errorf("InversePermute: len(shape) < 1")
+		return nil, fmt.Errorf("%s: len(shape) < 1", opName)
 	}
 
 	n := shape[0]
 	if n <= 0 {
-		return nil, fmt.Errorf("InversePermute: n must be > 0")
+		return nil, fmt.Errorf("%s: n must be > 0", opName)
 	}
 
-	cn, err := cIntVSA("InversePermute.n", n)
+	cn, err := cIntVSA(opName+".n", n)
 	if err != nil {
 		return nil, err
 	}
 
-	cshift, err := cSignedIntVSA("InversePermute.shift", shift)
+	cshift, err := cSignedIntVSA(opName+".shift", shift)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(data) < 1 || len(data[0]) < n {
-		return nil, fmt.Errorf("InversePermute: input slice shorter than n=%d", n)
+		return nil, fmt.Errorf("%s: input slice shorter than n=%d", opName, n)
 	}
 
 	out := make([]float64, n)
-	rc := C.xla_vsa_inverse_permute(
-		(*C.double)(unsafe.Pointer(&data[0][0])),
-		(*C.double)(unsafe.Pointer(&out[0])),
-		cn,
-		cshift,
-	)
+	var rc C.int
+	cName := "xla_vsa_permute"
+
+	if inverse {
+		cName = "xla_vsa_inverse_permute"
+		rc = C.xla_vsa_inverse_permute(
+			(*C.double)(unsafe.Pointer(&data[0][0])),
+			(*C.double)(unsafe.Pointer(&out[0])),
+			cn,
+			cshift,
+		)
+	} else {
+		rc = C.xla_vsa_permute(
+			(*C.double)(unsafe.Pointer(&data[0][0])),
+			(*C.double)(unsafe.Pointer(&out[0])),
+			cn,
+			cshift,
+		)
+	}
+
 	runtime.KeepAlive(data)
 	runtime.KeepAlive(out)
 
 	if rc != 0 {
-		return nil, vsaPJRTError("xla_vsa_inverse_permute", rc)
+		return nil, vsaPJRTError(cName, rc)
 	}
 
 	return out, nil

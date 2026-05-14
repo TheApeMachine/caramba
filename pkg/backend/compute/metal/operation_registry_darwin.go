@@ -1740,7 +1740,7 @@ func (accuracy *Accuracy) Forward(stateDict *state.Dict) (*state.Dict, error) {
 
 	stateDict.Total++
 
-	if output[0] == 1 {
+	if stdmath.Abs(output[0]-1.0) < 1e-6 {
 		stateDict.Correct++
 	}
 	stateDict.EnsureOperationOutLen(1)

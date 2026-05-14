@@ -9,6 +9,7 @@ extern "C" {
 // metallib_path: absolute path to math.metallib.
 // Returns 0 on success, -1 on failure.
 int metal_math_init(const char* metallib_path);
+int metal_math_shutdown(void);
 
 // Tiled matrix multiply: C [M*N] = A [M*K] x B [K*N].
 // All arrays are row-major float32.
@@ -87,11 +88,34 @@ int metal_div_vec(const float* a, const float* b, float* dst, int n);
 int metal_clamp_vec(float* dst, float lo, float hi, int n);
 
 // Training and benchmark primitives.
+// metal_train_mse_loss writes a reduced scalar mean squared error to out[0].
+// predictions and targets are length n; out must have length 1 and must not
+// alias inputs. n==0 is a successful no-op with out[0]=0.
 int metal_train_mse_loss(const float* predictions, const float* targets, float* out, int n);
+
+// metal_train_cross_entropy_loss writes a reduced scalar softmax cross-entropy
+// to out[0]. logits are raw pre-softmax scores and targets are probability or
+// one-hot values in the same flat row-major class layout, both length n. out
+// length is 1 and must not alias inputs.
 int metal_train_cross_entropy_loss(const float* logits, const float* targets, float* out, int n);
+
+// metal_train_mse_grad writes d(MSE)/d(predictions) into out[n]. predictions,
+// targets, and out have length n. In-place use with out aliasing inputs is not
+// supported.
 int metal_train_mse_grad(const float* predictions, const float* targets, float* out, int n);
+
+// metal_train_cross_entropy_grad writes softmax(logits)-targets into out[n].
+// logits are raw scores and targets are probability/one-hot values matching the
+// logits layout. In-place use with out aliasing inputs is not supported.
 int metal_train_cross_entropy_grad(const float* logits, const float* targets, float* out, int n);
+
+// metal_bench_accuracy writes one scalar to out[0]: 1 when prediction and target
+// argmax indices match, otherwise 0. predictions and targets are length n score
+// buffers.
 int metal_bench_accuracy(const float* predictions, const float* targets, float* out, int n);
+
+// metal_bench_f1_counts writes reduced binary confusion counts to out[0..2] as
+// TP, FP, FN. predictions and targets are length n and thresholded at 0.5.
 int metal_bench_f1_counts(const float* predictions, const float* targets, float* out, int n);
 
 #ifdef __cplusplus

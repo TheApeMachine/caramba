@@ -27,6 +27,13 @@ func SwishSSE2(dst, src []float64)
 //go:noescape
 func swishScalarAMD64(dst, src []float64)
 
+/*
+SwishKernel applies the Swish activation to src and writes the result to dst.
+dst and src are float64 slices, and dst must be at least as long as src. The
+operation is safe for in-place use when dst and src reference the same backing
+array. Platform-optimized AVX2 or SSE2 implementations are selected
+automatically where available, with scalar code handling the remaining tail.
+*/
 func SwishKernel(dst, src []float64) {
 	if len(dst) < len(src) {
 		panic(fmt.Sprintf("SwishKernel: dst shorter than src (dst=%d src=%d)", len(dst), len(src)))

@@ -171,10 +171,7 @@ func (registry *OperationRegistry) TokenEmbedding(config *state.Dict) (state.Ope
 	config = stateConfig(config)
 
 	if config.VocabSize <= 0 {
-		return nil, fmt.Errorf(
-			"embedding.token: vocab_size must be positive, got %d",
-			config.VocabSize,
-		)
+		return nil, fmt.Errorf("embedding.token: vocab_size must be positive, got %d", config.VocabSize)
 	}
 
 	if config.DModel <= 0 {

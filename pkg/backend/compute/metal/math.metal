@@ -499,22 +499,45 @@ kernel void train_ce_stats_kernel(
     device const float* logits [[buffer(0)]],
     device float* stats        [[buffer(1)]],
     constant uint& n           [[buffer(2)]],
-    uint gid                   [[thread_position_in_grid]])
+    uint gid                   [[thread_position_in_grid]],
+    uint lid                   [[thread_position_in_threadgroup]],
+    uint tg_size               [[threads_per_threadgroup]])
 {
-    if (gid != 0) return;
+    threadgroup float smem[256];
 
-    float max_value = -INFINITY;
-    for (uint i = 0; i < n; i++) {
-        max_value = max(max_value, logits[i]);
+    float local_max = -INFINITY;
+    for (uint i = gid; i < n; i += tg_size) {
+        local_max = max(local_max, logits[i]);
     }
 
-    float sum_value = 0.0f;
-    for (uint i = 0; i < n; i++) {
-        sum_value += exp(logits[i] - max_value);
+    smem[lid] = local_max;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint stride = tg_size / 2; stride > 0; stride >>= 1) {
+        if (lid < stride) smem[lid] = max(smem[lid], smem[lid + stride]);
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 
-    stats[0] = max_value;
-    stats[1] = sum_value;
+    float global_max = smem[0];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    float local_sum = 0.0f;
+    for (uint i = gid; i < n; i += tg_size) {
+        local_sum += exp(logits[i] - global_max);
+    }
+
+    smem[lid] = local_sum;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint stride = tg_size / 2; stride > 0; stride >>= 1) {
+        if (lid < stride) smem[lid] += smem[lid + stride];
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (lid == 0) {
+        stats[0] = global_max;
+        stats[1] = smem[0];
+    }
 }
 
 kernel void train_cross_entropy_loss_kernel(

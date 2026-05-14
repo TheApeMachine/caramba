@@ -58,6 +58,10 @@ func (x *XLAMasking) NewCausalMask() *XLACausalMask {
 // Forward generates a causal mask on XLA.
 // shape must contain seq_len as its last element; data is unused.
 func (op *XLACausalMask) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(shape) == 0 {
+		return nil, fmt.Errorf("xla causal mask Forward: shape is required")
+	}
+
 	seqLen := shape[len(shape)-1]
 	return op.x.CausalMask(seqLen)
 }
@@ -93,6 +97,10 @@ func (x *XLAMasking) NewApplyMask() *XLAApplyMask {
 // Forward applies mask to scores: out[i] = scores[i] + mask[i].
 // data[0] = scores, data[1] = mask.
 func (op *XLAApplyMask) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf("xla apply mask Forward: scores and mask inputs are required")
+	}
+
 	return op.x.ApplyMask(data[0], data[1])
 }
 

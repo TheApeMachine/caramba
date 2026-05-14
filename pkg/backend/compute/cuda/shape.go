@@ -8,6 +8,7 @@ import "C"
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 )
 
@@ -146,7 +147,7 @@ func (c *CUDAShapeOps) Split(
 		return nil, fmt.Errorf("cuda_split: dimSize %d is not divisible by splitSize %d", dimSize, splitSize)
 	}
 
-	maxInt := int(^uint(0) >> 1)
+	maxInt := math.MaxInt
 
 	if outer > maxInt/dimSize {
 		return nil, fmt.Errorf("cuda_split: outer*dimSize overflows int")

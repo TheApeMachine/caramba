@@ -2,6 +2,8 @@ package state
 
 import (
 	"fmt"
+	"math"
+	"sync"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
@@ -9,6 +11,7 @@ import (
 type StateKeyType uint
 
 type Dict struct {
+	mu            sync.Mutex
 	tensorBackend tensor.Backend
 	err           error
 	shape         tensor.Shape
@@ -119,6 +122,43 @@ type Dict struct {
 	FN            float64
 	Sum           float64
 	X             []float64
+}
+
+func (dict *Dict) RecordAccuracy(correct bool) {
+	dict.mu.Lock()
+	defer dict.mu.Unlock()
+
+	dict.Total++
+
+	if correct {
+		dict.Correct++
+	}
+
+	dict.EnsureOperationOutLen(1)
+	dict.Out[0] = float64(dict.Correct) / float64(dict.Total)
+}
+
+func (dict *Dict) RecordPerplexity(loss float64) {
+	dict.mu.Lock()
+	defer dict.mu.Unlock()
+
+	dict.Total++
+	dict.Sum += loss
+	dict.EnsureOperationOutLen(1)
+	dict.Out[0] = math.Exp(dict.Sum / float64(dict.Total))
+}
+
+func (dict *Dict) RecordF1(tp, fp, fn float64) {
+	dict.mu.Lock()
+	defer dict.mu.Unlock()
+
+	dict.TP += tp
+	dict.FP += fp
+	dict.FN += fn
+	precision := dict.TP / (dict.TP + dict.FP + 1e-9)
+	recall := dict.TP / (dict.TP + dict.FN + 1e-9)
+	dict.EnsureOperationOutLen(1)
+	dict.Out[0] = 2 * precision * recall / (precision + recall + 1e-9)
 }
 
 func NewDict(tensorBackends ...tensor.Backend) *Dict {

@@ -63,10 +63,11 @@ func BenchmarkSwish_Forward(benchmark *testing.B) {
 		input[index] = float64(index%512)/64 - 4
 	}
 
+	stateDict := state.NewDict().
+		WithShape([]int{len(input)}).
+		WithInput(input)
+
 	for benchmark.Loop() {
-		stateDict := state.NewDict().
-			WithShape([]int{len(input)}).
-			WithInput(input)
 		_, _ = op.Forward(stateDict)
 	}
 }

@@ -4,44 +4,71 @@ package xla
 
 import (
 	"fmt"
-	stdmath "math"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 func (registry OperationRegistry) ReLU(config *state.Dict) (state.Operation, error) {
 	activation, err := newXLAActivation(config)
-	return &ReLU{activation: activation}, err
+	if err != nil {
+		return nil, err
+	}
+
+	return &ReLU{activation: activation}, nil
 }
 
 func (registry OperationRegistry) LeakyReLU(config *state.Dict) (state.Operation, error) {
 	activation, err := newXLAActivation(config)
-	return &LeakyReLU{activation: activation}, err
+	if err != nil {
+		return nil, err
+	}
+
+	return &LeakyReLU{activation: activation}, nil
 }
 
 func (registry OperationRegistry) GELU(config *state.Dict) (state.Operation, error) {
 	activation, err := newXLAActivation(config)
-	return &GELU{activation: activation}, err
+	if err != nil {
+		return nil, err
+	}
+
+	return &GELU{activation: activation}, nil
 }
 
 func (registry OperationRegistry) Tanh(config *state.Dict) (state.Operation, error) {
 	activation, err := newXLAActivation(config)
-	return &Tanh{activation: activation}, err
+	if err != nil {
+		return nil, err
+	}
+
+	return &Tanh{activation: activation}, nil
 }
 
 func (registry OperationRegistry) Sigmoid(config *state.Dict) (state.Operation, error) {
 	activation, err := newXLAActivation(config)
-	return &Sigmoid{activation: activation}, err
+	if err != nil {
+		return nil, err
+	}
+
+	return &Sigmoid{activation: activation}, nil
 }
 
 func (registry OperationRegistry) SwiGLU(config *state.Dict) (state.Operation, error) {
 	activation, err := newXLAActivation(config)
-	return &SwiGLU{activation: activation}, err
+	if err != nil {
+		return nil, err
+	}
+
+	return &SwiGLU{activation: activation}, nil
 }
 
 func (registry OperationRegistry) Swish(config *state.Dict) (state.Operation, error) {
 	activation, err := newXLAActivation(config)
-	return &Swish{activation: activation}, err
+	if err != nil {
+		return nil, err
+	}
+
+	return &Swish{activation: activation}, nil
 }
 
 func (registry OperationRegistry) SDPA(config *state.Dict) (state.Operation, error) {
@@ -574,7 +601,13 @@ func (causalMask *CausalMask) Forward(stateDict *state.Dict) (*state.Dict, error
 		return nil, err
 	}
 
-	output, err := causalMask.masking.CausalMask(stateDict.OperationLastDim())
+	dim := stateDict.OperationLastDim()
+
+	if dim <= 0 {
+		return nil, fmt.Errorf("xla.masking.causal_mask: last dimension must be positive, got %d", dim)
+	}
+
+	output, err := causalMask.masking.CausalMask(dim)
 	return setXLAOutput(stateDict, output, err)
 }
 
@@ -624,7 +657,7 @@ func (logSumExp *LogSumExp) Forward(stateDict *state.Dict) (*state.Dict, error) 
 	}
 
 	if len(stateDict.Inputs[0])%dimSize != 0 {
-		return nil, fmt.Errorf("xla.math.logsumexp: input length must divide last dimension")
+		return nil, fmt.Errorf("xla.math.logsumexp: input length must be divisible by last dimension")
 	}
 
 	output, err := logSumExp.mathOps.LogSumExp(stateDict.OperationShape(), stateDict.Inputs...)
@@ -655,6 +688,10 @@ func (dropout *Dropout) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.math.dropout: input[0] is required")
+	}
+
 	output, err := dropout.mathOps.Dropout(
 		stateDict.P, stateDict.Training, stateDict.Step, stateDict.Inputs[0],
 	)
@@ -667,6 +704,10 @@ func (rmsNorm *RMSNorm) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.math.rmsnorm: input[0] is required")
+	}
+
 	output, err := rmsNorm.mathOps.RMSNorm(
 		stateDict.OperationShape(), stateDict.Eps, stateDict.Weight, stateDict.Inputs...,
 	)
@@ -677,6 +718,10 @@ func (rmsNorm *RMSNorm) Forward(stateDict *state.Dict) (*state.Dict, error) {
 func (layerNorm *LayerNorm) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("xla.math.layernorm"); err != nil {
 		return nil, err
+	}
+
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.math.layernorm: input[0] is required")
 	}
 
 	output, err := layerNorm.mathOps.LayerNorm(
@@ -705,6 +750,10 @@ func (reshape *Reshape) Forward(stateDict *state.Dict) (*state.Dict, error) {
 func (transpose *Transpose) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("xla.shape.transpose"); err != nil {
 		return nil, err
+	}
+
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.shape.transpose: input[0] is required")
 	}
 
 	output, err := transpose.shapeOps.Transpose(
@@ -784,6 +833,14 @@ func (viewAsHeads *ViewAsHeads) Forward(stateDict *state.Dict) (*state.Dict, err
 		return nil, err
 	}
 
+	if stateDict.NumHeads <= 0 {
+		return nil, fmt.Errorf("xla.shape.view_as_heads: num_heads must be positive")
+	}
+
+	if shape[2]%stateDict.NumHeads != 0 {
+		return nil, fmt.Errorf("xla.shape.view_as_heads: hidden size must be divisible by num_heads")
+	}
+
 	output, err := viewAsHeads.shapeOps.ViewAsHeads(
 		stateDict.Inputs[0], shape[0], shape[1], stateDict.NumHeads,
 		shape[2]/stateDict.NumHeads,
@@ -812,6 +869,10 @@ type ALiBi struct{ positional *XLAPositionalOps }
 func (rope *RoPE) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("xla.positional.rope"); err != nil {
 		return nil, err
+	}
+
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.positional.rope: input[0] is required")
 	}
 
 	output, err := rope.positional.RoPEForward(
@@ -948,6 +1009,10 @@ func (pooling *MaxPool2D) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.pooling.max_pool2d: input[0] is required")
+	}
+
 	output, err := pooling.pooling.MaxPool2d(
 		stateDict.OperationShape(), xlaMaxPoolParams(stateDict), stateDict.Inputs[0],
 	)
@@ -958,6 +1023,10 @@ func (pooling *MaxPool2D) Forward(stateDict *state.Dict) (*state.Dict, error) {
 func (pooling *AvgPool2D) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("xla.pooling.avg_pool2d"); err != nil {
 		return nil, err
+	}
+
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.pooling.avg_pool2d: input[0] is required")
 	}
 
 	output, err := pooling.pooling.AvgPool2d(
@@ -972,6 +1041,10 @@ func (pooling *AdaptiveAvgPool2D) Forward(stateDict *state.Dict) (*state.Dict, e
 		return nil, err
 	}
 
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.pooling.adaptive_avg_pool2d: input[0] is required")
+	}
+
 	output, err := pooling.pooling.AdaptiveAvgPool2d(
 		stateDict.OperationShape(), stateDict.OutH, stateDict.OutW, stateDict.Inputs[0],
 	)
@@ -982,6 +1055,10 @@ func (pooling *AdaptiveAvgPool2D) Forward(stateDict *state.Dict) (*state.Dict, e
 func (pooling *AdaptiveMaxPool2D) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("xla.pooling.adaptive_max_pool2d"); err != nil {
 		return nil, err
+	}
+
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.pooling.adaptive_max_pool2d: input[0] is required")
 	}
 
 	output, err := pooling.pooling.AdaptiveMaxPool2d(
@@ -999,6 +1076,10 @@ func (linear *Linear) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.projection.linear: input[0] is required")
+	}
+
 	weight, bias := xlaWeightBias(stateDict)
 	output, err := linear.projection.Linear(
 		stateDict.OperationShape(), weight, bias, stateDict.Inputs[0],
@@ -1010,6 +1091,10 @@ func (linear *Linear) Forward(stateDict *state.Dict) (*state.Dict, error) {
 func (fusedQKV *FusedQKV) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("xla.projection.fused_qkv"); err != nil {
 		return nil, err
+	}
+
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.projection.fused_qkv: input[0] is required")
 	}
 
 	weight, bias := xlaWeightBias(stateDict)
@@ -1068,6 +1153,10 @@ func (vsaPermute *VSAPermute) Forward(stateDict *state.Dict) (*state.Dict, error
 		return nil, err
 	}
 
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.vsa.permute: input[0] is required")
+	}
+
 	output, err := vsaPermute.vsaOps.Permute(
 		stateDict.OperationShape(), stateDict.Dim, stateDict.Inputs...,
 	)
@@ -1078,6 +1167,10 @@ func (vsaPermute *VSAPermute) Forward(stateDict *state.Dict) (*state.Dict, error
 func (vsaInversePermute *VSAInversePermute) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("xla.vsa.inverse_permute"); err != nil {
 		return nil, err
+	}
+
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.vsa.inverse_permute: input[0] is required")
 	}
 
 	output, err := vsaInversePermute.vsaOps.InversePermute(
@@ -1299,14 +1392,7 @@ func (accuracy *Accuracy) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
-	stateDict.Total++
-
-	if output[0] == 1 {
-		stateDict.Correct++
-	}
-
-	stateDict.EnsureOperationOutLen(1)
-	stateDict.Out[0] = float64(stateDict.Correct) / float64(stateDict.Total)
+	stateDict.RecordAccuracy(output[0] == 1)
 
 	return stateDict, nil
 }
@@ -1324,10 +1410,7 @@ func (perplexity *Perplexity) Forward(stateDict *state.Dict) (*state.Dict, error
 		return nil, err
 	}
 
-	stateDict.Total++
-	stateDict.Sum += output[0]
-	stateDict.EnsureOperationOutLen(1)
-	stateDict.Out[0] = stdmath.Exp(stateDict.Sum / float64(stateDict.Total))
+	stateDict.RecordPerplexity(output[0])
 
 	return stateDict, nil
 }
@@ -1343,13 +1426,7 @@ func (f1 *F1) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
-	stateDict.TP += counts[0]
-	stateDict.FP += counts[1]
-	stateDict.FN += counts[2]
-	precision := stateDict.TP / (stateDict.TP + stateDict.FP + 1e-9)
-	recall := stateDict.TP / (stateDict.TP + stateDict.FN + 1e-9)
-	stateDict.EnsureOperationOutLen(1)
-	stateDict.Out[0] = 2 * precision * recall / (precision + recall + 1e-9)
+	stateDict.RecordF1(counts[0], counts[1], counts[2])
 
 	return stateDict, nil
 }
@@ -1361,6 +1438,10 @@ func xlaUnaryForward(
 ) (*state.Dict, error) {
 	if err := stateDict.RequireOperation(name); err != nil {
 		return nil, err
+	}
+
+	if stateDict.Inputs == nil || len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("missing input for operation %s", name)
 	}
 
 	output, err := forward(stateDict.Inputs[0])

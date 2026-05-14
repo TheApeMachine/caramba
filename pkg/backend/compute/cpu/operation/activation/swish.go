@@ -31,7 +31,12 @@ func (swish *Swish) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, fmt.Errorf("activation.swish: output tensor is nil")
 	}
 
-	SwishKernel(stateDict.Out, stateDict.Inputs[0])
+	if stateDict.Inputs == nil || len(stateDict.Inputs) == 0 || len(stateDict.Inputs[0]) == 0 {
+		return nil, fmt.Errorf("activation.swish: input[0] is required")
+	}
+
+	input := stateDict.Inputs[0]
+	SwishKernel(stateDict.Out, input)
 
 	return stateDict, nil
 }

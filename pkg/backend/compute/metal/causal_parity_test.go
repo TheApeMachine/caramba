@@ -137,6 +137,8 @@ func BenchmarkMetalCausalOps_Counterfactual(b *testing.B) {
 	beta := []float64{1, 2, 3}
 	xCF := []float64{4, 5}
 
+	b.ResetTimer()
+
 	for b.Loop() {
 		_, _ = metalOps.Counterfactual(shape, xObs, yObs, beta, xCF)
 	}

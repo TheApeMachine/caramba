@@ -71,11 +71,18 @@ int metal_causal_cate(
     float *cate,
     int T, int nx);
 
+// Counterfactual linear SCM for scalar observations.
+// X_obs, Y_obs, and beta are length N. X_cf is length N_cf. out is a row-major
+// flattened [N, N_cf] matrix where out[i*N_cf+j] is beta[i]*X_cf[j] + Y_obs[i]
+// - beta[i]*X_obs[i].
 int metal_causal_counterfactual(
     const float *X_obs, const float *Y_obs, const float *beta, const float *X_cf,
     float *out,
     int N, int N_cf);
 
+// Frontdoor adjustment with equal-frequency binning for univariate X, M, and Y.
+// X, M, and Y are length T. nx and nm are bin counts, and effect is a
+// caller-allocated length-nx output containing one estimate per X bin.
 int metal_causal_frontdoor(
     const float *X, const float *M, const float *Y,
     float *effect,

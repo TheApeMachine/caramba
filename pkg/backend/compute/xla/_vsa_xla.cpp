@@ -293,13 +293,8 @@ static std::string scale_module(int n, double scale) {
         "}";
 }
 
-static std::string cyclic_shift_module(int n, int shift, bool inverse) {
-    int k = ((shift % n) + n) % n;
-
-    if (inverse && k != 0) {
-        k = n - k;
-    }
-
+// cyclic_shift_module expects k pre-normalized into [0,n-1].
+static std::string cyclic_shift_module(int n, int k) {
     std::string t = "tensor<" + std::to_string(n) + "xf64>";
 
     if (k == 0) {
@@ -592,7 +587,7 @@ int xla_vsa_permute(const double* src, double* out, int n, int shift) {
 
     int k = ((shift % n) + n) % n;
     std::string key = "vsa_permute_" + std::to_string(n) + "_" + std::to_string(k);
-    auto* exec = compile_module(key, cyclic_shift_module(n, k, false));
+    auto* exec = compile_module(key, cyclic_shift_module(n, k));
     if (!exec) return -1;
 
     return run_unary(exec, src, (size_t)n, out, (size_t)n * sizeof(double));
@@ -604,8 +599,9 @@ int xla_vsa_inverse_permute(const double* src, double* out, int n, int shift) {
     if (!src || !out || n <= 0 || !gv_client) return -1;
 
     int k = ((shift % n) + n) % n;
+    if (k != 0) k = n - k;
     std::string key = "vsa_inverse_permute_" + std::to_string(n) + "_" + std::to_string(k);
-    auto* exec = compile_module(key, cyclic_shift_module(n, k, true));
+    auto* exec = compile_module(key, cyclic_shift_module(n, k));
     if (!exec) return -1;
 
     return run_unary(exec, src, (size_t)n, out, (size_t)n * sizeof(double));

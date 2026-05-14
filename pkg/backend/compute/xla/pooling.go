@@ -61,6 +61,36 @@ func xlaOutSize(in, kernel, stride, pad, dilation int, ceil bool) int {
 	return (in+2*pad-eff)/stride + 1
 }
 
+func validateXLAPoolingInput(method string, shape []int, data []float64) (int, int, int, int, error) {
+	if len(shape) < 4 {
+		return 0, 0, 0, 0, fmt.Errorf("xla pooling %s: shape rank must be >= 4", method)
+	}
+
+	if len(data) == 0 {
+		return 0, 0, 0, 0, fmt.Errorf("xla pooling %s: data slice is empty", method)
+	}
+
+	N, C, H, W := shape[0], shape[1], shape[2], shape[3]
+
+	if N <= 0 || C <= 0 || H <= 0 || W <= 0 {
+		return 0, 0, 0, 0, fmt.Errorf(
+			"xla pooling %s: shape dimensions must be positive, got N=%d C=%d H=%d W=%d",
+			method, N, C, H, W,
+		)
+	}
+
+	expectedSize := N * C * H * W
+
+	if len(data) != expectedSize {
+		return 0, 0, 0, 0, fmt.Errorf(
+			"xla pooling %s: data length %d != expected %d",
+			method, len(data), expectedSize,
+		)
+	}
+
+	return N, C, H, W, nil
+}
+
 // ---------------------------------------------------------------------------
 // MaxPool2d
 // ---------------------------------------------------------------------------
@@ -76,7 +106,11 @@ type XLAMaxPool2dParams struct {
 
 // MaxPool2d computes 2-D max pooling via XLA.
 func (x *XLAPooling) MaxPool2d(shape []int, params XLAMaxPool2dParams, data []float64) ([]float64, error) {
-	N, C, H, W := shape[0], shape[1], shape[2], shape[3]
+	N, C, H, W, err := validateXLAPoolingInput("MaxPool2d", shape, data)
+	if err != nil {
+		return nil, err
+	}
+
 	Hout := xlaOutSize(H, params.KernelH, params.StrideH, params.PadH, params.DilationH, params.CeilMode)
 	Wout := xlaOutSize(W, params.KernelW, params.StrideW, params.PadW, params.DilationW, params.CeilMode)
 	dst := make([]float64, N*C*Hout*Wout)
@@ -114,7 +148,11 @@ type XLAAvgPool2dParams struct {
 
 // AvgPool2d computes 2-D average pooling via XLA.
 func (x *XLAPooling) AvgPool2d(shape []int, params XLAAvgPool2dParams, data []float64) ([]float64, error) {
-	N, C, H, W := shape[0], shape[1], shape[2], shape[3]
+	N, C, H, W, err := validateXLAPoolingInput("AvgPool2d", shape, data)
+	if err != nil {
+		return nil, err
+	}
+
 	Hout := xlaOutSize(H, params.KernelH, params.StrideH, params.PadH, params.DilationH, params.CeilMode)
 	Wout := xlaOutSize(W, params.KernelW, params.StrideW, params.PadW, params.DilationW, params.CeilMode)
 	dst := make([]float64, N*C*Hout*Wout)
@@ -147,7 +185,11 @@ func (x *XLAPooling) AvgPool2d(shape []int, params XLAAvgPool2dParams, data []fl
 
 // AdaptiveAvgPool2d computes adaptive average pooling to [OutH, OutW] via XLA.
 func (x *XLAPooling) AdaptiveAvgPool2d(shape []int, outH, outW int, data []float64) ([]float64, error) {
-	N, C, H, W := shape[0], shape[1], shape[2], shape[3]
+	N, C, H, W, err := validateXLAPoolingInput("AdaptiveAvgPool2d", shape, data)
+	if err != nil {
+		return nil, err
+	}
+
 	dst := make([]float64, N*C*outH*outW)
 
 	rc := C.xla_adaptive_avg_pool2d(
@@ -168,7 +210,11 @@ func (x *XLAPooling) AdaptiveAvgPool2d(shape []int, outH, outW int, data []float
 
 // AdaptiveMaxPool2d computes adaptive max pooling to [OutH, OutW] via XLA.
 func (x *XLAPooling) AdaptiveMaxPool2d(shape []int, outH, outW int, data []float64) ([]float64, error) {
-	N, C, H, W := shape[0], shape[1], shape[2], shape[3]
+	N, C, H, W, err := validateXLAPoolingInput("AdaptiveMaxPool2d", shape, data)
+	if err != nil {
+		return nil, err
+	}
+
 	dst := make([]float64, N*C*outH*outW)
 
 	rc := C.xla_adaptive_max_pool2d(

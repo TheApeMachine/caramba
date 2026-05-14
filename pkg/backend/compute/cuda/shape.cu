@@ -1,5 +1,6 @@
 #include <cuda_runtime.h>
 #include <limits.h>
+#include <stdint.h>
 #include "shape.h"
 
 // Max rank supported by the general transpose kernel.
@@ -82,8 +83,6 @@ __global__ void split_kernel(
     int element_in_chunk = split_size * inner;
     int chunk_elements = outer * element_in_chunk;
 
-    if (element_in_chunk <= 0 || chunk_elements <= 0) return;
-
     int chunk = index / chunk_elements;
     int chunk_offset = index - chunk * chunk_elements;
     int outer_index = chunk_offset / element_in_chunk;
@@ -145,6 +144,25 @@ __global__ void merge_heads_kernel(
 static const int BLOCK = 256;
 static inline int blocks(int n) { return (n + BLOCK - 1) / BLOCK; }
 
+static int checked_mul_size(size_t* out, size_t factor) {
+    if (*out > SIZE_MAX / factor) return -1;
+
+    *out *= factor;
+    return 0;
+}
+
+static int checked_total4(size_t* total, int a, int b, int c, int d) {
+    if (a <= 0 || b <= 0 || c <= 0 || d <= 0) return -1;
+
+    *total = (size_t)a;
+    if (checked_mul_size(total, (size_t)b)) return -1;
+    if (checked_mul_size(total, (size_t)c)) return -1;
+    if (checked_mul_size(total, (size_t)d)) return -1;
+    if (*total > INT_MAX) return -1;
+
+    return 0;
+}
+
 // ---------------------------------------------------------------------------
 // C linkage wrappers
 // ---------------------------------------------------------------------------
@@ -155,9 +173,22 @@ int cuda_transpose(const double* src, double* dst,
                    const int* shape, int rank,
                    int dim0, int dim1, int n)
 {
+    if (!src || !dst || !shape || rank <= 0 || rank > MAX_RANK || n <= 0) return -1;
+    if (dim0 < 0 || dim0 >= rank || dim1 < 0 || dim1 >= rank) return -1;
+
+    size_t total_items = 1;
+
+    for (int index = 0; index < rank; index++) {
+        if (shape[index] <= 0) return -1;
+        if (checked_mul_size(&total_items, (size_t)shape[index])) return -1;
+        if (total_items > INT_MAX) return -1;
+    }
+
+    if (total_items != (size_t)n) return -1;
+
     double *d_src = NULL, *d_dst = NULL;
     int    *d_shapepad = NULL;
-    size_t bytes       = (size_t)n * sizeof(double);
+    size_t bytes       = total_items * sizeof(double);
 
     if (cudaMalloc(&d_src,   bytes)       != cudaSuccess) return -1;
     if (cudaMalloc(&d_dst,   bytes)       != cudaSuccess) goto fail;
@@ -188,6 +219,8 @@ fail:
 }
 
 int cuda_copy(const double* src, double* dst, int n) {
+    if (!src || !dst || n <= 0) return -1;
+
     double *d_src = NULL, *d_dst = NULL;
     size_t bytes = (size_t)n * sizeof(double);
 
@@ -211,11 +244,19 @@ int cuda_concat(const double* srcA, int n_a,
                 const double* srcB, int n_b,
                 double* dst)
 {
+    if (!dst || n_a < 0 || n_b < 0) return -1;
+    if (n_a > 0 && !srcA) return -1;
+    if (n_b > 0 && !srcB) return -1;
+
+    size_t total_items = (size_t)n_a + (size_t)n_b;
+
+    if (total_items == 0 || total_items > INT_MAX) return -1;
+
     double *d_a = NULL, *d_b = NULL, *d_dst = NULL;
     size_t a_bytes   = (size_t)n_a * sizeof(double);
     size_t b_bytes   = (size_t)n_b * sizeof(double);
     size_t dst_bytes = (size_t)(n_a + n_b) * sizeof(double);
-    int total = n_a + n_b;
+    int total = (int)total_items;
 
     if (cudaMalloc(&d_a,   a_bytes)   != cudaSuccess) return -1;
     if (cudaMalloc(&d_b,   b_bytes)   != cudaSuccess) goto fail;
@@ -247,7 +288,7 @@ int cuda_split(const double* src, double* dst,
 
     size_t total_items = (size_t)outer * (size_t)dim_size * (size_t)inner;
 
-    if (total_items == 0 || total_items > INT_MAX) return -1;
+    if (total_items > INT_MAX) return -1;
 
     int total = (int)total_items;
     double *d_src = NULL, *d_dst = NULL;
@@ -274,9 +315,15 @@ fail:
 int cuda_view_as_heads(const double* src, double* dst,
                        int B, int T, int H, int head_dim)
 {
-    int n = B * T * H * head_dim;
+    if (!src || !dst) return -1;
+
+    size_t total_items = 0;
+
+    if (checked_total4(&total_items, B, T, H, head_dim)) return -1;
+
+    int n = (int)total_items;
     double *d_src = NULL, *d_dst = NULL;
-    size_t bytes = (size_t)n * sizeof(double);
+    size_t bytes = total_items * sizeof(double);
 
     if (cudaMalloc(&d_src, bytes) != cudaSuccess) return -1;
     if (cudaMalloc(&d_dst, bytes) != cudaSuccess) { cudaFree(d_src); return -1; }
@@ -297,9 +344,15 @@ fail:
 int cuda_merge_heads(const double* src, double* dst,
                      int B, int H, int T, int head_dim)
 {
-    int n = B * H * T * head_dim;
+    if (!src || !dst) return -1;
+
+    size_t total_items = 0;
+
+    if (checked_total4(&total_items, B, H, T, head_dim)) return -1;
+
+    int n = (int)total_items;
     double *d_src = NULL, *d_dst = NULL;
-    size_t bytes = (size_t)n * sizeof(double);
+    size_t bytes = total_items * sizeof(double);
 
     if (cudaMalloc(&d_src, bytes) != cudaSuccess) return -1;
     if (cudaMalloc(&d_dst, bytes) != cudaSuccess) { cudaFree(d_src); return -1; }

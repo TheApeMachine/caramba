@@ -68,7 +68,11 @@ func (x *XLAAttention) Forward(shape []int, data ...[]float64) ([]float64, error
 			shape[0], shape[1], shape[2], shape[3], shape[4]
 
 		if batch <= 0 || numHeads <= 0 || numKVHeads <= 0 || seqLen <= 0 || headDim <= 0 {
-			return nil, fmt.Errorf("xla.attention: shape dimensions must be positive")
+			return nil, fmt.Errorf(
+				"xla.attention: shape dimensions must be positive, got "+
+					"batch=%d numHeads=%d numKVHeads=%d seqLen=%d headDim=%d",
+				batch, numHeads, numKVHeads, seqLen, headDim,
+			)
 		}
 
 		return x.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
@@ -77,7 +81,11 @@ func (x *XLAAttention) Forward(shape []int, data ...[]float64) ([]float64, error
 		batch, numHeads, seqLen, headDim := shape[0], shape[1], shape[2], shape[3]
 
 		if batch <= 0 || numHeads <= 0 || seqLen <= 0 || headDim <= 0 {
-			return nil, fmt.Errorf("xla.attention: shape dimensions must be positive")
+			return nil, fmt.Errorf(
+				"xla.attention: shape dimensions must be positive, got "+
+					"batch=%d numHeads=%d seqLen=%d headDim=%d",
+				batch, numHeads, seqLen, headDim,
+			)
 		}
 
 		kvSize := batch * 1 * seqLen * headDim

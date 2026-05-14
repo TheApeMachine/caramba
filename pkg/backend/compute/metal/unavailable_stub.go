@@ -2,11 +2,11 @@
 
 package metal
 
-import "fmt"
+import "errors"
 
 const metalUnavailableMsg = "metal backend unavailable: requires darwin and cgo"
 
-var errMetalUnavailable = fmt.Errorf("%s", metalUnavailableMsg)
+var errMetalUnavailable = errors.New(metalUnavailableMsg)
 
 func metalUnavailable() error {
 	return errMetalUnavailable

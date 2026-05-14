@@ -24,14 +24,14 @@ int cuda_concat(const double* srcA, int n_a,
                 const double* srcB, int n_b,
                 double* dst);
 
-// Split groups consecutive equal-sized ranges along one logical dimension and
+// Splits consecutive equal-sized ranges into groups along one logical dimension and
 // writes the groups sequentially into dst. outer is the product of dimensions
 // before the split axis, dim_size is the full size of that axis, split_size is
 // the length of each chunk on that axis, and inner is the product of dimensions
 // after the axis. dim_size must be divisible by split_size, yielding
 // dim_size/split_size chunks. src and dst are row-major flat buffers of
-// outer*dim_size*inner elements, and dst is ordered by outer block, chunk,
-// split_size, then inner stride. Returns 0 on success and -1 on invalid
+// outer*dim_size*inner elements, and dst layout is
+// [outer][chunk][offset_within_split_size][inner]. Returns 0 on success and -1 on invalid
 // arguments or CUDA failure.
 int cuda_split(const double* src, double* dst,
                int outer, int dim_size, int split_size, int inner);

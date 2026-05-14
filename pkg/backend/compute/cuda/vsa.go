@@ -27,7 +27,28 @@ Bind computes elementwise product of data[0] and data[1] on the GPU.
 shape=[N].
 */
 func (cudaVSAOps *CUDAVSAOps) Bind(shape []int, data ...[]float64) ([]float64, error) {
+	if len(shape) == 0 {
+		return nil, fmt.Errorf("cuda_vsa_bind: shape[0] is required")
+	}
+
 	n := shape[0]
+
+	if n <= 0 {
+		return nil, fmt.Errorf("cuda_vsa_bind: n must be positive, got %d", n)
+	}
+
+	if len(data) < 2 {
+		return nil, fmt.Errorf("cuda_vsa_bind: data[0] and data[1] are required")
+	}
+
+	if data[0] == nil || len(data[0]) < n {
+		return nil, fmt.Errorf("cuda_vsa_bind: data[0] length %d < n %d", len(data[0]), n)
+	}
+
+	if data[1] == nil || len(data[1]) < n {
+		return nil, fmt.Errorf("cuda_vsa_bind: data[1] length %d < n %d", len(data[1]), n)
+	}
+
 	out := make([]float64, n)
 
 	rc := C.cuda_vsa_bind(
@@ -49,12 +70,29 @@ Bundle superimposes all input vectors on the GPU and returns an L2-normalised re
 shape=[N].
 */
 func (cudaVSAOps *CUDAVSAOps) Bundle(shape []int, data ...[]float64) ([]float64, error) {
+	if len(shape) == 0 {
+		return nil, fmt.Errorf("cuda_vsa_bundle: shape[0] is required")
+	}
+
 	n := shape[0]
+
+	if n <= 0 {
+		return nil, fmt.Errorf("cuda_vsa_bundle: n must be positive, got %d", n)
+	}
+
 	numVecs := len(data)
+
+	if numVecs == 0 {
+		return nil, fmt.Errorf("cuda_vsa_bundle: at least one vector is required")
+	}
 
 	ptrs := make([]*C.double, numVecs)
 
 	for i, vec := range data {
+		if vec == nil || len(vec) < n {
+			return nil, fmt.Errorf("cuda_vsa_bundle: data[%d] length %d < n %d", i, len(vec), n)
+		}
+
 		ptrs[i] = (*C.double)(unsafe.Pointer(&vec[0]))
 	}
 
@@ -79,7 +117,28 @@ Similarity computes the dot-product similarity between data[0] and data[1] on th
 shape=[N], returns length-1 slice.
 */
 func (cudaVSAOps *CUDAVSAOps) Similarity(shape []int, data ...[]float64) ([]float64, error) {
+	if len(shape) == 0 {
+		return nil, fmt.Errorf("cuda_vsa_similarity: shape[0] is required")
+	}
+
 	n := shape[0]
+
+	if n <= 0 {
+		return nil, fmt.Errorf("cuda_vsa_similarity: n must be positive, got %d", n)
+	}
+
+	if len(data) < 2 {
+		return nil, fmt.Errorf("cuda_vsa_similarity: data[0] and data[1] are required")
+	}
+
+	if data[0] == nil || len(data[0]) < n {
+		return nil, fmt.Errorf("cuda_vsa_similarity: data[0] length %d < n %d", len(data[0]), n)
+	}
+
+	if data[1] == nil || len(data[1]) < n {
+		return nil, fmt.Errorf("cuda_vsa_similarity: data[1] length %d < n %d", len(data[1]), n)
+	}
+
 	out := make([]float64, 1)
 
 	rc := C.cuda_vsa_similarity(

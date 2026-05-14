@@ -110,9 +110,10 @@ func TestMetalShapeOpsForwardParity(t *testing.T) {
 		Convey("It should run split through the Metal split kernel", func() {
 			input := []float64{1, 2, 3, 4, 5, 6, 7, 8}
 			expectedState := state.NewDict().WithShape([]int{2, 4}).WithInput(input)
+			var err error
 			expectedState.Dim = 1
 			expectedState.SplitSize = 2
-			expectedState, err := cpushape.NewSplit().Forward(expectedState)
+			expectedState, err = cpushape.NewSplit().Forward(expectedState)
 
 			So(err, ShouldBeNil)
 

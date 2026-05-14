@@ -149,8 +149,20 @@ func (x *XLAMathOps) Softmax(shape []int, data ...[]float64) ([]float64, error) 
 }
 
 func (x *XLAMathOps) LogSumExp(shape []int, data ...[]float64) ([]float64, error) {
+	if len(shape) == 0 {
+		return nil, fmt.Errorf("xla_logsumexp: shape is required")
+	}
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("xla_logsumexp: input[0] is required")
+	}
+
 	dimSize := shape[len(shape)-1]
 	n := len(data[0])
+
+	if n == 0 {
+		return []float64{}, nil
+	}
 
 	if dimSize <= 0 || n%dimSize != 0 {
 		return nil, fmt.Errorf("xla_logsumexp: invalid dim size %d for length %d", dimSize, n)
@@ -164,7 +176,7 @@ func (x *XLAMathOps) LogSumExp(shape []int, data ...[]float64) ([]float64, error
 		C.int(numRows), C.int(dimSize),
 	)
 	if rc != 0 {
-		return nil, fmt.Errorf("xla_logsumexp failed")
+		return nil, fmt.Errorf("xla_logsumexp failed: rc=%d", rc)
 	}
 	return dst, nil
 }
@@ -198,7 +210,7 @@ func (x *XLAMathOps) Dropout(
 		C.int(seed),
 	)
 	if rc != 0 {
-		return nil, fmt.Errorf("xla_dropout failed")
+		return nil, fmt.Errorf("xla_dropout failed: rc=%d", rc)
 	}
 	return dst, nil
 }

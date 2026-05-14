@@ -56,7 +56,26 @@ int xla_log(const double* src, double* dst, int n);
  * (in-place is unsupported). NaN/Inf follow typical exponential-sum softmax behaviour.
  */
 int xla_softmax(const double* src, double* dst, int num_rows, int dim_size);
+
+/**
+ * xla_logsumexp: row-major matrix src[num_rows][dim_size]. Computes one
+ * log-sum-exp value per row and writes dst[num_rows]. src and dst must not
+ * alias. num_rows and dim_size must be positive; empty rows and dim_size==0 are
+ * invalid. NaN values propagate through the row result. +Inf produces +Inf;
+ * rows containing only -Inf produce -Inf under StableHLO max/sum semantics.
+ * Returns 0 on success and -1 on validation or PJRT failure.
+ */
 int xla_logsumexp(const double* src, double* dst, int num_rows, int dim_size);
+
+/**
+ * xla_dropout: during training (training != 0), randomly zeros elements with
+ * probability and scales retained values by 1/(1-probability). During inference
+ * (training == 0), copies src to dst unchanged. probability must be in [0,1);
+ * invalid values return non-zero. seed is a signed host seed used by the
+ * deterministic StableHLO test hash. src and dst must not alias unless a caller
+ * has separately proven the compiled backend supports it. Returns 0 on success
+ * and non-zero on error.
+ */
 int xla_dropout(const double* src, double* dst, int n, double probability, int training, int seed);
 
 /**
@@ -79,11 +98,47 @@ int xla_rmsnorm(
 int xla_sign(const double* src, double* dst, int n);
 int xla_outer(const double* a, const double* b, double* dst, int M, int N);
 
+/**
+ * xla_train_mse_loss writes reduced mean squared error to out[0]. predictions
+ * and targets are length n. out must have length 1 and must not alias inputs.
+ * n must be > 0. Returns 0 on success, -1 on error.
+ */
 int xla_train_mse_loss(const double* predictions, const double* targets, double* out, int n);
+
+/**
+ * xla_train_cross_entropy_loss reads raw logits and probability/one-hot targets
+ * of length n, applies softmax internally, and writes one reduced scalar loss
+ * into out[0]. Targets should be in [0,1] using the same flat class layout as
+ * logits. Inputs must not alias out. n must be > 0. Returns 0 on success, -1 on
+ * error.
+ */
 int xla_train_cross_entropy_loss(const double* logits, const double* targets, double* out, int n);
+
+/**
+ * xla_train_mse_grad writes d(MSE)/d(predictions) to out[n]. predictions,
+ * targets, and out are length n. Inputs must not alias out. n must be > 0.
+ */
 int xla_train_mse_grad(const double* predictions, const double* targets, double* out, int n);
+
+/**
+ * xla_train_cross_entropy_grad writes softmax(logits)-targets to out[n].
+ * logits are raw scores and targets are probability/one-hot values matching the
+ * logits layout. n must be > 0; inputs must not alias out.
+ */
 int xla_train_cross_entropy_grad(const double* logits, const double* targets, double* out, int n);
+
+/**
+ * xla_bench_accuracy writes scalar argmax equality to out[0] for two length-n
+ * score vectors. out length is 1. n must be > 0. Returns 0 on success, -1 on
+ * error.
+ */
 int xla_bench_accuracy(const double* predictions, const double* targets, double* out, int n);
+
+/**
+ * xla_bench_f1_counts writes reduced binary counts to out[0..2] as TP, FP, FN.
+ * predictions and targets are length n and are thresholded by the implementation.
+ * n must be > 0. Returns 0 on success, -1 on error.
+ */
 int xla_bench_f1_counts(const double* predictions, const double* targets, double* out, int n);
 
 int xla_axpy(double* dst, const double* src, double scale, int n);

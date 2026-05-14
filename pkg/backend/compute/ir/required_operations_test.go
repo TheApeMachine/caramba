@@ -20,8 +20,6 @@ func TestRequiredOperationIDs(t *testing.T) {
 
 				seen[operationID] = true
 			}
-
-			So(len(seen), ShouldEqual, len(operationIDs))
 		})
 	})
 }

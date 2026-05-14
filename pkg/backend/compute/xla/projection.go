@@ -74,9 +74,39 @@ func InitXLALinearWeights(inFeatures, outFeatures int) ([]float64, []float64) {
 // weight [outFeatures*inFeatures], bias [outFeatures] or nil.
 // shape = [M, inFeatures].
 func (x *XLAProjection) Linear(shape []int, weight, bias []float64, data ...[]float64) ([]float64, error) {
+	if len(shape) < 2 {
+		return nil, fmt.Errorf("xla_linear: shape must be [M,K]")
+	}
+
+	if len(data) == 0 || len(data[0]) == 0 {
+		return nil, fmt.Errorf("xla_linear: data[0] is required")
+	}
+
 	M := shape[0]
 	K := shape[1]
+
+	if M <= 0 || K <= 0 {
+		return nil, fmt.Errorf("xla_linear: M and K must be positive")
+	}
+
+	if len(weight) == 0 {
+		return nil, fmt.Errorf("xla_linear: weight is required")
+	}
+
+	if len(weight)%K != 0 {
+		return nil, fmt.Errorf("xla_linear: weight length %d must be divisible by K=%d", len(weight), K)
+	}
+
 	N := len(weight) / K
+
+	if len(data[0]) < M*K {
+		return nil, fmt.Errorf("xla_linear: data[0] length %d must be >= M*K=%d", len(data[0]), M*K)
+	}
+
+	if bias != nil && len(bias) != N {
+		return nil, fmt.Errorf("xla_linear: bias length %d must equal N=%d", len(bias), N)
+	}
+
 	dst := make([]float64, M*N)
 
 	hasBias := 0

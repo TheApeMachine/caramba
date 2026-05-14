@@ -190,6 +190,18 @@ func (cudaCausalOps *CUDACausalOps) FrontdoorAdjustment(
 		return nil, fmt.Errorf("cuda_causal_frontdoor: X, M, and Y inputs are required")
 	}
 
+	if len(data[0]) == 0 {
+		return nil, fmt.Errorf("cuda_causal_frontdoor: X input slice must be non-empty")
+	}
+
+	if len(data[1]) == 0 {
+		return nil, fmt.Errorf("cuda_causal_frontdoor: M input slice must be non-empty")
+	}
+
+	if len(data[2]) == 0 {
+		return nil, fmt.Errorf("cuda_causal_frontdoor: Y input slice must be non-empty")
+	}
+
 	nx, nm, ny, samples := shape[0], shape[1], shape[2], shape[3]
 
 	if nx <= 0 || nm <= 0 || samples <= 0 {
@@ -198,6 +210,13 @@ func (cudaCausalOps *CUDACausalOps) FrontdoorAdjustment(
 
 	if ny != 1 {
 		return nil, fmt.Errorf("cuda_causal_frontdoor: N_y must be 1 for univariate Y, got %d", ny)
+	}
+
+	if len(data[0]) < samples || len(data[1]) < samples || len(data[2]) < samples {
+		return nil, fmt.Errorf(
+			"cuda_causal_frontdoor: input lengths must be >= T=%d got X=%d M=%d Y=%d",
+			samples, len(data[0]), len(data[1]), len(data[2]),
+		)
 	}
 
 	effect := make([]float64, nx)

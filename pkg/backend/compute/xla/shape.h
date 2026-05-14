@@ -44,8 +44,13 @@ int xla_concat(const double* srcA, int n_a,
                const double* srcB, int n_b,
                double* dst);
 
+// Split a contiguous tensor along the middle logical dimension into consecutive
+// chunks of split_size for each outer block and inner element. src and dst must
+// each contain total_count elements, where total_count must equal
+// outer * dim_size * inner. dim_size must be divisible by split_size; the
+// implementation does not pad or truncate partial chunks.
 int xla_split(const double* src, double* dst,
-              int outer, int dim_size, int split_size, int inner);
+              int outer, int dim_size, int split_size, int inner, int total_count);
 
 // ViewAsHeads: [B,T,H,head_dim] -> [B,H,T,head_dim]
 int xla_view_as_heads(const double* src, double* dst,

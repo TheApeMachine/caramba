@@ -31,7 +31,14 @@ int metal_concat(const float* srcA, int n_a,
                  const float* srcB, int n_b,
                  float* dst);
 
-// Split into equal chunks along a logical dimension, returned concatenated.
+// Split divides dim_size into equal chunks of split_size along one logical
+// dimension and writes the chunks into dst as
+// [outer][chunk][offset_within_split_size][inner]. outer is the product of
+// dimensions before the split dimension, dim_size is that dimension's length,
+// split_size is the chunk length, and inner is the product of dimensions after
+// the split dimension. split_size must evenly divide dim_size. src and dst must
+// each hold at least outer * dim_size * inner elements. Returns 0 on success and
+// -1 on invalid arguments or Metal failure.
 int metal_split(const float* src, float* dst,
                 int outer, int dim_size, int split_size, int inner);
 

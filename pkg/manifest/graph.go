@@ -173,6 +173,7 @@ func (graph *Graph) Execute(inputs map[string][]float64, shape []int) (map[strin
 
 		stateDict := state.NewDict().WithShape(shape)
 		stateDict.Inputs = data
+		stateDict.EnsureOperationOut()
 
 		outputState, err := node.Op.Forward(stateDict)
 

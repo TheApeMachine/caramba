@@ -8,6 +8,7 @@ import "C"
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 )
 
@@ -152,8 +153,8 @@ func (c *CUDAMathOps) Dropout(
 	seed int,
 	data []float64,
 ) ([]float64, error) {
-	const maxInt32 = int(^uint32(0) >> 1)
-	const minInt32 = -maxInt32 - 1
+	const maxInt32 = math.MaxInt32
+	const minInt32 = math.MinInt32
 
 	if seed < minInt32 || seed > maxInt32 {
 		return nil, fmt.Errorf("cuda_dropout: seed %d overflows int32", seed)

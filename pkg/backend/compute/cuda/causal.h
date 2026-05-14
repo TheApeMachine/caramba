@@ -60,7 +60,11 @@ int cuda_causal_dag_markov(
 );
 
 // Counterfactual linear SCM:
-// x_obs [N], y_obs [N], beta [N], x_cf [N_cf] -> out [N*N_cf].
+// N is the number of SCM equations / observed data points, and N_cf is the
+// number of counterfactual scenarios. x_obs [N], y_obs [N], beta [N],
+// x_cf [N_cf] -> out [N*N_cf].
+// For each equation i (0..N-1), compute its counterfactual outcomes across all
+// N_cf x_cf values.
 // out[i*N_cf+j] = beta[i]*x_cf[j] + y_obs[i] - beta[i]*x_obs[i].
 int cuda_causal_counterfactual(
     const double* x_obs, const double* y_obs, const double* beta, const double* x_cf,

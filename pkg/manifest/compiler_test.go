@@ -14,10 +14,6 @@ import (
 type scaleOp struct{ factor float64 }
 
 func (scale *scaleOp) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	if err := stateDict.RequireOperation("math.scale"); err != nil {
-		return nil, err
-	}
-
 	if len(stateDict.Inputs) == 0 || stateDict.Inputs[0] == nil {
 		return nil, fmt.Errorf("math.scale: input[0] is required")
 	}
@@ -28,6 +24,10 @@ func (scale *scaleOp) Forward(stateDict *state.Dict) (*state.Dict, error) {
 
 	if len(stateDict.Out) < len(stateDict.Inputs[0]) {
 		return nil, fmt.Errorf("math.scale: output length %d < input length %d", len(stateDict.Out), len(stateDict.Inputs[0]))
+	}
+
+	if err := stateDict.RequireOperation("math.scale"); err != nil {
+		return nil, err
 	}
 
 	for index, value := range stateDict.Inputs[0] {
@@ -58,6 +58,29 @@ func TestCompiler_Compile(t *testing.T) {
 		compiler := NewCompilerWithRegistry(root, operationRegistry)
 
 		Convey("Compile", func() {
+			Convey("It should validate scale operation inputs", func() {
+				operation := &scaleOp{factor: 2}
+
+				_, err := operation.Forward(&state.Dict{Out: []float64{}})
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "math.scale: input[0] is required")
+
+				_, err = operation.Forward(&state.Dict{Inputs: [][]float64{nil}, Out: []float64{}})
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "math.scale: input[0] is required")
+
+				_, err = operation.Forward(&state.Dict{Inputs: [][]float64{{1}}})
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "math.scale: output is required")
+
+				_, err = operation.Forward(&state.Dict{
+					Inputs: [][]float64{{1, 2}},
+					Out:    []float64{0},
+				})
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "math.scale: output length 1 < input length 2")
+			})
+
 			Convey("It should build a graph from a valid manifest", func() {
 				write("master.yml", `
 system:

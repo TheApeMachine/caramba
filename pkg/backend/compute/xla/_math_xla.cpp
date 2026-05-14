@@ -282,18 +282,20 @@ static std::string logsumexp_module(int num_rows, int dim_size) {
         "}\n";
 }
 
-static std::string dropout_module(int n, double probability, int seed) {
+// Dropout uses a deterministic StableHLO arithmetic hash for reproducible tests.
+// It is not a cryptographic or production-training PRNG.
+static std::string dropout_module(int n, double probability) {
     std::string t = "tensor<" + std::to_string(n) + "xf64>";
-    std::ostringstream pss, scale_ss, seed_ss;
+    std::ostringstream pss, scale_ss;
     pss << std::setprecision(17) << std::defaultfloat << probability;
     scale_ss << std::setprecision(17) << std::defaultfloat << (1.0 / (1.0 - probability));
-    seed_ss << std::setprecision(17) << std::defaultfloat << (double)seed;
 
     return
         "module @dropout {\n"
-        "  func.func @main(%x: " + t + ") -> " + t + " {\n"
+        "  func.func @main(%x: " + t + ", %seed_input: tensor<1xf64>) -> " + t + " {\n"
         "    %idx = stablehlo.iota dim = 0 : " + t + "\n"
-        "    %seed = stablehlo.constant dense<" + seed_ss.str() + "> : " + t + "\n"
+        "    %seed_scalar = stablehlo.reshape %seed_input : (tensor<1xf64>) -> tensor<f64>\n"
+        "    %seed = stablehlo.broadcast_in_dim %seed_scalar, dims = [] : (tensor<f64>) -> " + t + "\n"
         "    %a = stablehlo.constant dense<12.9898> : " + t + "\n"
         "    %b = stablehlo.constant dense<78.233> : " + t + "\n"
         "    %c = stablehlo.constant dense<43758.5453123> : " + t + "\n"
@@ -816,16 +818,23 @@ int xla_dropout(const double* src, double* dst, int n, double probability, int t
     } else {
         std::ostringstream pss;
         pss << std::setprecision(17) << std::defaultfloat << probability;
-        key = "dropout_" + std::to_string(n) + "_" + pss.str() + "_" + std::to_string(seed);
-        module = dropout_module(n, probability, seed);
+        key = "dropout_" + std::to_string(n) + "_" + pss.str();
+        module = dropout_module(n, probability);
     }
 
     PJRT_LoadedExecutable* exec = xla_math_compile_module(key, module);
     if (!exec) return -1;
 
-    const double* ins[1] = {src};
-    size_t sizes[1] = {(size_t)n * sizeof(double)};
-    return xla_math_run_exec(exec, ins, 1, sizes, dst, sizes[0]);
+    if (!training || probability == 0.0) {
+        const double* ins[1] = {src};
+        size_t sizes[1] = {(size_t)n * sizeof(double)};
+        return xla_math_run_exec(exec, ins, 1, sizes, dst, sizes[0]);
+    }
+
+    double seed_value = (double)seed;
+    const double* ins[2] = {src, &seed_value};
+    size_t sizes[2] = {(size_t)n * sizeof(double), sizeof(double)};
+    return xla_math_run_exec(exec, ins, 2, sizes, dst, sizes[0]);
 }
 
 int xla_layernorm(const double* src, double* dst,

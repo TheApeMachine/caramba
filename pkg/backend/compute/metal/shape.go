@@ -185,6 +185,10 @@ func (m *MetalShapeOps) Concat(a, b []float64) ([]float64, error) {
 }
 
 // Split returns equal-sized chunks along a logical dimension as one flat buffer.
+// outer is the product of dimensions before the split dimension, dimSize is the
+// size of the logical dimension being split, splitSize is the number of elements
+// per chunk along that dimension, and inner is the product of dimensions after
+// the split dimension.
 func (m *MetalShapeOps) Split(
 	input []float64,
 	outer int,
@@ -196,6 +200,30 @@ func (m *MetalShapeOps) Split(
 	if n == 0 {
 		return []float64{}, nil
 	}
+
+	if outer <= 0 || dimSize <= 0 || splitSize <= 0 || inner <= 0 {
+		return nil, fmt.Errorf(
+			"invalid split params: outer=%d dimSize=%d splitSize=%d inner=%d",
+			outer, dimSize, splitSize, inner,
+		)
+	}
+
+	if dimSize%splitSize != 0 {
+		return nil, fmt.Errorf(
+			"invalid split params: dimSize %d is not divisible by splitSize %d",
+			dimSize, splitSize,
+		)
+	}
+
+	expected := int64(outer) * int64(dimSize) * int64(inner)
+
+	if expected != int64(n) {
+		return nil, fmt.Errorf(
+			"invalid split params: input length %d does not match outer*dimSize*inner=%d",
+			n, expected,
+		)
+	}
+
 	src32 := toFloat32(input)
 	dst32 := make([]float32, n)
 	rc := C.metal_split(

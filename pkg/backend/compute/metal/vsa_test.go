@@ -3,7 +3,9 @@
 package metal
 
 import (
+	"fmt"
 	"math"
+	"os"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -58,7 +60,12 @@ func TestMetalVSAOps(t *testing.T) {
 }
 
 func BenchmarkMetalVSAOpsPermute(b *testing.B) {
-	vsaOps, err := NewVSAOps(testdataPathMetalLib("vsa.metallib"))
+	lib := testdataPathMetalLib("vsa.metallib")
+	if _, err := os.Stat(lib); err != nil {
+		b.Skipf("missing %s; run `make build` in repo root", lib)
+	}
+
+	vsaOps, err := NewVSAOps(lib)
 
 	if err != nil {
 		b.Fatal(err)
@@ -67,9 +74,19 @@ func BenchmarkMetalVSAOpsPermute(b *testing.B) {
 		_ = vsaOps.Close()
 	}()
 
-	input := []float64{1, 2, 3, 4}
+	for _, size := range []int{128, 512, 2048, 8192} {
+		b.Run(fmt.Sprintf("size_%d", size), func(b *testing.B) {
+			input := make([]float64, size)
 
-	for b.Loop() {
-		_, _ = vsaOps.Permute([]int{4}, 1, input)
+			for index := range input {
+				input[index] = float64(index%257) / 257
+			}
+
+			for index := 0; index < b.N; index++ {
+				if _, err := vsaOps.Permute([]int{size}, 1, input); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

@@ -47,9 +47,27 @@ int xla_vsa_bundle(
 int xla_vsa_similarity(
     const double* a, const double* b, double* out, int n);
 
+/**
+ * xla_vsa_permute performs a circular shift of src into out.
+ * @param src Host array of length n.
+ * @param out Pre-allocated host array of length n.
+ * @param n Vector length; must be positive.
+ * @param shift Signed circular offset. Negative values and |shift| >= n are
+ * normalized modulo n.
+ * @return 0 on success, -1 for null pointers, non-positive n, or PJRT failure.
+ */
 int xla_vsa_permute(
     const double* src, double* out, int n, int shift);
 
+/**
+ * xla_vsa_inverse_permute applies the inverse circular shift for shift.
+ * @param src Host array of length n.
+ * @param out Pre-allocated host array of length n.
+ * @param n Vector length; must be positive.
+ * @param shift Signed circular offset used by xla_vsa_permute; it is normalized
+ * modulo n before inversion.
+ * @return 0 on success, -1 for null pointers, non-positive n, or PJRT failure.
+ */
 int xla_vsa_inverse_permute(
     const double* src, double* out, int n, int shift);
 

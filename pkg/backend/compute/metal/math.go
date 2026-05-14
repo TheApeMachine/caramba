@@ -55,7 +55,19 @@ func (m *MathOps) Matmul(shape []int, data ...[]float64) ([]float64, error) {
 // ---------------------------------------------------------------------------
 
 func (m *MathOps) Add(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf("metal_add: two input buffers are required")
+	}
+
 	n := len(data[0])
+	if n == 0 {
+		return []float64{}, nil
+	}
+
+	if len(data[1]) != n {
+		return nil, fmt.Errorf("metal_add: input length mismatch %d != %d", n, len(data[1]))
+	}
+
 	a := toFloat32(data[0])
 	b := toFloat32(data[1])
 	out := make([]float32, n)
@@ -76,7 +88,19 @@ func (m *MathOps) Add(shape []int, data ...[]float64) ([]float64, error) {
 // ---------------------------------------------------------------------------
 
 func (m *MathOps) Mul(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf("metal_mul: two input buffers are required")
+	}
+
 	n := len(data[0])
+	if n == 0 {
+		return []float64{}, nil
+	}
+
+	if len(data[1]) != n {
+		return nil, fmt.Errorf("metal_mul: input length mismatch %d != %d", n, len(data[1]))
+	}
+
 	a := toFloat32(data[0])
 	b := toFloat32(data[1])
 	out := make([]float32, n)
@@ -364,7 +388,15 @@ func (m *MathOps) InvSqrtDimScale(shape []int, data ...[]float64) ([]float64, er
 // ---------------------------------------------------------------------------
 
 func (m *MathOps) Exp(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("metal_exp: input[0] is required")
+	}
+
 	n := len(data[0])
+	if n == 0 {
+		return []float64{}, nil
+	}
+
 	src := toFloat32(data[0])
 	dst := make([]float32, n)
 	rc := C.metal_exp(
@@ -383,7 +415,15 @@ func (m *MathOps) Exp(shape []int, data ...[]float64) ([]float64, error) {
 // ---------------------------------------------------------------------------
 
 func (m *MathOps) Log(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("metal_log: input[0] is required")
+	}
+
 	n := len(data[0])
+	if n == 0 {
+		return []float64{}, nil
+	}
+
 	src := toFloat32(data[0])
 	dst := make([]float32, n)
 	rc := C.metal_log(
@@ -402,8 +442,28 @@ func (m *MathOps) Log(shape []int, data ...[]float64) ([]float64, error) {
 // ---------------------------------------------------------------------------
 
 func (m *MathOps) Softmax(shape []int, data ...[]float64) ([]float64, error) {
+	if len(shape) == 0 {
+		return nil, fmt.Errorf("metal_softmax: shape is required")
+	}
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("metal_softmax: input[0] is required")
+	}
+
 	dimSize := shape[len(shape)-1]
+	if dimSize <= 0 {
+		return nil, fmt.Errorf("metal_softmax: dim size must be positive, got %d", dimSize)
+	}
+
 	n := len(data[0])
+	if n == 0 {
+		return []float64{}, nil
+	}
+
+	if n%dimSize != 0 {
+		return nil, fmt.Errorf("metal_softmax: input length %d not divisible by dim size %d", n, dimSize)
+	}
+
 	numRows := n / dimSize
 	src := toFloat32(data[0])
 	dst := make([]float32, n)
@@ -420,8 +480,28 @@ func (m *MathOps) Softmax(shape []int, data ...[]float64) ([]float64, error) {
 
 // LogSumExp computes log(sum(exp(x))) over the last dimension.
 func (m *MathOps) LogSumExp(shape []int, data ...[]float64) ([]float64, error) {
+	if len(shape) == 0 {
+		return nil, fmt.Errorf("metal_logsumexp: shape is required")
+	}
+
+	if len(data) == 0 {
+		return nil, fmt.Errorf("metal_logsumexp: input[0] is required")
+	}
+
 	dimSize := shape[len(shape)-1]
+	if dimSize <= 0 {
+		return nil, fmt.Errorf("metal_logsumexp: dim size must be positive, got %d", dimSize)
+	}
+
 	n := len(data[0])
+	if n == 0 {
+		return nil, fmt.Errorf("metal_logsumexp: input[0] must be non-empty")
+	}
+
+	if n%dimSize != 0 {
+		return nil, fmt.Errorf("metal_logsumexp: input length %d not divisible by dim size %d", n, dimSize)
+	}
+
 	numRows := n / dimSize
 	src := toFloat32(data[0])
 	dst := make([]float32, numRows)
@@ -443,6 +523,10 @@ func (m *MathOps) Dropout(
 	seed int,
 	data []float64,
 ) ([]float64, error) {
+	if probability < 0.0 || probability > 1.0 {
+		return nil, fmt.Errorf("invalid probability: %v, must be in [0,1]", probability)
+	}
+
 	n := len(data)
 	if n == 0 {
 		return []float64{}, nil

@@ -7,6 +7,7 @@
 #include "activation.h"  // for PJRT types and xla_init / run_executable helper
 
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -159,7 +160,13 @@ static PJRT_Buffer* shape_host_to_device(const double* src, int src_n) {
     re.struct_size = PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE;
     re.buffer = ba.buffer;
     err = g_api->PJRT_Buffer_ReadyEvent(&re);
-    if (err) return nullptr;
+    if (err) {
+        PJRT_Buffer_Destroy_Args da{};
+        da.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
+        da.buffer = ba.buffer;
+        g_api->PJRT_Buffer_Destroy(&da);
+        return nullptr;
+    }
 
     PJRT_Event_Await_Args ev{};
     ev.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
@@ -199,7 +206,6 @@ static int run_shape_exec2(
     }
 
     PJRT_Buffer* args[2] = { buffer_a, buffer_b };
-    PJRT_Buffer* const* arg_lists[1] = { args };
     PJRT_Buffer* out_storage = nullptr;
     PJRT_Buffer** out_list[1] = { &out_storage };
 
@@ -208,7 +214,7 @@ static int run_shape_exec2(
     ea.executable      = exec;
     PJRT_ExecuteOptions options = single_device_execute_options();
     ea.options         = &options;
-    ea.argument_lists  = arg_lists;
+    ea.argument_lists  = (PJRT_Buffer***)&args;
     ea.num_devices     = 1;
     ea.num_args        = 2;
     ea.output_lists    = out_list;
@@ -320,9 +326,21 @@ static std::string build_concat(int n_a, int n_b) {
 }
 
 static std::string build_split(int outer, int dim_size, int split_size, int inner) {
-    int total = outer * dim_size * inner;
-    int num_chunks = dim_size / split_size;
-    int element_count = split_size * inner;
+    int64_t total64 = (int64_t)outer * (int64_t)dim_size * (int64_t)inner;
+    int64_t num_chunks64 = (int64_t)dim_size / (int64_t)split_size;
+    int64_t element_count64 = (int64_t)split_size * (int64_t)inner;
+
+    if (total64 <= 0 || total64 > INT32_MAX || element_count64 <= 0 || element_count64 > INT32_MAX) {
+        return "";
+    }
+
+    if (num_chunks64 <= 0 || num_chunks64 > INT32_MAX) {
+        return "";
+    }
+
+    int total = (int)total64;
+    int num_chunks = (int)num_chunks64;
+    int element_count = (int)element_count64;
     std::ostringstream body;
     int value_index = 0;
 
@@ -461,14 +479,20 @@ int xla_concat(const double* srcA, int n_a,
 }
 
 int xla_split(const double* src, double* dst,
-              int outer, int dim_size, int split_size, int inner)
+              int outer, int dim_size, int split_size, int inner, int total_count)
 {
     if (!g_client) return -1;
+    if (!src || !dst) return -1;
     if (outer <= 0 || dim_size <= 0 || split_size <= 0 || inner <= 0) return -1;
     if (dim_size % split_size != 0) return -1;
 
-    int total = outer * dim_size * inner;
+    int64_t total64 = (int64_t)outer * (int64_t)dim_size * (int64_t)inner;
+
+    if (total64 <= 0 || total64 > INT32_MAX || total64 != (int64_t)total_count) return -1;
+
+    int total = (int)total64;
     std::string mlir = build_split(outer, dim_size, split_size, inner);
+    if (mlir.empty()) return -1;
     PJRT_LoadedExecutable* exec = compile_shape_stablehlo(mlir);
     if (!exec) return -1;
     int rc = run_shape_exec(exec, src, total, dst, total);

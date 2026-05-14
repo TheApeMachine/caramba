@@ -239,6 +239,8 @@ int metal_split(const float* src, float* dst,
             return -1;
         }
 
+        if (dim_size % split_size != 0) return -1;
+
         int total = outer * dim_size * inner;
         NSUInteger bytes = (NSUInteger)total * sizeof(float);
         id<MTLBuffer> bufSrc = make_buf(sDevice, src, bytes);

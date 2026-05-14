@@ -229,6 +229,7 @@ int cuda_vsa_permute(const double* src, double* out, int n, int shift) {
 }
 
 int cuda_vsa_inverse_permute(const double* src, double* out, int n, int shift) {
+    if (src == nullptr || out == nullptr) return -1;
     if (n <= 0) return -1;
 
     long long normalized = (long long)shift % (long long)n;
