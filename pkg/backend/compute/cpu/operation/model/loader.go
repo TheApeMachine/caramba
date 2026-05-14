@@ -1,18 +1,16 @@
 package model
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+	"github.com/theapemachine/caramba/pkg/config"
+	"github.com/theapemachine/caramba/pkg/hub"
 )
-
-const huggingFaceBase = "https://huggingface.co"
 
 /*
 Loader fetches a model from HuggingFace or a local path and emits its
@@ -30,13 +28,17 @@ Config keys:
 
 	source  — HuggingFace repo ("org/name") or absolute local path
 	file    — filename within the repo (default: "model.safetensors")
-	cache   — local directory to cache downloads (default: ".model_cache")
+	cache   — local Hub cache directory (default: hub.cache_dir)
+	revision — Git branch, tag, PR ref, or full commit hash (default: "main")
+	repo_type — model, dataset, or space (default: "model")
 */
 type Loader struct {
-	source  string
-	file    string
-	cache   string
-	weights WeightMap
+	source   string
+	file     string
+	cache    string
+	revision string
+	repoType string
+	weights  WeightMap
 }
 
 /*
@@ -45,10 +47,6 @@ NewLoader creates a Loader node.
 func NewLoader(source, file, cache string) *Loader {
 	if file == "" {
 		file = "model.safetensors"
-	}
-
-	if cache == "" {
-		cache = ".model_cache"
 	}
 
 	return &Loader{source: source, file: file, cache: cache}
@@ -86,11 +84,13 @@ func (loader *Loader) Forward(stateDict *state.Dict) (*state.Dict, error) {
 
 	cache := stateDict.Cache
 
-	if cache == "" {
-		cache = ".model_cache"
+	configured := &Loader{
+		source:   source,
+		file:     file,
+		cache:    cache,
+		revision: stateDict.Revision,
+		repoType: stateDict.RepoType,
 	}
-
-	configured := &Loader{source: source, file: file, cache: cache}
 	weights, err := configured.load()
 
 	if err != nil {
@@ -127,60 +127,60 @@ func (loader *Loader) resolve() (string, error) {
 		return filepath.Join(loader.source, loader.file), nil
 	}
 
-	cacheFile := filepath.Join(
-		loader.cache,
-		strings.ReplaceAll(loader.source, "/", "_"),
-		loader.file,
-	)
+	location, err := hub.ParseLocator(loader.source)
 
-	if _, err := os.Stat(cacheFile); err == nil {
-		return cacheFile, nil
+	if err != nil {
+		return "", err
 	}
 
-	return loader.download(cacheFile)
+	if loader.revision != "" {
+		location.Revision = loader.revision
+	}
+
+	if loader.repoType != "" {
+		repoType, err := parseHubRepoType(loader.repoType)
+
+		if err != nil {
+			return "", err
+		}
+
+		location.RepoType = repoType
+	}
+
+	hubConfig := config.NewHubConfig()
+
+	if loader.cache != "" {
+		hubConfig.CacheDir = loader.cache
+	}
+
+	file, err := hub.NewClient(hubConfig).Download(
+		context.Background(),
+		hub.DownloadRequest{
+			RepoID:   location.RepoID,
+			RepoType: location.RepoType,
+			Revision: location.Revision,
+			Filename: loader.file,
+		},
+	)
+
+	if err != nil {
+		return "", fmt.Errorf("model.loader: hub download: %w", err)
+	}
+
+	return file.Path, nil
 }
 
-func (loader *Loader) download(dest string) (string, error) {
-	url := fmt.Sprintf(
-		"%s/%s/resolve/main/%s",
-		huggingFaceBase,
-		loader.source,
-		loader.file,
-	)
-
-	resp, err := http.Get(url) //nolint:gosec
-
-	if err != nil {
-		return "", fmt.Errorf("model.loader: download %s: %w", url, err)
+func parseHubRepoType(value string) (hub.RepoType, error) {
+	switch hub.RepoType(strings.TrimSpace(value)) {
+	case "", hub.ModelRepo:
+		return hub.ModelRepo, nil
+	case hub.DatasetRepo:
+		return hub.DatasetRepo, nil
+	case hub.SpaceRepo:
+		return hub.SpaceRepo, nil
+	default:
+		return "", fmt.Errorf("model.loader: unsupported repo_type %q", value)
 	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("model.loader: HTTP %d for %s", resp.StatusCode, url)
-	}
-
-	err = os.MkdirAll(filepath.Dir(dest), 0o755)
-
-	if err != nil {
-		return "", fmt.Errorf("model.loader: mkdir: %w", err)
-	}
-
-	f, err := os.Create(dest)
-
-	if err != nil {
-		return "", fmt.Errorf("model.loader: create %s: %w", dest, err)
-	}
-
-	defer f.Close()
-
-	_, err = io.Copy(f, resp.Body)
-
-	if err != nil {
-		return "", fmt.Errorf("model.loader: write %s: %w", dest, err)
-	}
-
-	return dest, nil
 }
 
 /*

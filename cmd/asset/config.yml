@@ -42,6 +42,15 @@ compute:
     shared_plugin_file: ""
     library_dirs: []
 
+hub:
+  endpoint: https://huggingface.co
+  cache_dir: .caramba/hub
+  token: ${HF_TOKEN}
+  offline: false
+  max_workers: 8
+  xet:
+    active: true
+
 errnie:
   level: debug
   file: 

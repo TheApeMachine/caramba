@@ -64,6 +64,8 @@ func applyStateMetadata(stateDict *state.Dict, node NodeSpec) {
 	stateDict.Source = stringConfig(node, "source", stateDict.Source)
 	stateDict.File = stringConfig(node, "file", stateDict.File)
 	stateDict.Cache = stringConfig(node, "cache", stateDict.Cache)
+	stateDict.Revision = stringConfig(node, "revision", stateDict.Revision)
+	stateDict.RepoType = stringConfig(node, "repo_type", stateDict.RepoType)
 	stateDict.Op = stringConfig(node, "op", stateDict.Op)
 	stateDict.At = stringConfig(node, "at", stateDict.At)
 	stateDict.After = stringConfig(node, "after", stateDict.After)

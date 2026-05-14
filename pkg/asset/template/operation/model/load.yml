@@ -15,7 +15,13 @@ config:
     description: "Filename within the repo (default: \"model.safetensors\")"
   - name: cache
     type: string
-    description: "Local cache directory (default: \".model_cache\")"
+    description: "Local Hub cache directory (default: hub.cache_dir)"
+  - name: revision
+    type: string
+    description: "Git branch, tag, PR ref, or full commit hash (default: \"main\")"
+  - name: repo_type
+    type: string
+    description: "Hub repository type: model, dataset, or space (default: \"model\")"
 inputs: []
 outputs:
   - name: out

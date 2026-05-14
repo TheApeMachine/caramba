@@ -21,6 +21,8 @@ type Dict struct {
 	Source        string
 	File          string
 	Cache         string
+	Revision      string
+	RepoType      string
 	Op            string
 	At            string
 	After         string

@@ -124,6 +124,22 @@ caramba asset list
 
 ---
 
+## Hub Assets
+
+Caramba resolves Hugging Face Hub assets through a revision-aware local cache
+that mirrors the smooth `hf_hub_download` and `snapshot_download` workflow while
+keeping provenance explicit. Hub settings live under `hub` in
+`cmd/asset/config.yml`, including endpoint, cache directory, optional token,
+offline mode, worker count, and Xet enablement.
+
+Model loaders can use plain repo IDs like `openai-community/gpt2` or explicit
+locators like `hf://model/openai-community/gpt2@main`. The cache records refs,
+commit-pinned snapshots, content-addressed blobs, and metadata for every pulled
+file. Xet-backed files are detected from Hub resolve headers and reconstructed
+through CAS when `hub.xet.active` is enabled.
+
+---
+
 ## Compute Backends
 
 The compute layer is organized around explicit tensor ownership and a typed, hardware-agnostic IR. Backend kernels upload values once into a resident tensor store and only download at real boundaries. The IR graph now travels through a compiler pipeline with verification, canonicalization, semantic CSE, algebraic simplification, legality-aware fusion, side-effect-aware DCE, memory planning, cost scheduling, and backend lowering before dispatch.

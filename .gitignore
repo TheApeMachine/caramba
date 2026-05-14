@@ -8,8 +8,10 @@ caramba
 frontend/node_modules/
 .env
 models/
+.caramba/
 code-dump.txt
 caramba.txt
 __pycache__/
 .continue/
 .kilo/
+.claude/

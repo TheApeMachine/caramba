@@ -8,7 +8,7 @@
 DATA ·neonZero+0(SB)/8, $0.0
 GLOBL ·neonZero(SB), RODATA|NOPTR, $8
 
-TEXT ·CausalMaskNEON(SB), NOSPLIT, $0-40
+TEXT ·CausalMaskNEON(SB), NOSPLIT, $0-32
 	MOVD dst+0(FP), R0        // R0 = dst ptr
 	MOVD seqLen+24(FP), R1    // R1 = seqLen
 	CBZ  R1, cm_neon_done
