@@ -4,17 +4,17 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/backend/compute/operations"
+	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/manifest"
 )
 
 func TestOptimizerContract(t *testing.T) {
 	Convey("Given the standard optimizer backend contract", t, func() {
-		Convey("It should match the train optimizer operation catalog", func() {
+		Convey("It should match the train optimizer operation IDs", func() {
 			contractIDs := StandardOptimizerContract.OperationIDs()
-			catalogIDs := operations.Canonical.TrainOptimizerIDs()
+			operationIDs := ir.TrainOptimizerOperationIDs()
 
-			So(contractIDs, ShouldResemble, catalogIDs)
+			So(contractIDs, ShouldResemble, operationIDs)
 		})
 
 		Convey("It should match manifest train optimizer registrations", func() {

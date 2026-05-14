@@ -44,7 +44,7 @@ func NewMathOps(platform string) (*XLAMathOps, error) {
 // Shutdown releases all PJRT math resources.
 func (x *XLAMathOps) Shutdown() { C.xla_math_shutdown() }
 
-func (x *XLAMathOps) Matmul(shape []int, data ...[]float64) []float64 {
+func (x *XLAMathOps) Matmul(shape []int, data ...[]float64) ([]float64, error) {
 	M, K, N := shape[0], shape[1], shape[2]
 	dst := make([]float64, M*N)
 	rc := C.xla_matmul(
@@ -54,12 +54,12 @@ func (x *XLAMathOps) Matmul(shape []int, data ...[]float64) []float64 {
 		C.int(M), C.int(K), C.int(N),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_matmul failed"))
+		return nil, fmt.Errorf("xla_matmul failed")
 	}
-	return dst
+	return dst, nil
 }
 
-func (x *XLAMathOps) Add(shape []int, data ...[]float64) []float64 {
+func (x *XLAMathOps) Add(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	dst := make([]float64, n)
 	rc := C.xla_add(
@@ -69,12 +69,12 @@ func (x *XLAMathOps) Add(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_add failed"))
+		return nil, fmt.Errorf("xla_add failed")
 	}
-	return dst
+	return dst, nil
 }
 
-func (x *XLAMathOps) Mul(shape []int, data ...[]float64) []float64 {
+func (x *XLAMathOps) Mul(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	dst := make([]float64, n)
 	rc := C.xla_mul(
@@ -84,12 +84,12 @@ func (x *XLAMathOps) Mul(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_mul failed"))
+		return nil, fmt.Errorf("xla_mul failed")
 	}
-	return dst
+	return dst, nil
 }
 
-func (x *XLAMathOps) InvSqrtDimScale(shape []int, data ...[]float64) []float64 {
+func (x *XLAMathOps) InvSqrtDimScale(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	dim := shape[len(shape)-1]
 	dst := make([]float64, n)
@@ -99,12 +99,12 @@ func (x *XLAMathOps) InvSqrtDimScale(shape []int, data ...[]float64) []float64 {
 		C.int(n), C.int(dim),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_inv_sqrt_dim_scale failed"))
+		return nil, fmt.Errorf("xla_inv_sqrt_dim_scale failed")
 	}
-	return dst
+	return dst, nil
 }
 
-func (x *XLAMathOps) Exp(shape []int, data ...[]float64) []float64 {
+func (x *XLAMathOps) Exp(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	dst := make([]float64, n)
 	rc := C.xla_exp(
@@ -113,12 +113,12 @@ func (x *XLAMathOps) Exp(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_exp failed"))
+		return nil, fmt.Errorf("xla_exp failed")
 	}
-	return dst
+	return dst, nil
 }
 
-func (x *XLAMathOps) Log(shape []int, data ...[]float64) []float64 {
+func (x *XLAMathOps) Log(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	dst := make([]float64, n)
 	rc := C.xla_log(
@@ -127,12 +127,12 @@ func (x *XLAMathOps) Log(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_log failed"))
+		return nil, fmt.Errorf("xla_log failed")
 	}
-	return dst
+	return dst, nil
 }
 
-func (x *XLAMathOps) Softmax(shape []int, data ...[]float64) []float64 {
+func (x *XLAMathOps) Softmax(shape []int, data ...[]float64) ([]float64, error) {
 	dimSize := shape[len(shape)-1]
 	n := len(data[0])
 	numRows := n / dimSize
@@ -143,12 +143,14 @@ func (x *XLAMathOps) Softmax(shape []int, data ...[]float64) []float64 {
 		C.int(numRows), C.int(dimSize),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_softmax failed"))
+		return nil, fmt.Errorf("xla_softmax failed")
 	}
-	return dst
+	return dst, nil
 }
 
-func (x *XLAMathOps) LayerNorm(shape []int, eps float64, weight, bias []float64, data ...[]float64) []float64 {
+func (x *XLAMathOps) LayerNorm(
+	shape []int, eps float64, weight, bias []float64, data ...[]float64,
+) ([]float64, error) {
 	dModel := shape[len(shape)-1]
 	n := len(data[0])
 	numRows := n / dModel
@@ -161,12 +163,14 @@ func (x *XLAMathOps) LayerNorm(shape []int, eps float64, weight, bias []float64,
 		C.int(numRows), C.int(dModel), C.double(eps),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_layernorm failed"))
+		return nil, fmt.Errorf("xla_layernorm failed")
 	}
-	return dst
+	return dst, nil
 }
 
-func (x *XLAMathOps) RMSNorm(shape []int, eps float64, weight []float64, data ...[]float64) []float64 {
+func (x *XLAMathOps) RMSNorm(
+	shape []int, eps float64, weight []float64, data ...[]float64,
+) ([]float64, error) {
 	dModel := shape[len(shape)-1]
 	n := len(data[0])
 	numRows := n / dModel
@@ -178,12 +182,12 @@ func (x *XLAMathOps) RMSNorm(shape []int, eps float64, weight []float64, data ..
 		C.int(numRows), C.int(dModel), C.double(eps),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_rmsnorm failed"))
+		return nil, fmt.Errorf("xla_rmsnorm failed")
 	}
-	return dst
+	return dst, nil
 }
 
-func (x *XLAMathOps) Sign(shape []int, data ...[]float64) []float64 {
+func (x *XLAMathOps) Sign(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	dst := make([]float64, n)
 	rc := C.xla_sign(
@@ -192,12 +196,12 @@ func (x *XLAMathOps) Sign(shape []int, data ...[]float64) []float64 {
 		C.int(n),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_sign failed"))
+		return nil, fmt.Errorf("xla_sign failed")
 	}
-	return dst
+	return dst, nil
 }
 
-func (x *XLAMathOps) Outer(shape []int, data ...[]float64) []float64 {
+func (x *XLAMathOps) Outer(shape []int, data ...[]float64) ([]float64, error) {
 	M, N := shape[0], shape[1]
 	dst := make([]float64, M*N)
 	rc := C.xla_outer(
@@ -207,7 +211,7 @@ func (x *XLAMathOps) Outer(shape []int, data ...[]float64) []float64 {
 		C.int(M), C.int(N),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("xla_outer failed"))
+		return nil, fmt.Errorf("xla_outer failed")
 	}
-	return dst
+	return dst, nil
 }

@@ -30,7 +30,7 @@ DoCalculus computes P(Y|do(X=x)) via graph surgery on a joint Gaussian.
 shape=[N_vars, ...], data[0]=cov [N*N], data[1]=mask [N], data[2]=values [N]
 Returns adjusted_mean [N] + adjusted_cov [N*N].
 */
-func (cudaCausalOps *CUDACausalOps) DoCalculus(shape []int, data ...[]float64) []float64 {
+func (cudaCausalOps *CUDACausalOps) DoCalculus(shape []int, data ...[]float64) ([]float64, error) {
 	n := shape[0]
 	out := make([]float64, n+n*n)
 	rc := C.cuda_causal_do_calculus(
@@ -42,10 +42,10 @@ func (cudaCausalOps *CUDACausalOps) DoCalculus(shape []int, data ...[]float64) [
 	)
 
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_causal_do_calculus failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_causal_do_calculus failed (rc=%d)", rc)
 	}
 
-	return out
+	return out, nil
 }
 
 /*
@@ -53,7 +53,9 @@ BackdoorAdjustment computes the causal effect via backdoor adjustment.
 shape=[N_y, N_x, N_z, T], data[0]=Y, data[1]=X, data[2]=Z
 Returns causal_effect [N_y].
 */
-func (cudaCausalOps *CUDACausalOps) BackdoorAdjustment(shape []int, data ...[]float64) []float64 {
+func (cudaCausalOps *CUDACausalOps) BackdoorAdjustment(
+	shape []int, data ...[]float64,
+) ([]float64, error) {
 	ny, nx, nz, t := shape[0], shape[1], shape[2], shape[3]
 	effect := make([]float64, ny)
 	rc := C.cuda_causal_backdoor(
@@ -65,10 +67,10 @@ func (cudaCausalOps *CUDACausalOps) BackdoorAdjustment(shape []int, data ...[]fl
 	)
 
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_causal_backdoor failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_causal_backdoor failed (rc=%d)", rc)
 	}
 
-	return effect
+	return effect, nil
 }
 
 /*
@@ -76,7 +78,9 @@ IVEstimate computes the 2SLS instrumental variable estimate.
 shape=[T, N_z, N_x, N_y], data[0]=Z, data[1]=X, data[2]=Y
 Returns beta_iv [N_x*N_y].
 */
-func (cudaCausalOps *CUDACausalOps) IVEstimate(shape []int, data ...[]float64) []float64 {
+func (cudaCausalOps *CUDACausalOps) IVEstimate(
+	shape []int, data ...[]float64,
+) ([]float64, error) {
 	t, nz, nx, ny := shape[0], shape[1], shape[2], shape[3]
 	betaIV := make([]float64, nx*ny)
 	rc := C.cuda_causal_iv(
@@ -88,10 +92,10 @@ func (cudaCausalOps *CUDACausalOps) IVEstimate(shape []int, data ...[]float64) [
 	)
 
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_causal_iv failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_causal_iv failed (rc=%d)", rc)
 	}
 
-	return betaIV
+	return betaIV, nil
 }
 
 /*
@@ -99,7 +103,7 @@ CATE computes the Conditional Average Treatment Effect for each observation.
 shape=[T, N_x, 1], data[0]=X, data[1]=treatment, data[2]=Y
 Returns cate [T].
 */
-func (cudaCausalOps *CUDACausalOps) CATE(shape []int, data ...[]float64) []float64 {
+func (cudaCausalOps *CUDACausalOps) CATE(shape []int, data ...[]float64) ([]float64, error) {
 	t, nx := shape[0], shape[1]
 	cate := make([]float64, t)
 	rc := C.cuda_causal_cate(
@@ -111,10 +115,10 @@ func (cudaCausalOps *CUDACausalOps) CATE(shape []int, data ...[]float64) []float
 	)
 
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_causal_cate failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_causal_cate failed (rc=%d)", rc)
 	}
 
-	return cate
+	return cate, nil
 }
 
 /*
@@ -122,7 +126,9 @@ DAGMarkovFactorization computes per-observation log probabilities under the DAG 
 shape=[N, T], data[0]=X [T*N], data[1]=adj [N*N]
 Returns log_prob [T].
 */
-func (cudaCausalOps *CUDACausalOps) DAGMarkovFactorization(shape []int, data ...[]float64) []float64 {
+func (cudaCausalOps *CUDACausalOps) DAGMarkovFactorization(
+	shape []int, data ...[]float64,
+) ([]float64, error) {
 	n, t := shape[0], shape[1]
 	logProb := make([]float64, t)
 	rc := C.cuda_causal_dag_markov(
@@ -133,8 +139,57 @@ func (cudaCausalOps *CUDACausalOps) DAGMarkovFactorization(shape []int, data ...
 	)
 
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_causal_dag_markov failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_causal_dag_markov failed (rc=%d)", rc)
 	}
 
-	return logProb
+	return logProb, nil
+}
+
+/*
+Counterfactual runs a heterogeneous linear SCM counterfactual query.
+shape=[N, N_cf], data[0]=X_obs, data[1]=Y_obs, data[2]=beta, data[3]=X_cf.
+*/
+func (cudaCausalOps *CUDACausalOps) Counterfactual(
+	shape []int, data ...[]float64,
+) ([]float64, error) {
+	n, nCF := shape[0], shape[1]
+	output := make([]float64, n*nCF)
+	rc := C.cuda_causal_counterfactual(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&data[1][0])),
+		(*C.double)(unsafe.Pointer(&data[2][0])),
+		(*C.double)(unsafe.Pointer(&data[3][0])),
+		(*C.double)(unsafe.Pointer(&output[0])),
+		C.int(n), C.int(nCF),
+	)
+
+	if rc != 0 {
+		return nil, fmt.Errorf("cuda_causal_counterfactual failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+/*
+FrontdoorAdjustment computes the frontdoor causal effect with equal-frequency binning.
+shape=[N_x, N_m, N_y, T], data[0]=X, data[1]=M, data[2]=Y.
+*/
+func (cudaCausalOps *CUDACausalOps) FrontdoorAdjustment(
+	shape []int, data ...[]float64,
+) ([]float64, error) {
+	nx, nm, samples := shape[0], shape[1], shape[3]
+	effect := make([]float64, nx)
+	rc := C.cuda_causal_frontdoor(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&data[1][0])),
+		(*C.double)(unsafe.Pointer(&data[2][0])),
+		(*C.double)(unsafe.Pointer(&effect[0])),
+		C.int(samples), C.int(nx), C.int(nm),
+	)
+
+	if rc != 0 {
+		return nil, fmt.Errorf("cuda_causal_frontdoor failed (rc=%d)", rc)
+	}
+
+	return effect, nil
 }

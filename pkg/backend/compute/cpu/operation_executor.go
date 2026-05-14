@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/activation"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/active_inference"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/attention"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/bench"
@@ -241,7 +242,7 @@ func (tensorBackend *TensorBackend) applyOperation(
 ) (tensor.Float64Tensor, error) {
 	switch strings.ToLower(string(node.Op)) {
 	case "activation.swish":
-		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewMul())
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewSwish())
 	case "attention.sdpa":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, attention.NewSDPA())
 	case "attention.mqa":

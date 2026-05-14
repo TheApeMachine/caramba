@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
-	"github.com/theapemachine/caramba/pkg/backend/compute/operations"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -18,8 +17,8 @@ func CapabilitiesForLocation(location tensor.Location) Capabilities {
 func fullBackendCapabilities(location tensor.Location) *StaticCapabilities {
 	capabilities := NewStaticCapabilities(location)
 
-	for _, spec := range operations.Canonical.Required() {
-		capabilities.Register(spec.ID)
+	for _, operationID := range ir.RequiredOperationIDs() {
+		capabilities.Register(operationID)
 	}
 
 	capabilities.RegisterFusion("matmul.activation", ir.OpFused)

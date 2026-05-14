@@ -161,16 +161,9 @@ func (x *XLAPositionalOps) RoPEForward(base float64, shape []int, data ...[]floa
 	return dst, nil
 }
 
-// Forward implements cpu/operation.Operation ([]float64 only).
-// On RoPEForward failure it panics with a formatted message (errors cannot be returned on this signature).
-func (x *XLAPositionalOps) Forward(shape []int, data ...[]float64) []float64 {
-	out, err := x.RoPEForward(10000.0, shape, data...)
-
-	if err != nil {
-		panic(fmt.Sprintf("xla positional Forward(RoPEForward): %v", err))
-	}
-
-	return out
+// Forward dispatches RoPEForward.
+func (x *XLAPositionalOps) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	return x.RoPEForward(10000.0, shape, data...)
 }
 
 // ---------------------------------------------------------------------------

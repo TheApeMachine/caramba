@@ -12,6 +12,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	cpuai "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/active_inference"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 func metallibPathOrSkip(t *testing.T, name string) string {
@@ -52,12 +53,15 @@ func TestActiveInferenceOps_FreeEnergy_ParityWithCPU(t *testing.T) {
 			ls[i] = -0.5 + 0.03*float64(i%13)
 		}
 
-		cpuOut := cpuai.NewFreeEnergy().Forward([]int{n}, mu, ls)
+		cpuState, errCPU := cpuai.NewFreeEnergy().Forward(
+			state.NewDict().WithShape([]int{n}).WithInputs(mu, ls),
+		)
 		mo, errM := ops.FreeEnergy([]int{n}, mu, ls)
 
+		So(errCPU, ShouldBeNil)
 		So(errM, ShouldBeNil)
 		So(len(mo), ShouldEqual, 1)
-		So(len(cpuOut), ShouldEqual, 1)
-		So(math.Abs(mo[0]-cpuOut[0]) < 5e-3, ShouldBeTrue)
+		So(len(cpuState.Out), ShouldEqual, 1)
+		So(math.Abs(mo[0]-cpuState.Out[0]) < 5e-3, ShouldBeTrue)
 	})
 }

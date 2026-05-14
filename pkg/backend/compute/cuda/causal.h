@@ -59,6 +59,20 @@ int cuda_causal_dag_markov(
     int T, int N
 );
 
+// Counterfactual linear SCM: out[i*N_cf+j] = beta[i]*x_cf[j] + y_obs[i] - beta[i]*x_obs[i]
+int cuda_causal_counterfactual(
+    const double* x_obs, const double* y_obs, const double* beta, const double* x_cf,
+    double* out,
+    int N, int N_cf
+);
+
+// Frontdoor adjustment with equal-frequency binning on X and M.
+int cuda_causal_frontdoor(
+    const double* X, const double* M, const double* Y,
+    double* effect,
+    int T, int nx, int nm
+);
+
 #ifdef __cplusplus
 }
 #endif

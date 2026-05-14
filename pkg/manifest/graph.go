@@ -5,6 +5,7 @@ import (
 	"maps"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -153,9 +154,9 @@ Execute runs the graph with named inputs,
 propagates outputs along edges, and returns accumulated state (including intermediates).
 */
 func (graph *Graph) Execute(inputs map[string][]float64, shape []int) (map[string][]float64, error) {
-	state := make(map[string][]float64, len(inputs))
+	stateMap := make(map[string][]float64, len(inputs))
 
-	maps.Copy(state, inputs)
+	maps.Copy(stateMap, inputs)
 
 	order, err := graph.executionOrder()
 
@@ -164,16 +165,23 @@ func (graph *Graph) Execute(inputs map[string][]float64, shape []int) (map[strin
 	}
 
 	for _, node := range order {
-		data, err := graph.gatherInputsForNode(node, state)
+		data, err := graph.gatherInputsForNode(node, stateMap)
 
 		if err != nil {
 			return nil, err
 		}
 
-		output := node.Op.Forward(shape, data...)
+		stateDict := state.NewDict().WithShape(shape)
+		stateDict.Inputs = data
+
+		outputState, err := node.Op.Forward(stateDict)
+
+		if err != nil {
+			return nil, err
+		}
 
 		if len(node.Out) == 0 {
-			state[node.ID] = output
+			stateMap[node.ID] = outputState.Out
 
 			continue
 		}
@@ -182,10 +190,10 @@ func (graph *Graph) Execute(inputs map[string][]float64, shape []int) (map[strin
 			return nil, fmt.Errorf("graph: node %q must publish exactly one output", node.ID)
 		}
 
-		state[node.Out[0]] = output
+		stateMap[node.Out[0]] = outputState.Out
 	}
 
-	return state, nil
+	return stateMap, nil
 }
 
 func (graph *Graph) executionOrder() ([]*Node, error) {

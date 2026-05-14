@@ -71,6 +71,23 @@ __global__ void concat_kernel(
     dst[i] = (i < n_a) ? srcA[i] : srcB[i - n_a];
 }
 
+__global__ void split_kernel(
+    const double* src, double* dst,
+    int outer, int dim_size, int split_size, int inner, int total)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= total) return;
+
+    int element_in_chunk = split_size * inner;
+    int chunk_elements = outer * element_in_chunk;
+    int chunk = index / chunk_elements;
+    int chunk_offset = index - chunk * chunk_elements;
+    int outer_index = chunk_offset / element_in_chunk;
+    int within = chunk_offset - outer_index * element_in_chunk;
+    int src_index = (outer_index * dim_size + chunk * split_size) * inner + within;
+    dst[index] = src[src_index];
+}
+
 // ViewAsHeads: input [B,T,H,head_dim] -> output [B,H,T,head_dim].
 __global__ void view_as_heads_kernel(
     const double* src, double* dst,
@@ -212,6 +229,31 @@ int cuda_concat(const double* srcA, int n_a,
     return 0;
 fail:
     cudaFree(d_a); cudaFree(d_b); cudaFree(d_dst);
+    return -1;
+}
+
+int cuda_split(const double* src, double* dst,
+               int outer, int dim_size, int split_size, int inner)
+{
+    int total = outer * dim_size * inner;
+    double *d_src = NULL, *d_dst = NULL;
+    size_t bytes = (size_t)total * sizeof(double);
+
+    if (cudaMalloc(&d_src, bytes) != cudaSuccess) return -1;
+    if (cudaMalloc(&d_dst, bytes) != cudaSuccess) { cudaFree(d_src); return -1; }
+
+    if (cudaMemcpy(d_src, src, bytes, cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
+    split_kernel<<<blocks(total), BLOCK>>>(
+        d_src, d_dst, outer, dim_size, split_size, inner, total
+    );
+    if (cudaGetLastError() != cudaSuccess) goto fail;
+    if (cudaDeviceSynchronize() != cudaSuccess) goto fail;
+    if (cudaMemcpy(dst, d_dst, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
+
+    cudaFree(d_src); cudaFree(d_dst);
+    return 0;
+fail:
+    cudaFree(d_src); cudaFree(d_dst);
     return -1;
 }
 

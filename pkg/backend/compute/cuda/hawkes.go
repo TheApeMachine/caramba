@@ -19,7 +19,7 @@ type CUDAHawkes struct{}
 func NewHawkes() *CUDAHawkes { return &CUDAHawkes{} }
 
 // Intensity: shape=[K,T], data[0]=times[T], data[1]=alpha[K], data[2]=beta[K], data[3]=mu[K], data[4]=t[1].
-func (op *CUDAHawkes) Intensity(shape []int, data ...[]float64) []float64 {
+func (op *CUDAHawkes) Intensity(shape []int, data ...[]float64) ([]float64, error) {
 	K, T := shape[0], shape[1]
 	out := make([]float64, K)
 	rc := C.cuda_hawkes_intensity(
@@ -32,13 +32,13 @@ func (op *CUDAHawkes) Intensity(shape []int, data ...[]float64) []float64 {
 		C.int(K), C.int(T),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_hawkes_intensity failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_hawkes_intensity failed (rc=%d)", rc)
 	}
-	return out
+	return out, nil
 }
 
 // KernelMatrix: shape=[T], data[0]=times[T], data[1]=alpha[1], data[2]=beta[1]. Returns [T*T].
-func (op *CUDAHawkes) KernelMatrix(shape []int, data ...[]float64) []float64 {
+func (op *CUDAHawkes) KernelMatrix(shape []int, data ...[]float64) ([]float64, error) {
 	T := shape[0]
 	out := make([]float64, T*T)
 	rc := C.cuda_hawkes_kernel_matrix(
@@ -49,13 +49,13 @@ func (op *CUDAHawkes) KernelMatrix(shape []int, data ...[]float64) []float64 {
 		C.int(T),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_hawkes_kernel_matrix failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_hawkes_kernel_matrix failed (rc=%d)", rc)
 	}
-	return out
+	return out, nil
 }
 
 // LogLikelihood: shape=[T], data[0]=times[T], data[1]=intensities[T], data[2]=integral[1].
-func (op *CUDAHawkes) LogLikelihood(shape []int, data ...[]float64) []float64 {
+func (op *CUDAHawkes) LogLikelihood(shape []int, data ...[]float64) ([]float64, error) {
 	T := shape[0]
 	out := make([]float64, 1)
 	rc := C.cuda_hawkes_log_likelihood(
@@ -65,13 +65,13 @@ func (op *CUDAHawkes) LogLikelihood(shape []int, data ...[]float64) []float64 {
 		C.int(T),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_hawkes_log_likelihood failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_hawkes_log_likelihood failed (rc=%d)", rc)
 	}
-	return out
+	return out, nil
 }
 
 // Simulate: shape=[K,maxSteps], data[0]=mu[K], data[1]=alpha[K], data[2]=beta[K], data[3]=T_max[1].
-func (op *CUDAHawkes) Simulate(shape []int, data ...[]float64) []float64 {
+func (op *CUDAHawkes) Simulate(shape []int, data ...[]float64) ([]float64, error) {
 	K, maxSteps := shape[0], shape[1]
 	out := make([]float64, K*maxSteps)
 	rc := C.cuda_hawkes_simulate(
@@ -83,7 +83,7 @@ func (op *CUDAHawkes) Simulate(shape []int, data ...[]float64) []float64 {
 		(*C.double)(unsafe.Pointer(&out[0])),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_hawkes_simulate failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_hawkes_simulate failed (rc=%d)", rc)
 	}
-	return out
+	return out, nil
 }

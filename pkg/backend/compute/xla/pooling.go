@@ -183,12 +183,10 @@ func (x *XLAPooling) AdaptiveMaxPool2d(shape []int, outH, outW int, data []float
 	return dst, nil
 }
 
-// Forward implements cpu/operation.Operation ([]float64 only).
-// On MaxPool2d failure it panics with a formatted message so callers can validate inputs.
-// Empty data yields an empty slice (no pooling call).
-func (x *XLAPooling) Forward(shape []int, data ...[]float64) []float64 {
+// Forward dispatches MaxPool2d.
+func (x *XLAPooling) Forward(shape []int, data ...[]float64) ([]float64, error) {
 	if len(data) == 0 {
-		return []float64{}
+		return []float64{}, nil
 	}
 
 	p := XLAMaxPool2dParams{
@@ -198,11 +196,5 @@ func (x *XLAPooling) Forward(shape []int, data ...[]float64) []float64 {
 		DilationH: 1, DilationW: 1,
 	}
 
-	out, err := x.MaxPool2d(shape, p, data[0])
-
-	if err != nil {
-		panic(fmt.Sprintf("xla pooling Forward(MaxPool2d): %v", err))
-	}
-
-	return out
+	return x.MaxPool2d(shape, p, data[0])
 }

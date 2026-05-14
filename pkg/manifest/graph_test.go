@@ -4,15 +4,19 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 type passthroughOp struct{}
 
-func (passthrough *passthroughOp) Forward(_ []int, data ...[]float64) []float64 {
-	out := make([]float64, len(data[0]))
-	copy(out, data[0])
+func (passthrough *passthroughOp) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("passthrough"); err != nil {
+		return nil, err
+	}
 
-	return out
+	copy(stateDict.Out, stateDict.Inputs[0])
+
+	return stateDict, nil
 }
 
 func TestGraph_Execute(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/backend/compute/operations"
+	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 )
 
 func TestOperationDispatchParity(t *testing.T) {
@@ -12,8 +12,8 @@ func TestOperationDispatchParity(t *testing.T) {
 		Convey("It should expose every required catalog operation", func() {
 			supported := TensorOperationDispatchContract.SupportedIDSet()
 
-			for _, spec := range operations.Canonical.Required() {
-				So(supported[spec.ID], ShouldBeTrue)
+			for _, operationID := range ir.RequiredOperationIDs() {
+				So(supported[operationID], ShouldBeTrue)
 			}
 		})
 	})

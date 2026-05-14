@@ -11,6 +11,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	cpucausal "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/causal"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 func testdataPathMetalLib(name string) string {
@@ -45,15 +46,18 @@ func TestMetalCausalOps_DoCalculus_ParityWithCPU(t *testing.T) {
 		values := []float64{0, 0.75, 0}
 
 		cpu := cpucausal.NewDoCalculus()
-		cpuOut := cpu.Forward([]int{n, n}, cov, mask, values)
+		cpuState, errCPU := cpu.Forward(
+			state.NewDict().WithShape([]int{n, n}).WithInputs(cov, mask, values),
+		)
 
 		metaOut, errMeta := metalOps.DoCalculus([]int{n}, cov, mask, values)
 
+		So(errCPU, ShouldBeNil)
 		So(errMeta, ShouldBeNil)
-		So(len(metaOut), ShouldEqual, len(cpuOut))
+		So(len(metaOut), ShouldEqual, len(cpuState.Out))
 
-		for idx := range cpuOut {
-			So(math.Abs(metaOut[idx]-cpuOut[idx]) < 1e-4, ShouldBeTrue)
+		for idx := range cpuState.Out {
+			So(math.Abs(metaOut[idx]-cpuState.Out[idx]) < 1e-4, ShouldBeTrue)
 		}
 	})
 }

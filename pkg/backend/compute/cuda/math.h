@@ -45,6 +45,12 @@ int cuda_log(const double* src, double* dst, int n);
 // Softmax over last dim. num_rows*dim_size elements.
 int cuda_softmax(const double* src, double* dst, int num_rows, int dim_size);
 
+// LogSumExp over last dim. src has num_rows*dim_size elements; dst has num_rows.
+int cuda_logsumexp(const double* src, double* dst, int num_rows, int dim_size);
+
+// Dropout. If training is zero or p is zero, copies input to output.
+int cuda_dropout(const double* src, double* dst, int n, double p, int training, int seed);
+
 // Layer norm. src/dst: num_rows*d_model. weight/bias: d_model.
 int cuda_layernorm(const double* src, double* dst,
                    const double* weight, const double* bias,

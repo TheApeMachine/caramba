@@ -99,12 +99,10 @@ func (x *XLAProjection) Linear(shape []int, weight, bias []float64, data ...[]fl
 	return dst, nil
 }
 
-// Forward implements cpu/operation.Operation ([]float64 only).
-// Requires data[0]=x and data[1]=weight; data[2]=bias optional.
-// On Linear failure it panics with a formatted message.
-func (x *XLAProjection) Forward(shape []int, data ...[]float64) []float64 {
+// Forward dispatches Linear with data[0]=x and data[1]=weight; data[2]=bias optional.
+func (x *XLAProjection) Forward(shape []int, data ...[]float64) ([]float64, error) {
 	if len(data) < 2 {
-		panic(fmt.Sprintf("xla projection Forward: need x and weight (got %d buffers)", len(data)))
+		return nil, fmt.Errorf("xla projection Forward: need x and weight (got %d buffers)", len(data))
 	}
 
 	var bias []float64
@@ -113,13 +111,7 @@ func (x *XLAProjection) Forward(shape []int, data ...[]float64) []float64 {
 		bias = data[2]
 	}
 
-	out, err := x.Linear(shape, data[1], bias, data[0])
-
-	if err != nil {
-		panic(fmt.Sprintf("xla projection Forward(Linear): %v", err))
-	}
-
-	return out
+	return x.Linear(shape, data[1], bias, data[0])
 }
 
 // ---------------------------------------------------------------------------

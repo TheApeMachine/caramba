@@ -22,7 +22,7 @@ NewPredictiveCodingOps creates a CUDAPredictiveCodingOps.
 func NewPredictiveCodingOps() *CUDAPredictiveCodingOps { return &CUDAPredictiveCodingOps{} }
 
 // Prediction: shape=[D_out, D_in], data[0]=W, data[1]=r → dst[D_out]
-func (op *CUDAPredictiveCodingOps) Prediction(shape []int, data ...[]float64) []float64 {
+func (op *CUDAPredictiveCodingOps) Prediction(shape []int, data ...[]float64) ([]float64, error) {
 	dOut, dIn := shape[0], shape[1]
 	dst := make([]float64, dOut)
 	rc := C.cuda_pc_prediction(
@@ -32,13 +32,13 @@ func (op *CUDAPredictiveCodingOps) Prediction(shape []int, data ...[]float64) []
 		C.int(dOut), C.int(dIn),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_pc_prediction failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_pc_prediction failed (rc=%d)", rc)
 	}
-	return dst
+	return dst, nil
 }
 
 // PredictionError: shape=[N], data[0]=x, data[1]=mu_hat, data[2]=precision(optional) → [N]
-func (op *CUDAPredictiveCodingOps) PredictionError(shape []int, data ...[]float64) []float64 {
+func (op *CUDAPredictiveCodingOps) PredictionError(shape []int, data ...[]float64) ([]float64, error) {
 	n := shape[0]
 	dst := make([]float64, n)
 	var precPtr *C.double
@@ -53,14 +53,16 @@ func (op *CUDAPredictiveCodingOps) PredictionError(shape []int, data ...[]float6
 		C.int(n),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_pc_prediction_error failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_pc_prediction_error failed (rc=%d)", rc)
 	}
-	return dst
+	return dst, nil
 }
 
 // UpdateRepresentation: shape=[D_in, D_out], data[0]=r, data[1]=W, data[2]=eps_lower,
 // data[3]=eps_self, data[4]=lr[1] → r_new[D_in]
-func (op *CUDAPredictiveCodingOps) UpdateRepresentation(shape []int, data ...[]float64) []float64 {
+func (op *CUDAPredictiveCodingOps) UpdateRepresentation(
+	shape []int, data ...[]float64,
+) ([]float64, error) {
 	dIn, dOut := shape[0], shape[1]
 	dst := make([]float64, dIn)
 	rc := C.cuda_pc_update_representation(
@@ -73,13 +75,13 @@ func (op *CUDAPredictiveCodingOps) UpdateRepresentation(shape []int, data ...[]f
 		C.int(dOut), C.int(dIn),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_pc_update_representation failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_pc_update_representation failed (rc=%d)", rc)
 	}
-	return dst
+	return dst, nil
 }
 
 // UpdateWeights: shape=[D_out, D_in], data[0]=W, data[1]=eps, data[2]=r, data[3]=lr[1] → W_new
-func (op *CUDAPredictiveCodingOps) UpdateWeights(shape []int, data ...[]float64) []float64 {
+func (op *CUDAPredictiveCodingOps) UpdateWeights(shape []int, data ...[]float64) ([]float64, error) {
 	dOut, dIn := shape[0], shape[1]
 	dst := make([]float64, dOut*dIn)
 	rc := C.cuda_pc_update_weights(
@@ -91,7 +93,7 @@ func (op *CUDAPredictiveCodingOps) UpdateWeights(shape []int, data ...[]float64)
 		C.int(dOut), C.int(dIn),
 	)
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_pc_update_weights failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_pc_update_weights failed (rc=%d)", rc)
 	}
-	return dst
+	return dst, nil
 }

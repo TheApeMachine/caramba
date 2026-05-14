@@ -7,6 +7,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	cpushape "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/shape"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 func TestMetalShapeOpsForward(t *testing.T) {
@@ -35,7 +36,13 @@ func TestMetalShapeOpsForwardParity(t *testing.T) {
 
 		Convey("It should route transpose metadata to the Metal transpose kernel", func() {
 			input := []float64{1, 2, 3, 4, 5, 6}
-			expected := cpushape.NewTranspose(0, 1).Forward([]int{2, 3}, input)
+			expectedState := state.NewDict().WithShape([]int{2, 3}).WithInput(input)
+			expectedState.Dim0 = 0
+			expectedState.Dim1 = 1
+			expectedState, err := cpushape.NewTranspose(0, 1).Forward(expectedState)
+
+			So(err, ShouldBeNil)
+			expected := expectedState.Out
 
 			output, err := ops.Forward(
 				ShapeForwardRequest{
@@ -55,7 +62,15 @@ func TestMetalShapeOpsForwardParity(t *testing.T) {
 
 		Convey("It should route view_as_heads metadata to the Metal head-view kernel", func() {
 			input := []float64{1, 2, 3, 4, 5, 6, 7, 8}
-			expected := cpushape.NewViewAsHeads(2).Forward([]int{1, 2, 4}, input)
+			expectedState := state.NewDict().
+				WithShape([]int{1, 2, 4}).
+				WithInput(input)
+			expectedState.NumHeads = 2
+			var err error
+			expectedState, err = cpushape.NewViewAsHeads(2).Forward(expectedState)
+
+			So(err, ShouldBeNil)
+			expected := expectedState.Out
 
 			output, err := ops.Forward(
 				ShapeForwardRequest{
@@ -74,7 +89,12 @@ func TestMetalShapeOpsForwardParity(t *testing.T) {
 
 		Convey("It should route merge_heads metadata to the Metal merge-heads kernel", func() {
 			input := []float64{1, 3, 5, 7, 2, 4, 6, 8}
-			expected := cpushape.NewMergeHeads().Forward([]int{1, 2, 2, 2}, input)
+			expectedState, err := cpushape.NewMergeHeads().Forward(
+				state.NewDict().WithShape([]int{1, 2, 2, 2}).WithInput(input),
+			)
+
+			So(err, ShouldBeNil)
+			expected := expectedState.Out
 
 			output, err := ops.Forward(
 				ShapeForwardRequest{Op: "shape.merge_heads"},

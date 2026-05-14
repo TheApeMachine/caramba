@@ -18,6 +18,12 @@ int cuda_vsa_bundle(const double** vecs, int num_vecs, double* out, int n);
 // Similarity: out[0] = dot(a, b)  (cosine sim assuming unit-norm inputs)
 int cuda_vsa_similarity(const double* a, const double* b, double* out, int n);
 
+// Cyclic permutation by shift positions.
+int cuda_vsa_permute(const double* src, double* out, int n, int shift);
+
+// Inverse cyclic permutation by shift positions.
+int cuda_vsa_inverse_permute(const double* src, double* out, int n, int shift);
+
 #ifdef __cplusplus
 }
 #endif

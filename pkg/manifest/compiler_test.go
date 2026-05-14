@@ -7,18 +7,21 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 type scaleOp struct{ factor float64 }
 
-func (scale *scaleOp) Forward(_ []int, data ...[]float64) []float64 {
-	out := make([]float64, len(data[0]))
-
-	for index, value := range data[0] {
-		out[index] = value * scale.factor
+func (scale *scaleOp) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("math.scale"); err != nil {
+		return nil, err
 	}
 
-	return out
+	for index, value := range stateDict.Inputs[0] {
+		stateDict.Out[index] = value * scale.factor
+	}
+
+	return stateDict, nil
 }
 
 func TestCompiler_Compile(t *testing.T) {

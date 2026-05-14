@@ -26,7 +26,7 @@ func NewVSAOps() *CUDAVSAOps { return &CUDAVSAOps{} }
 Bind computes elementwise product of data[0] and data[1] on the GPU.
 shape=[N].
 */
-func (cudaVSAOps *CUDAVSAOps) Bind(shape []int, data ...[]float64) []float64 {
+func (cudaVSAOps *CUDAVSAOps) Bind(shape []int, data ...[]float64) ([]float64, error) {
 	n := shape[0]
 	out := make([]float64, n)
 
@@ -38,17 +38,17 @@ func (cudaVSAOps *CUDAVSAOps) Bind(shape []int, data ...[]float64) []float64 {
 	)
 
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_vsa_bind failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_vsa_bind failed (rc=%d)", rc)
 	}
 
-	return out
+	return out, nil
 }
 
 /*
 Bundle superimposes all input vectors on the GPU and returns an L2-normalised result.
 shape=[N].
 */
-func (cudaVSAOps *CUDAVSAOps) Bundle(shape []int, data ...[]float64) []float64 {
+func (cudaVSAOps *CUDAVSAOps) Bundle(shape []int, data ...[]float64) ([]float64, error) {
 	n := shape[0]
 	numVecs := len(data)
 
@@ -68,17 +68,17 @@ func (cudaVSAOps *CUDAVSAOps) Bundle(shape []int, data ...[]float64) []float64 {
 	)
 
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_vsa_bundle failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_vsa_bundle failed (rc=%d)", rc)
 	}
 
-	return out
+	return out, nil
 }
 
 /*
 Similarity computes the dot-product similarity between data[0] and data[1] on the GPU.
 shape=[N], returns length-1 slice.
 */
-func (cudaVSAOps *CUDAVSAOps) Similarity(shape []int, data ...[]float64) []float64 {
+func (cudaVSAOps *CUDAVSAOps) Similarity(shape []int, data ...[]float64) ([]float64, error) {
 	n := shape[0]
 	out := make([]float64, 1)
 
@@ -90,8 +90,58 @@ func (cudaVSAOps *CUDAVSAOps) Similarity(shape []int, data ...[]float64) []float
 	)
 
 	if rc != 0 {
-		panic(fmt.Sprintf("cuda_vsa_similarity failed (rc=%d)", rc))
+		return nil, fmt.Errorf("cuda_vsa_similarity failed (rc=%d)", rc)
 	}
 
-	return out
+	return out, nil
+}
+
+/*
+Permute cyclically shifts a vector by shift positions on the GPU.
+*/
+func (cudaVSAOps *CUDAVSAOps) Permute(
+	shape []int,
+	shift int,
+	data ...[]float64,
+) ([]float64, error) {
+	n := shape[0]
+	out := make([]float64, n)
+
+	rc := C.cuda_vsa_permute(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&out[0])),
+		C.int(n),
+		C.int(shift),
+	)
+
+	if rc != 0 {
+		return nil, fmt.Errorf("cuda_vsa_permute failed (rc=%d)", rc)
+	}
+
+	return out, nil
+}
+
+/*
+InversePermute cyclically shifts a vector by -shift positions on the GPU.
+*/
+func (cudaVSAOps *CUDAVSAOps) InversePermute(
+	shape []int,
+	shift int,
+	data ...[]float64,
+) ([]float64, error) {
+	n := shape[0]
+	out := make([]float64, n)
+
+	rc := C.cuda_vsa_inverse_permute(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&out[0])),
+		C.int(n),
+		C.int(shift),
+	)
+
+	if rc != 0 {
+		return nil, fmt.Errorf("cuda_vsa_inverse_permute failed (rc=%d)", rc)
+	}
+
+	return out, nil
 }

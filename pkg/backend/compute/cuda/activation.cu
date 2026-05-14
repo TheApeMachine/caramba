@@ -45,6 +45,13 @@ __global__ void sigmoid_kernel(const double* src, double* dst, int n) {
     dst[i] = 1.0 / (1.0 + exp(-src[i]));
 }
 
+__global__ void swish_kernel(const double* src, double* dst, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    double x = src[i];
+    dst[i] = x / (1.0 + exp(-x));
+}
+
 __global__ void swiglu_kernel(const double* src, double* dst, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
@@ -197,6 +204,30 @@ fail:
     return -1;
 }
 
+int cuda_swish(const double* src, double* dst, int n) {
+    double *d_src = NULL, *d_dst = NULL;
+    size_t bytes = (size_t)n * sizeof(double);
+
+    if (cudaMalloc(&d_src, bytes) != cudaSuccess) return -1;
+    if (cudaMalloc(&d_dst, bytes) != cudaSuccess) { cudaFree(d_src); return -1; }
+
+    if (cudaMemcpy(d_src, src, bytes, cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
+
+    swish_kernel<<<blocks(n), BLOCK>>>(d_src, d_dst, n);
+    if (cudaGetLastError() != cudaSuccess) goto fail;
+    if (cudaDeviceSynchronize() != cudaSuccess) goto fail;
+
+    if (cudaMemcpy(dst, d_dst, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
+
+    cudaFree(d_src);
+    cudaFree(d_dst);
+    return 0;
+fail:
+    cudaFree(d_src);
+    cudaFree(d_dst);
+    return -1;
+}
+
 int cuda_swiglu(const double* src, double* dst, int n) {
     // src has 2*n elements; dst has n elements.
     double *d_src = NULL, *d_dst = NULL;
@@ -265,6 +296,15 @@ int cuda_sigmoid_device(const double* src, double* dst, int n) {
     if (!src || !dst) return -1;
 
     sigmoid_kernel<<<blocks(n), BLOCK>>>(src, dst, n);
+    return synchronize_launch();
+}
+
+int cuda_swish_device(const double* src, double* dst, int n) {
+    if (n == 0) return 0;
+    if (n < 0) return -1;
+    if (!src || !dst) return -1;
+
+    swish_kernel<<<blocks(n), BLOCK>>>(src, dst, n);
     return synchronize_launch();
 }
 

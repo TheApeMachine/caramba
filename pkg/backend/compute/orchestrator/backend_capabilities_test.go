@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/backend/compute/operations"
+	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -21,8 +21,8 @@ func TestBackendCapabilityParity(t *testing.T) {
 			Convey("It should declare every required operation for "+string(location), func() {
 				capabilities := CapabilitiesForLocation(location)
 
-				for _, spec := range operations.Canonical.Required() {
-					So(capabilities.Supports(spec.ID), ShouldBeTrue)
+				for _, operationID := range ir.RequiredOperationIDs() {
+					So(capabilities.Supports(operationID), ShouldBeTrue)
 				}
 			})
 		}

@@ -1,6 +1,9 @@
 #include <cuda_runtime.h>
 #include <math.h>
 #include <stdint.h>
+#include <thrust/device_vector.h>
+#include <thrust/sort.h>
+#include <thrust/device_ptr.h>
 #include "causal.h"
 
 #define TILE_SIZE  16
@@ -284,6 +287,146 @@ __global__ void backdoor_effect_kernel(const double* beta, int nx, int ny, doubl
     for (int j = 0; j < nx; j++) sum += beta[j * ny + yd];
 
     effect[yd] = sum / (double)nx;
+}
+
+__global__ void counterfactual_kernel(
+    const double* x_obs,
+    const double* y_obs,
+    const double* beta,
+    const double* x_cf,
+    double* out,
+    int n,
+    int n_cf)
+{
+    int index = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    int total = n * n_cf;
+    if (index >= total) return;
+
+    int obs_index = index / n_cf;
+    int cf_index = index - obs_index * n_cf;
+    double epsilon = y_obs[obs_index] - beta[obs_index] * x_obs[obs_index];
+    out[index] = beta[obs_index] * x_cf[cf_index] + epsilon;
+}
+
+__global__ void fill_quantile_boundaries_kernel(
+    const double* sorted,
+    double* boundaries,
+    int samples,
+    int bins)
+{
+    int boundary_index = blockIdx.x * blockDim.x + threadIdx.x + 1;
+    if (boundary_index >= bins) return;
+
+    int position = (int)(((double)boundary_index / (double)bins) * (double)samples);
+    if (position >= samples) position = samples - 1;
+    boundaries[boundary_index - 1] = sorted[position];
+}
+
+__global__ void assign_frontdoor_bins_kernel(
+    const double* values,
+    const double* boundaries,
+    int* bins_out,
+    int samples,
+    int bins)
+{
+    int index = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (index >= samples) return;
+
+    double value = values[index];
+    int bin = 0;
+
+    while (bin < bins - 1 && !(value < boundaries[bin])) {
+        bin++;
+    }
+
+    bins_out[index] = bin;
+}
+
+__global__ void frontdoor_accumulate_kernel(
+    const int* x_bins,
+    const int* m_bins,
+    const double* y,
+    double* p_x,
+    double* count_x,
+    double* p_m_given_x,
+    double* e_y_given_xm,
+    double* count_xm,
+    int samples,
+    int nx,
+    int nm)
+{
+    int index = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (index >= samples) return;
+
+    int x_bin = x_bins[index];
+    int m_bin = m_bins[index];
+    atomicAdd(&p_x[x_bin], 1.0);
+    atomicAdd(&count_x[x_bin], 1.0);
+    atomicAdd(&p_m_given_x[m_bin * nx + x_bin], 1.0);
+    atomicAdd(&e_y_given_xm[x_bin * nm + m_bin], y[index]);
+    atomicAdd(&count_xm[x_bin * nm + m_bin], 1.0);
+}
+
+__global__ void frontdoor_normalize_kernel(
+    double* p_x,
+    double* count_x,
+    double* p_m_given_x,
+    double* e_y_given_xm,
+    double* count_xm,
+    int samples,
+    int nx,
+    int nm)
+{
+    int index = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    int p_m_total = nx * nm;
+
+    if (index < nx) {
+        p_x[index] /= (double)samples;
+    }
+
+    if (index < p_m_total) {
+        int x_bin = index % nx;
+        if (count_x[x_bin] > 0.0) {
+            p_m_given_x[index] /= count_x[x_bin];
+        }
+    }
+
+    if (index < p_m_total) {
+        if (count_xm[index] > 0.0) {
+            e_y_given_xm[index] /= count_xm[index];
+        } else {
+            e_y_given_xm[index] = NAN;
+        }
+    }
+}
+
+__global__ void frontdoor_effect_kernel(
+    const double* p_x,
+    const double* p_m_given_x,
+    const double* e_y_given_xm,
+    double* effect,
+    int nx,
+    int nm)
+{
+    int x_bin = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (x_bin >= nx) return;
+
+    double value = 0.0;
+
+    for (int m_bin = 0; m_bin < nm; m_bin++) {
+        double inner = 0.0;
+
+        for (int x_prime = 0; x_prime < nx; x_prime++) {
+            double mean = e_y_given_xm[x_prime * nm + m_bin];
+            if (!isnan(mean)) {
+                inner += mean * p_x[x_prime];
+            }
+        }
+
+        value += p_m_given_x[m_bin * nx + x_bin] * inner;
+    }
+
+    effect[x_bin] = value;
 }
 
 // ---------------------------------------------------------------------------
@@ -998,6 +1141,129 @@ int cuda_causal_dag_markov(
     cudaFree(dMu); cudaFree(dVar); cudaFree(dRss); cudaFree(dParents);
     cudaFree(dPMat); cudaFree(dBeta); cudaFree(dXTX); cudaFree(dInv); cudaFree(dXTY);
     return 0;
+}
+
+int cuda_causal_counterfactual(
+    const double* x_obs, const double* y_obs, const double* beta, const double* x_cf,
+    double* out,
+    int N, int N_cf)
+{
+    double *dX = NULL, *dY = NULL, *dBeta = NULL, *dXcf = NULL, *dOut = NULL;
+    size_t nBytes = (size_t)N * sizeof(double);
+    size_t cfBytes = (size_t)N_cf * sizeof(double);
+    size_t outBytes = (size_t)N * N_cf * sizeof(double);
+
+    if (alloc_copy(x_obs, (void**)&dX, nBytes)) return -1;
+    if (alloc_copy(y_obs, (void**)&dY, nBytes)) goto fail;
+    if (alloc_copy(beta, (void**)&dBeta, nBytes)) goto fail;
+    if (alloc_copy(x_cf, (void**)&dXcf, cfBytes)) goto fail;
+    if (cudaMalloc((void**)&dOut, outBytes) != cudaSuccess) goto fail;
+
+    {
+        int total = N * N_cf;
+        counterfactual_kernel<<<(total + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
+            dX, dY, dBeta, dXcf, dOut, N, N_cf
+        );
+    }
+
+    if (cudaGetLastError() != cudaSuccess) goto fail;
+    if (cudaMemcpy(out, dOut, outBytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
+
+    cudaFree(dX); cudaFree(dY); cudaFree(dBeta); cudaFree(dXcf); cudaFree(dOut);
+    return 0;
+fail:
+    cudaFree(dX); cudaFree(dY); cudaFree(dBeta); cudaFree(dXcf); cudaFree(dOut);
+    return -1;
+}
+
+int cuda_causal_frontdoor(
+    const double* X, const double* M, const double* Y,
+    double* effect,
+    int T, int nx, int nm)
+{
+    double *dX = NULL, *dM = NULL, *dY = NULL;
+    double *dXBoundaries = NULL, *dMBoundaries = NULL;
+    double *dPX = NULL, *dCountX = NULL, *dMGivenX = NULL;
+    double *dEYGivenXM = NULL, *dCountXM = NULL, *dEffect = NULL;
+    int *dXBins = NULL, *dMBins = NULL;
+    size_t sampleBytes = (size_t)T * sizeof(double);
+    size_t xBoundaryBytes = (size_t)(nx - 1) * sizeof(double);
+    size_t mBoundaryBytes = (size_t)(nm - 1) * sizeof(double);
+    size_t xBytes = (size_t)nx * sizeof(double);
+    size_t matrixBytes = (size_t)nx * nm * sizeof(double);
+    int sampleBlocks = (T + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int matrixItems = nx * nm;
+    int matrixBlocks = (matrixItems + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
+    if (alloc_copy(X, (void**)&dX, sampleBytes)) return -1;
+    if (alloc_copy(M, (void**)&dM, sampleBytes)) goto fail;
+    if (alloc_copy(Y, (void**)&dY, sampleBytes)) goto fail;
+    if (cudaMalloc((void**)&dXBins, (size_t)T * sizeof(int)) != cudaSuccess) goto fail;
+    if (cudaMalloc((void**)&dMBins, (size_t)T * sizeof(int)) != cudaSuccess) goto fail;
+    if (cudaMalloc((void**)&dPX, xBytes) != cudaSuccess) goto fail;
+    if (cudaMalloc((void**)&dCountX, xBytes) != cudaSuccess) goto fail;
+    if (cudaMalloc((void**)&dMGivenX, matrixBytes) != cudaSuccess) goto fail;
+    if (cudaMalloc((void**)&dEYGivenXM, matrixBytes) != cudaSuccess) goto fail;
+    if (cudaMalloc((void**)&dCountXM, matrixBytes) != cudaSuccess) goto fail;
+    if (cudaMalloc((void**)&dEffect, xBytes) != cudaSuccess) goto fail;
+    if (cudaMemset(dPX, 0, xBytes) != cudaSuccess) goto fail;
+    if (cudaMemset(dCountX, 0, xBytes) != cudaSuccess) goto fail;
+    if (cudaMemset(dMGivenX, 0, matrixBytes) != cudaSuccess) goto fail;
+    if (cudaMemset(dEYGivenXM, 0, matrixBytes) != cudaSuccess) goto fail;
+    if (cudaMemset(dCountXM, 0, matrixBytes) != cudaSuccess) goto fail;
+
+    {
+        thrust::device_ptr<double> xPtr(dX);
+        thrust::device_ptr<double> mPtr(dM);
+        thrust::device_vector<double> sortedX(xPtr, xPtr + T);
+        thrust::device_vector<double> sortedM(mPtr, mPtr + T);
+        thrust::sort(sortedX.begin(), sortedX.end());
+        thrust::sort(sortedM.begin(), sortedM.end());
+
+        if (cudaMalloc((void**)&dXBoundaries, xBoundaryBytes) != cudaSuccess) goto fail;
+        if (cudaMalloc((void**)&dMBoundaries, mBoundaryBytes) != cudaSuccess) goto fail;
+
+        fill_quantile_boundaries_kernel<<<(nx + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
+            thrust::raw_pointer_cast(sortedX.data()), dXBoundaries, T, nx
+        );
+        if (cudaGetLastError() != cudaSuccess) goto fail;
+        fill_quantile_boundaries_kernel<<<(nm + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
+            thrust::raw_pointer_cast(sortedM.data()), dMBoundaries, T, nm
+        );
+        if (cudaGetLastError() != cudaSuccess) goto fail;
+    }
+
+    assign_frontdoor_bins_kernel<<<sampleBlocks, BLOCK_SIZE>>>(dX, dXBoundaries, dXBins, T, nx);
+    if (cudaGetLastError() != cudaSuccess) goto fail;
+    assign_frontdoor_bins_kernel<<<sampleBlocks, BLOCK_SIZE>>>(dM, dMBoundaries, dMBins, T, nm);
+    if (cudaGetLastError() != cudaSuccess) goto fail;
+    frontdoor_accumulate_kernel<<<sampleBlocks, BLOCK_SIZE>>>(
+        dXBins, dMBins, dY, dPX, dCountX, dMGivenX, dEYGivenXM, dCountXM, T, nx, nm
+    );
+    if (cudaGetLastError() != cudaSuccess) goto fail;
+    frontdoor_normalize_kernel<<<matrixBlocks, BLOCK_SIZE>>>(
+        dPX, dCountX, dMGivenX, dEYGivenXM, dCountXM, T, nx, nm
+    );
+    if (cudaGetLastError() != cudaSuccess) goto fail;
+    frontdoor_effect_kernel<<<(nx + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
+        dPX, dMGivenX, dEYGivenXM, dEffect, nx, nm
+    );
+    if (cudaGetLastError() != cudaSuccess) goto fail;
+    if (cudaMemcpy(effect, dEffect, xBytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
+
+    cudaFree(dX); cudaFree(dM); cudaFree(dY);
+    cudaFree(dXBoundaries); cudaFree(dMBoundaries);
+    cudaFree(dPX); cudaFree(dCountX); cudaFree(dMGivenX);
+    cudaFree(dEYGivenXM); cudaFree(dCountXM); cudaFree(dEffect);
+    cudaFree(dXBins); cudaFree(dMBins);
+    return 0;
+fail:
+    cudaFree(dX); cudaFree(dM); cudaFree(dY);
+    cudaFree(dXBoundaries); cudaFree(dMBoundaries);
+    cudaFree(dPX); cudaFree(dCountX); cudaFree(dMGivenX);
+    cudaFree(dEYGivenXM); cudaFree(dCountXM); cudaFree(dEffect);
+    cudaFree(dXBins); cudaFree(dMBins);
+    return -1;
 }
 
 } // extern "C"

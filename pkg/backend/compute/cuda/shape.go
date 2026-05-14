@@ -113,6 +113,30 @@ func (c *CUDAShapeOps) Concat(a, b []float64) ([]float64, error) {
 	return dst, nil
 }
 
+// Split returns equal-sized chunks along a logical dimension as one flat buffer.
+func (c *CUDAShapeOps) Split(
+	input []float64,
+	outer int,
+	dimSize int,
+	splitSize int,
+	inner int,
+) ([]float64, error) {
+	n := len(input)
+	if n == 0 {
+		return []float64{}, nil
+	}
+	dst := make([]float64, n)
+	rc := C.cuda_split(
+		(*C.double)(unsafe.Pointer(&input[0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(outer), C.int(dimSize), C.int(splitSize), C.int(inner),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("cuda_split failed (rc=%d)", rc)
+	}
+	return dst, nil
+}
+
 // ---------------------------------------------------------------------------
 // ViewAsHeads: [B,T,D] -> [B,H,T,D/H]
 // ---------------------------------------------------------------------------

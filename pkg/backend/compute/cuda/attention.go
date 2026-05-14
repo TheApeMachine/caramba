@@ -33,39 +33,25 @@ func NewAttention() *CUDAAttention {
 //
 //   - len(shape)==5: [batch, num_heads, num_kv_heads, seq_len, head_dim]
 //     data[0]=Q, data[1]=K, data[2]=V — GQA.
-func (c *CUDAAttention) Forward(shape []int, data ...[]float64) []float64 {
+func (c *CUDAAttention) Forward(shape []int, data ...[]float64) ([]float64, error) {
 	switch len(shape) {
 	case 5:
 		batch, numHeads, numKVHeads, seqLen, headDim :=
 			shape[0], shape[1], shape[2], shape[3], shape[4]
-		out, err := c.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
-		if err != nil {
-			panic(err)
-		}
-		return out
+		return c.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
 
 	default:
 		batch, numHeads, seqLen, headDim := shape[0], shape[1], shape[2], shape[3]
 		kvSize := batch * 1 * seqLen * headDim
 		if len(data[1]) == kvSize {
-			out, err := c.MQA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
-			if err != nil {
-				panic(err)
-			}
-			return out
+			return c.MQA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
 		}
 		if c.Window > 0 {
-			out, err := c.SlidingWindow(data[0], data[1], data[2], batch, numHeads, seqLen, headDim, c.Window)
-			if err != nil {
-				panic(err)
-			}
-			return out
+			return c.SlidingWindow(
+				data[0], data[1], data[2], batch, numHeads, seqLen, headDim, c.Window,
+			)
 		}
-		out, err := c.SDPA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
-		if err != nil {
-			panic(err)
-		}
-		return out
+		return c.SDPA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
 	}
 }
 

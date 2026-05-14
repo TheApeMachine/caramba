@@ -57,24 +57,13 @@ func (x *XLAActivation) ensureCompiled(n int) error {
 	return nil
 }
 
-// Forward dispatches to ReLU with the universal operation signature ([]float64 only —
-// errors surface as panics because cpu/operation.Operation requires this shape).
-//
-// Panics with a formatted message if ReLU fails (compile/runtime).
-//
-// If len(data)==0, returns an empty slice (no PJRT call). Otherwise data[0] must exist.
-func (x *XLAActivation) Forward(shape []int, data ...[]float64) []float64 {
+// Forward dispatches to ReLU with the universal operation signature.
+func (x *XLAActivation) Forward(shape []int, data ...[]float64) ([]float64, error) {
 	if len(data) == 0 {
-		return []float64{}
+		return []float64{}, nil
 	}
 
-	out, err := x.ReLU(data[0])
-
-	if err != nil {
-		panic(fmt.Sprintf("xla activation Forward(ReLU): %v", err))
-	}
-
-	return out
+	return x.ReLU(data[0])
 }
 
 // ReLU computes max(x, 0) element-wise.

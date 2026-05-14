@@ -97,6 +97,17 @@ __global__ void vsa_dot_kernel(const double* a, const double* b, double* out_sum
     if (tid == 0) atomicAdd(out_sum, sdata[0]);
 }
 
+__global__ void vsa_permute_kernel(const double* src, double* out, int n, int shift) {
+    int index = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (index >= n) return;
+
+    int normalized = shift % n;
+    if (normalized < 0) normalized += n;
+
+    int dst_index = (index + normalized) % n;
+    out[dst_index] = src[index];
+}
+
 // ---------------------------------------------------------------------------
 // C wrappers
 // ---------------------------------------------------------------------------
@@ -182,6 +193,26 @@ int cuda_vsa_similarity(const double* a, const double* b, double* out, int n) {
     cudaFree(dSum);
     cudaFree(dA); cudaFree(dB);
     return 0;
+}
+
+int cuda_vsa_permute(const double* src, double* out, int n, int shift) {
+    double *dSrc, *dOut;
+    size_t nb = (size_t)n * sizeof(double);
+
+    if (vsa_alloc_copy(src, (void**)&dSrc, nb)) return -1;
+    VSA_CHECK(cudaMalloc((void**)&dOut, nb));
+
+    int blocks = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    vsa_permute_kernel<<<blocks, BLOCK_SIZE>>>(dSrc, dOut, n, shift);
+    VSA_CHECK(cudaGetLastError());
+    VSA_CHECK(cudaMemcpy(out, dOut, nb, cudaMemcpyDeviceToHost));
+
+    cudaFree(dSrc); cudaFree(dOut);
+    return 0;
+}
+
+int cuda_vsa_inverse_permute(const double* src, double* out, int n, int shift) {
+    return cuda_vsa_permute(src, out, n, -shift);
 }
 
 } // extern "C"

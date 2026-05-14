@@ -57,39 +57,25 @@ func NewAttention(platform string) (*XLAAttention, error) {
 //
 //   - len(shape)==5: [batch, num_heads, num_kv_heads, seq_len, head_dim]
 //     data[0]=Q, data[1]=K, data[2]=V — GQA.
-func (x *XLAAttention) Forward(shape []int, data ...[]float64) []float64 {
+func (x *XLAAttention) Forward(shape []int, data ...[]float64) ([]float64, error) {
 	switch len(shape) {
 	case 5:
 		batch, numHeads, numKVHeads, seqLen, headDim :=
 			shape[0], shape[1], shape[2], shape[3], shape[4]
-		out, err := x.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
-		if err != nil {
-			panic(err)
-		}
-		return out
+		return x.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
 
 	default:
 		batch, numHeads, seqLen, headDim := shape[0], shape[1], shape[2], shape[3]
 		kvSize := batch * 1 * seqLen * headDim
 		if len(data[1]) == kvSize {
-			out, err := x.MQA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
-			if err != nil {
-				panic(err)
-			}
-			return out
+			return x.MQA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
 		}
 		if x.Window > 0 {
-			out, err := x.SlidingWindow(data[0], data[1], data[2], batch, numHeads, seqLen, headDim, x.Window)
-			if err != nil {
-				panic(err)
-			}
-			return out
+			return x.SlidingWindow(
+				data[0], data[1], data[2], batch, numHeads, seqLen, headDim, x.Window,
+			)
 		}
-		out, err := x.SDPA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
-		if err != nil {
-			panic(err)
-		}
-		return out
+		return x.SDPA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
 	}
 }
 

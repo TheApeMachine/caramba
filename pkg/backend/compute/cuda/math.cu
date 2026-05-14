@@ -193,6 +193,87 @@ __global__ void softmax_kernel(const double* src, double* dst,
         row_dst[i] /= lsum;
 }
 
+__global__ void logsumexp_kernel(const double* src, double* dst, int dim_size)
+{
+    int row = blockIdx.x;
+    const double* row_src = src + row * dim_size;
+    extern __shared__ double smem[];
+
+    double local_max = -1e300;
+    for (int index = threadIdx.x; index < dim_size; index += blockDim.x) {
+        double value = row_src[index];
+        local_max = local_max > value ? local_max : value;
+    }
+
+    for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
+        double other = __shfl_down_sync(0xffffffff, local_max, offset);
+        local_max = local_max > other ? local_max : other;
+    }
+    if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = local_max;
+    __syncthreads();
+    if (threadIdx.x < blockDim.x / warpSize) local_max = smem[threadIdx.x];
+    for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
+        double other = __shfl_down_sync(0xffffffff, local_max, offset);
+        local_max = local_max > other ? local_max : other;
+    }
+    if (threadIdx.x == 0) smem[0] = local_max;
+    __syncthreads();
+    double max_value = smem[0];
+    __syncthreads();
+
+    double local_sum = 0.0;
+    for (int index = threadIdx.x; index < dim_size; index += blockDim.x) {
+        local_sum += exp(row_src[index] - max_value);
+    }
+
+    for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
+        local_sum += __shfl_down_sync(0xffffffff, local_sum, offset);
+    }
+    if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = local_sum;
+    __syncthreads();
+    if (threadIdx.x < blockDim.x / warpSize) local_sum = smem[threadIdx.x];
+    for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
+        local_sum += __shfl_down_sync(0xffffffff, local_sum, offset);
+    }
+    if (threadIdx.x == 0) {
+        dst[row] = max_value + log(local_sum);
+    }
+}
+
+__device__ uint64_t dropout_mix64(uint64_t value)
+{
+    value ^= value >> 30;
+    value *= 0xbf58476d1ce4e5b9ULL;
+    value ^= value >> 27;
+    value *= 0x94d049bb133111ebULL;
+    value ^= value >> 31;
+    return value;
+}
+
+__global__ void dropout_kernel(
+    const double* src, double* dst, int n, double p, int training, int seed)
+{
+    int index = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+    if (index >= n) return;
+
+    if (!training || p == 0.0) {
+        dst[index] = src[index];
+        return;
+    }
+
+    uint64_t mixed = dropout_mix64(
+        ((uint64_t)(unsigned int)seed << 32) ^ (uint64_t)(unsigned int)index
+    );
+    double threshold = (double)(mixed >> 11) * (1.0 / 9007199254740992.0);
+
+    if (threshold >= p) {
+        dst[index] = src[index] / (1.0 - p);
+        return;
+    }
+
+    dst[index] = 0.0;
+}
+
 // ---------------------------------------------------------------------------
 // layernorm_kernel: one block per row
 // ---------------------------------------------------------------------------
@@ -447,6 +528,35 @@ int cuda_softmax(const double* src, double* dst, int num_rows, int dim_size) {
     softmax_kernel<<<num_rows, tgs, warps*sizeof(double)>>>(dSrc, dDst, dim_size);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaMemcpy(dst, dDst, nb, cudaMemcpyDeviceToHost));
+    cudaFree(dSrc); cudaFree(dDst);
+    return 0;
+}
+
+int cuda_logsumexp(const double* src, double* dst, int num_rows, int dim_size) {
+    double *dSrc, *dDst;
+    size_t srcBytes = (size_t)num_rows * dim_size * sizeof(double);
+    size_t dstBytes = (size_t)num_rows * sizeof(double);
+    if (alloc_copy_free(src, (void**)&dSrc, srcBytes)) return -1;
+    CUDA_CHECK(cudaMalloc((void**)&dDst, dstBytes));
+    int tgs = dim_size < BLOCK_SIZE ? dim_size : BLOCK_SIZE;
+    int warps = (tgs + 31) / 32;
+    logsumexp_kernel<<<num_rows, tgs, warps*sizeof(double)>>>(dSrc, dDst, dim_size);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(dst, dDst, dstBytes, cudaMemcpyDeviceToHost));
+    cudaFree(dSrc); cudaFree(dDst);
+    return 0;
+}
+
+int cuda_dropout(const double* src, double* dst, int n, double p, int training, int seed) {
+    double *dSrc, *dDst;
+    size_t bytes = (size_t)n * sizeof(double);
+    if (alloc_copy_free(src, (void**)&dSrc, bytes)) return -1;
+    CUDA_CHECK(cudaMalloc((void**)&dDst, bytes));
+    dropout_kernel<<<(n+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(
+        dSrc, dDst, n, p, training, seed
+    );
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(dst, dDst, bytes, cudaMemcpyDeviceToHost));
     cudaFree(dSrc); cudaFree(dDst);
     return 0;
 }

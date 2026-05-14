@@ -5,11 +5,14 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 type stubOp struct{}
 
-func (stub *stubOp) Forward(_ []int, _ ...[]float64) []float64 { return nil }
+func (stub *stubOp) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	return stateDict, nil
+}
 
 func TestOperationRegistry_Build(t *testing.T) {
 	Convey("Given an OperationRegistry", t, func() {

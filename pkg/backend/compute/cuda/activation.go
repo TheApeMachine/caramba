@@ -146,6 +146,24 @@ func (c *CUDAActivation) Sigmoid(input []float64) ([]float64, error) {
 	return dst, nil
 }
 
+// Swish computes x/(1+exp(-x)) element-wise.
+func (c *CUDAActivation) Swish(input []float64) ([]float64, error) {
+	n := len(input)
+	if n == 0 {
+		return []float64{}, nil
+	}
+	dst := make([]float64, n)
+	rc := C.cuda_swish(
+		(*C.double)(unsafe.Pointer(&input[0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(n),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("cuda_swish failed (rc=%d)", rc)
+	}
+	return dst, nil
+}
+
 // SwiGLU computes sigmoid(gate[i]) * value[i].
 // input must have 2*n elements: first n are gates, second n are values.
 // Returns n elements.

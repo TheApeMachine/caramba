@@ -6,6 +6,7 @@ import (
 	"math/rand"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/active_inference"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 const banditNumStates = 8
@@ -131,7 +132,17 @@ func (bandit *Bandit) score(index int) float64 {
 
 func (bandit *Bandit) recomputePosterior() {
 	stateProbs := bandit.stateProbabilities()
-	efeValues := bandit.efe.Forward([]int{bandit.numStates, len(bandit.arms)}, stateProbs)
+	stateDict, err := bandit.efe.Forward(
+		state.NewDict().
+			WithShape([]int{bandit.numStates, len(bandit.arms)}).
+			WithInput(stateProbs),
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	efeValues := stateDict.Out
 	bestIndex := bandit.bestObservedIndex()
 
 	for index := range efeValues {
