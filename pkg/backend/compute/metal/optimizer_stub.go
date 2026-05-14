@@ -10,50 +10,50 @@ func NewOptimizerRegistry() Registry { return Registry{} }
 
 func unavailableOptimizer() (state.Optimizer, error) { return nil, metalUnavailable() }
 
-func (registry Registry) Adam(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) Adam(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }
 
-func (registry Registry) AdamW(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) AdamW(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }
 
-func (registry Registry) AdaMax(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) AdaMax(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }
 
-func (registry Registry) SGD(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) SGD(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }
 
-func (registry Registry) Lion(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) Lion(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }
 
-func (registry Registry) RMSProp(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) RMSProp(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }
 
-func (registry Registry) Hebbian(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) Hebbian(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }
 
-func (registry Registry) Lars(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) Lars(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }
 
-func (registry Registry) Lamb(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) Lamb(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }
 
-func (registry Registry) AdaGrad(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) AdaGrad(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }
 
-func (registry Registry) AdaDelta(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) AdaDelta(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }
 
-func (registry Registry) LBFGS(*state.Dict) (state.Optimizer, error) {
+func (registry Registry) LBFGS(_ *state.Dict) (state.Optimizer, error) {
 	return unavailableOptimizer()
 }

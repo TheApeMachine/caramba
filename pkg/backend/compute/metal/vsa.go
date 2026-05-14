@@ -99,7 +99,7 @@ func (metalVSAOps *MetalVSAOps) Bind(shape []int, data ...[]float64) ([]float64,
 }
 
 /*
-Bundle superimposes all input vectors (summed on host, then L2-normalised on GPU).
+Bundle superimposes all input vectors and L2-normalises the result on the GPU.
 shape=[N].
 */
 func (metalVSAOps *MetalVSAOps) Bundle(shape []int, data ...[]float64) ([]float64, error) {
@@ -116,30 +116,27 @@ func (metalVSAOps *MetalVSAOps) Bundle(shape []int, data ...[]float64) ([]float6
 		return nil, fmt.Errorf("MetalVSAOps.Bundle: need at least one input vector")
 	}
 
-	acc := make([]float32, n)
+	vectors := make([]float32, len(data)*n)
 
-	for _, vec := range data {
+	for vectorIndex, vec := range data {
 		if len(vec) < n {
 			return nil, fmt.Errorf("MetalVSAOps.Bundle: each vector must have length >= %d", n)
 		}
 
-		v32 := toFloat32(vec)
-
-		for i := range acc {
-			acc[i] += v32[i]
-		}
+		copy(vectors[vectorIndex*n:(vectorIndex+1)*n], toFloat32(vec[:n]))
 	}
 
 	out := make([]float32, n)
 
-	rc := C.metal_vsa_l2normalize(
-		(*C.float)(unsafe.Pointer(&acc[0])),
+	rc := C.metal_vsa_bundle(
+		(*C.float)(unsafe.Pointer(&vectors[0])),
 		(*C.float)(unsafe.Pointer(&out[0])),
+		C.int(len(data)),
 		C.int(n),
 	)
 
 	if rc != 0 {
-		return nil, fmt.Errorf("metal_vsa_l2normalize failed (rc=%d)", rc)
+		return nil, fmt.Errorf("metal_vsa_bundle failed (rc=%d)", rc)
 	}
 
 	return toFloat64(out), nil
@@ -180,6 +177,71 @@ func (metalVSAOps *MetalVSAOps) Similarity(shape []int, data ...[]float64) ([]fl
 
 	if rc != 0 {
 		return nil, fmt.Errorf("metal_vsa_dot failed (rc=%d)", rc)
+	}
+
+	return toFloat64(out), nil
+}
+
+/*
+Permute cyclically shifts a vector by shift positions on the GPU.
+*/
+func (metalVSAOps *MetalVSAOps) Permute(
+	shape []int, shift int, data ...[]float64,
+) ([]float64, error) {
+	return metalVSAOps.permute(shape, shift, false, data...)
+}
+
+/*
+InversePermute reverses Permute by shifting by the inverse offset on the GPU.
+*/
+func (metalVSAOps *MetalVSAOps) InversePermute(
+	shape []int, shift int, data ...[]float64,
+) ([]float64, error) {
+	return metalVSAOps.permute(shape, shift, true, data...)
+}
+
+func (metalVSAOps *MetalVSAOps) permute(
+	shape []int, shift int, inverse bool, data ...[]float64,
+) ([]float64, error) {
+	metalVSAOps.mu.Lock()
+	defer metalVSAOps.mu.Unlock()
+
+	if len(shape) < 1 || shape[0] <= 0 {
+		return nil, fmt.Errorf("MetalVSAOps.Permute: need shape[0] > 0")
+	}
+
+	n := shape[0]
+
+	if len(data) < 1 {
+		return nil, fmt.Errorf("MetalVSAOps.Permute: need one input vector")
+	}
+
+	if len(data[0]) < n {
+		return nil, fmt.Errorf("MetalVSAOps.Permute: vector length must be >= %d", n)
+	}
+
+	src := toFloat32(data[0][:n])
+	out := make([]float32, n)
+	var rc C.int
+
+	if inverse {
+		rc = C.metal_vsa_inverse_permute(
+			(*C.float)(unsafe.Pointer(&src[0])),
+			(*C.float)(unsafe.Pointer(&out[0])),
+			C.int(n),
+			C.int(shift),
+		)
+	} else {
+		rc = C.metal_vsa_permute(
+			(*C.float)(unsafe.Pointer(&src[0])),
+			(*C.float)(unsafe.Pointer(&out[0])),
+			C.int(n),
+			C.int(shift),
+		)
+	}
+
+	if rc != 0 {
+		return nil, fmt.Errorf("metal_vsa_permute failed (rc=%d)", rc)
 	}
 
 	return toFloat64(out), nil

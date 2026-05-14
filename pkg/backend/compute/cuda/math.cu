@@ -211,7 +211,12 @@ __global__ void logsumexp_kernel(const double* src, double* dst, int dim_size)
     }
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = local_max;
     __syncthreads();
-    if (threadIdx.x < blockDim.x / warpSize) local_max = smem[threadIdx.x];
+    int warp_count = (blockDim.x + warpSize - 1) / warpSize;
+    if (threadIdx.x < warp_count) {
+        local_max = smem[threadIdx.x];
+    } else {
+        local_max = -1e300;
+    }
     for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
         double other = __shfl_down_sync(0xffffffff, local_max, offset);
         local_max = local_max > other ? local_max : other;
@@ -231,7 +236,11 @@ __global__ void logsumexp_kernel(const double* src, double* dst, int dim_size)
     }
     if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = local_sum;
     __syncthreads();
-    if (threadIdx.x < blockDim.x / warpSize) local_sum = smem[threadIdx.x];
+    if (threadIdx.x < warp_count) {
+        local_sum = smem[threadIdx.x];
+    } else {
+        local_sum = 0.0;
+    }
     for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
         local_sum += __shfl_down_sync(0xffffffff, local_sum, offset);
     }
@@ -537,7 +546,10 @@ int cuda_logsumexp(const double* src, double* dst, int num_rows, int dim_size) {
     size_t srcBytes = (size_t)num_rows * dim_size * sizeof(double);
     size_t dstBytes = (size_t)num_rows * sizeof(double);
     if (alloc_copy_free(src, (void**)&dSrc, srcBytes)) return -1;
-    CUDA_CHECK(cudaMalloc((void**)&dDst, dstBytes));
+    if (cudaMalloc((void**)&dDst, dstBytes) != cudaSuccess) {
+        cudaFree(dSrc);
+        return -1;
+    }
     int tgs = dim_size < BLOCK_SIZE ? dim_size : BLOCK_SIZE;
     int warps = (tgs + 31) / 32;
     logsumexp_kernel<<<num_rows, tgs, warps*sizeof(double)>>>(dSrc, dDst, dim_size);
@@ -551,7 +563,10 @@ int cuda_dropout(const double* src, double* dst, int n, double p, int training, 
     double *dSrc, *dDst;
     size_t bytes = (size_t)n * sizeof(double);
     if (alloc_copy_free(src, (void**)&dSrc, bytes)) return -1;
-    CUDA_CHECK(cudaMalloc((void**)&dDst, bytes));
+    if (cudaMalloc((void**)&dDst, bytes) != cudaSuccess) {
+        cudaFree(dSrc);
+        return -1;
+    }
     dropout_kernel<<<(n+BLOCK_SIZE-1)/BLOCK_SIZE, BLOCK_SIZE>>>(
         dSrc, dDst, n, p, training, seed
     );

@@ -12,7 +12,6 @@ import "C"
 
 import (
 	"fmt"
-	"math"
 	"unsafe"
 )
 
@@ -58,13 +57,9 @@ func (x *XLAMasking) NewCausalMask() *XLACausalMask {
 
 // Forward generates a causal mask on XLA.
 // shape must contain seq_len as its last element; data is unused.
-func (op *XLACausalMask) Forward(shape []int, data ...[]float64) []float64 {
+func (op *XLACausalMask) Forward(shape []int, data ...[]float64) ([]float64, error) {
 	seqLen := shape[len(shape)-1]
-	out, err := op.x.CausalMask(seqLen)
-	if err != nil {
-		return causalMaskScalarXLA(seqLen)
-	}
-	return out
+	return op.x.CausalMask(seqLen)
 }
 
 // CausalMask generates a causal attention mask.
@@ -84,21 +79,6 @@ func (x *XLAMasking) CausalMask(seqLen int) ([]float64, error) {
 	return dst, nil
 }
 
-func causalMaskScalarXLA(seqLen int) []float64 {
-	ninf := math.Inf(-1)
-	out := make([]float64, seqLen*seqLen)
-	for i := 0; i < seqLen; i++ {
-		base := i * seqLen
-		for j := 0; j <= i; j++ {
-			out[base+j] = 0.0
-		}
-		for j := i + 1; j < seqLen; j++ {
-			out[base+j] = ninf
-		}
-	}
-	return out
-}
-
 // ---------------------------------------------------------------------------
 // ApplyMask
 // ---------------------------------------------------------------------------
@@ -112,16 +92,8 @@ func (x *XLAMasking) NewApplyMask() *XLAApplyMask {
 
 // Forward applies mask to scores: out[i] = scores[i] + mask[i].
 // data[0] = scores, data[1] = mask.
-func (op *XLAApplyMask) Forward(shape []int, data ...[]float64) []float64 {
-	out, err := op.x.ApplyMask(data[0], data[1])
-	if err != nil {
-		res := make([]float64, len(data[0]))
-		for i := range data[0] {
-			res[i] = data[0][i] + data[1][i]
-		}
-		return res
-	}
-	return out
+func (op *XLAApplyMask) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	return op.x.ApplyMask(data[0], data[1])
 }
 
 // ApplyMask computes scores + mask elementwise on XLA.

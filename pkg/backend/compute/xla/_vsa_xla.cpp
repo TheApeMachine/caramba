@@ -293,6 +293,38 @@ static std::string scale_module(int n, double scale) {
         "}";
 }
 
+static std::string cyclic_shift_module(int n, int shift, bool inverse) {
+    int k = ((shift % n) + n) % n;
+
+    if (inverse && k != 0) {
+        k = n - k;
+    }
+
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+
+    if (k == 0) {
+        return
+            "module @m {"
+            "  func.func @main(%x: " + t + ") -> " + t + " {"
+            "    return %x : " + t +
+            "  }"
+            "}";
+    }
+
+    std::string first = "tensor<" + std::to_string(k) + "xf64>";
+    std::string second = "tensor<" + std::to_string(n - k) + "xf64>";
+
+    return
+        "module @m {"
+        "  func.func @main(%x: " + t + ") -> " + t + " {"
+        "    %tail = stablehlo.slice %x [" + std::to_string(n - k) + ":" + std::to_string(n) + "] : (" + t + ") -> " + first +
+        "    %head = stablehlo.slice %x [0:" + std::to_string(n - k) + "] : (" + t + ") -> " + second +
+        "    %out = stablehlo.concatenate %tail, %head, dim = 0 : (" + first + ", " + second + ") -> " + t +
+        "    return %out : " + t +
+        "  }"
+        "}";
+}
+
 // ---------------------------------------------------------------------------
 // run_binary: execute a 2-input → 1-output compiled executable
 // ---------------------------------------------------------------------------
@@ -551,6 +583,32 @@ int xla_vsa_similarity(const double* a, const double* b, double* out, int n) {
     if (!red_exec) return -1;
 
     return run_unary(red_exec, prod.data(), (size_t)n, out, sizeof(double));
+}
+
+int xla_vsa_permute(const double* src, double* out, int n, int shift) {
+    std::lock_guard<std::mutex> lock(gv_mutex);
+
+    if (!src || !out || n <= 0 || !gv_client) return -1;
+
+    int k = ((shift % n) + n) % n;
+    std::string key = "vsa_permute_" + std::to_string(n) + "_" + std::to_string(k);
+    auto* exec = compile_module(key, cyclic_shift_module(n, k, false));
+    if (!exec) return -1;
+
+    return run_unary(exec, src, (size_t)n, out, (size_t)n * sizeof(double));
+}
+
+int xla_vsa_inverse_permute(const double* src, double* out, int n, int shift) {
+    std::lock_guard<std::mutex> lock(gv_mutex);
+
+    if (!src || !out || n <= 0 || !gv_client) return -1;
+
+    int k = ((shift % n) + n) % n;
+    std::string key = "vsa_inverse_permute_" + std::to_string(n) + "_" + std::to_string(k);
+    auto* exec = compile_module(key, cyclic_shift_module(n, k, true));
+    if (!exec) return -1;
+
+    return run_unary(exec, src, (size_t)n, out, (size_t)n * sizeof(double));
 }
 
 const char* xla_vsa_get_last_error(void) {

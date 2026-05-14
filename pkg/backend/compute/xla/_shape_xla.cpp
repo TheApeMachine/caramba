@@ -141,6 +141,109 @@ static int run_shape_exec(
     return 0;
 }
 
+static PJRT_Buffer* shape_host_to_device(const double* src, int src_n) {
+    PJRT_Client_BufferFromHostBuffer_Args ba{};
+    ba.struct_size = PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE;
+    ba.client      = g_client;
+    ba.data        = src;
+    ba.type        = PJRT_Buffer_Type_F64;
+    int64_t dims[1] = { (int64_t)src_n };
+    ba.dims        = dims;
+    ba.num_dims    = 1;
+    ba.host_buffer_semantics = PJRT_HostBufferSemantics_kImmutableOnlyDuringCall;
+
+    PJRT_Error* err = g_api->PJRT_Client_BufferFromHostBuffer(&ba);
+    if (err) return nullptr;
+
+    PJRT_Buffer_ReadyEvent_Args re{};
+    re.struct_size = PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE;
+    re.buffer = ba.buffer;
+    err = g_api->PJRT_Buffer_ReadyEvent(&re);
+    if (err) return nullptr;
+
+    PJRT_Event_Await_Args ev{};
+    ev.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
+    ev.event = re.event;
+    g_api->PJRT_Event_Await(&ev);
+
+    PJRT_Event_Destroy_Args eda{};
+    eda.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+    eda.event = re.event;
+    g_api->PJRT_Event_Destroy(&eda);
+
+    return ba.buffer;
+}
+
+static void shape_destroy_buf(PJRT_Buffer* buffer) {
+    if (!buffer) return;
+
+    PJRT_Buffer_Destroy_Args da{};
+    da.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
+    da.buffer = buffer;
+    g_api->PJRT_Buffer_Destroy(&da);
+}
+
+static int run_shape_exec2(
+    PJRT_LoadedExecutable* exec,
+    const double* src_a, int src_a_n,
+    const double* src_b, int src_b_n,
+    double* dst, int dst_n)
+{
+    PJRT_Buffer* buffer_a = shape_host_to_device(src_a, src_a_n);
+    if (!buffer_a) return -1;
+
+    PJRT_Buffer* buffer_b = shape_host_to_device(src_b, src_b_n);
+    if (!buffer_b) {
+        shape_destroy_buf(buffer_a);
+        return -1;
+    }
+
+    PJRT_Buffer* args[2] = { buffer_a, buffer_b };
+    PJRT_Buffer* const* arg_lists[1] = { args };
+    PJRT_Buffer* out_storage = nullptr;
+    PJRT_Buffer** out_list[1] = { &out_storage };
+
+    PJRT_LoadedExecutable_Execute_Args ea{};
+    ea.struct_size     = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
+    ea.executable      = exec;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    ea.options         = &options;
+    ea.argument_lists  = arg_lists;
+    ea.num_devices     = 1;
+    ea.num_args        = 2;
+    ea.output_lists    = out_list;
+
+    PJRT_Error* err = g_api->PJRT_LoadedExecutable_Execute(&ea);
+    shape_destroy_buf(buffer_a);
+    shape_destroy_buf(buffer_b);
+    if (err) return -1;
+
+    PJRT_Buffer_ToHostBuffer_Args tha{};
+    tha.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
+    tha.src         = out_storage;
+    tha.dst         = dst;
+    tha.dst_size    = (size_t)dst_n * sizeof(double);
+
+    err = g_api->PJRT_Buffer_ToHostBuffer(&tha);
+    if (err) {
+        shape_destroy_buf(out_storage);
+        return -1;
+    }
+
+    PJRT_Event_Await_Args ev{};
+    ev.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
+    ev.event = tha.event;
+    g_api->PJRT_Event_Await(&ev);
+
+    PJRT_Event_Destroy_Args eda{};
+    eda.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+    eda.event = tha.event;
+    g_api->PJRT_Event_Destroy(&eda);
+
+    shape_destroy_buf(out_storage);
+    return 0;
+}
+
 // ---------------------------------------------------------------------------
 // StableHLO module builders
 // ---------------------------------------------------------------------------
@@ -214,6 +317,56 @@ static std::string build_concat(int n_a, int n_b) {
         "    return %out : " + tOut + "\n"
         "  }\n"
         "}\n";
+}
+
+static std::string build_split(int outer, int dim_size, int split_size, int inner) {
+    int total = outer * dim_size * inner;
+    int num_chunks = dim_size / split_size;
+    int element_count = split_size * inner;
+    std::ostringstream body;
+    int value_index = 0;
+
+    body
+        << "module @split {\n"
+        << "  func.func @main(%arg0: " << f64t(total) << ") -> " << f64t(total) << " {\n";
+
+    for (int chunk = 0; chunk < num_chunks; chunk++) {
+        for (int outer_index = 0; outer_index < outer; outer_index++) {
+            int src_offset = (outer_index * dim_size + chunk * split_size) * inner;
+            body
+                << "    %v" << value_index
+                << " = stablehlo.slice %arg0 [" << src_offset << ":"
+                << (src_offset + element_count) << "] : (" << f64t(total)
+                << ") -> " << f64t(element_count) << "\n";
+            value_index++;
+        }
+    }
+
+    if (value_index == 1) {
+        body << "    return %v0 : " << f64t(total) << "\n";
+    } else {
+        int current_count = element_count;
+        body
+            << "    %cat0 = stablehlo.concatenate %v0, %v1, dim = 0 : ("
+            << f64t(element_count) << ", " << f64t(element_count)
+            << ") -> " << f64t(current_count + element_count) << "\n";
+        current_count += element_count;
+
+        for (int index = 2; index < value_index; index++) {
+            body
+                << "    %cat" << (index - 1)
+                << " = stablehlo.concatenate %cat" << (index - 2)
+                << ", %v" << index << ", dim = 0 : ("
+                << f64t(current_count) << ", " << f64t(element_count)
+                << ") -> " << f64t(current_count + element_count) << "\n";
+            current_count += element_count;
+        }
+
+        body << "    return %cat" << (value_index - 2) << " : " << f64t(total) << "\n";
+    }
+
+    body << "  }\n}\n";
+    return body.str();
 }
 
 // ViewAsHeads: [B,T,H,head_dim] reshape+transpose -> [B,H,T,head_dim].
@@ -295,21 +448,30 @@ int xla_concat(const double* srcA, int n_a,
                double* dst)
 {
     if (!g_client) return -1;
-    // Pack both inputs into a single flat buffer and use a custom two-input module.
-    // For simplicity: concatenate on host and use copy kernel.
-    // A proper two-input PJRT dispatch requires a more elaborate execute path.
-    // Here we concatenate on host, then run copy to at least exercise the pipeline.
     int total = n_a + n_b;
-    double* combined = (double*)malloc((size_t)total * sizeof(double));
-    if (!combined) return -1;
-    memcpy(combined,        srcA, (size_t)n_a * sizeof(double));
-    memcpy(combined + n_a, srcB, (size_t)n_b * sizeof(double));
-
-    std::string mlir = build_copy(total);
+    std::string mlir = build_concat(n_a, n_b);
     PJRT_LoadedExecutable* exec = compile_shape_stablehlo(mlir);
-    if (!exec) { free(combined); return -1; }
-    int rc = run_shape_exec(exec, combined, total, dst, total);
-    free(combined);
+    if (!exec) return -1;
+    int rc = run_shape_exec2(exec, srcA, n_a, srcB, n_b, dst, total);
+    PJRT_LoadedExecutable_Destroy_Args da{};
+    da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
+    da.executable  = exec;
+    g_api->PJRT_LoadedExecutable_Destroy(&da);
+    return rc;
+}
+
+int xla_split(const double* src, double* dst,
+              int outer, int dim_size, int split_size, int inner)
+{
+    if (!g_client) return -1;
+    if (outer <= 0 || dim_size <= 0 || split_size <= 0 || inner <= 0) return -1;
+    if (dim_size % split_size != 0) return -1;
+
+    int total = outer * dim_size * inner;
+    std::string mlir = build_split(outer, dim_size, split_size, inner);
+    PJRT_LoadedExecutable* exec = compile_shape_stablehlo(mlir);
+    if (!exec) return -1;
+    int rc = run_shape_exec(exec, src, total, dst, total);
     PJRT_LoadedExecutable_Destroy_Args da{};
     da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
     da.executable  = exec;

@@ -408,6 +408,18 @@ static std::string build_sigmoid(int n) {
         "}\n";
 }
 
+static std::string build_swish(int n) {
+    std::string t = f64_type(n);
+    return
+        "module @swish {\n"
+        "  func.func @main(%arg0: " + t + ") -> " + t + " {\n"
+        "    %sig = stablehlo.logistic %arg0 : " + t + "\n"
+        "    %out = stablehlo.multiply %arg0, %sig : " + t + "\n"
+        "    return %out : " + t + "\n"
+        "  }\n"
+        "}\n";
+}
+
 static std::string build_swiglu(int n) {
     // src layout: [gates(n), values(n)] as flat tensor of 2n.
     // Split, apply logistic to gates, multiply.
@@ -668,6 +680,7 @@ int xla_compile_activations(int n) {
         { "gelu",       build_gelu(n)         },
         { "tanh_act",   build_tanh(n)         },
         { "sigmoid",    build_sigmoid(n)      },
+        { "swish",      build_swish(n)        },
         { "swiglu",     build_swiglu(n)       },
     };
 
@@ -723,6 +736,11 @@ int xla_tanh_act(const double* src, double* dst, int n) {
 int xla_sigmoid(const double* src, double* dst, int n) {
     if (g_compiled_n != n && xla_compile_activations(n) != 0) return -1;
     return run_executable(g_execs["sigmoid"], src, n, dst, n, true);
+}
+
+int xla_swish(const double* src, double* dst, int n) {
+    if (g_compiled_n != n && xla_compile_activations(n) != 0) return -1;
+    return run_executable(g_execs["swish"], src, n, dst, n, true);
 }
 
 int xla_swiglu(const double* src, double* dst, int n) {

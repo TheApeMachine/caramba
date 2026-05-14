@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,6 +16,18 @@ type scaleOp struct{ factor float64 }
 func (scale *scaleOp) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("math.scale"); err != nil {
 		return nil, err
+	}
+
+	if len(stateDict.Inputs) == 0 || stateDict.Inputs[0] == nil {
+		return nil, fmt.Errorf("math.scale: input[0] is required")
+	}
+
+	if stateDict.Out == nil {
+		return nil, fmt.Errorf("math.scale: output is required")
+	}
+
+	if len(stateDict.Out) < len(stateDict.Inputs[0]) {
+		return nil, fmt.Errorf("math.scale: output length %d < input length %d", len(stateDict.Out), len(stateDict.Inputs[0]))
 	}
 
 	for index, value := range stateDict.Inputs[0] {

@@ -58,14 +58,28 @@ func NewAttention(platform string) (*XLAAttention, error) {
 //   - len(shape)==5: [batch, num_heads, num_kv_heads, seq_len, head_dim]
 //     data[0]=Q, data[1]=K, data[2]=V — GQA.
 func (x *XLAAttention) Forward(shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) < 3 {
+		return nil, fmt.Errorf("xla.attention: at least Q, K, and V inputs are required")
+	}
+
 	switch len(shape) {
 	case 5:
 		batch, numHeads, numKVHeads, seqLen, headDim :=
 			shape[0], shape[1], shape[2], shape[3], shape[4]
+
+		if batch <= 0 || numHeads <= 0 || numKVHeads <= 0 || seqLen <= 0 || headDim <= 0 {
+			return nil, fmt.Errorf("xla.attention: shape dimensions must be positive")
+		}
+
 		return x.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
 
-	default:
+	case 4:
 		batch, numHeads, seqLen, headDim := shape[0], shape[1], shape[2], shape[3]
+
+		if batch <= 0 || numHeads <= 0 || seqLen <= 0 || headDim <= 0 {
+			return nil, fmt.Errorf("xla.attention: shape dimensions must be positive")
+		}
+
 		kvSize := batch * 1 * seqLen * headDim
 		if len(data[1]) == kvSize {
 			return x.MQA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
@@ -76,6 +90,8 @@ func (x *XLAAttention) Forward(shape []int, data ...[]float64) ([]float64, error
 			)
 		}
 		return x.SDPA(data[0], data[1], data[2], batch, numHeads, seqLen, headDim)
+	default:
+		return nil, fmt.Errorf("xla.attention: unsupported shape rank %d", len(shape))
 	}
 }
 

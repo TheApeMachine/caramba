@@ -9,9 +9,12 @@
 // ---------------------------------------------------------------------------
 
 static int vsa_alloc_copy(const void* h_src, void** d_ptr, size_t bytes) {
+    *d_ptr = NULL;
     if (cudaMalloc(d_ptr, bytes) != cudaSuccess) return -1;
     if (cudaMemcpy(*d_ptr, h_src, bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
-        cudaFree(*d_ptr); return -1;
+        cudaFree(*d_ptr);
+        *d_ptr = NULL;
+        return -1;
     }
     return 0;
 }
@@ -196,23 +199,45 @@ int cuda_vsa_similarity(const double* a, const double* b, double* out, int n) {
 }
 
 int cuda_vsa_permute(const double* src, double* out, int n, int shift) {
-    double *dSrc, *dOut;
+    if (!src || !out || n <= 0) return -1;
+
+    double *dSrc = NULL, *dOut = NULL;
     size_t nb = (size_t)n * sizeof(double);
 
     if (vsa_alloc_copy(src, (void**)&dSrc, nb)) return -1;
-    VSA_CHECK(cudaMalloc((void**)&dOut, nb));
+    if (cudaMalloc((void**)&dOut, nb) != cudaSuccess) {
+        cudaFree(dSrc);
+        return -1;
+    }
 
     int blocks = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
     vsa_permute_kernel<<<blocks, BLOCK_SIZE>>>(dSrc, dOut, n, shift);
-    VSA_CHECK(cudaGetLastError());
-    VSA_CHECK(cudaMemcpy(out, dOut, nb, cudaMemcpyDeviceToHost));
+    if (cudaGetLastError() != cudaSuccess) {
+        cudaFree(dSrc);
+        cudaFree(dOut);
+        return -1;
+    }
+
+    if (cudaMemcpy(out, dOut, nb, cudaMemcpyDeviceToHost) != cudaSuccess) {
+        cudaFree(dSrc);
+        cudaFree(dOut);
+        return -1;
+    }
 
     cudaFree(dSrc); cudaFree(dOut);
     return 0;
 }
 
 int cuda_vsa_inverse_permute(const double* src, double* out, int n, int shift) {
-    return cuda_vsa_permute(src, out, n, -shift);
+    if (n <= 0) return -1;
+
+    long long normalized = (long long)shift % (long long)n;
+
+    if (normalized < 0) normalized += (long long)n;
+
+    int inverse_shift = normalized == 0 ? 0 : (int)((long long)n - normalized);
+
+    return cuda_vsa_permute(src, out, n, inverse_shift);
 }
 
 } // extern "C"

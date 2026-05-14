@@ -1,4 +1,6 @@
 #include <cuda_runtime.h>
+#include <exception>
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <thrust/device_vector.h>
@@ -18,9 +20,12 @@
 // Helper: alloc and copy host→device
 // ---------------------------------------------------------------------------
 static int alloc_copy(const void* h_src, void** d_ptr, size_t bytes) {
+    *d_ptr = NULL;
     if (cudaMalloc(d_ptr, bytes) != cudaSuccess) return -1;
     if (cudaMemcpy(*d_ptr, h_src, bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
-        cudaFree(*d_ptr); return -1;
+        cudaFree(*d_ptr);
+        *d_ptr = NULL;
+        return -1;
     }
     return 0;
 }
@@ -1148,10 +1153,16 @@ int cuda_causal_counterfactual(
     double* out,
     int N, int N_cf)
 {
+    if (!x_obs || !y_obs || !beta || !x_cf || !out || N <= 0 || N_cf <= 0) return -1;
+
+    size_t total = (size_t)N * (size_t)N_cf;
+
+    if (total == 0 || total > INT_MAX) return -1;
+
     double *dX = NULL, *dY = NULL, *dBeta = NULL, *dXcf = NULL, *dOut = NULL;
     size_t nBytes = (size_t)N * sizeof(double);
     size_t cfBytes = (size_t)N_cf * sizeof(double);
-    size_t outBytes = (size_t)N * N_cf * sizeof(double);
+    size_t outBytes = total * sizeof(double);
 
     if (alloc_copy(x_obs, (void**)&dX, nBytes)) return -1;
     if (alloc_copy(y_obs, (void**)&dY, nBytes)) goto fail;
@@ -1160,8 +1171,9 @@ int cuda_causal_counterfactual(
     if (cudaMalloc((void**)&dOut, outBytes) != cudaSuccess) goto fail;
 
     {
-        int total = N * N_cf;
-        counterfactual_kernel<<<(total + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
+        int totalInt = (int)total;
+        int blocks = (totalInt + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        counterfactual_kernel<<<blocks, BLOCK_SIZE>>>(
             dX, dY, dBeta, dXcf, dOut, N, N_cf
         );
     }
@@ -1181,6 +1193,8 @@ int cuda_causal_frontdoor(
     double* effect,
     int T, int nx, int nm)
 {
+    if (!X || !M || !Y || !effect || T <= 0 || nx <= 0 || nm <= 0) return -1;
+
     double *dX = NULL, *dM = NULL, *dY = NULL;
     double *dXBoundaries = NULL, *dMBoundaries = NULL;
     double *dPX = NULL, *dCountX = NULL, *dMGivenX = NULL;
@@ -1190,10 +1204,17 @@ int cuda_causal_frontdoor(
     size_t xBoundaryBytes = (size_t)(nx - 1) * sizeof(double);
     size_t mBoundaryBytes = (size_t)(nm - 1) * sizeof(double);
     size_t xBytes = (size_t)nx * sizeof(double);
-    size_t matrixBytes = (size_t)nx * nm * sizeof(double);
+    size_t matrixItems = (size_t)nx * (size_t)nm;
+
+    if (matrixItems == 0 || matrixItems > INT_MAX) return -1;
+
+    size_t matrixBytes = matrixItems * sizeof(double);
     int sampleBlocks = (T + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    int matrixItems = nx * nm;
-    int matrixBlocks = (matrixItems + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    size_t matrixBlocksSize = (matrixItems + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
+    if (matrixBlocksSize > INT_MAX) return -1;
+
+    int matrixBlocks = (int)matrixBlocksSize;
 
     if (alloc_copy(X, (void**)&dX, sampleBytes)) return -1;
     if (alloc_copy(M, (void**)&dM, sampleBytes)) goto fail;
@@ -1212,7 +1233,7 @@ int cuda_causal_frontdoor(
     if (cudaMemset(dEYGivenXM, 0, matrixBytes) != cudaSuccess) goto fail;
     if (cudaMemset(dCountXM, 0, matrixBytes) != cudaSuccess) goto fail;
 
-    {
+    try {
         thrust::device_ptr<double> xPtr(dX);
         thrust::device_ptr<double> mPtr(dM);
         thrust::device_vector<double> sortedX(xPtr, xPtr + T);
@@ -1231,6 +1252,10 @@ int cuda_causal_frontdoor(
             thrust::raw_pointer_cast(sortedM.data()), dMBoundaries, T, nm
         );
         if (cudaGetLastError() != cudaSuccess) goto fail;
+    } catch (const std::exception&) {
+        goto fail;
+    } catch (...) {
+        goto fail;
     }
 
     assign_frontdoor_bins_kernel<<<sampleBlocks, BLOCK_SIZE>>>(dX, dXBoundaries, dXBins, T, nx);

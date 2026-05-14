@@ -184,6 +184,31 @@ func (m *MetalShapeOps) Concat(a, b []float64) ([]float64, error) {
 	return toFloat64(dst32), nil
 }
 
+// Split returns equal-sized chunks along a logical dimension as one flat buffer.
+func (m *MetalShapeOps) Split(
+	input []float64,
+	outer int,
+	dimSize int,
+	splitSize int,
+	inner int,
+) ([]float64, error) {
+	n := len(input)
+	if n == 0 {
+		return []float64{}, nil
+	}
+	src32 := toFloat32(input)
+	dst32 := make([]float32, n)
+	rc := C.metal_split(
+		(*C.float)(unsafe.Pointer(&src32[0])),
+		(*C.float)(unsafe.Pointer(&dst32[0])),
+		C.int(outer), C.int(dimSize), C.int(splitSize), C.int(inner),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("metal_split failed (rc=%d)", rc)
+	}
+	return toFloat64(dst32), nil
+}
+
 // ---------------------------------------------------------------------------
 // ViewAsHeads: [B,T,D] -> [B,H,T,D/H]
 // ---------------------------------------------------------------------------

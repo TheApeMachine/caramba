@@ -12,6 +12,7 @@ static id<MTLCommandQueue>         sQueue           = nil;
 static id<MTLComputePipelineState> sPSO_transpose   = nil;
 static id<MTLComputePipelineState> sPSO_copy        = nil;
 static id<MTLComputePipelineState> sPSO_concat      = nil;
+static id<MTLComputePipelineState> sPSO_split       = nil;
 static id<MTLComputePipelineState> sPSO_viewHeads   = nil;
 static id<MTLComputePipelineState> sPSO_mergeHeads  = nil;
 
@@ -40,10 +41,11 @@ int metal_shape_init(const char* metallib_path) {
         sPSO_transpose  = make_pso_s(lib, @"transpose_kernel");
         sPSO_copy       = make_pso_s(lib, @"copy_kernel");
         sPSO_concat     = make_pso_s(lib, @"concat_kernel");
+        sPSO_split      = make_pso_s(lib, @"split_kernel");
         sPSO_viewHeads  = make_pso_s(lib, @"view_as_heads_kernel");
         sPSO_mergeHeads = make_pso_s(lib, @"merge_heads_kernel");
 
-        if (!sPSO_transpose || !sPSO_copy || !sPSO_concat ||
+        if (!sPSO_transpose || !sPSO_copy || !sPSO_concat || !sPSO_split ||
             !sPSO_viewHeads || !sPSO_mergeHeads) return -1;
 
         return 0;
@@ -224,6 +226,44 @@ int metal_concat(const float* srcA, int n_a,
         vm_size_t page = getpagesize();
         if (((uintptr_t)dst % page) != 0) {
             memcpy(dst, [bufDst contents], d_bytes);
+        }
+        return 0;
+    }
+}
+
+int metal_split(const float* src, float* dst,
+                int outer, int dim_size, int split_size, int inner)
+{
+    @autoreleasepool {
+        if (!src || !dst || outer <= 0 || dim_size <= 0 || split_size <= 0 || inner <= 0) {
+            return -1;
+        }
+
+        int total = outer * dim_size * inner;
+        NSUInteger bytes = (NSUInteger)total * sizeof(float);
+        id<MTLBuffer> bufSrc = make_buf(sDevice, src, bytes);
+        id<MTLBuffer> bufDst = make_dst_buf(sDevice, dst, bytes);
+        if (!bufSrc || !bufDst || !sPSO_split) return -1;
+
+        id<MTLCommandBuffer> cb = [sQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:sPSO_split];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:&outer length:sizeof(int) atIndex:2];
+        [enc setBytes:&dim_size length:sizeof(int) atIndex:3];
+        [enc setBytes:&split_size length:sizeof(int) atIndex:4];
+        [enc setBytes:&inner length:sizeof(int) atIndex:5];
+        NSUInteger tw = sPSO_split.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)total, 1, 1)
+     threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        vm_size_t page = getpagesize();
+        if (((uintptr_t)dst % page) != 0) {
+            memcpy(dst, [bufDst contents], bytes);
         }
         return 0;
     }

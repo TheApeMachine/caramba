@@ -6,346 +6,346 @@ import "github.com/theapemachine/caramba/pkg/backend/compute/state"
 
 func unavailableOperation() (state.Operation, error) { return nil, metalUnavailable() }
 
-func (registry OperationRegistry) ReLU(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) ReLU(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) LeakyReLU(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) LeakyReLU(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) GELU(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) GELU(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Tanh(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Tanh(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Sigmoid(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Sigmoid(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) SwiGLU(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) SwiGLU(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Swish(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Swish(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) SDPA(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) SDPA(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) MQA(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) MQA(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) GQA(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) GQA(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) SlidingWindowAttention(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) SlidingWindowAttention(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) ApplyMask(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) ApplyMask(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) CausalMask(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) CausalMask(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Add(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Add(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Mul(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Mul(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Matmul(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Matmul(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Exp(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Exp(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Log(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Log(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) LogSumExp(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) LogSumExp(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Softmax(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Softmax(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Outer(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Outer(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Sign(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Sign(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) InvSqrtDimScale(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) InvSqrtDimScale(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Dropout(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Dropout(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) RMSNorm(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) RMSNorm(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) LayerNorm(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) LayerNorm(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Reshape(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Reshape(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Transpose(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Transpose(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Concat(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Concat(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Split(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Split(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) ViewAsHeads(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) ViewAsHeads(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) MergeHeads(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) MergeHeads(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) RoPE(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) RoPE(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) ALiBi(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) ALiBi(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) TokenEmbedding(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) TokenEmbedding(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Conv1D(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Conv1D(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Conv2D(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Conv2D(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Conv3D(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Conv3D(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) ConvTranspose2D(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) ConvTranspose2D(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) MaxPool2D(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) MaxPool2D(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) AvgPool2D(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) AvgPool2D(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) AdaptiveAvgPool2D(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) AdaptiveAvgPool2D(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) AdaptiveMaxPool2D(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) AdaptiveMaxPool2D(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Linear(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Linear(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) FusedQKV(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) FusedQKV(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) HawkesIntensity(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) HawkesIntensity(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) HawkesKernelMatrix(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) HawkesKernelMatrix(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) HawkesLogLikelihood(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) HawkesLogLikelihood(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) HawkesSimulate(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) HawkesSimulate(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) VSABind(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) VSABind(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) VSABundle(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) VSABundle(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) VSASimilarity(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) VSASimilarity(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) VSAPermute(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) VSAPermute(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) VSAInversePermute(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) VSAInversePermute(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) BeliefUpdate(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) BeliefUpdate(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) ExpectedFreeEnergy(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) ExpectedFreeEnergy(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) FreeEnergy(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) FreeEnergy(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) PrecisionWeight(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) PrecisionWeight(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Prediction(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Prediction(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) PredictionError(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) PredictionError(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) UpdateRepresentation(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) UpdateRepresentation(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) UpdateWeights(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) UpdateWeights(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) FlowActive(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) FlowActive(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) FlowInternal(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) FlowInternal(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) MutualInformation(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) MutualInformation(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Partition(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Partition(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) BackdoorAdjustment(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) BackdoorAdjustment(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) CATE(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) CATE(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Counterfactual(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Counterfactual(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) DAGMarkovFactorization(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) DAGMarkovFactorization(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) DoCalculus(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) DoCalculus(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) FrontdoorAdjustment(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) FrontdoorAdjustment(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) IVEstimate(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) IVEstimate(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) MSELoss(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) MSELoss(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) CrossEntropyLoss(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) CrossEntropyLoss(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) MSEGrad(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) MSEGrad(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) CrossEntropyGrad(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) CrossEntropyGrad(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Accuracy(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Accuracy(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Perplexity(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Perplexity(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) F1(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) F1(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Load(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Load(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Surgery(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Surgery(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Graft(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Graft(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) LoRA(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) LoRA(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Adapter(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Adapter(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 
-func (registry OperationRegistry) Freeze(*state.Dict) (state.Operation, error) {
+func (registry *OperationRegistry) Freeze(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }

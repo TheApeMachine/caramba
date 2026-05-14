@@ -57,7 +57,7 @@ static bool mcheck(const PJRT_Api* api, PJRT_Error* err) {
 
 // Run a precompiled executable with host double* in/out.
 // in_ptrs: array of pointers to input buffers, out_ptr: output buffer.
-int xla_math_xla_math_run_exec(PJRT_LoadedExecutable* exec,
+int xla_math_run_exec(PJRT_LoadedExecutable* exec,
                     const double** in_ptrs, int num_in, size_t* in_sizes,
                     double* out_ptr, size_t out_size)
 {
@@ -162,7 +162,7 @@ int xla_math_xla_math_run_exec(PJRT_LoadedExecutable* exec,
 }
 
 // Compile a StableHLO module and cache under key.
-PJRT_LoadedExecutable* xla_math_xla_math_compile_module(const std::string& key,
+PJRT_LoadedExecutable* xla_math_compile_module(const std::string& key,
                                               const std::string& mlir)
 {
     auto it = gm_execs.find(key);
@@ -258,6 +258,202 @@ static std::string softmax_module(int num_rows, int dim_size) {
         "    %sum_b = stablehlo.broadcast_in_dim %sum, dims = [0] : (" + tr + ") -> " + tm + "\n"
         "    %out = stablehlo.divide %exp, %sum_b : " + tm + "\n"
         "    return %out : " + tm + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string logsumexp_module(int num_rows, int dim_size) {
+    std::string tr = "tensor<" + std::to_string(num_rows) + "xf64>";
+    std::string tm = "tensor<" + std::to_string(num_rows) + "x" + std::to_string(dim_size) + "xf64>";
+    return
+        "module @logsumexp {\n"
+        "  func.func @main(%x: " + tm + ") -> " + tr + " {\n"
+        "    %neg_inf = stablehlo.constant dense<0xFFF0000000000000> : tensor<f64>\n"
+        "    %max = stablehlo.reduce(%x init: %neg_inf) applies stablehlo.maximum across dimensions = [1] : (" + tm + ", tensor<f64>) -> " + tr + "\n"
+        "    %max_b = stablehlo.broadcast_in_dim %max, dims = [0] : (" + tr + ") -> " + tm + "\n"
+        "    %shifted = stablehlo.subtract %x, %max_b : " + tm + "\n"
+        "    %exp = stablehlo.exponential %shifted : " + tm + "\n"
+        "    %zero = stablehlo.constant dense<0.0> : tensor<f64>\n"
+        "    %sum = stablehlo.reduce(%exp init: %zero) applies stablehlo.add across dimensions = [1] : (" + tm + ", tensor<f64>) -> " + tr + "\n"
+        "    %log_sum = stablehlo.log %sum : " + tr + "\n"
+        "    %out = stablehlo.add %max, %log_sum : " + tr + "\n"
+        "    return %out : " + tr + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string dropout_module(int n, double probability, int seed) {
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+    std::ostringstream pss, scale_ss, seed_ss;
+    pss << std::setprecision(17) << std::defaultfloat << probability;
+    scale_ss << std::setprecision(17) << std::defaultfloat << (1.0 / (1.0 - probability));
+    seed_ss << std::setprecision(17) << std::defaultfloat << (double)seed;
+
+    return
+        "module @dropout {\n"
+        "  func.func @main(%x: " + t + ") -> " + t + " {\n"
+        "    %idx = stablehlo.iota dim = 0 : " + t + "\n"
+        "    %seed = stablehlo.constant dense<" + seed_ss.str() + "> : " + t + "\n"
+        "    %a = stablehlo.constant dense<12.9898> : " + t + "\n"
+        "    %b = stablehlo.constant dense<78.233> : " + t + "\n"
+        "    %c = stablehlo.constant dense<43758.5453123> : " + t + "\n"
+        "    %raw0 = stablehlo.add %idx, %seed : " + t + "\n"
+        "    %raw1 = stablehlo.multiply %raw0, %a : " + t + "\n"
+        "    %raw2 = stablehlo.add %raw1, %b : " + t + "\n"
+        "    %sin = stablehlo.sine %raw2 : " + t + "\n"
+        "    %hash = stablehlo.multiply %sin, %c : " + t + "\n"
+        "    %floor = stablehlo.floor %hash : " + t + "\n"
+        "    %rand = stablehlo.subtract %hash, %floor : " + t + "\n"
+        "    %p = stablehlo.constant dense<" + pss.str() + "> : " + t + "\n"
+        "    %mask = stablehlo.compare GE, %rand, %p, TOTALORDER : (" + t + ", " + t + ") -> tensor<" + std::to_string(n) + "xi1>\n"
+        "    %one = stablehlo.constant dense<1.0> : " + t + "\n"
+        "    %zero = stablehlo.constant dense<0.0> : " + t + "\n"
+        "    %keep = stablehlo.select %mask, %one, %zero : (tensor<" + std::to_string(n) + "xi1>, " + t + ", " + t + ") -> " + t + "\n"
+        "    %kept = stablehlo.multiply %x, %keep : " + t + "\n"
+        "    %scale = stablehlo.constant dense<" + scale_ss.str() + "> : " + t + "\n"
+        "    %out = stablehlo.multiply %kept, %scale : " + t + "\n"
+        "    return %out : " + t + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string mse_loss_module(int n) {
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+    std::ostringstream nss;
+    nss << std::setprecision(17) << std::defaultfloat << (double)n;
+    return
+        "module @mse_loss {\n"
+        "  func.func @main(%p: " + t + ", %y: " + t + ") -> tensor<f64> {\n"
+        "    %d = stablehlo.subtract %p, %y : " + t + "\n"
+        "    %sq = stablehlo.multiply %d, %d : " + t + "\n"
+        "    %zero = stablehlo.constant dense<0.0> : tensor<f64>\n"
+        "    %sum = stablehlo.reduce(%sq init: %zero) applies stablehlo.add across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %n = stablehlo.constant dense<" + nss.str() + "> : tensor<f64>\n"
+        "    %out = stablehlo.divide %sum, %n : tensor<f64>\n"
+        "    return %out : tensor<f64>\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string mse_grad_module(int n) {
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+    std::ostringstream scale_ss;
+    scale_ss << std::setprecision(17) << std::defaultfloat << (2.0 / (double)n);
+    return
+        "module @mse_grad {\n"
+        "  func.func @main(%p: " + t + ", %y: " + t + ") -> " + t + " {\n"
+        "    %d = stablehlo.subtract %p, %y : " + t + "\n"
+        "    %s = stablehlo.constant dense<" + scale_ss.str() + "> : " + t + "\n"
+        "    %out = stablehlo.multiply %d, %s : " + t + "\n"
+        "    return %out : " + t + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string cross_entropy_loss_module(int n) {
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+    return
+        "module @cross_entropy_loss {\n"
+        "  func.func @main(%logits: " + t + ", %targets: " + t + ") -> tensor<f64> {\n"
+        "    %neg_inf = stablehlo.constant dense<0xFFF0000000000000> : tensor<f64>\n"
+        "    %max = stablehlo.reduce(%logits init: %neg_inf) applies stablehlo.maximum across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %max_b = stablehlo.broadcast_in_dim %max, dims = [] : (tensor<f64>) -> " + t + "\n"
+        "    %shift = stablehlo.subtract %logits, %max_b : " + t + "\n"
+        "    %exp = stablehlo.exponential %shift : " + t + "\n"
+        "    %zero = stablehlo.constant dense<0.0> : tensor<f64>\n"
+        "    %sum = stablehlo.reduce(%exp init: %zero) applies stablehlo.add across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %sum_b = stablehlo.broadcast_in_dim %sum, dims = [] : (tensor<f64>) -> " + t + "\n"
+        "    %prob = stablehlo.divide %exp, %sum_b : " + t + "\n"
+        "    %eps = stablehlo.constant dense<1.0E-9> : " + t + "\n"
+        "    %safe = stablehlo.add %prob, %eps : " + t + "\n"
+        "    %logp = stablehlo.log %safe : " + t + "\n"
+        "    %weighted = stablehlo.multiply %logp, %targets : " + t + "\n"
+        "    %loss_sum = stablehlo.reduce(%weighted init: %zero) applies stablehlo.add across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %minus_one = stablehlo.constant dense<-1.0> : tensor<f64>\n"
+        "    %out = stablehlo.multiply %loss_sum, %minus_one : tensor<f64>\n"
+        "    return %out : tensor<f64>\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string cross_entropy_grad_module(int n) {
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+    return
+        "module @cross_entropy_grad {\n"
+        "  func.func @main(%logits: " + t + ", %targets: " + t + ") -> " + t + " {\n"
+        "    %neg_inf = stablehlo.constant dense<0xFFF0000000000000> : tensor<f64>\n"
+        "    %max = stablehlo.reduce(%logits init: %neg_inf) applies stablehlo.maximum across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %max_b = stablehlo.broadcast_in_dim %max, dims = [] : (tensor<f64>) -> " + t + "\n"
+        "    %shift = stablehlo.subtract %logits, %max_b : " + t + "\n"
+        "    %exp = stablehlo.exponential %shift : " + t + "\n"
+        "    %zero = stablehlo.constant dense<0.0> : tensor<f64>\n"
+        "    %sum = stablehlo.reduce(%exp init: %zero) applies stablehlo.add across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %sum_b = stablehlo.broadcast_in_dim %sum, dims = [] : (tensor<f64>) -> " + t + "\n"
+        "    %prob = stablehlo.divide %exp, %sum_b : " + t + "\n"
+        "    %out = stablehlo.subtract %prob, %targets : " + t + "\n"
+        "    return %out : " + t + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string accuracy_module(int n) {
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+    std::string b = "tensor<" + std::to_string(n) + "xi1>";
+    return
+        "module @accuracy {\n"
+        "  func.func @main(%p: " + t + ", %y: " + t + ") -> tensor<f64> {\n"
+        "    %neg_inf = stablehlo.constant dense<0xFFF0000000000000> : tensor<f64>\n"
+        "    %pmax = stablehlo.reduce(%p init: %neg_inf) applies stablehlo.maximum across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %ymax = stablehlo.reduce(%y init: %neg_inf) applies stablehlo.maximum across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %pmax_b = stablehlo.broadcast_in_dim %pmax, dims = [] : (tensor<f64>) -> " + t + "\n"
+        "    %ymax_b = stablehlo.broadcast_in_dim %ymax, dims = [] : (tensor<f64>) -> " + t + "\n"
+        "    %pe = stablehlo.compare EQ, %p, %pmax_b, TOTALORDER : (" + t + ", " + t + ") -> " + b + "\n"
+        "    %ye = stablehlo.compare EQ, %y, %ymax_b, TOTALORDER : (" + t + ", " + t + ") -> " + b + "\n"
+        "    %idx = stablehlo.iota dim = 0 : " + t + "\n"
+        "    %large = stablehlo.constant dense<1.7976931348623157E+308> : " + t + "\n"
+        "    %pidxv = stablehlo.select %pe, %idx, %large : (" + b + ", " + t + ", " + t + ") -> " + t + "\n"
+        "    %yidxv = stablehlo.select %ye, %idx, %large : (" + b + ", " + t + ", " + t + ") -> " + t + "\n"
+        "    %large_s = stablehlo.constant dense<1.7976931348623157E+308> : tensor<f64>\n"
+        "    %pidx = stablehlo.reduce(%pidxv init: %large_s) applies stablehlo.minimum across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %yidx = stablehlo.reduce(%yidxv init: %large_s) applies stablehlo.minimum across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %same = stablehlo.compare EQ, %pidx, %yidx, TOTALORDER : (tensor<f64>, tensor<f64>) -> tensor<i1>\n"
+        "    %one = stablehlo.constant dense<1.0> : tensor<f64>\n"
+        "    %zero = stablehlo.constant dense<0.0> : tensor<f64>\n"
+        "    %out = stablehlo.select %same, %one, %zero : (tensor<i1>, tensor<f64>, tensor<f64>) -> tensor<f64>\n"
+        "    return %out : tensor<f64>\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string f1_counts_module(int n) {
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+    std::string b = "tensor<" + std::to_string(n) + "xi1>";
+    return
+        "module @f1_counts {\n"
+        "  func.func @main(%p: " + t + ", %y: " + t + ") -> tensor<3xf64> {\n"
+        "    %half = stablehlo.constant dense<0.5> : " + t + "\n"
+        "    %pred = stablehlo.compare GE, %p, %half, TOTALORDER : (" + t + ", " + t + ") -> " + b + "\n"
+        "    %actual = stablehlo.compare GE, %y, %half, TOTALORDER : (" + t + ", " + t + ") -> " + b + "\n"
+        "    %not_actual = stablehlo.compare LT, %y, %half, TOTALORDER : (" + t + ", " + t + ") -> " + b + "\n"
+        "    %not_pred = stablehlo.compare LT, %p, %half, TOTALORDER : (" + t + ", " + t + ") -> " + b + "\n"
+        "    %tp_mask = stablehlo.and %pred, %actual : " + b + "\n"
+        "    %fp_mask = stablehlo.and %pred, %not_actual : " + b + "\n"
+        "    %fn_mask = stablehlo.and %not_pred, %actual : " + b + "\n"
+        "    %one = stablehlo.constant dense<1.0> : " + t + "\n"
+        "    %zero_v = stablehlo.constant dense<0.0> : " + t + "\n"
+        "    %tp_v = stablehlo.select %tp_mask, %one, %zero_v : (" + b + ", " + t + ", " + t + ") -> " + t + "\n"
+        "    %fp_v = stablehlo.select %fp_mask, %one, %zero_v : (" + b + ", " + t + ", " + t + ") -> " + t + "\n"
+        "    %fn_v = stablehlo.select %fn_mask, %one, %zero_v : (" + b + ", " + t + ", " + t + ") -> " + t + "\n"
+        "    %zero = stablehlo.constant dense<0.0> : tensor<f64>\n"
+        "    %tp = stablehlo.reduce(%tp_v init: %zero) applies stablehlo.add across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %fp = stablehlo.reduce(%fp_v init: %zero) applies stablehlo.add across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %fn = stablehlo.reduce(%fn_v init: %zero) applies stablehlo.add across dimensions = [0] : (" + t + ", tensor<f64>) -> tensor<f64>\n"
+        "    %tp1 = stablehlo.reshape %tp : (tensor<f64>) -> tensor<1xf64>\n"
+        "    %fp1 = stablehlo.reshape %fp : (tensor<f64>) -> tensor<1xf64>\n"
+        "    %fn1 = stablehlo.reshape %fn : (tensor<f64>) -> tensor<1xf64>\n"
+        "    %tpfp = stablehlo.concatenate %tp1, %fp1, dim = 0 : (tensor<1xf64>, tensor<1xf64>) -> tensor<2xf64>\n"
+        "    %out = stablehlo.concatenate %tpfp, %fn1, dim = 0 : (tensor<2xf64>, tensor<1xf64>) -> tensor<3xf64>\n"
+        "    return %out : tensor<3xf64>\n"
         "  }\n"
         "}\n";
 }
@@ -383,6 +579,42 @@ static std::string scale_module(int n, double scale) {
         "}";
 }
 
+static std::string axpy_module(int n, double scale) {
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+    std::ostringstream scale_stream;
+    scale_stream << std::setprecision(17) << std::defaultfloat << scale;
+    std::string scale_literal = scale_stream.str();
+
+    return
+        "module @axpy {"
+        "  func.func @main(%dst: " + t + ", %src: " + t + ") -> " + t + " {"
+        "    %s = stablehlo.constant dense<" + scale_literal + "> : tensor<f64>"
+        "    %b = stablehlo.broadcast_in_dim %s, dims=[] : (tensor<f64>) -> " + t +
+        "    %scaled = stablehlo.multiply %src, %b : " + t +
+        "    %out = stablehlo.add %dst, %scaled : " + t +
+        "    return %out : " + t +
+        "  }"
+        "}";
+}
+
+static std::string clamp_module(int n, double lo, double hi) {
+    std::string t = "tensor<" + std::to_string(n) + "xf64>";
+    std::ostringstream lo_stream, hi_stream;
+    lo_stream << std::setprecision(17) << std::defaultfloat << lo;
+    hi_stream << std::setprecision(17) << std::defaultfloat << hi;
+
+    return
+        "module @clamp {"
+        "  func.func @main(%x: " + t + ") -> " + t + " {"
+        "    %lo = stablehlo.constant dense<" + lo_stream.str() + "> : " + t +
+        "    %hi = stablehlo.constant dense<" + hi_stream.str() + "> : " + t +
+        "    %floor = stablehlo.maximum %x, %lo : " + t +
+        "    %out = stablehlo.minimum %floor, %hi : " + t +
+        "    return %out : " + t +
+        "  }"
+        "}";
+}
+
 // ---------------------------------------------------------------------------
 // C API implementation
 // ---------------------------------------------------------------------------
@@ -501,8 +733,6 @@ int xla_inv_sqrt_dim_scale(const double* src, double* dst, int n, int dim) {
     return xla_math_run_exec(exec, ins, 1, sizes, dst, (size_t)n*8);
 }
 
-// Softmax, layernorm, and rmsnorm still use host loops; matmul/diff/reductions use StableHLO.
-
 int xla_matmul(const double* A, const double* B, double* C, int M, int K, int N) {
     if (M <= 0 || K <= 0 || N <= 0) return -1;
     if (!gm_client) return -1;
@@ -560,6 +790,44 @@ int xla_softmax(const double* src, double* dst, int num_rows, int dim_size) {
     return xla_math_run_exec(exec, ins, 1, sizes, dst, sizes[0]);
 }
 
+int xla_logsumexp(const double* src, double* dst, int num_rows, int dim_size) {
+    if (num_rows <= 0 || dim_size <= 0) return -1;
+    if (!gm_client) return -1;
+
+    std::string key = "logsumexp_" + std::to_string(num_rows) + "_" + std::to_string(dim_size);
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, logsumexp_module(num_rows, dim_size));
+    if (!exec) return -1;
+
+    const double* ins[1] = {src};
+    size_t sizes[1] = {(size_t)num_rows * (size_t)dim_size * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 1, sizes, dst, (size_t)num_rows * sizeof(double));
+}
+
+int xla_dropout(const double* src, double* dst, int n, double probability, int training, int seed) {
+    if (n <= 0 || probability < 0.0 || probability >= 1.0) return -1;
+    if (!gm_client) return -1;
+
+    std::string key;
+    std::string module;
+
+    if (!training || probability == 0.0) {
+        key = "dropout_identity_" + std::to_string(n);
+        module = scale_module(n, 1.0);
+    } else {
+        std::ostringstream pss;
+        pss << std::setprecision(17) << std::defaultfloat << probability;
+        key = "dropout_" + std::to_string(n) + "_" + pss.str() + "_" + std::to_string(seed);
+        module = dropout_module(n, probability, seed);
+    }
+
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, module);
+    if (!exec) return -1;
+
+    const double* ins[1] = {src};
+    size_t sizes[1] = {(size_t)n * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 1, sizes, dst, sizes[0]);
+}
+
 int xla_layernorm(const double* src, double* dst,
                   const double* weight, const double* bias,
                   int num_rows, int d_model, double eps) {
@@ -601,41 +869,47 @@ int xla_rmsnorm(const double* src, double* dst,
     return xla_math_run_exec(exec, ins, 2, sizes, dst, sizes[0]);
 }
 
-// ---------------------------------------------------------------------------
-// Optimizer primitives — scalar fallbacks; StableHLO variants follow same
-// pattern as unary/elementwise_module above.
-// ---------------------------------------------------------------------------
-
 int xla_axpy(double* dst, const double* src, double scale, int n) {
-    for (int i = 0; i < n; i++) dst[i] += scale * src[i];
-    return 0;
+    if (n <= 0 || !gm_client) return -1;
+
+    std::ostringstream scale_key;
+    scale_key << std::setprecision(17) << std::defaultfloat << scale;
+
+    std::string key = "axpy_" + std::to_string(n) + "_" + scale_key.str();
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, axpy_module(n, scale));
+    if (!exec) return -1;
+
+    const double* ins[2] = {dst, src};
+    size_t sizes[2] = {(size_t)n * sizeof(double), (size_t)n * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 2, sizes, dst, (size_t)n * sizeof(double));
 }
 
 int xla_scale(double* dst, double s, int n) {
-    for (int i = 0; i < n; i++) dst[i] *= s;
-    return 0;
+    if (n <= 0 || !gm_client) return -1;
+
+    std::ostringstream scale_key;
+    scale_key << std::setprecision(17) << std::defaultfloat << s;
+
+    std::string key = "scale_ip_" + std::to_string(n) + "_" + scale_key.str();
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, scale_module(n, s));
+    if (!exec) return -1;
+
+    const double* ins[1] = {dst};
+    size_t sizes[1] = {(size_t)n * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 1, sizes, dst, (size_t)n * sizeof(double));
 }
 
 int xla_sqrt_vec(const double* src, double* dst, int n) {
     char key[64];
     snprintf(key, sizeof(key), "sqrt_%d", n);
     auto* exec = xla_math_compile_module(key, unary_module("stablehlo.sqrt", n));
-    if (!exec) {
-        for (int i = 0; i < n; i++) dst[i] = std::sqrt(src[i]);
-        return 0;
-    }
+    if (!exec) return -1;
     return xla_math_run_exec(exec, (const double**)&src, 1, (size_t[]){(size_t)n*sizeof(double)}, dst, (size_t)n*sizeof(double));
 }
 
 int xla_add_scalar(double* dst, double scalar, int n) {
     if (n <= 0) return -1;
-
-    if (!gm_client) {
-        for (int i = 0; i < n; i++) {
-            dst[i] += scalar;
-        }
-        return 0;
-    }
+    if (!gm_client) return -1;
 
     std::ostringstream scalar_key;
     scalar_key << std::setprecision(17) << std::defaultfloat << scalar;
@@ -657,10 +931,7 @@ int xla_div_vec(const double* a, const double* b, double* dst, int n) {
     char key[64];
     snprintf(key, sizeof(key), "div_%d", n);
     auto* exec = xla_math_compile_module(key, elementwise_module("stablehlo.divide", n));
-    if (!exec) {
-        for (int i = 0; i < n; i++) dst[i] = a[i] / b[i];
-        return 0;
-    }
+    if (!exec) return -1;
     const double* in[2] = {a, b};
     size_t in_sz[2] = {(size_t)n*sizeof(double), (size_t)n*sizeof(double)};
     return xla_math_run_exec(exec, in, 2, in_sz, dst, (size_t)n*sizeof(double));
@@ -668,32 +939,30 @@ int xla_div_vec(const double* a, const double* b, double* dst, int n) {
 
 int xla_clamp_vec(double* dst, double lo, double hi, int n) {
     if (lo > hi) return -1;
+    if (n <= 0 || !gm_client) return -1;
 
-    for (int i = 0; i < n; i++) {
-        if (dst[i] < lo) dst[i] = lo;
-        else if (dst[i] > hi) dst[i] = hi;
-    }
-    return 0;
+    std::ostringstream lo_key, hi_key;
+    lo_key << std::setprecision(17) << std::defaultfloat << lo;
+    hi_key << std::setprecision(17) << std::defaultfloat << hi;
+
+    std::string key = "clamp_" + std::to_string(n) + "_" + lo_key.str() + "_" + hi_key.str();
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(key, clamp_module(n, lo, hi));
+    if (!exec) return -1;
+
+    const double* ins[1] = {dst};
+    size_t sizes[1] = {(size_t)n * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 1, sizes, dst, (size_t)n * sizeof(double));
 }
 
 int xla_sign(const double* src, double* dst, int n) {
-    // StableHLO: stablehlo.sign is the standard op for elementwise sign.
     char key[64];
     snprintf(key, sizeof(key), "sign_%d", n);
     auto* exec = xla_math_compile_module(key, unary_module("stablehlo.sign", n));
-    if (!exec) {
-        // scalar fallback
-        for (int i = 0; i < n; i++) {
-            double v = src[i];
-            dst[i] = (v > 0.0) ? 1.0 : (v < 0.0) ? -1.0 : 0.0;
-        }
-        return 0;
-    }
+    if (!exec) return -1;
     return xla_math_run_exec(exec, (const double**)&src, 1, (size_t[]){(size_t)n*sizeof(double)}, dst, (size_t)n*sizeof(double));
 }
 
 int xla_outer(const double* a, const double* b, double* dst, int M, int N) {
-    // StableHLO: broadcast a to [M,N] and b to [M,N], then multiply.
     char key[64];
     snprintf(key, sizeof(key), "outer_%d_%d", M, N);
     char buf[2048];
@@ -714,16 +983,82 @@ int xla_outer(const double* a, const double* b, double* dst, int M, int N) {
         b_type.c_str(), out_type.c_str(),
         out_type.c_str(), out_type.c_str());
     auto* exec = xla_math_compile_module(key, std::string(buf));
-    if (!exec) {
-        // scalar fallback
-        for (int row = 0; row < M; row++)
-            for (int col = 0; col < N; col++)
-                dst[row*N+col] = a[row] * b[col];
-        return 0;
-    }
+    if (!exec) return -1;
     const double* in[2] = {a, b};
     size_t in_sz[2] = {(size_t)M*sizeof(double), (size_t)N*sizeof(double)};
     return xla_math_run_exec(exec, in, 2, in_sz, dst, (size_t)M*N*sizeof(double));
+}
+
+int xla_train_mse_loss(const double* predictions, const double* targets, double* out, int n) {
+    if (n <= 0 || !gm_client) return -1;
+
+    std::string key = "train_mse_loss_" + std::to_string(n);
+    auto* exec = xla_math_compile_module(key, mse_loss_module(n));
+    if (!exec) return -1;
+
+    const double* ins[2] = {predictions, targets};
+    size_t sizes[2] = {(size_t)n * sizeof(double), (size_t)n * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 2, sizes, out, sizeof(double));
+}
+
+int xla_train_cross_entropy_loss(const double* logits, const double* targets, double* out, int n) {
+    if (n <= 0 || !gm_client) return -1;
+
+    std::string key = "train_ce_loss_" + std::to_string(n);
+    auto* exec = xla_math_compile_module(key, cross_entropy_loss_module(n));
+    if (!exec) return -1;
+
+    const double* ins[2] = {logits, targets};
+    size_t sizes[2] = {(size_t)n * sizeof(double), (size_t)n * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 2, sizes, out, sizeof(double));
+}
+
+int xla_train_mse_grad(const double* predictions, const double* targets, double* out, int n) {
+    if (n <= 0 || !gm_client) return -1;
+
+    std::string key = "train_mse_grad_" + std::to_string(n);
+    auto* exec = xla_math_compile_module(key, mse_grad_module(n));
+    if (!exec) return -1;
+
+    const double* ins[2] = {predictions, targets};
+    size_t sizes[2] = {(size_t)n * sizeof(double), (size_t)n * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 2, sizes, out, (size_t)n * sizeof(double));
+}
+
+int xla_train_cross_entropy_grad(const double* logits, const double* targets, double* out, int n) {
+    if (n <= 0 || !gm_client) return -1;
+
+    std::string key = "train_ce_grad_" + std::to_string(n);
+    auto* exec = xla_math_compile_module(key, cross_entropy_grad_module(n));
+    if (!exec) return -1;
+
+    const double* ins[2] = {logits, targets};
+    size_t sizes[2] = {(size_t)n * sizeof(double), (size_t)n * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 2, sizes, out, (size_t)n * sizeof(double));
+}
+
+int xla_bench_accuracy(const double* predictions, const double* targets, double* out, int n) {
+    if (n <= 0 || !gm_client) return -1;
+
+    std::string key = "bench_accuracy_" + std::to_string(n);
+    auto* exec = xla_math_compile_module(key, accuracy_module(n));
+    if (!exec) return -1;
+
+    const double* ins[2] = {predictions, targets};
+    size_t sizes[2] = {(size_t)n * sizeof(double), (size_t)n * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 2, sizes, out, sizeof(double));
+}
+
+int xla_bench_f1_counts(const double* predictions, const double* targets, double* out, int n) {
+    if (n <= 0 || !gm_client) return -1;
+
+    std::string key = "bench_f1_counts_" + std::to_string(n);
+    auto* exec = xla_math_compile_module(key, f1_counts_module(n));
+    if (!exec) return -1;
+
+    const double* ins[2] = {predictions, targets};
+    size_t sizes[2] = {(size_t)n * sizeof(double), (size_t)n * sizeof(double)};
+    return xla_math_run_exec(exec, ins, 2, sizes, out, 3 * sizeof(double));
 }
 
 } // extern "C"

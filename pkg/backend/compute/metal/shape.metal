@@ -91,6 +91,26 @@ kernel void concat_kernel(
     }
 }
 
+kernel void split_kernel(
+    device const float* src       [[buffer(0)]],
+    device float*       dst       [[buffer(1)]],
+    constant int&       outer     [[buffer(2)]],
+    constant int&       dimSize   [[buffer(3)]],
+    constant int&       splitSize [[buffer(4)]],
+    constant int&       inner     [[buffer(5)]],
+    uint i [[thread_position_in_grid]])
+{
+    int elementInChunk = splitSize * inner;
+    int chunkElements = outer * elementInChunk;
+    int chunk = int(i) / chunkElements;
+    int withinChunk = int(i) - chunk * chunkElements;
+    int outerIndex = withinChunk / elementInChunk;
+    int within = withinChunk - outerIndex * elementInChunk;
+    int srcIndex = (outerIndex * dimSize + chunk * splitSize) * inner + within;
+
+    dst[i] = src[srcIndex];
+}
+
 // ---------------------------------------------------------------------------
 // view_as_heads_kernel
 // Transposes dims 1 and 2 of a [B, T, H, head_dim] tensor ->

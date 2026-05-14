@@ -154,7 +154,7 @@ Execute runs the graph with named inputs,
 propagates outputs along edges, and returns accumulated state (including intermediates).
 */
 func (graph *Graph) Execute(inputs map[string][]float64, shape []int) (map[string][]float64, error) {
-	stateMap := make(map[string][]float64, len(inputs))
+	stateMap := make(map[string][]float64, len(inputs)+len(graph.nodes))
 
 	maps.Copy(stateMap, inputs)
 

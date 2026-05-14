@@ -1,6 +1,8 @@
 package operation
 
 import (
+	"fmt"
+
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/activation"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/active_inference"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/attention"
@@ -167,6 +169,18 @@ func (registry *OperationRegistry) ALiBi(*state.Dict) (state.Operation, error) {
 
 func (registry *OperationRegistry) TokenEmbedding(config *state.Dict) (state.Operation, error) {
 	config = stateConfig(config)
+
+	if config.VocabSize <= 0 {
+		return nil, fmt.Errorf(
+			"embedding.token: vocab_size must be positive, got %d",
+			config.VocabSize,
+		)
+	}
+
+	if config.DModel <= 0 {
+		return nil, fmt.Errorf("embedding.token: d_model must be positive, got %d", config.DModel)
+	}
+
 	return embedding.NewTokenEmbedding(config.VocabSize, config.DModel, config.InitStd), nil
 }
 
@@ -326,14 +340,12 @@ func (registry *OperationRegistry) VSASimilarity(*state.Dict) (state.Operation, 
 	return vsa.NewSimilarity(), nil
 }
 
-func (registry *OperationRegistry) VSAPermute(config *state.Dict) (state.Operation, error) {
-	config = stateConfig(config)
-	return vsa.NewPermute(config.K), nil
+func (registry *OperationRegistry) VSAPermute(_ *state.Dict) (state.Operation, error) {
+	return vsa.NewPermute(), nil
 }
 
-func (registry *OperationRegistry) VSAInversePermute(config *state.Dict) (state.Operation, error) {
-	config = stateConfig(config)
-	return vsa.NewInversePermute(config.K), nil
+func (registry *OperationRegistry) VSAInversePermute(_ *state.Dict) (state.Operation, error) {
+	return vsa.NewInversePermute(), nil
 }
 
 func (registry *OperationRegistry) BeliefUpdate(*state.Dict) (state.Operation, error) {

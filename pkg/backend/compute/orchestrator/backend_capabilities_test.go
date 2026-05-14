@@ -20,8 +20,11 @@ func TestBackendCapabilityParity(t *testing.T) {
 
 			Convey("It should declare every required operation for "+string(location), func() {
 				capabilities := CapabilitiesForLocation(location)
+				operationIDs := ir.RequiredOperationIDs()
 
-				for _, operationID := range ir.RequiredOperationIDs() {
+				So(operationIDs, ShouldNotBeEmpty)
+
+				for _, operationID := range operationIDs {
 					So(capabilities.Supports(operationID), ShouldBeTrue)
 				}
 			})

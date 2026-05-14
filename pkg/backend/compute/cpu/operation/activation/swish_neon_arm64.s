@@ -11,9 +11,18 @@ GLOBL ·swishOne(SB), RODATA|NOPTR, $8
 DATA ·swishNegOne+0(SB)/8, $-1.0
 GLOBL ·swishNegOne(SB), RODATA|NOPTR, $8
 
-// SwishNEON(dst, src []float64)
-// dst[i] = src[i] * sigmoid(src[i])
-TEXT ·SwishNEON(SB), NOSPLIT, $0-48
+// swishNEON(dst, src []float64)
+// dst[i] = src[i] * sigmoid(src[i]) using the local fast sigmoid form:
+//   t = x / 2
+//   sigmoid(x) ≈ (1 + clamp(-1, 1, t * (27 + t*t) / (27 + 9*t*t))) / 2
+//
+// The constants 27 and 9 implement a bounded rational tanh-style
+// approximation; no external citation is assumed. The clamp instructions below
+// bound the rational result to [-1, 1]. The denominator 27 + 9*t*t is always at
+// least 27 for finite t, so the division has no zero or underflow denominator
+// in the supported finite input range. Tests cover max Swish error across
+// [-12, 12] against the exact x/(1+exp(-x)) definition.
+TEXT ·swishNEON(SB), NOSPLIT, $0-48
 	MOVD dst+0(FP), R0
 	MOVD src_base+24(FP), R1
 	MOVD src_len+32(FP), R2

@@ -7,9 +7,9 @@ import (
 	"math"
 )
 
-func swishKernel(dst, src []float64) {
+func SwishKernel(dst, src []float64) {
 	if len(dst) != len(src) {
-		panic(fmt.Sprintf("swishKernel: dst and src length mismatch: dst=%d src=%d", len(dst), len(src)))
+		panic(fmt.Sprintf("SwishKernel: dst and src length mismatch: dst=%d src=%d", len(dst), len(src)))
 	}
 
 	for index, value := range src {

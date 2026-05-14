@@ -47,6 +47,12 @@ int xla_vsa_bundle(
 int xla_vsa_similarity(
     const double* a, const double* b, double* out, int n);
 
+int xla_vsa_permute(
+    const double* src, double* out, int n, int shift);
+
+int xla_vsa_inverse_permute(
+    const double* src, double* out, int n, int shift);
+
 #ifdef __cplusplus
 }
 #endif

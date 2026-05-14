@@ -31,6 +31,10 @@ int metal_concat(const float* srcA, int n_a,
                  const float* srcB, int n_b,
                  float* dst);
 
+// Split into equal chunks along a logical dimension, returned concatenated.
+int metal_split(const float* src, float* dst,
+                int outer, int dim_size, int split_size, int inner);
+
 // ViewAsHeads: [B,T,H,head_dim] -> [B,H,T,head_dim]
 int metal_view_as_heads(const float* src, float* dst,
                         int B, int T, int H, int head_dim);

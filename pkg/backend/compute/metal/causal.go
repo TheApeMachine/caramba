@@ -258,6 +258,102 @@ func (metalCausalOps *MetalCausalOps) CATE(shape []int, data ...[]float64) ([]fl
 }
 
 /*
+Counterfactual runs a heterogeneous linear SCM counterfactual query.
+shape=[N, N_cf], data[0]=X_obs, data[1]=Y_obs, data[2]=beta, data[3]=X_cf.
+*/
+func (metalCausalOps *MetalCausalOps) Counterfactual(
+	shape []int, data ...[]float64,
+) ([]float64, error) {
+	metalCausalOps.mu.Lock()
+	defer metalCausalOps.mu.Unlock()
+
+	if len(shape) < 2 {
+		return nil, fmt.Errorf("MetalCausalOps.Counterfactual: need shape [N,N_cf]")
+	}
+
+	n, nCF := shape[0], shape[1]
+
+	if n <= 0 || nCF <= 0 {
+		return nil, fmt.Errorf("MetalCausalOps.Counterfactual: invalid dimensions")
+	}
+
+	if len(data) < 4 {
+		return nil, fmt.Errorf("MetalCausalOps.Counterfactual: need len(data) >= 4")
+	}
+
+	if len(data[0]) != n || len(data[1]) != n || len(data[2]) != n || len(data[3]) != nCF {
+		return nil, fmt.Errorf("MetalCausalOps.Counterfactual: input length mismatch")
+	}
+
+	xObs := toFloat32(data[0])
+	yObs := toFloat32(data[1])
+	beta := toFloat32(data[2])
+	xCF := toFloat32(data[3])
+	output := make([]float32, n*nCF)
+	rc := C.metal_causal_counterfactual(
+		(*C.float)(unsafe.Pointer(&xObs[0])),
+		(*C.float)(unsafe.Pointer(&yObs[0])),
+		(*C.float)(unsafe.Pointer(&beta[0])),
+		(*C.float)(unsafe.Pointer(&xCF[0])),
+		(*C.float)(unsafe.Pointer(&output[0])),
+		C.int(n), C.int(nCF),
+	)
+
+	if rc != 0 {
+		return nil, fmt.Errorf("metal_causal_counterfactual failed (rc=%d)", rc)
+	}
+
+	return toFloat64(output), nil
+}
+
+/*
+FrontdoorAdjustment computes the frontdoor causal effect with equal-frequency binning.
+shape=[N_x, N_m, N_y, T], data[0]=X, data[1]=M, data[2]=Y.
+*/
+func (metalCausalOps *MetalCausalOps) FrontdoorAdjustment(
+	shape []int, data ...[]float64,
+) ([]float64, error) {
+	metalCausalOps.mu.Lock()
+	defer metalCausalOps.mu.Unlock()
+
+	if len(shape) < 4 {
+		return nil, fmt.Errorf("MetalCausalOps.FrontdoorAdjustment: need shape [N_x,N_m,N_y,T]")
+	}
+
+	nx, nm, samples := shape[0], shape[1], shape[3]
+
+	if nx <= 0 || nm <= 0 || samples <= 0 {
+		return nil, fmt.Errorf("MetalCausalOps.FrontdoorAdjustment: invalid dimensions")
+	}
+
+	if len(data) < 3 {
+		return nil, fmt.Errorf("MetalCausalOps.FrontdoorAdjustment: need len(data) >= 3")
+	}
+
+	if len(data[0]) < samples || len(data[1]) < samples || len(data[2]) < samples {
+		return nil, fmt.Errorf("MetalCausalOps.FrontdoorAdjustment: data lengths must be >= %d", samples)
+	}
+
+	x := toFloat32(data[0][:samples])
+	mediator := toFloat32(data[1][:samples])
+	y := toFloat32(data[2][:samples])
+	effect := make([]float32, nx)
+	rc := C.metal_causal_frontdoor(
+		(*C.float)(unsafe.Pointer(&x[0])),
+		(*C.float)(unsafe.Pointer(&mediator[0])),
+		(*C.float)(unsafe.Pointer(&y[0])),
+		(*C.float)(unsafe.Pointer(&effect[0])),
+		C.int(samples), C.int(nx), C.int(nm),
+	)
+
+	if rc != 0 {
+		return nil, fmt.Errorf("metal_causal_frontdoor failed (rc=%d)", rc)
+	}
+
+	return toFloat64(effect), nil
+}
+
+/*
 DAGMarkovFactorization computes per-observation log probabilities under the DAG Markov factorization.
 shape=[N, T], data[0]=X [T*N], data[1]=adj [N*N]
 Returns log_prob [T].

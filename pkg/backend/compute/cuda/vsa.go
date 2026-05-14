@@ -104,7 +104,24 @@ func (cudaVSAOps *CUDAVSAOps) Permute(
 	shift int,
 	data ...[]float64,
 ) ([]float64, error) {
+	if len(shape) == 0 {
+		return nil, fmt.Errorf("cuda_vsa_permute: shape[0] is required")
+	}
+
 	n := shape[0]
+
+	if n <= 0 {
+		return nil, fmt.Errorf("cuda_vsa_permute: n must be positive, got %d", n)
+	}
+
+	if len(data) == 0 || data[0] == nil {
+		return nil, fmt.Errorf("cuda_vsa_permute: data[0] is required")
+	}
+
+	if len(data[0]) < n {
+		return nil, fmt.Errorf("cuda_vsa_permute: data[0] length %d < n %d", len(data[0]), n)
+	}
+
 	out := make([]float64, n)
 
 	rc := C.cuda_vsa_permute(
@@ -129,7 +146,27 @@ func (cudaVSAOps *CUDAVSAOps) InversePermute(
 	shift int,
 	data ...[]float64,
 ) ([]float64, error) {
+	if len(shape) == 0 {
+		return nil, fmt.Errorf("cuda_vsa_inverse_permute: shape[0] is required")
+	}
+
 	n := shape[0]
+
+	if n <= 0 {
+		return nil, fmt.Errorf("cuda_vsa_inverse_permute: n must be positive, got %d", n)
+	}
+
+	if len(data) == 0 || data[0] == nil {
+		return nil, fmt.Errorf("cuda_vsa_inverse_permute: data[0] is required")
+	}
+
+	if len(data[0]) < n {
+		return nil, fmt.Errorf(
+			"cuda_vsa_inverse_permute: data[0] length %d < n %d",
+			len(data[0]), n,
+		)
+	}
+
 	out := make([]float64, n)
 
 	rc := C.cuda_vsa_inverse_permute(

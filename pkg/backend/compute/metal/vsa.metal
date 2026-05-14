@@ -88,3 +88,45 @@ kernel void vsa_scale_kernel(
         out[gid] = in[gid] * inv_norm;
     }
 }
+
+kernel void vsa_bundle_sum_kernel(
+    device const float* vectors [[buffer(0)]],
+    device       float* out     [[buffer(1)]],
+    constant     uint&  count   [[buffer(2)]],
+    constant     uint&  n       [[buffer(3)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid >= n) {
+        return;
+    }
+
+    float sum = 0.0f;
+    for (uint vector = 0; vector < count; vector++) {
+        sum += vectors[vector * n + gid];
+    }
+    out[gid] = sum;
+}
+
+kernel void vsa_permute_kernel(
+    device const float* src   [[buffer(0)]],
+    device       float* out   [[buffer(1)]],
+    constant     int&   shift [[buffer(2)]],
+    constant     uint&  n     [[buffer(3)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid >= n) {
+        return;
+    }
+
+    int normalized = shift % int(n);
+    if (normalized < 0) {
+        normalized += int(n);
+    }
+
+    int source = int(gid) - normalized;
+    if (source < 0) {
+        source += int(n);
+    }
+
+    out[gid] = src[source];
+}

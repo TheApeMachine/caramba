@@ -5,12 +5,12 @@ package activation
 import "fmt"
 
 //go:noescape
-func SwishNEON(dst, src []float64)
+func swishNEON(dst, src []float64)
 
-func swishKernel(dst, src []float64) {
+func SwishKernel(dst, src []float64) {
 	if len(dst) < len(src) {
-		panic(fmt.Sprintf("swishKernel: dst shorter than src (dst=%d src=%d)", len(dst), len(src)))
+		panic(fmt.Sprintf("SwishKernel: dst shorter than src (dst=%d src=%d)", len(dst), len(src)))
 	}
 
-	SwishNEON(dst[:len(src)], src)
+	swishNEON(dst[:len(src)], src)
 }

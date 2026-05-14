@@ -4,18 +4,32 @@ package activation
 
 import "fmt"
 
+/*
+SwishAVX2 applies the Swish activation to src and writes the results to dst.
+dst and src are float64 slices and dst must have the same length as src.
+The caller must only invoke this stub when AVX2 is supported and the slice
+length is a multiple of four. The routine writes dst in place and allocates
+nothing.
+*/
 //go:noescape
 func SwishAVX2(dst, src []float64)
 
+/*
+SwishSSE2 applies the Swish activation to src and writes the results to dst.
+dst and src are float64 slices and dst must have the same length as src.
+The caller must only invoke this stub when SSE2 is supported and the slice
+length is a multiple of two. The routine writes dst in place and allocates
+nothing.
+*/
 //go:noescape
 func SwishSSE2(dst, src []float64)
 
 //go:noescape
 func swishScalarAMD64(dst, src []float64)
 
-func swishKernel(dst, src []float64) {
+func SwishKernel(dst, src []float64) {
 	if len(dst) < len(src) {
-		panic(fmt.Sprintf("swishKernel: dst shorter than src (dst=%d src=%d)", len(dst), len(src)))
+		panic(fmt.Sprintf("SwishKernel: dst shorter than src (dst=%d src=%d)", len(dst), len(src)))
 	}
 
 	elementCount := len(src)

@@ -1,7 +1,14 @@
 package cuda
 
+/*
+OperationRegistry constructs CUDA-backed compute operations.
+The concrete constructor methods live in build-tag-specific files.
+*/
 type OperationRegistry struct{}
 
-func NewOperationRegistry() OperationRegistry {
-	return OperationRegistry{}
+/*
+NewOperationRegistry instantiates the CUDA operation registry.
+*/
+func NewOperationRegistry() *OperationRegistry {
+	return &OperationRegistry{}
 }

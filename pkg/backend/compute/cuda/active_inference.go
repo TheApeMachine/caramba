@@ -156,8 +156,18 @@ func (cudaOps *CUDAActiveInferenceOps) BeliefUpdate(shape []int, data ...[]float
 		return nil, err
 	}
 
+	maxInt := int(^uint(0) >> 1)
+
+	if n > maxInt/2 {
+		return nil, fmt.Errorf(
+			"CUDAActiveInferenceOps.BeliefUpdate: output length 2*n overflows int for n=%d",
+			n,
+		)
+	}
+
 	lr := float64(shape[1]) * 1e-4
-	out := make([]float64, 2*n)
+	neededSize := 2 * n
+	out := make([]float64, neededSize)
 	rc := C.cuda_ai_belief_update(
 		(*C.double)(unsafe.Pointer(&data[0][0])),
 		(*C.double)(unsafe.Pointer(&data[1][0])),

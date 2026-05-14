@@ -71,6 +71,16 @@ int metal_causal_cate(
     float *cate,
     int T, int nx);
 
+int metal_causal_counterfactual(
+    const float *X_obs, const float *Y_obs, const float *beta, const float *X_cf,
+    float *out,
+    int N, int N_cf);
+
+int metal_causal_frontdoor(
+    const float *X, const float *M, const float *Y,
+    float *effect,
+    int T, int nx, int nm);
+
 int metal_causal_dag_markov(
     const float *X, const float *adj,
     float *log_prob,

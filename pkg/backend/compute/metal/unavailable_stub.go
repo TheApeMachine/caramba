@@ -6,6 +6,8 @@ import "fmt"
 
 const metalUnavailableMsg = "metal backend unavailable: requires darwin and cgo"
 
+var errMetalUnavailable = fmt.Errorf("%s", metalUnavailableMsg)
+
 func metalUnavailable() error {
-	return fmt.Errorf("%s", metalUnavailableMsg)
+	return errMetalUnavailable
 }

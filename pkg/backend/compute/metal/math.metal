@@ -230,6 +230,74 @@ kernel void softmax_kernel(
     }
 }
 
+kernel void logsumexp_kernel(
+    device const float* src   [[buffer(0)]],
+    device float* dst         [[buffer(1)]],
+    constant uint& dim_size   [[buffer(2)]],
+    uint row                  [[threadgroup_position_in_grid]],
+    uint lid                  [[thread_position_in_threadgroup]],
+    uint tg_size              [[threads_per_threadgroup]])
+{
+    threadgroup float smem[256];
+    uint offset = row * dim_size;
+
+    float lmax = -INFINITY;
+    for (uint i = lid; i < dim_size; i += tg_size) {
+        lmax = max(lmax, src[offset + i]);
+    }
+    smem[lid] = lmax;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint s = tg_size / 2; s > 0; s >>= 1) {
+        if (lid < s) smem[lid] = max(smem[lid], smem[lid + s]);
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    float gmax = smem[0];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    float lsum = 0.0f;
+    for (uint i = lid; i < dim_size; i += tg_size) {
+        lsum += exp(src[offset + i] - gmax);
+    }
+    smem[lid] = lsum;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint s = tg_size / 2; s > 0; s >>= 1) {
+        if (lid < s) smem[lid] += smem[lid + s];
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (lid == 0) {
+        dst[row] = gmax + log(smem[0]);
+    }
+}
+
+static inline ulong dropout_mix64(ulong value) {
+    value ^= value >> 30;
+    value *= 0xbf58476d1ce4e5b9UL;
+    value ^= value >> 27;
+    value *= 0x94d049bb133111ebUL;
+    value ^= value >> 31;
+    return value;
+}
+
+kernel void dropout_kernel(
+    device const float* src [[buffer(0)]],
+    device float* dst       [[buffer(1)]],
+    constant float& p       [[buffer(2)]],
+    constant uint& training [[buffer(3)]],
+    constant uint& seed     [[buffer(4)]],
+    uint i                  [[thread_position_in_grid]])
+{
+    if (training == 0 || p == 0.0f) {
+        dst[i] = src[i];
+        return;
+    }
+
+    ulong mixed = dropout_mix64((ulong(seed) << 32) ^ ulong(i));
+    float unit = float(mixed >> 11) * (1.0f / 9007199254740992.0f);
+
+    dst[i] = unit >= p ? src[i] / (1.0f - p) : 0.0f;
+}
+
 // ---------------------------------------------------------------------------
 // layernorm_kernel: one threadgroup per row
 // Buffers: 0=src, 1=dst, 2=weight(gamma), 3=bias(beta),
@@ -402,4 +470,151 @@ kernel void clamp_vec_kernel(
     uint i              [[thread_position_in_grid]])
 {
     dst[i] = clamp(dst[i], lo, hi);
+}
+
+kernel void train_mse_loss_kernel(
+    device const float* predictions [[buffer(0)]],
+    device const float* targets     [[buffer(1)]],
+    device atomic_float* out        [[buffer(2)]],
+    constant uint& n                [[buffer(3)]],
+    uint i                          [[thread_position_in_grid]])
+{
+    if (i >= n) return;
+    float diff = predictions[i] - targets[i];
+    atomic_fetch_add_explicit(out, diff * diff / float(n), memory_order_relaxed);
+}
+
+kernel void train_mse_grad_kernel(
+    device const float* predictions [[buffer(0)]],
+    device const float* targets     [[buffer(1)]],
+    device float* out               [[buffer(2)]],
+    constant uint& n                [[buffer(3)]],
+    uint i                          [[thread_position_in_grid]])
+{
+    if (i >= n) return;
+    out[i] = 2.0f * (predictions[i] - targets[i]) / float(n);
+}
+
+kernel void train_ce_stats_kernel(
+    device const float* logits [[buffer(0)]],
+    device float* stats        [[buffer(1)]],
+    constant uint& n           [[buffer(2)]],
+    uint gid                   [[thread_position_in_grid]])
+{
+    if (gid != 0) return;
+
+    float max_value = -INFINITY;
+    for (uint i = 0; i < n; i++) {
+        max_value = max(max_value, logits[i]);
+    }
+
+    float sum_value = 0.0f;
+    for (uint i = 0; i < n; i++) {
+        sum_value += exp(logits[i] - max_value);
+    }
+
+    stats[0] = max_value;
+    stats[1] = sum_value;
+}
+
+kernel void train_cross_entropy_loss_kernel(
+    device const float* logits  [[buffer(0)]],
+    device const float* targets [[buffer(1)]],
+    device atomic_float* out    [[buffer(2)]],
+    device const float* stats   [[buffer(3)]],
+    constant uint& n            [[buffer(4)]],
+    uint i                      [[thread_position_in_grid]])
+{
+    if (i >= n) return;
+    float probability = exp(logits[i] - stats[0]) / stats[1];
+    atomic_fetch_add_explicit(
+        out, -log(probability + 1.0e-9f) * targets[i], memory_order_relaxed);
+}
+
+kernel void train_cross_entropy_grad_kernel(
+    device const float* logits  [[buffer(0)]],
+    device const float* targets [[buffer(1)]],
+    device float* out           [[buffer(2)]],
+    device const float* stats   [[buffer(3)]],
+    constant uint& n            [[buffer(4)]],
+    uint i                      [[thread_position_in_grid]])
+{
+    if (i >= n) return;
+    out[i] = exp(logits[i] - stats[0]) / stats[1] - targets[i];
+}
+
+kernel void bench_accuracy_kernel(
+    device const float* predictions [[buffer(0)]],
+    device const float* targets     [[buffer(1)]],
+    device float* out               [[buffer(2)]],
+    constant uint& n                [[buffer(3)]],
+    uint lid                        [[thread_position_in_threadgroup]],
+    uint tg_size                    [[threads_per_threadgroup]])
+{
+    threadgroup float pred_values[256];
+    threadgroup float target_values[256];
+    threadgroup int pred_indices[256];
+    threadgroup int target_indices[256];
+
+    float pred_best = -INFINITY;
+    float target_best = -INFINITY;
+    int pred_index = 0;
+    int target_index = 0;
+
+    for (uint i = lid; i < n; i += tg_size) {
+        if (predictions[i] > pred_best) {
+            pred_best = predictions[i];
+            pred_index = int(i);
+        }
+        if (targets[i] > target_best) {
+            target_best = targets[i];
+            target_index = int(i);
+        }
+    }
+
+    pred_values[lid] = pred_best;
+    target_values[lid] = target_best;
+    pred_indices[lid] = pred_index;
+    target_indices[lid] = target_index;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint stride = tg_size / 2; stride > 0; stride >>= 1) {
+        if (lid < stride) {
+            if (pred_values[lid + stride] > pred_values[lid]) {
+                pred_values[lid] = pred_values[lid + stride];
+                pred_indices[lid] = pred_indices[lid + stride];
+            }
+            if (target_values[lid + stride] > target_values[lid]) {
+                target_values[lid] = target_values[lid + stride];
+                target_indices[lid] = target_indices[lid + stride];
+            }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (lid == 0) {
+        out[0] = pred_indices[0] == target_indices[0] ? 1.0f : 0.0f;
+    }
+}
+
+kernel void bench_f1_counts_kernel(
+    device const float* predictions [[buffer(0)]],
+    device const float* targets     [[buffer(1)]],
+    device atomic_float* out        [[buffer(2)]],
+    constant uint& n                [[buffer(3)]],
+    uint i                          [[thread_position_in_grid]])
+{
+    if (i >= n) return;
+    bool predicted = predictions[i] >= 0.5f;
+    bool actual = targets[i] >= 0.5f;
+
+    if (predicted && actual) {
+        atomic_fetch_add_explicit(out, 1.0f, memory_order_relaxed);
+    }
+    if (predicted && !actual) {
+        atomic_fetch_add_explicit(out + 1, 1.0f, memory_order_relaxed);
+    }
+    if (!predicted && actual) {
+        atomic_fetch_add_explicit(out + 2, 1.0f, memory_order_relaxed);
+    }
 }

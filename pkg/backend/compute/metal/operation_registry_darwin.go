@@ -78,13 +78,7 @@ func (registry OperationRegistry) Swish(config *state.Dict) (state.Operation, er
 		return nil, err
 	}
 
-	mathOps, err := newMetalMath(config)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &Swish{activation: activation, mathOps: mathOps}, nil
+	return &Swish{activation: activation}, nil
 }
 
 func (registry OperationRegistry) SDPA(config *state.Dict) (state.Operation, error) {
@@ -248,7 +242,13 @@ func (registry OperationRegistry) InvSqrtDimScale(config *state.Dict) (state.Ope
 }
 
 func (registry OperationRegistry) Dropout(config *state.Dict) (state.Operation, error) {
-	return &Dropout{}, nil
+	mathOps, err := newMetalMath(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &Dropout{mathOps: mathOps}, nil
 }
 
 func (registry OperationRegistry) RMSNorm(config *state.Dict) (state.Operation, error) {
@@ -301,8 +301,14 @@ func (registry OperationRegistry) Concat(config *state.Dict) (state.Operation, e
 	return &Concat{shapeOps: shapeOps}, nil
 }
 
-func (registry OperationRegistry) Split(*state.Dict) (state.Operation, error) {
-	return &Split{}, nil
+func (registry OperationRegistry) Split(config *state.Dict) (state.Operation, error) {
+	shapeOps, err := newMetalShape(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &Split{shapeOps: shapeOps}, nil
 }
 
 func (registry OperationRegistry) ViewAsHeads(config *state.Dict) (state.Operation, error) {
@@ -530,12 +536,24 @@ func (registry OperationRegistry) VSASimilarity(config *state.Dict) (state.Opera
 	return &VSASimilarity{vsaOps: vsaOps}, nil
 }
 
-func (registry OperationRegistry) VSAPermute(*state.Dict) (state.Operation, error) {
-	return &VSAPermute{}, nil
+func (registry OperationRegistry) VSAPermute(config *state.Dict) (state.Operation, error) {
+	vsaOps, err := newMetalVSA(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &VSAPermute{vsaOps: vsaOps}, nil
 }
 
-func (registry OperationRegistry) VSAInversePermute(*state.Dict) (state.Operation, error) {
-	return &VSAInversePermute{}, nil
+func (registry OperationRegistry) VSAInversePermute(config *state.Dict) (state.Operation, error) {
+	vsaOps, err := newMetalVSA(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &VSAInversePermute{vsaOps: vsaOps}, nil
 }
 
 func (registry OperationRegistry) BeliefUpdate(config *state.Dict) (state.Operation, error) {
@@ -678,8 +696,14 @@ func (registry OperationRegistry) CATE(config *state.Dict) (state.Operation, err
 	return &CATE{causal: causal}, nil
 }
 
-func (registry OperationRegistry) Counterfactual(*state.Dict) (state.Operation, error) {
-	return &Counterfactual{}, nil
+func (registry OperationRegistry) Counterfactual(config *state.Dict) (state.Operation, error) {
+	causal, err := newMetalCausal(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &Counterfactual{causal: causal}, nil
 }
 
 func (registry OperationRegistry) DAGMarkovFactorization(config *state.Dict) (state.Operation, error) {
@@ -702,8 +726,14 @@ func (registry OperationRegistry) DoCalculus(config *state.Dict) (state.Operatio
 	return &DoCalculus{causal: causal}, nil
 }
 
-func (registry OperationRegistry) FrontdoorAdjustment(*state.Dict) (state.Operation, error) {
-	return &FrontdoorAdjustment{}, nil
+func (registry OperationRegistry) FrontdoorAdjustment(config *state.Dict) (state.Operation, error) {
+	causal, err := newMetalCausal(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &FrontdoorAdjustment{causal: causal}, nil
 }
 
 func (registry OperationRegistry) IVEstimate(config *state.Dict) (state.Operation, error) {
@@ -716,38 +746,74 @@ func (registry OperationRegistry) IVEstimate(config *state.Dict) (state.Operatio
 	return &IVEstimate{causal: causal}, nil
 }
 
-func (registry OperationRegistry) MSELoss(*state.Dict) (state.Operation, error) {
-	return &MSELoss{}, nil
-}
-
-func (registry OperationRegistry) CrossEntropyLoss(*state.Dict) (state.Operation, error) {
-	return &CrossEntropyLoss{}, nil
-}
-
-func (registry OperationRegistry) MSEGrad(*state.Dict) (state.Operation, error) {
-	return &MSEGrad{}, nil
-}
-
-func (registry OperationRegistry) CrossEntropyGrad(config *state.Dict) (state.Operation, error) {
-	mathOps, err := newMetalMath(config)
+func (registry OperationRegistry) MSELoss(config *state.Dict) (state.Operation, error) {
+	trainingOps, err := newMetalTraining(config)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return &CrossEntropyGrad{mathOps: mathOps}, nil
+	return &MSELoss{trainingOps: trainingOps}, nil
 }
 
-func (registry OperationRegistry) Accuracy(*state.Dict) (state.Operation, error) {
-	return &Accuracy{}, nil
+func (registry OperationRegistry) CrossEntropyLoss(config *state.Dict) (state.Operation, error) {
+	trainingOps, err := newMetalTraining(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &CrossEntropyLoss{trainingOps: trainingOps}, nil
 }
 
-func (registry OperationRegistry) Perplexity(*state.Dict) (state.Operation, error) {
-	return &Perplexity{}, nil
+func (registry OperationRegistry) MSEGrad(config *state.Dict) (state.Operation, error) {
+	trainingOps, err := newMetalTraining(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &MSEGrad{trainingOps: trainingOps}, nil
 }
 
-func (registry OperationRegistry) F1(*state.Dict) (state.Operation, error) {
-	return &F1{}, nil
+func (registry OperationRegistry) CrossEntropyGrad(config *state.Dict) (state.Operation, error) {
+	trainingOps, err := newMetalTraining(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &CrossEntropyGrad{trainingOps: trainingOps}, nil
+}
+
+func (registry OperationRegistry) Accuracy(config *state.Dict) (state.Operation, error) {
+	trainingOps, err := newMetalTraining(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &Accuracy{trainingOps: trainingOps}, nil
+}
+
+func (registry OperationRegistry) Perplexity(config *state.Dict) (state.Operation, error) {
+	trainingOps, err := newMetalTraining(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &Perplexity{trainingOps: trainingOps}, nil
+}
+
+func (registry OperationRegistry) F1(config *state.Dict) (state.Operation, error) {
+	trainingOps, err := newMetalTraining(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &F1{trainingOps: trainingOps}, nil
 }
 
 func (registry OperationRegistry) Load(config *state.Dict) (state.Operation, error) {
@@ -800,10 +866,7 @@ type GELU struct{ activation *MetalActivation }
 type Tanh struct{ activation *MetalActivation }
 type Sigmoid struct{ activation *MetalActivation }
 type SwiGLU struct{ activation *MetalActivation }
-type Swish struct {
-	activation *MetalActivation
-	mathOps    *MathOps
-}
+type Swish struct{ activation *MetalActivation }
 
 func (relu *ReLU) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return unaryMetalForward(stateDict, "metal.activation.relu", relu.activation.ReLU)
@@ -832,25 +895,7 @@ func (swiglu *SwiGLU) Forward(stateDict *state.Dict) (*state.Dict, error) {
 }
 
 func (swish *Swish) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	if err := stateDict.RequireOperation("metal.activation.swish"); err != nil {
-		return nil, err
-	}
-
-	sigmoid, err := swish.activation.Sigmoid(stateDict.Inputs[0])
-
-	if err != nil {
-		return nil, err
-	}
-
-	output, err := swish.mathOps.Mul(stateDict.OperationShape(), stateDict.Inputs[0], sigmoid)
-
-	if err != nil {
-		return nil, err
-	}
-
-	stateDict.SetOperationOutput(output)
-
-	return stateDict, nil
+	return unaryMetalForward(stateDict, "metal.activation.swish", swish.activation.Swish)
 }
 
 type SDPA struct{ attention *MetalAttention }
@@ -955,7 +1000,7 @@ type Softmax struct{ mathOps *MathOps }
 type Outer struct{ mathOps *MathOps }
 type Sign struct{ mathOps *MathOps }
 type InvSqrtDimScale struct{ mathOps *MathOps }
-type Dropout struct{}
+type Dropout struct{ mathOps *MathOps }
 type RMSNorm struct{ mathOps *MathOps }
 type LayerNorm struct{ mathOps *MathOps }
 
@@ -1005,29 +1050,12 @@ func (logSumExp *LogSumExp) Forward(stateDict *state.Dict) (*state.Dict, error) 
 		return nil, fmt.Errorf("metal.math.logsumexp: last dimension must be positive")
 	}
 
-	softmax, err := logSumExp.mathOps.Softmax(stateDict.OperationShape(), stateDict.Inputs...)
-
-	if err != nil {
-		return nil, err
+	if len(stateDict.Inputs[0])%dimSize != 0 {
+		return nil, fmt.Errorf("metal.math.logsumexp: input length must divide last dimension")
 	}
 
-	logSoftmax, err := logSumExp.mathOps.Log(stateDict.OperationShape(), softmax)
-
-	if err != nil {
-		return nil, err
-	}
-
-	rowCount := len(stateDict.Inputs[0]) / dimSize
-	output := make([]float64, rowCount)
-
-	for row := range output {
-		offset := row * dimSize
-		output[row] = stateDict.Inputs[0][offset] - logSoftmax[offset]
-	}
-
-	stateDict.SetOperationOutput(output)
-
-	return stateDict, nil
+	output, err := logSumExp.mathOps.LogSumExp(stateDict.OperationShape(), stateDict.Inputs...)
+	return setMetalOutput(stateDict, output, err)
 }
 
 func (softmax *Softmax) Forward(stateDict *state.Dict) (*state.Dict, error) {
@@ -1058,23 +1086,11 @@ func (dropout *Dropout) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
-	stateDict.EnsureOperationOut()
+	output, err := dropout.mathOps.Dropout(
+		stateDict.P, stateDict.Training, stateDict.Step, stateDict.Inputs[0],
+	)
 
-	if !stateDict.Training || stateDict.P == 0 {
-		copy(stateDict.Out, stateDict.Inputs[0])
-
-		return stateDict, nil
-	}
-
-	scale := 1.0 / (1.0 - stateDict.P)
-
-	for index, value := range stateDict.Inputs[0] {
-		if metalDropoutKeep(index, stateDict.Step, stateDict.P) {
-			stateDict.Out[index] = value * scale
-		}
-	}
-
-	return stateDict, nil
+	return setMetalOutput(stateDict, output, err)
 }
 
 func (rmsNorm *RMSNorm) Forward(stateDict *state.Dict) (*state.Dict, error) {
@@ -1105,7 +1121,7 @@ func (layerNorm *LayerNorm) Forward(stateDict *state.Dict) (*state.Dict, error) 
 type Reshape struct{ shapeOps *MetalShapeOps }
 type Transpose struct{ shapeOps *MetalShapeOps }
 type Concat struct{ shapeOps *MetalShapeOps }
-type Split struct{}
+type Split struct{ shapeOps *MetalShapeOps }
 type ViewAsHeads struct{ shapeOps *MetalShapeOps }
 type MergeHeads struct{ shapeOps *MetalShapeOps }
 
@@ -1185,22 +1201,11 @@ func (split *Split) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, fmt.Errorf("metal.shape.split: dim size is not divisible by split size")
 	}
 
-	stateDict.EnsureOperationOutLen(len(stateDict.Inputs[0]))
-	numChunks := dimSize / stateDict.SplitSize
-	chunkElements := outer * stateDict.SplitSize * inner
+	output, err := split.shapeOps.Split(
+		stateDict.Inputs[0], outer, dimSize, stateDict.SplitSize, inner,
+	)
 
-	for chunk := 0; chunk < numChunks; chunk++ {
-		dstOffset := chunk * chunkElements
-
-		for outerIndex := 0; outerIndex < outer; outerIndex++ {
-			srcOffset := (outerIndex*dimSize + chunk*stateDict.SplitSize) * inner
-			elementCount := stateDict.SplitSize * inner
-			copy(stateDict.Out[dstOffset:dstOffset+elementCount], stateDict.Inputs[0][srcOffset:srcOffset+elementCount])
-			dstOffset += elementCount
-		}
-	}
-
-	return stateDict, nil
+	return setMetalOutput(stateDict, output, err)
 }
 
 func (viewAsHeads *ViewAsHeads) Forward(stateDict *state.Dict) (*state.Dict, error) {
@@ -1208,6 +1213,17 @@ func (viewAsHeads *ViewAsHeads) Forward(stateDict *state.Dict) (*state.Dict, err
 
 	if err != nil {
 		return nil, err
+	}
+
+	if stateDict.NumHeads <= 0 {
+		return nil, fmt.Errorf("metal.shape.view_as_heads: NumHeads must be > 0")
+	}
+
+	if shape[2]%stateDict.NumHeads != 0 {
+		return nil, fmt.Errorf(
+			"metal.shape.view_as_heads: model dimension %d not divisible by NumHeads %d",
+			shape[2], stateDict.NumHeads,
+		)
 	}
 
 	output, err := viewAsHeads.shapeOps.ViewAsHeads(
@@ -1478,8 +1494,8 @@ func (simulate *HawkesSimulate) Forward(stateDict *state.Dict) (*state.Dict, err
 type VSABind struct{ vsaOps *MetalVSAOps }
 type VSABundle struct{ vsaOps *MetalVSAOps }
 type VSASimilarity struct{ vsaOps *MetalVSAOps }
-type VSAPermute struct{}
-type VSAInversePermute struct{}
+type VSAPermute struct{ vsaOps *MetalVSAOps }
+type VSAInversePermute struct{ vsaOps *MetalVSAOps }
 
 func (bind *VSABind) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return vsaForward(stateDict, "metal.vsa.bind", bind.vsaOps.Bind)
@@ -1498,12 +1514,11 @@ func (permute *VSAPermute) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
-	stateDict.EnsureOperationOut()
-	shift := normalizedShift(len(stateDict.Inputs[0]), stateDict.K)
-	copy(stateDict.Out[:shift], stateDict.Inputs[0][len(stateDict.Inputs[0])-shift:])
-	copy(stateDict.Out[shift:], stateDict.Inputs[0][:len(stateDict.Inputs[0])-shift])
+	output, err := permute.vsaOps.Permute(
+		stateDict.OperationShape(), stateDict.K, stateDict.Inputs...,
+	)
 
-	return stateDict, nil
+	return setMetalOutput(stateDict, output, err)
 }
 
 func (inversePermute *VSAInversePermute) Forward(stateDict *state.Dict) (*state.Dict, error) {
@@ -1511,12 +1526,11 @@ func (inversePermute *VSAInversePermute) Forward(stateDict *state.Dict) (*state.
 		return nil, err
 	}
 
-	stateDict.EnsureOperationOut()
-	shift := normalizedShift(len(stateDict.Inputs[0]), stateDict.K)
-	copy(stateDict.Out[:len(stateDict.Inputs[0])-shift], stateDict.Inputs[0][shift:])
-	copy(stateDict.Out[len(stateDict.Inputs[0])-shift:], stateDict.Inputs[0][:shift])
+	output, err := inversePermute.vsaOps.InversePermute(
+		stateDict.OperationShape(), stateDict.K, stateDict.Inputs...,
+	)
 
-	return stateDict, nil
+	return setMetalOutput(stateDict, output, err)
 }
 
 type BeliefUpdate struct{ activeInference *ActiveInferenceOps }
@@ -1618,10 +1632,10 @@ func (partition *Partition) Forward(stateDict *state.Dict) (*state.Dict, error) 
 
 type BackdoorAdjustment struct{ causal *MetalCausalOps }
 type CATE struct{ causal *MetalCausalOps }
-type Counterfactual struct{}
+type Counterfactual struct{ causal *MetalCausalOps }
 type DAGMarkovFactorization struct{ causal *MetalCausalOps }
 type DoCalculus struct{ causal *MetalCausalOps }
-type FrontdoorAdjustment struct{}
+type FrontdoorAdjustment struct{ causal *MetalCausalOps }
 type IVEstimate struct{ causal *MetalCausalOps }
 
 func (backdoorAdjustment *BackdoorAdjustment) Forward(stateDict *state.Dict) (*state.Dict, error) {
@@ -1636,38 +1650,9 @@ func (cate *CATE) Forward(stateDict *state.Dict) (*state.Dict, error) {
 }
 
 func (counterfactual *Counterfactual) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	if err := stateDict.RequireOperationInputs("metal.causal.counterfactual", 4); err != nil {
-		return nil, err
-	}
-
-	shape := stateDict.OperationShape()
-
-	if len(shape) < 2 {
-		return nil, fmt.Errorf("metal.causal.counterfactual: shape must be [N,N_cf]")
-	}
-
-	n := shape[0]
-	nCF := shape[1]
-
-	if len(stateDict.Inputs[0]) != n || len(stateDict.Inputs[1]) != n ||
-		len(stateDict.Inputs[2]) != n || len(stateDict.Inputs[3]) != nCF {
-		return nil, fmt.Errorf("metal.causal.counterfactual: input length mismatch")
-	}
-
-	stateDict.EnsureOperationOutLen(n * nCF)
-
-	for sample := 0; sample < n; sample++ {
-		epsilon := stateDict.Inputs[1][sample] -
-			stateDict.Inputs[2][sample]*stateDict.Inputs[0][sample]
-		base := sample * nCF
-
-		for counterfactualIndex := 0; counterfactualIndex < nCF; counterfactualIndex++ {
-			stateDict.Out[base+counterfactualIndex] =
-				stateDict.Inputs[2][sample]*stateDict.Inputs[3][counterfactualIndex] + epsilon
-		}
-	}
-
-	return stateDict, nil
+	return causalForward(
+		stateDict, "metal.causal.counterfactual", counterfactual.causal.Counterfactual,
+	)
 }
 
 func (dagMarkovFactorization *DAGMarkovFactorization) Forward(stateDict *state.Dict) (*state.Dict, error) {
@@ -1682,222 +1667,82 @@ func (doCalculus *DoCalculus) Forward(stateDict *state.Dict) (*state.Dict, error
 }
 
 func (frontdoorAdjustment *FrontdoorAdjustment) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	if err := stateDict.RequireOperationInputs("metal.causal.frontdoor_adjustment", 3); err != nil {
-		return nil, err
-	}
-
-	shape := stateDict.OperationShape()
-
-	if len(shape) < 4 {
-		return nil, fmt.Errorf("metal.causal.frontdoor_adjustment: shape must be [N_x,N_m,N_y,T]")
-	}
-
-	treatmentBins := shape[0]
-	mediatorBins := shape[1]
-	samples := shape[3]
-
-	if treatmentBins <= 0 || mediatorBins <= 0 || samples <= 0 {
-		return nil, fmt.Errorf("metal.causal.frontdoor_adjustment: invalid shape")
-	}
-
-	xBins := discretizeMetal(stateDict.Inputs[0][:samples], treatmentBins)
-	mBins := discretizeMetal(stateDict.Inputs[1][:samples], mediatorBins)
-	pX := make([]float64, treatmentBins)
-
-	for sample := 0; sample < samples; sample++ {
-		pX[xBins[sample]]++
-	}
-
-	for bin := range pX {
-		pX[bin] /= float64(samples)
-	}
-
-	pMGivenX := make([]float64, mediatorBins*treatmentBins)
-	countX := make([]float64, treatmentBins)
-
-	for sample := 0; sample < samples; sample++ {
-		xBin := xBins[sample]
-		mBin := mBins[sample]
-		pMGivenX[mBin*treatmentBins+xBin]++
-		countX[xBin]++
-	}
-
-	for xBin := 0; xBin < treatmentBins; xBin++ {
-		for mBin := 0; mBin < mediatorBins; mBin++ {
-			if countX[xBin] > 0 {
-				pMGivenX[mBin*treatmentBins+xBin] /= countX[xBin]
-			}
-		}
-	}
-
-	eYGivenXM := make([]float64, treatmentBins*mediatorBins)
-	countXM := make([]float64, treatmentBins*mediatorBins)
-
-	for sample := 0; sample < samples; sample++ {
-		xBin := xBins[sample]
-		mBin := mBins[sample]
-		eYGivenXM[xBin*mediatorBins+mBin] += stateDict.Inputs[2][sample]
-		countXM[xBin*mediatorBins+mBin]++
-	}
-
-	for cell := range eYGivenXM {
-		if countXM[cell] > 0 {
-			eYGivenXM[cell] /= countXM[cell]
-			continue
-		}
-
-		eYGivenXM[cell] = stdmath.NaN()
-	}
-
-	output := make([]float64, treatmentBins)
-
-	for xBin := 0; xBin < treatmentBins; xBin++ {
-		for mBin := 0; mBin < mediatorBins; mBin++ {
-			inner := 0.0
-
-			for xPrimeBin := 0; xPrimeBin < treatmentBins; xPrimeBin++ {
-				cellMean := eYGivenXM[xPrimeBin*mediatorBins+mBin]
-
-				if !stdmath.IsNaN(cellMean) {
-					inner += cellMean * pX[xPrimeBin]
-				}
-			}
-
-			output[xBin] += pMGivenX[mBin*treatmentBins+xBin] * inner
-		}
-	}
-
-	stateDict.SetOperationOutput(output)
-
-	return stateDict, nil
+	return causalForward(
+		stateDict, "metal.causal.frontdoor_adjustment",
+		frontdoorAdjustment.causal.FrontdoorAdjustment,
+	)
 }
 
 func (ivEstimate *IVEstimate) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return causalForward(stateDict, "metal.causal.iv_estimate", ivEstimate.causal.IVEstimate)
 }
 
-type MSELoss struct{}
-type CrossEntropyLoss struct{}
-type MSEGrad struct{}
-type CrossEntropyGrad struct{ mathOps *MathOps }
-type Accuracy struct{}
-type Perplexity struct{}
-type F1 struct{}
+type MSELoss struct{ trainingOps *MetalTrainingOps }
+type CrossEntropyLoss struct{ trainingOps *MetalTrainingOps }
+type MSEGrad struct{ trainingOps *MetalTrainingOps }
+type CrossEntropyGrad struct{ trainingOps *MetalTrainingOps }
+type Accuracy struct{ trainingOps *MetalTrainingOps }
+type Perplexity struct{ trainingOps *MetalTrainingOps }
+type F1 struct{ trainingOps *MetalTrainingOps }
 
 func (mseLoss *MSELoss) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	if err := stateDict.RequireOperationInputs("metal.train.mse_loss", 2); err != nil {
+	if err := metalTrainInputs(stateDict, "metal.train.mse_loss"); err != nil {
 		return nil, err
 	}
 
-	if len(stateDict.Inputs[0]) != len(stateDict.Inputs[1]) {
-		return nil, fmt.Errorf("metal.train.mse_loss: input length mismatch")
-	}
-
-	stateDict.EnsureOperationOutLen(1)
-
-	if len(stateDict.Inputs[0]) == 0 {
-		stateDict.Out[0] = 0
-
-		return stateDict, nil
-	}
-
-	sum := 0.0
-
-	for index, prediction := range stateDict.Inputs[0] {
-		diff := prediction - stateDict.Inputs[1][index]
-		sum += diff * diff
-	}
-
-	stateDict.Out[0] = sum / float64(len(stateDict.Inputs[0]))
-
-	return stateDict, nil
+	output, err := mseLoss.trainingOps.MSELoss(stateDict.Inputs[0], stateDict.Inputs[1])
+	return setMetalOutput(stateDict, output, err)
 }
 
 func (crossEntropyLoss *CrossEntropyLoss) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	if err := stateDict.RequireOperationInputs("metal.train.cross_entropy_loss", 2); err != nil {
+	if err := metalTrainInputs(stateDict, "metal.train.cross_entropy_loss"); err != nil {
 		return nil, err
 	}
 
-	if len(stateDict.Inputs[0]) != len(stateDict.Inputs[1]) {
-		return nil, fmt.Errorf("metal.train.cross_entropy_loss: input length mismatch")
-	}
+	output, err := crossEntropyLoss.trainingOps.CrossEntropyLoss(
+		stateDict.Inputs[0], stateDict.Inputs[1],
+	)
 
-	probs := metalSoftmaxHost(stateDict.Inputs[0])
-	loss := 0.0
-
-	for index, target := range stateDict.Inputs[1] {
-		loss -= stdmath.Log(probs[index]+1e-9) * target
-	}
-
-	stateDict.EnsureOperationOutLen(1)
-	stateDict.Out[0] = loss
-
-	return stateDict, nil
+	return setMetalOutput(stateDict, output, err)
 }
 
 func (mseGrad *MSEGrad) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	if err := stateDict.RequireOperationInputs("metal.train.mse_grad", 2); err != nil {
+	if err := metalTrainInputs(stateDict, "metal.train.mse_grad"); err != nil {
 		return nil, err
 	}
 
-	if len(stateDict.Inputs[0]) != len(stateDict.Inputs[1]) {
-		return nil, fmt.Errorf("metal.train.mse_grad: input length mismatch")
-	}
-
-	stateDict.EnsureOperationOutLen(len(stateDict.Inputs[0]))
-
-	if len(stateDict.Inputs[0]) == 0 {
-		return stateDict, nil
-	}
-
-	scale := 2.0 / float64(len(stateDict.Inputs[0]))
-
-	for index, prediction := range stateDict.Inputs[0] {
-		stateDict.Out[index] = (prediction - stateDict.Inputs[1][index]) * scale
-	}
-
-	return stateDict, nil
+	output, err := mseGrad.trainingOps.MSEGrad(stateDict.Inputs[0], stateDict.Inputs[1])
+	return setMetalOutput(stateDict, output, err)
 }
 
 func (crossEntropyGrad *CrossEntropyGrad) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	if err := stateDict.RequireOperationInputs("metal.train.cross_entropy_grad", 2); err != nil {
+	if err := metalTrainInputs(stateDict, "metal.train.cross_entropy_grad"); err != nil {
 		return nil, err
 	}
 
-	if len(stateDict.Inputs[0]) != len(stateDict.Inputs[1]) {
-		return nil, fmt.Errorf("metal.train.cross_entropy_grad: input length mismatch")
+	output, err := crossEntropyGrad.trainingOps.CrossEntropyGrad(
+		stateDict.Inputs[0], stateDict.Inputs[1],
+	)
+
+	return setMetalOutput(stateDict, output, err)
+}
+
+func (accuracy *Accuracy) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := metalTrainInputs(stateDict, "metal.bench.accuracy"); err != nil {
+		return nil, err
 	}
 
-	probs, err := crossEntropyGrad.mathOps.Softmax(stateDict.OperationShape(), stateDict.Inputs[0])
+	output, err := accuracy.trainingOps.Accuracy(stateDict.Inputs[0], stateDict.Inputs[1])
 
 	if err != nil {
 		return nil, err
 	}
 
-	for index := range probs {
-		probs[index] -= stateDict.Inputs[1][index]
-	}
-
-	stateDict.SetOperationOutput(probs)
-
-	return stateDict, nil
-}
-
-func (accuracy *Accuracy) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	if err := stateDict.RequireOperationInputs("metal.bench.accuracy", 2); err != nil {
-		return nil, err
-	}
-
-	if len(stateDict.Inputs[0]) == 0 || len(stateDict.Inputs[0]) != len(stateDict.Inputs[1]) {
-		return nil, fmt.Errorf("metal.bench.accuracy: prediction and target lengths must match")
-	}
-
 	stateDict.Total++
 
-	if argmaxMetal(stateDict.Inputs[0]) == argmaxMetal(stateDict.Inputs[1]) {
+	if output[0] == 1 {
 		stateDict.Correct++
 	}
-
 	stateDict.EnsureOperationOutLen(1)
 	stateDict.Out[0] = float64(stateDict.Correct) / float64(stateDict.Total)
 
@@ -1905,22 +1750,20 @@ func (accuracy *Accuracy) Forward(stateDict *state.Dict) (*state.Dict, error) {
 }
 
 func (perplexity *Perplexity) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	if err := stateDict.RequireOperationInputs("metal.bench.perplexity", 2); err != nil {
+	if err := metalTrainInputs(stateDict, "metal.bench.perplexity"); err != nil {
 		return nil, err
 	}
 
-	if len(stateDict.Inputs[0]) == 0 || len(stateDict.Inputs[0]) != len(stateDict.Inputs[1]) {
-		return nil, fmt.Errorf("metal.bench.perplexity: probability and target lengths must match")
-	}
+	output, err := perplexity.trainingOps.CrossEntropyLoss(
+		stateDict.Inputs[0], stateDict.Inputs[1],
+	)
 
-	crossEntropy := 0.0
-
-	for index, target := range stateDict.Inputs[1] {
-		crossEntropy -= stdmath.Log(stateDict.Inputs[0][index]+1e-9) * target
+	if err != nil {
+		return nil, err
 	}
 
 	stateDict.Total++
-	stateDict.Sum += crossEntropy
+	stateDict.Sum += output[0]
 	stateDict.EnsureOperationOutLen(1)
 	stateDict.Out[0] = stdmath.Exp(stateDict.Sum / float64(stateDict.Total))
 
@@ -1928,28 +1771,19 @@ func (perplexity *Perplexity) Forward(stateDict *state.Dict) (*state.Dict, error
 }
 
 func (f1 *F1) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	if err := stateDict.RequireOperationInputs("metal.bench.f1", 2); err != nil {
+	if err := metalTrainInputs(stateDict, "metal.bench.f1"); err != nil {
 		return nil, err
 	}
 
-	if len(stateDict.Inputs[0]) != len(stateDict.Inputs[1]) {
-		return nil, fmt.Errorf("metal.bench.f1: prediction and target lengths must match")
+	counts, err := f1.trainingOps.F1Counts(stateDict.Inputs[0], stateDict.Inputs[1])
+
+	if err != nil {
+		return nil, err
 	}
 
-	for index, predictedValue := range stateDict.Inputs[0] {
-		predicted := predictedValue >= 0.5
-		actual := stateDict.Inputs[1][index] >= 0.5
-
-		switch {
-		case predicted && actual:
-			stateDict.TP++
-		case predicted && !actual:
-			stateDict.FP++
-		case !predicted && actual:
-			stateDict.FN++
-		}
-	}
-
+	stateDict.TP += counts[0]
+	stateDict.FP += counts[1]
+	stateDict.FN += counts[2]
 	precision := stateDict.TP / (stateDict.TP + stateDict.FP + 1e-9)
 	recall := stateDict.TP / (stateDict.TP + stateDict.FN + 1e-9)
 	stateDict.EnsureOperationOutLen(1)
@@ -1972,6 +1806,10 @@ func newMetalMasking(config *state.Dict) (*MetalMasking, error) {
 
 func newMetalMath(config *state.Dict) (*MathOps, error) {
 	return NewMathOps(metalLibrary(config, "math.metallib"))
+}
+
+func newMetalTraining(config *state.Dict) (*MetalTrainingOps, error) {
+	return NewTrainingOps(metalLibrary(config, "math.metallib"))
 }
 
 func newMetalShape(config *state.Dict) (*MetalShapeOps, error) {
@@ -2164,6 +2002,18 @@ func causalForward(
 	return unaryShapeMetalForward(stateDict, name, run)
 }
 
+func metalTrainInputs(stateDict *state.Dict, name string) error {
+	if err := stateDict.RequireOperationInputs(name, 2); err != nil {
+		return err
+	}
+
+	if len(stateDict.Inputs[0]) == 0 || len(stateDict.Inputs[0]) != len(stateDict.Inputs[1]) {
+		return fmt.Errorf("%s: input lengths must match and be non-zero", name)
+	}
+
+	return nil
+}
+
 func setMetalOutput(
 	stateDict *state.Dict,
 	output []float64,
@@ -2204,127 +2054,4 @@ func avgPoolParams(stateDict *state.Dict) AvgPool2dParams {
 		CountIncludePad: stateDict.CountPad,
 		DivisorOverride: stateDict.Divisor,
 	}
-}
-
-func normalizedShift(length int, shift int) int {
-	if length == 0 {
-		return 0
-	}
-
-	shift %= length
-
-	if shift < 0 {
-		shift += length
-	}
-
-	return shift
-}
-
-func metalDropoutKeep(index int, step int, probability float64) bool {
-	hash := uint64(index) + uint64(step)*0x9e3779b97f4a7c15
-	hash ^= hash >> 30
-	hash *= 0xbf58476d1ce4e5b9
-	hash ^= hash >> 27
-	hash *= 0x94d049bb133111eb
-	hash ^= hash >> 31
-	unit := float64(hash>>11) * (1.0 / float64(uint64(1)<<53))
-
-	return unit >= probability
-}
-
-func discretizeMetal(data []float64, bins int) []int {
-	boundaries := make([]float64, bins-1)
-	sorted := append([]float64(nil), data...)
-	sortFloat64(sorted)
-
-	for bin := 1; bin < bins; bin++ {
-		position := int(float64(bin) / float64(bins) * float64(len(sorted)))
-
-		if position >= len(sorted) {
-			position = len(sorted) - 1
-		}
-
-		boundaries[bin-1] = sorted[position]
-	}
-
-	output := make([]int, len(data))
-
-	for index, value := range data {
-		output[index] = lowerBoundFloat64(boundaries, value)
-	}
-
-	return output
-}
-
-func sortFloat64(values []float64) {
-	for index := 1; index < len(values); index++ {
-		value := values[index]
-		position := index - 1
-
-		for position >= 0 && values[position] > value {
-			values[position+1] = values[position]
-			position--
-		}
-
-		values[position+1] = value
-	}
-}
-
-func lowerBoundFloat64(values []float64, target float64) int {
-	lo, hi := 0, len(values)
-
-	for lo < hi {
-		mid := lo + (hi-lo)/2
-
-		if target < values[mid] {
-			hi = mid
-			continue
-		}
-
-		lo = mid + 1
-	}
-
-	return lo
-}
-
-func metalSoftmaxHost(input []float64) []float64 {
-	if len(input) == 0 {
-		return []float64{}
-	}
-
-	output := make([]float64, len(input))
-	maxValue := input[0]
-
-	for _, value := range input[1:] {
-		if value > maxValue {
-			maxValue = value
-		}
-	}
-
-	sum := 0.0
-
-	for index, value := range input {
-		output[index] = stdmath.Exp(value - maxValue)
-		sum += output[index]
-	}
-
-	for index := range output {
-		output[index] /= sum
-	}
-
-	return output
-}
-
-func argmaxMetal(input []float64) int {
-	maxIndex := 0
-	maxValue := input[0]
-
-	for index, value := range input[1:] {
-		if value > maxValue {
-			maxValue = value
-			maxIndex = index + 1
-		}
-	}
-
-	return maxIndex
 }

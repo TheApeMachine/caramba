@@ -14,6 +14,8 @@ static id<MTLComputePipelineState> gPSO_sqr   = nil;
 static id<MTLComputePipelineState> gPSO_red   = nil;
 static id<MTLComputePipelineState> gPSO_fdot = nil;
 static id<MTLComputePipelineState> gPSO_finv = nil;
+static id<MTLComputePipelineState> gPSO_bundle = nil;
+static id<MTLComputePipelineState> gPSO_perm = nil;
 static dispatch_queue_t             gVSerial = NULL;
 
 static _Thread_local int  g_vsa_tls_code = 0;
@@ -151,6 +153,8 @@ int metal_vsa_init(const char *metallib_path) {
 		NSError *fe4 = nil;
 		NSError *fe5 = nil;
 		NSError *fe6 = nil;
+		NSError *fe7 = nil;
+		NSError *fe8 = nil;
 
 		gPSO_bind  = vsa_make_pso(library, @"vsa_bind_kernel", &fe0);
 		gPSO_mul   = vsa_make_pso(library, @"vsa_mul_kernel", &fe1);
@@ -159,10 +163,12 @@ int metal_vsa_init(const char *metallib_path) {
 		gPSO_red   = vsa_make_pso(library, @"vsa_reduce_sum_atomic_kernel", &fe4);
 		gPSO_fdot  = vsa_make_pso(library, @"vsa_finalize_dot_kernel", &fe5);
 		gPSO_finv  = vsa_make_pso(library, @"vsa_finalize_invnorm_kernel", &fe6);
+		gPSO_bundle = vsa_make_pso(library, @"vsa_bundle_sum_kernel", &fe7);
+		gPSO_perm = vsa_make_pso(library, @"vsa_permute_kernel", &fe8);
 
 		if (!gPSO_bind || !gPSO_mul || !gPSO_scale || !gPSO_sqr || !gPSO_red || !gPSO_fdot ||
-		    !gPSO_finv) {
-			NSError *first = fe0 ? fe0 : (fe1 ? fe1 : (fe2 ? fe2 : (fe3 ? fe3 : (fe4 ? fe4 : (fe5 ? fe5 : fe6)))));
+		    !gPSO_finv || !gPSO_bundle || !gPSO_perm) {
+			NSError *first = fe0 ? fe0 : (fe1 ? fe1 : (fe2 ? fe2 : (fe3 ? fe3 : (fe4 ? fe4 : (fe5 ? fe5 : (fe6 ? fe6 : (fe7 ? fe7 : fe8)))))));
 			const char *detail = first.localizedDescription.UTF8String;
 
 			vsa_fail(-1, detail ? detail : "pipeline creation failed");
@@ -173,6 +179,8 @@ int metal_vsa_init(const char *metallib_path) {
 			gPSO_red   = nil;
 			gPSO_fdot  = nil;
 			gPSO_finv  = nil;
+			gPSO_bundle = nil;
+			gPSO_perm = nil;
 			gVQueue    = nil;
 			gVDevice   = nil;
 			result     = -1;
@@ -196,6 +204,8 @@ int metal_vsa_cleanup(void) {
 		gPSO_red   = nil;
 		gPSO_fdot  = nil;
 		gPSO_finv  = nil;
+		gPSO_bundle = nil;
+		gPSO_perm = nil;
 		gVQueue    = nil;
 		gVDevice   = nil;
 	});
@@ -367,6 +377,113 @@ int metal_vsa_l2normalize(const float *in, float *out, int n) {
 	return rc;
 }
 
+int metal_vsa_bundle(const float *vectors, float *out, int count, int n) {
+	vsa_clear_tls();
+	vsa_ensure_serial();
+	__block int rc = 0;
+
+	dispatch_sync(gVSerial, ^{
+		if (!gVQueue || !gPSO_bundle || !gPSO_sqr || !gPSO_red || !gPSO_finv || !gPSO_scale) {
+			vsa_fail(-1, "VSA not initialised");
+			rc = -1;
+			return;
+		}
+
+		if (!vectors || !out || count <= 0 || n <= 0) {
+			vsa_fail(-1, "invalid bundle arguments");
+			rc = -1;
+			return;
+		}
+
+		NSUInteger vectorBytes = (NSUInteger)count * (NSUInteger)n * sizeof(float);
+		NSUInteger nb = (NSUInteger)n * sizeof(float);
+		id<MTLBuffer> bufVectors = vsa_buf_ro(vectors, vectorBytes);
+		id<MTLBuffer> bufSum = vsa_buf_rw(nb);
+		id<MTLBuffer> bufSq = vsa_buf_rw(nb);
+		id<MTLBuffer> bufAt = [gVDevice newBufferWithLength:sizeof(float)
+		                                             options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bufInv = [gVDevice newBufferWithLength:sizeof(float)
+		                                              options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bufOut = vsa_buf_rw(nb);
+		uint count_u = (uint)count;
+		uint n_u = (uint)n;
+		id<MTLBuffer> bufCount = [gVDevice newBufferWithBytes:&count_u
+		                                                length:sizeof(uint)
+		                                               options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bufN = [gVDevice newBufferWithBytes:&n_u
+		                                            length:sizeof(uint)
+		                                           options:MTLResourceStorageModeShared];
+
+		if (!bufVectors || !bufSum || !bufSq || !bufAt || !bufInv || !bufOut || !bufCount || !bufN) {
+			vsa_fail(-1, "buffer allocation failed");
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gVQueue commandBuffer];
+		id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+		[blit fillBuffer:bufAt range:NSMakeRange(0, sizeof(float)) value:0];
+		[blit endEncoding];
+
+		id<MTLComputeCommandEncoder> encB = [cb computeCommandEncoder];
+		[encB setComputePipelineState:gPSO_bundle];
+		[encB setBuffer:bufVectors offset:0 atIndex:0];
+		[encB setBuffer:bufSum offset:0 atIndex:1];
+		[encB setBuffer:bufCount offset:0 atIndex:2];
+		[encB setBuffer:bufN offset:0 atIndex:3];
+		[encB dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_bundle.threadExecutionWidth, 1, 1)];
+		[encB endEncoding];
+
+		id<MTLComputeCommandEncoder> encSqr = [cb computeCommandEncoder];
+		[encSqr setComputePipelineState:gPSO_sqr];
+		[encSqr setBuffer:bufSum offset:0 atIndex:0];
+		[encSqr setBuffer:bufSq offset:0 atIndex:1];
+		[encSqr setBuffer:bufN offset:0 atIndex:2];
+		[encSqr dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_sqr.threadExecutionWidth, 1, 1)];
+		[encSqr endEncoding];
+
+		id<MTLComputeCommandEncoder> encR = [cb computeCommandEncoder];
+		[encR setComputePipelineState:gPSO_red];
+		[encR setBuffer:bufSq offset:0 atIndex:0];
+		[encR setBuffer:bufAt offset:0 atIndex:1];
+		[encR setBuffer:bufN offset:0 atIndex:2];
+		[encR dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_red.threadExecutionWidth, 1, 1)];
+		[encR endEncoding];
+
+		id<MTLComputeCommandEncoder> encF = [cb computeCommandEncoder];
+		[encF setComputePipelineState:gPSO_finv];
+		[encF setBuffer:bufAt offset:0 atIndex:0];
+		[encF setBuffer:bufInv offset:0 atIndex:1];
+		[encF dispatchThreads:MTLSizeMake(1, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+		[encF endEncoding];
+
+		id<MTLComputeCommandEncoder> encScale = [cb computeCommandEncoder];
+		[encScale setComputePipelineState:gPSO_scale];
+		[encScale setBuffer:bufSum offset:0 atIndex:0];
+		[encScale setBuffer:bufOut offset:0 atIndex:1];
+		[encScale setBuffer:bufInv offset:0 atIndex:2];
+		[encScale setBuffer:bufN offset:0 atIndex:3];
+		[encScale dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_scale.threadExecutionWidth, 1, 1)];
+		[encScale endEncoding];
+
+		rc = vsa_wait_command_buffer(cb);
+
+		if (rc != 0) {
+			vsa_fail(-1, "command buffer failed (bundle)");
+			return;
+		}
+
+		memcpy(out, [bufOut contents], nb);
+	});
+
+	return rc;
+}
+
 int metal_vsa_dot(const float *a, const float *b, float *out, int n) {
 	vsa_clear_tls();
 	vsa_ensure_serial();
@@ -452,4 +569,71 @@ int metal_vsa_dot(const float *a, const float *b, float *out, int n) {
 	});
 
 	return rc;
+}
+
+static int metal_vsa_permute_common(const float *src, float *out, int n, int shift) {
+	vsa_clear_tls();
+	vsa_ensure_serial();
+	__block int rc = 0;
+
+	dispatch_sync(gVSerial, ^{
+		if (!gVQueue || !gPSO_perm) {
+			vsa_fail(-1, "VSA not initialised");
+			rc = -1;
+			return;
+		}
+
+		if (!src || !out || n <= 0) {
+			vsa_fail(-1, "invalid permute arguments");
+			rc = -1;
+			return;
+		}
+
+		NSUInteger nb = (NSUInteger)n * sizeof(float);
+		id<MTLBuffer> bufSrc = vsa_buf_ro(src, nb);
+		id<MTLBuffer> bufOut = vsa_buf_rw(nb);
+		uint n_u = (uint)n;
+		id<MTLBuffer> bufN = [gVDevice newBufferWithBytes:&n_u
+		                                            length:sizeof(uint)
+		                                           options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bufShift = [gVDevice newBufferWithBytes:&shift
+		                                                length:sizeof(int)
+		                                               options:MTLResourceStorageModeShared];
+
+		if (!bufSrc || !bufOut || !bufN || !bufShift) {
+			vsa_fail(-1, "buffer allocation failed");
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gVQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+		[enc setComputePipelineState:gPSO_perm];
+		[enc setBuffer:bufSrc offset:0 atIndex:0];
+		[enc setBuffer:bufOut offset:0 atIndex:1];
+		[enc setBuffer:bufShift offset:0 atIndex:2];
+		[enc setBuffer:bufN offset:0 atIndex:3];
+		[enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_perm.threadExecutionWidth, 1, 1)];
+		[enc endEncoding];
+
+		rc = vsa_wait_command_buffer(cb);
+
+		if (rc != 0) {
+			vsa_fail(-1, "command buffer failed (permute)");
+			return;
+		}
+
+		memcpy(out, [bufOut contents], nb);
+	});
+
+	return rc;
+}
+
+int metal_vsa_permute(const float *src, float *out, int n, int shift) {
+	return metal_vsa_permute_common(src, out, n, shift);
+}
+
+int metal_vsa_inverse_permute(const float *src, float *out, int n, int shift) {
+	return metal_vsa_permute_common(src, out, n, -shift);
 }

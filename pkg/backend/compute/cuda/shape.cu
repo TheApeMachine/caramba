@@ -1,4 +1,5 @@
 #include <cuda_runtime.h>
+#include <limits.h>
 #include "shape.h"
 
 // Max rank supported by the general transpose kernel.
@@ -80,6 +81,9 @@ __global__ void split_kernel(
 
     int element_in_chunk = split_size * inner;
     int chunk_elements = outer * element_in_chunk;
+
+    if (element_in_chunk <= 0 || chunk_elements <= 0) return;
+
     int chunk = index / chunk_elements;
     int chunk_offset = index - chunk * chunk_elements;
     int outer_index = chunk_offset / element_in_chunk;
@@ -235,9 +239,19 @@ fail:
 int cuda_split(const double* src, double* dst,
                int outer, int dim_size, int split_size, int inner)
 {
-    int total = outer * dim_size * inner;
+    if (!src || !dst || outer <= 0 || dim_size <= 0 || split_size <= 0 || inner <= 0) {
+        return -1;
+    }
+
+    if (split_size > dim_size || dim_size % split_size != 0) return -1;
+
+    size_t total_items = (size_t)outer * (size_t)dim_size * (size_t)inner;
+
+    if (total_items == 0 || total_items > INT_MAX) return -1;
+
+    int total = (int)total_items;
     double *d_src = NULL, *d_dst = NULL;
-    size_t bytes = (size_t)total * sizeof(double);
+    size_t bytes = total_items * sizeof(double);
 
     if (cudaMalloc(&d_src, bytes) != cudaSuccess) return -1;
     if (cudaMalloc(&d_dst, bytes) != cudaSuccess) { cudaFree(d_src); return -1; }

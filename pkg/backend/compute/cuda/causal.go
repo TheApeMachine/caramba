@@ -148,6 +148,8 @@ func (cudaCausalOps *CUDACausalOps) DAGMarkovFactorization(
 /*
 Counterfactual runs a heterogeneous linear SCM counterfactual query.
 shape=[N, N_cf], data[0]=X_obs, data[1]=Y_obs, data[2]=beta, data[3]=X_cf.
+Returns counterfactual_out [N*N_cf], where each block describes the predicted
+counterfactual outcome for observed unit N under candidate X_cf.
 */
 func (cudaCausalOps *CUDACausalOps) Counterfactual(
 	shape []int, data ...[]float64,
@@ -173,11 +175,31 @@ func (cudaCausalOps *CUDACausalOps) Counterfactual(
 /*
 FrontdoorAdjustment computes the frontdoor causal effect with equal-frequency binning.
 shape=[N_x, N_m, N_y, T], data[0]=X, data[1]=M, data[2]=Y.
+N_y is retained for API symmetry and must be 1 because the CUDA kernel models
+univariate Y. Returns effect [N_x], a float64 slice of length N_x containing the
+estimated frontdoor causal effect per X bin.
 */
 func (cudaCausalOps *CUDACausalOps) FrontdoorAdjustment(
 	shape []int, data ...[]float64,
 ) ([]float64, error) {
-	nx, nm, samples := shape[0], shape[1], shape[3]
+	if len(shape) < 4 {
+		return nil, fmt.Errorf("cuda_causal_frontdoor: shape=[N_x,N_m,N_y,T] is required")
+	}
+
+	if len(data) < 3 {
+		return nil, fmt.Errorf("cuda_causal_frontdoor: X, M, and Y inputs are required")
+	}
+
+	nx, nm, ny, samples := shape[0], shape[1], shape[2], shape[3]
+
+	if nx <= 0 || nm <= 0 || samples <= 0 {
+		return nil, fmt.Errorf("cuda_causal_frontdoor: N_x, N_m, and T must be positive")
+	}
+
+	if ny != 1 {
+		return nil, fmt.Errorf("cuda_causal_frontdoor: N_y must be 1 for univariate Y, got %d", ny)
+	}
+
 	effect := make([]float64, nx)
 	rc := C.cuda_causal_frontdoor(
 		(*C.double)(unsafe.Pointer(&data[0][0])),

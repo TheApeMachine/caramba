@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"fmt"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -12,6 +13,14 @@ type passthroughOp struct{}
 func (passthrough *passthroughOp) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("passthrough"); err != nil {
 		return nil, err
+	}
+
+	if len(stateDict.Inputs) == 0 || stateDict.Inputs[0] == nil {
+		return nil, fmt.Errorf("passthrough: input[0] is required")
+	}
+
+	if len(stateDict.Out) != len(stateDict.Inputs[0]) {
+		stateDict.Out = make([]float64, len(stateDict.Inputs[0]))
 	}
 
 	copy(stateDict.Out, stateDict.Inputs[0])

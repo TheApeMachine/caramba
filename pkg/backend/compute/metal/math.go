@@ -418,6 +418,53 @@ func (m *MathOps) Softmax(shape []int, data ...[]float64) ([]float64, error) {
 	return toFloat64(dst), nil
 }
 
+// LogSumExp computes log(sum(exp(x))) over the last dimension.
+func (m *MathOps) LogSumExp(shape []int, data ...[]float64) ([]float64, error) {
+	dimSize := shape[len(shape)-1]
+	n := len(data[0])
+	numRows := n / dimSize
+	src := toFloat32(data[0])
+	dst := make([]float32, numRows)
+	rc := C.metal_logsumexp(
+		(*C.float)(unsafe.Pointer(&src[0])),
+		(*C.float)(unsafe.Pointer(&dst[0])),
+		C.int(numRows), C.int(dimSize),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("metal_logsumexp failed (rc=%d)", rc)
+	}
+	return toFloat64(dst), nil
+}
+
+// Dropout applies inverted dropout using a stateless index/step keyed mask.
+func (m *MathOps) Dropout(
+	probability float64,
+	training bool,
+	seed int,
+	data []float64,
+) ([]float64, error) {
+	n := len(data)
+	if n == 0 {
+		return []float64{}, nil
+	}
+
+	src := toFloat32(data)
+	dst := make([]float32, n)
+	trainingInt := 0
+	if training {
+		trainingInt = 1
+	}
+	rc := C.metal_dropout(
+		(*C.float)(unsafe.Pointer(&src[0])),
+		(*C.float)(unsafe.Pointer(&dst[0])),
+		C.int(n), C.float(probability), C.int(trainingInt), C.int(seed),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("metal_dropout failed (rc=%d)", rc)
+	}
+	return toFloat64(dst), nil
+}
+
 // ---------------------------------------------------------------------------
 // LayerNorm
 // ---------------------------------------------------------------------------

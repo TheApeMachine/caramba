@@ -27,6 +27,12 @@ func TestOperationRegistry_Build(t *testing.T) {
 				built, err := operationRegistry.Build("test.stub", nil)
 				So(err, ShouldBeNil)
 				So(built, ShouldNotBeNil)
+
+				testDict := state.NewDict()
+				result, err := built.Forward(testDict)
+
+				So(err, ShouldBeNil)
+				So(result, ShouldNotBeNil)
 			})
 
 			Convey("It should return an error for an unknown operation id", func() {

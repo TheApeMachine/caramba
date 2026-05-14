@@ -56,6 +56,8 @@ int xla_log(const double* src, double* dst, int n);
  * (in-place is unsupported). NaN/Inf follow typical exponential-sum softmax behaviour.
  */
 int xla_softmax(const double* src, double* dst, int num_rows, int dim_size);
+int xla_logsumexp(const double* src, double* dst, int num_rows, int dim_size);
+int xla_dropout(const double* src, double* dst, int n, double probability, int training, int seed);
 
 /**
  * xla_layernorm: Row-major src/dst length num_rows*d_model. Per row, normalize across d_model with eps (try 1e-5..1e-6).
@@ -76,6 +78,13 @@ int xla_rmsnorm(
 
 int xla_sign(const double* src, double* dst, int n);
 int xla_outer(const double* a, const double* b, double* dst, int M, int N);
+
+int xla_train_mse_loss(const double* predictions, const double* targets, double* out, int n);
+int xla_train_cross_entropy_loss(const double* logits, const double* targets, double* out, int n);
+int xla_train_mse_grad(const double* predictions, const double* targets, double* out, int n);
+int xla_train_cross_entropy_grad(const double* logits, const double* targets, double* out, int n);
+int xla_bench_accuracy(const double* predictions, const double* targets, double* out, int n);
+int xla_bench_f1_counts(const double* predictions, const double* targets, double* out, int n);
 
 int xla_axpy(double* dst, const double* src, double scale, int n);
 int xla_scale(double* dst, double s, int n);

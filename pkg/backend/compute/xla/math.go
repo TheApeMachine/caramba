@@ -54,7 +54,7 @@ func (x *XLAMathOps) Matmul(shape []int, data ...[]float64) ([]float64, error) {
 		C.int(M), C.int(K), C.int(N),
 	)
 	if rc != 0 {
-		return nil, fmt.Errorf("xla_matmul failed")
+		return nil, fmt.Errorf("xla_matmul failed: rc=%d", rc)
 	}
 	return dst, nil
 }
@@ -144,6 +144,61 @@ func (x *XLAMathOps) Softmax(shape []int, data ...[]float64) ([]float64, error) 
 	)
 	if rc != 0 {
 		return nil, fmt.Errorf("xla_softmax failed")
+	}
+	return dst, nil
+}
+
+func (x *XLAMathOps) LogSumExp(shape []int, data ...[]float64) ([]float64, error) {
+	dimSize := shape[len(shape)-1]
+	n := len(data[0])
+
+	if dimSize <= 0 || n%dimSize != 0 {
+		return nil, fmt.Errorf("xla_logsumexp: invalid dim size %d for length %d", dimSize, n)
+	}
+
+	numRows := n / dimSize
+	dst := make([]float64, numRows)
+	rc := C.xla_logsumexp(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(numRows), C.int(dimSize),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("xla_logsumexp failed")
+	}
+	return dst, nil
+}
+
+func (x *XLAMathOps) Dropout(
+	probability float64,
+	training bool,
+	seed int,
+	data []float64,
+) ([]float64, error) {
+	if probability < 0 || probability >= 1 {
+		return nil, fmt.Errorf("xla_dropout: probability must be in [0,1)")
+	}
+
+	if len(data) == 0 {
+		return []float64{}, nil
+	}
+
+	trainingFlag := 0
+	if training {
+		trainingFlag = 1
+	}
+
+	dst := make([]float64, len(data))
+	rc := C.xla_dropout(
+		(*C.double)(unsafe.Pointer(&data[0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(len(data)),
+		C.double(probability),
+		C.int(trainingFlag),
+		C.int(seed),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("xla_dropout failed")
 	}
 	return dst, nil
 }

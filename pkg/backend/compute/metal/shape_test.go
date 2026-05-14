@@ -39,7 +39,8 @@ func TestMetalShapeOpsForwardParity(t *testing.T) {
 			expectedState := state.NewDict().WithShape([]int{2, 3}).WithInput(input)
 			expectedState.Dim0 = 0
 			expectedState.Dim1 = 1
-			expectedState, err := cpushape.NewTranspose(0, 1).Forward(expectedState)
+			var err error
+			expectedState, err = cpushape.NewTranspose(0, 1).Forward(expectedState)
 
 			So(err, ShouldBeNil)
 			expected := expectedState.Out
@@ -104,6 +105,21 @@ func TestMetalShapeOpsForwardParity(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(output, ShouldResemble, expected)
+		})
+
+		Convey("It should run split through the Metal split kernel", func() {
+			input := []float64{1, 2, 3, 4, 5, 6, 7, 8}
+			expectedState := state.NewDict().WithShape([]int{2, 4}).WithInput(input)
+			expectedState.Dim = 1
+			expectedState.SplitSize = 2
+			expectedState, err := cpushape.NewSplit().Forward(expectedState)
+
+			So(err, ShouldBeNil)
+
+			output, err := ops.Split(input, 2, 4, 2, 1)
+
+			So(err, ShouldBeNil)
+			So(output, ShouldResemble, expectedState.Out)
 		})
 	})
 }

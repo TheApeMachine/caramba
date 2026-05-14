@@ -704,6 +704,17 @@ func (viewAsHeads *ViewAsHeads) Forward(stateDict *state.Dict) (*state.Dict, err
 		return nil, err
 	}
 
+	if stateDict.NumHeads <= 0 {
+		return nil, fmt.Errorf("cuda.shape.view_as_heads: NumHeads must be > 0")
+	}
+
+	if shape[2]%stateDict.NumHeads != 0 {
+		return nil, fmt.Errorf(
+			"cuda.shape.view_as_heads: model dimension %d not divisible by NumHeads %d",
+			shape[2], stateDict.NumHeads,
+		)
+	}
+
 	output, err := viewAsHeads.shapeOps.ViewAsHeads(
 		stateDict.Inputs[0], shape[0], shape[1], stateDict.NumHeads,
 		shape[2]/stateDict.NumHeads,
@@ -1279,7 +1290,7 @@ func cudaUnaryForward(
 	name string,
 	forward func([]float64) ([]float64, error),
 ) (*state.Dict, error) {
-	if err := stateDict.RequireOperation(name); err != nil {
+	if err := stateDict.RequireOperationInputs(name, 1); err != nil {
 		return nil, err
 	}
 

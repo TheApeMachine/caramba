@@ -161,9 +161,10 @@ func (x *XLAPositionalOps) RoPEForward(base float64, shape []int, data ...[]floa
 	return dst, nil
 }
 
-// Forward dispatches RoPEForward.
+// Forward dispatches RoPEForward with base 0 so RoPEForward applies the
+// standard RoPE default base of 10000.0.
 func (x *XLAPositionalOps) Forward(shape []int, data ...[]float64) ([]float64, error) {
-	return x.RoPEForward(10000.0, shape, data...)
+	return x.RoPEForward(0, shape, data...)
 }
 
 // ---------------------------------------------------------------------------

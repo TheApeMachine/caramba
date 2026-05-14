@@ -169,6 +169,26 @@ func (m *MetalActivation) Sigmoid(input []float64) ([]float64, error) {
 	return toFloat64(dst), nil
 }
 
+// Swish computes x*sigmoid(x) element-wise.
+func (m *MetalActivation) Swish(input []float64) ([]float64, error) {
+	n := len(input)
+	if n == 0 {
+		return []float64{}, nil
+	}
+	src := toFloat32(input)
+	dst := make([]float32, n)
+
+	rc := C.metal_swish(
+		(*C.float)(unsafe.Pointer(&src[0])),
+		(*C.float)(unsafe.Pointer(&dst[0])),
+		C.int(n),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("metal_swish failed (rc=%d)", rc)
+	}
+	return toFloat64(dst), nil
+}
+
 // SwiGLU computes sigmoid(gate[i]) * value[i].
 // input must have 2*n elements: the first n are gates, the second n are values.
 // Returns n elements.

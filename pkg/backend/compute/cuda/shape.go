@@ -113,7 +113,13 @@ func (c *CUDAShapeOps) Concat(a, b []float64) ([]float64, error) {
 	return dst, nil
 }
 
-// Split returns equal-sized chunks along a logical dimension as one flat buffer.
+// Split returns equal-sized C-contiguous chunks along a logical dimension as one
+// flat buffer. outer is the number of row-major blocks before the split
+// dimension, dimSize is the full size of that dimension, splitSize is the size
+// of each returned chunk along it, and inner is the number of elements after the
+// split dimension. dimSize must be divisible by splitSize. The output ordering
+// is outer blocks, then consecutive split chunks, then splitSize*inner elements
+// within each chunk.
 func (c *CUDAShapeOps) Split(
 	input []float64,
 	outer int,
@@ -125,6 +131,42 @@ func (c *CUDAShapeOps) Split(
 	if n == 0 {
 		return []float64{}, nil
 	}
+
+	if outer <= 0 || dimSize <= 0 || splitSize <= 0 || inner <= 0 {
+		return nil, fmt.Errorf(
+			"cuda_split: outer, dimSize, splitSize, and inner must be positive",
+		)
+	}
+
+	if splitSize > dimSize {
+		return nil, fmt.Errorf("cuda_split: splitSize %d exceeds dimSize %d", splitSize, dimSize)
+	}
+
+	if dimSize%splitSize != 0 {
+		return nil, fmt.Errorf("cuda_split: dimSize %d is not divisible by splitSize %d", dimSize, splitSize)
+	}
+
+	maxInt := int(^uint(0) >> 1)
+
+	if outer > maxInt/dimSize {
+		return nil, fmt.Errorf("cuda_split: outer*dimSize overflows int")
+	}
+
+	expected := outer * dimSize
+
+	if expected > maxInt/inner {
+		return nil, fmt.Errorf("cuda_split: outer*dimSize*inner overflows int")
+	}
+
+	expected *= inner
+
+	if expected != n {
+		return nil, fmt.Errorf(
+			"cuda_split: input length %d does not match outer*dimSize*inner=%d",
+			n, expected,
+		)
+	}
+
 	dst := make([]float64, n)
 	rc := C.cuda_split(
 		(*C.double)(unsafe.Pointer(&input[0])),

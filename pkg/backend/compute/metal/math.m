@@ -18,6 +18,8 @@ static id<MTLComputePipelineState> gPSO_isdscale   = nil;
 static id<MTLComputePipelineState> gPSO_exp        = nil;
 static id<MTLComputePipelineState> gPSO_log        = nil;
 static id<MTLComputePipelineState> gPSO_softmax    = nil;
+static id<MTLComputePipelineState> gPSO_logsumexp  = nil;
+static id<MTLComputePipelineState> gPSO_dropout    = nil;
 static id<MTLComputePipelineState> gPSO_layernorm  = nil;
 static id<MTLComputePipelineState> gPSO_rmsnorm    = nil;
 static id<MTLComputePipelineState> gPSO_sign        = nil;
@@ -28,6 +30,13 @@ static id<MTLComputePipelineState> gPSO_sqrt_vec    = nil;
 static id<MTLComputePipelineState> gPSO_add_scalar  = nil;
 static id<MTLComputePipelineState> gPSO_div_vec     = nil;
 static id<MTLComputePipelineState> gPSO_clamp_vec   = nil;
+static id<MTLComputePipelineState> gPSO_mse_loss    = nil;
+static id<MTLComputePipelineState> gPSO_mse_grad    = nil;
+static id<MTLComputePipelineState> gPSO_ce_stats    = nil;
+static id<MTLComputePipelineState> gPSO_ce_loss     = nil;
+static id<MTLComputePipelineState> gPSO_ce_grad     = nil;
+static id<MTLComputePipelineState> gPSO_accuracy    = nil;
+static id<MTLComputePipelineState> gPSO_f1_counts   = nil;
 
 static id<MTLComputePipelineState> make_mpso(id<MTLLibrary> lib, NSString* name) {
     NSError* err = nil;
@@ -58,6 +67,8 @@ int metal_math_init(const char* metallib_path) {
         gPSO_exp       = make_mpso(lib, @"exp_kernel");
         gPSO_log       = make_mpso(lib, @"log_kernel");
         gPSO_softmax   = make_mpso(lib, @"softmax_kernel");
+        gPSO_logsumexp = make_mpso(lib, @"logsumexp_kernel");
+        gPSO_dropout   = make_mpso(lib, @"dropout_kernel");
         gPSO_layernorm = make_mpso(lib, @"layernorm_kernel");
         gPSO_rmsnorm   = make_mpso(lib, @"rmsnorm_kernel");
         gPSO_sign       = make_mpso(lib, @"sign_kernel");
@@ -68,14 +79,25 @@ int metal_math_init(const char* metallib_path) {
         gPSO_add_scalar = make_mpso(lib, @"add_scalar_kernel");
         gPSO_div_vec    = make_mpso(lib, @"div_vec_kernel");
         gPSO_clamp_vec  = make_mpso(lib, @"clamp_vec_kernel");
+        gPSO_mse_loss   = make_mpso(lib, @"train_mse_loss_kernel");
+        gPSO_mse_grad   = make_mpso(lib, @"train_mse_grad_kernel");
+        gPSO_ce_stats   = make_mpso(lib, @"train_ce_stats_kernel");
+        gPSO_ce_loss    = make_mpso(lib, @"train_cross_entropy_loss_kernel");
+        gPSO_ce_grad    = make_mpso(lib, @"train_cross_entropy_grad_kernel");
+        gPSO_accuracy   = make_mpso(lib, @"bench_accuracy_kernel");
+        gPSO_f1_counts  = make_mpso(lib, @"bench_f1_counts_kernel");
 
         if (!gPSO_matmul || !gPSO_matmul_add || !gPSO_matmul_add_gelu ||
             !gPSO_add || !gPSO_mul || !gPSO_isdscale ||
-            !gPSO_exp    || !gPSO_log || !gPSO_softmax ||
+            !gPSO_exp || !gPSO_log || !gPSO_softmax ||
+            !gPSO_logsumexp || !gPSO_dropout ||
             !gPSO_layernorm || !gPSO_rmsnorm ||
             !gPSO_sign || !gPSO_outer ||
             !gPSO_axpy || !gPSO_scale2 || !gPSO_sqrt_vec ||
-            !gPSO_add_scalar || !gPSO_div_vec || !gPSO_clamp_vec) return -1;
+            !gPSO_add_scalar || !gPSO_div_vec || !gPSO_clamp_vec ||
+            !gPSO_mse_loss || !gPSO_mse_grad || !gPSO_ce_stats ||
+            !gPSO_ce_loss || !gPSO_ce_grad || !gPSO_accuracy ||
+            !gPSO_f1_counts) return -1;
 
         return 0;
     }
@@ -409,6 +431,62 @@ int metal_softmax(const float* src, float* dst, int num_rows, int dim_size) {
     }
 }
 
+int metal_logsumexp(const float* src, float* dst, int num_rows, int dim_size) {
+    @autoreleasepool {
+        if (!src || !dst || num_rows <= 0 || dim_size <= 0) return -1;
+
+        NSUInteger srcBytes = (NSUInteger)(num_rows * dim_size) * sizeof(float);
+        NSUInteger dstBytes = (NSUInteger)num_rows * sizeof(float);
+        id<MTLBuffer> bSrc = make_buf_ro(gMDevice, src, srcBytes);
+        id<MTLBuffer> bDst = make_buf_rw(gMDevice, dst, dstBytes);
+        if (!bSrc || !bDst || !gPSO_logsumexp) return -1;
+
+        unsigned int ds = (unsigned int)dim_size;
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_logsumexp];
+        [enc setBuffer:bSrc offset:0 atIndex:0];
+        [enc setBuffer:bDst offset:0 atIndex:1];
+        [enc setBytes:&ds length:sizeof(unsigned int) atIndex:2];
+        NSUInteger tgs = (NSUInteger)dim_size < 256 ? (NSUInteger)dim_size : 256;
+        [enc dispatchThreadgroups:MTLSizeMake((NSUInteger)num_rows,1,1)
+        threadsPerThreadgroup:MTLSizeMake(tgs,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        copy_back_if_needed(bDst, dst, dstBytes);
+        return 0;
+    }
+}
+
+int metal_dropout(const float* src, float* dst, int n, float p, int training, int seed) {
+    @autoreleasepool {
+        if (!src || !dst || n < 0 || p < 0.0f || p >= 1.0f) return -1;
+        if (n == 0) return 0;
+
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        id<MTLBuffer> bSrc = make_buf_ro(gMDevice, src, nb);
+        id<MTLBuffer> bDst = make_buf_rw(gMDevice, dst, nb);
+        if (!bSrc || !bDst || !gPSO_dropout) return -1;
+
+        unsigned int trainingValue = training ? 1u : 0u;
+        unsigned int seedValue = (unsigned int)seed;
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_dropout];
+        [enc setBuffer:bSrc offset:0 atIndex:0];
+        [enc setBuffer:bDst offset:0 atIndex:1];
+        [enc setBytes:&p length:sizeof(float) atIndex:2];
+        [enc setBytes:&trainingValue length:sizeof(unsigned int) atIndex:3];
+        [enc setBytes:&seedValue length:sizeof(unsigned int) atIndex:4];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(gPSO_dropout.threadExecutionWidth,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        copy_back_if_needed(bDst, dst, nb);
+        return 0;
+    }
+}
+
 int metal_layernorm(const float* src, float* dst,
                     const float* weight, const float* bias,
                     int num_rows, int d_model, float eps) {
@@ -632,6 +710,192 @@ int metal_clamp_vec(float* dst, float lo, float hi, int n) {
         [enc endEncoding];
         commit_wait(cb);
         copy_back_if_needed(bDst, dst, nb);
+        return 0;
+    }
+}
+
+int metal_train_mse_loss(const float* predictions, const float* targets, float* out, int n) {
+    @autoreleasepool {
+        if (!predictions || !targets || !out || n <= 0 || !gPSO_mse_loss) return -1;
+
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        float zero = 0.0f;
+        unsigned int un = (unsigned int)n;
+        id<MTLBuffer> bPred = make_buf_ro(gMDevice, predictions, nb);
+        id<MTLBuffer> bTgt = make_buf_ro(gMDevice, targets, nb);
+        id<MTLBuffer> bOut = [gMDevice newBufferWithBytes:&zero length:sizeof(float)
+                                                   options:MTLResourceStorageModeShared];
+        if (!bPred || !bTgt || !bOut) return -1;
+
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_mse_loss];
+        [enc setBuffer:bPred offset:0 atIndex:0];
+        [enc setBuffer:bTgt offset:0 atIndex:1];
+        [enc setBuffer:bOut offset:0 atIndex:2];
+        [enc setBytes:&un length:sizeof(unsigned int) atIndex:3];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(gPSO_mse_loss.threadExecutionWidth,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        memcpy(out, [bOut contents], sizeof(float));
+        return 0;
+    }
+}
+
+int metal_train_mse_grad(const float* predictions, const float* targets, float* out, int n) {
+    @autoreleasepool {
+        if (!predictions || !targets || !out || n < 0 || !gPSO_mse_grad) return -1;
+        if (n == 0) return 0;
+
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        unsigned int un = (unsigned int)n;
+        id<MTLBuffer> bPred = make_buf_ro(gMDevice, predictions, nb);
+        id<MTLBuffer> bTgt = make_buf_ro(gMDevice, targets, nb);
+        id<MTLBuffer> bOut = make_buf_rw(gMDevice, out, nb);
+        if (!bPred || !bTgt || !bOut) return -1;
+
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_mse_grad];
+        [enc setBuffer:bPred offset:0 atIndex:0];
+        [enc setBuffer:bTgt offset:0 atIndex:1];
+        [enc setBuffer:bOut offset:0 atIndex:2];
+        [enc setBytes:&un length:sizeof(unsigned int) atIndex:3];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(gPSO_mse_grad.threadExecutionWidth,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        copy_back_if_needed(bOut, out, nb);
+        return 0;
+    }
+}
+
+static int metal_cross_entropy_common(
+    const float* logits, const float* targets, float* out, int n, int gradient)
+{
+    @autoreleasepool {
+        if (!logits || !targets || !out || n <= 0 || !gPSO_ce_stats) return -1;
+        if (gradient && !gPSO_ce_grad) return -1;
+        if (!gradient && !gPSO_ce_loss) return -1;
+
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        unsigned int un = (unsigned int)n;
+        float zero = 0.0f;
+        float statsZero[2] = {0.0f, 0.0f};
+        id<MTLBuffer> bLogits = make_buf_ro(gMDevice, logits, nb);
+        id<MTLBuffer> bTargets = make_buf_ro(gMDevice, targets, nb);
+        id<MTLBuffer> bStats = [gMDevice newBufferWithBytes:statsZero length:sizeof(statsZero)
+                                                     options:MTLResourceStorageModeShared];
+        if (!bLogits || !bTargets || !bStats) return -1;
+
+        id<MTLBuffer> bOut = nil;
+        if (gradient) {
+            bOut = make_buf_rw(gMDevice, out, nb);
+        } else {
+            bOut = [gMDevice newBufferWithBytes:&zero length:sizeof(float)
+                                        options:MTLResourceStorageModeShared];
+        }
+        if (!bOut) return -1;
+
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_ce_stats];
+        [enc setBuffer:bLogits offset:0 atIndex:0];
+        [enc setBuffer:bStats offset:0 atIndex:1];
+        [enc setBytes:&un length:sizeof(unsigned int) atIndex:2];
+        [enc dispatchThreads:MTLSizeMake(1,1,1) threadsPerThreadgroup:MTLSizeMake(1,1,1)];
+        [enc endEncoding];
+
+        id<MTLComputePipelineState> cePSO = gradient ? gPSO_ce_grad : gPSO_ce_loss;
+        enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:cePSO];
+        [enc setBuffer:bLogits offset:0 atIndex:0];
+        [enc setBuffer:bTargets offset:0 atIndex:1];
+        [enc setBuffer:bOut offset:0 atIndex:2];
+        [enc setBuffer:bStats offset:0 atIndex:3];
+        [enc setBytes:&un length:sizeof(unsigned int) atIndex:4];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(cePSO.threadExecutionWidth,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+
+        if (gradient) {
+            copy_back_if_needed(bOut, out, nb);
+        } else {
+            memcpy(out, [bOut contents], sizeof(float));
+        }
+        return 0;
+    }
+}
+
+int metal_train_cross_entropy_loss(const float* logits, const float* targets, float* out, int n) {
+    return metal_cross_entropy_common(logits, targets, out, n, 0);
+}
+
+int metal_train_cross_entropy_grad(const float* logits, const float* targets, float* out, int n) {
+    return metal_cross_entropy_common(logits, targets, out, n, 1);
+}
+
+int metal_bench_accuracy(const float* predictions, const float* targets, float* out, int n) {
+    @autoreleasepool {
+        if (!predictions || !targets || !out || n <= 0 || !gPSO_accuracy) return -1;
+
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        id<MTLBuffer> bPred = make_buf_ro(gMDevice, predictions, nb);
+        id<MTLBuffer> bTgt = make_buf_ro(gMDevice, targets, nb);
+        id<MTLBuffer> bOut = [gMDevice newBufferWithLength:sizeof(float)
+                                                   options:MTLResourceStorageModeShared];
+        unsigned int un = (unsigned int)n;
+        if (!bPred || !bTgt || !bOut) return -1;
+
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_accuracy];
+        [enc setBuffer:bPred offset:0 atIndex:0];
+        [enc setBuffer:bTgt offset:0 atIndex:1];
+        [enc setBuffer:bOut offset:0 atIndex:2];
+        [enc setBytes:&un length:sizeof(unsigned int) atIndex:3];
+        [enc dispatchThreadgroups:MTLSizeMake(1,1,1)
+        threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        memcpy(out, [bOut contents], sizeof(float));
+        return 0;
+    }
+}
+
+int metal_bench_f1_counts(const float* predictions, const float* targets, float* out, int n) {
+    @autoreleasepool {
+        if (!predictions || !targets || !out || n < 0 || !gPSO_f1_counts) return -1;
+        if (n == 0) {
+            out[0] = 0.0f;
+            out[1] = 0.0f;
+            out[2] = 0.0f;
+            return 0;
+        }
+
+        NSUInteger nb = (NSUInteger)n * sizeof(float);
+        float zero[3] = {0.0f, 0.0f, 0.0f};
+        unsigned int un = (unsigned int)n;
+        id<MTLBuffer> bPred = make_buf_ro(gMDevice, predictions, nb);
+        id<MTLBuffer> bTgt = make_buf_ro(gMDevice, targets, nb);
+        id<MTLBuffer> bOut = [gMDevice newBufferWithBytes:zero length:sizeof(zero)
+                                                   options:MTLResourceStorageModeShared];
+        if (!bPred || !bTgt || !bOut) return -1;
+
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_f1_counts];
+        [enc setBuffer:bPred offset:0 atIndex:0];
+        [enc setBuffer:bTgt offset:0 atIndex:1];
+        [enc setBuffer:bOut offset:0 atIndex:2];
+        [enc setBytes:&un length:sizeof(unsigned int) atIndex:3];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(gPSO_f1_counts.threadExecutionWidth,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        memcpy(out, [bOut contents], 3 * sizeof(float));
         return 0;
     }
 }

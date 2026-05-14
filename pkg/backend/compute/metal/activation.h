@@ -26,6 +26,9 @@ int metal_tanh(const float* src, float* dst, int n);
 // Compute element-wise sigmoid
 int metal_sigmoid(const float* src, float* dst, int n);
 
+// Compute Swish: dst[i] = src[i] * sigmoid(src[i])
+int metal_swish(const float* src, float* dst, int n);
+
 // Compute SwiGLU: dst[i] = sigmoid(src[i]) * src[n+i]
 // src has 2*n elements (gates first, then values); dst has n elements.
 int metal_swiglu(const float* src, float* dst, int n);
@@ -41,6 +44,7 @@ int metal_leaky_relu_tensor(const void* src, void* dst, float alpha, int n);
 int metal_gelu_tensor(const void* src, void* dst, int n);
 int metal_tanh_tensor(const void* src, void* dst, int n);
 int metal_sigmoid_tensor(const void* src, void* dst, int n);
+int metal_swish_tensor(const void* src, void* dst, int n);
 
 /*
 metal_swiglu_tensor: src buffer holds 2*n consecutive floats (gates then values);

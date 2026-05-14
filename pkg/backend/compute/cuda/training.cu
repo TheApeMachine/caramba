@@ -1,4 +1,5 @@
 #include <cuda_runtime.h>
+#include <limits.h>
 #include <math.h>
 #include "training.h"
 
@@ -10,9 +11,14 @@
 } while(0)
 
 static int training_alloc_copy(const void* host, void** device, size_t bytes) {
-    if (cudaMalloc(device, bytes) != cudaSuccess) return -1;
+    *device = NULL;
+    if (cudaMalloc(device, bytes) != cudaSuccess) {
+        *device = NULL;
+        return -1;
+    }
     if (cudaMemcpy(*device, host, bytes, cudaMemcpyHostToDevice) != cudaSuccess) {
         cudaFree(*device);
+        *device = NULL;
         return -1;
     }
     return 0;
@@ -194,6 +200,7 @@ __global__ void f1_counts_kernel(const double* predictions, const double* target
     if (predicted && actual) atomicAdd(&out[0], 1.0);
     if (predicted && !actual) atomicAdd(&out[1], 1.0);
     if (!predicted && actual) atomicAdd(&out[2], 1.0);
+    if (!predicted && !actual) atomicAdd(&out[3], 1.0);
 }
 
 static int cross_entropy_common(
@@ -248,10 +255,13 @@ fail:
 
 extern "C" {
 
-int cuda_train_mse_loss(const double* predictions, const double* targets, double* out, int n) {
+int cuda_train_mse_loss(const double* predictions, const double* targets, double* out, size_t n) {
+    if (!predictions || !targets || !out || n == 0 || n > INT_MAX) return -1;
+
+    int count = (int)n;
     double *dPredictions = NULL, *dTargets = NULL, *dSum = NULL;
-    size_t bytes = (size_t)n * sizeof(double);
-    int blocks = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    size_t bytes = n * sizeof(double);
+    int blocks = (count + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
     if (training_alloc_copy(predictions, (void**)&dPredictions, bytes)) return -1;
     if (training_alloc_copy(targets, (void**)&dTargets, bytes)) goto fail;
@@ -259,11 +269,11 @@ int cuda_train_mse_loss(const double* predictions, const double* targets, double
     if (cudaMemset(dSum, 0, sizeof(double)) != cudaSuccess) goto fail;
 
     mse_loss_kernel<<<blocks, BLOCK_SIZE, BLOCK_SIZE * sizeof(double)>>>(
-        dPredictions, dTargets, dSum, n
+        dPredictions, dTargets, dSum, count
     );
     if (cudaGetLastError() != cudaSuccess) goto fail;
     if (cudaMemcpy(out, dSum, sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
-    out[0] /= (double)n;
+    out[0] /= (double)count;
 
     cudaFree(dPredictions); cudaFree(dTargets); cudaFree(dSum);
     return 0;
@@ -272,20 +282,24 @@ fail:
     return -1;
 }
 
-int cuda_train_cross_entropy_loss(const double* logits, const double* targets, double* out, int n) {
-    return cross_entropy_common(logits, targets, out, n, 0);
+int cuda_train_cross_entropy_loss(const double* logits, const double* targets, double* out, size_t n) {
+    if (!logits || !targets || !out || n == 0 || n > INT_MAX) return -1;
+    return cross_entropy_common(logits, targets, out, (int)n, 0);
 }
 
-int cuda_train_mse_grad(const double* predictions, const double* targets, double* out, int n) {
+int cuda_train_mse_grad(const double* predictions, const double* targets, double* out, size_t n) {
+    if (!predictions || !targets || !out || n == 0 || n > INT_MAX) return -1;
+
+    int count = (int)n;
     double *dPredictions = NULL, *dTargets = NULL, *dOut = NULL;
-    size_t bytes = (size_t)n * sizeof(double);
+    size_t bytes = n * sizeof(double);
 
     if (training_alloc_copy(predictions, (void**)&dPredictions, bytes)) return -1;
     if (training_alloc_copy(targets, (void**)&dTargets, bytes)) goto fail;
     if (cudaMalloc((void**)&dOut, bytes) != cudaSuccess) goto fail;
 
-    mse_grad_kernel<<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
-        dPredictions, dTargets, dOut, n
+    mse_grad_kernel<<<(count + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
+        dPredictions, dTargets, dOut, count
     );
     if (cudaGetLastError() != cudaSuccess) goto fail;
     if (cudaMemcpy(out, dOut, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
@@ -297,19 +311,23 @@ fail:
     return -1;
 }
 
-int cuda_train_cross_entropy_grad(const double* logits, const double* targets, double* out, int n) {
-    return cross_entropy_common(logits, targets, out, n, 1);
+int cuda_train_cross_entropy_grad(const double* logits, const double* targets, double* out, size_t n) {
+    if (!logits || !targets || !out || n == 0 || n > INT_MAX) return -1;
+    return cross_entropy_common(logits, targets, out, (int)n, 1);
 }
 
-int cuda_bench_accuracy(const double* predictions, const double* targets, double* out, int n) {
+int cuda_metric_accuracy(const double* predictions, const double* targets, double* out, size_t n) {
+    if (!predictions || !targets || !out || n == 0 || n > INT_MAX) return -1;
+
+    int count = (int)n;
     double *dPredictions = NULL, *dTargets = NULL, *dOut = NULL;
-    size_t bytes = (size_t)n * sizeof(double);
+    size_t bytes = n * sizeof(double);
 
     if (training_alloc_copy(predictions, (void**)&dPredictions, bytes)) return -1;
     if (training_alloc_copy(targets, (void**)&dTargets, bytes)) goto fail;
     if (cudaMalloc((void**)&dOut, sizeof(double)) != cudaSuccess) goto fail;
 
-    accuracy_kernel<<<1, BLOCK_SIZE>>>(dPredictions, dTargets, dOut, n);
+    accuracy_kernel<<<1, BLOCK_SIZE>>>(dPredictions, dTargets, dOut, count);
     if (cudaGetLastError() != cudaSuccess) goto fail;
     if (cudaMemcpy(out, dOut, sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
 
@@ -320,20 +338,23 @@ fail:
     return -1;
 }
 
-int cuda_bench_f1_counts(const double* predictions, const double* targets, double* out, int n) {
+int cuda_metric_f1_counts(const double* predictions, const double* targets, double* out, size_t n) {
+    if (!predictions || !targets || !out || n == 0 || n > INT_MAX) return -1;
+
+    int count = (int)n;
     double *dPredictions = NULL, *dTargets = NULL, *dOut = NULL;
-    size_t bytes = (size_t)n * sizeof(double);
+    size_t bytes = n * sizeof(double);
 
     if (training_alloc_copy(predictions, (void**)&dPredictions, bytes)) return -1;
     if (training_alloc_copy(targets, (void**)&dTargets, bytes)) goto fail;
-    if (cudaMalloc((void**)&dOut, 3 * sizeof(double)) != cudaSuccess) goto fail;
-    if (cudaMemset(dOut, 0, 3 * sizeof(double)) != cudaSuccess) goto fail;
+    if (cudaMalloc((void**)&dOut, 4 * sizeof(double)) != cudaSuccess) goto fail;
+    if (cudaMemset(dOut, 0, 4 * sizeof(double)) != cudaSuccess) goto fail;
 
-    f1_counts_kernel<<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
-        dPredictions, dTargets, dOut, n
+    f1_counts_kernel<<<(count + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
+        dPredictions, dTargets, dOut, count
     );
     if (cudaGetLastError() != cudaSuccess) goto fail;
-    if (cudaMemcpy(out, dOut, 3 * sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
+    if (cudaMemcpy(out, dOut, 4 * sizeof(double), cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
 
     cudaFree(dPredictions); cudaFree(dTargets); cudaFree(dOut);
     return 0;

@@ -49,6 +49,7 @@ int xla_leaky_relu(const double* src, double* dst, double alpha, int n);
 int xla_gelu(const double* src, double* dst, int n);
 int xla_tanh_act(const double* src, double* dst, int n);
 int xla_sigmoid(const double* src, double* dst, int n);
+int xla_swish(const double* src, double* dst, int n);
 // src has 2*n elements (gates then values); dst has n elements.
 int xla_swiglu(const double* src, double* dst, int n);
 

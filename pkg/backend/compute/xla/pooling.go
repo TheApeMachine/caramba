@@ -185,8 +185,12 @@ func (x *XLAPooling) AdaptiveMaxPool2d(shape []int, outH, outW int, data []float
 
 // Forward dispatches MaxPool2d.
 func (x *XLAPooling) Forward(shape []int, data ...[]float64) ([]float64, error) {
-	if len(data) == 0 {
+	if len(data) == 0 || len(data[0]) == 0 {
 		return []float64{}, nil
+	}
+
+	if len(shape) < 4 {
+		return nil, fmt.Errorf("xla pooling Forward: shape rank must be >= 4")
 	}
 
 	p := XLAMaxPool2dParams{

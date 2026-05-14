@@ -1,6 +1,10 @@
 package activation
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/state"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 Swish applies x * sigmoid(x) elementwise using the backend activation kernels.
@@ -15,11 +19,19 @@ func NewSwish() *Swish {
 }
 
 func (swish *Swish) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if stateDict == nil {
+		return nil, fmt.Errorf("activation.swish: state dict is nil")
+	}
+
 	if err := stateDict.RequireOperation("activation.swish"); err != nil {
 		return nil, err
 	}
 
-	swishKernel(stateDict.Out, stateDict.Inputs[0])
+	if stateDict.Out == nil {
+		return nil, fmt.Errorf("activation.swish: output tensor is nil")
+	}
+
+	SwishKernel(stateDict.Out, stateDict.Inputs[0])
 
 	return stateDict, nil
 }

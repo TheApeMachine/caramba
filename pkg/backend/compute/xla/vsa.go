@@ -75,6 +75,14 @@ func cIntVSA(name string, n int) (C.int, error) {
 	return C.int(int32(n)), nil
 }
 
+func cSignedIntVSA(name string, n int) (C.int, error) {
+	if n < math.MinInt32 || n > math.MaxInt32 {
+		return 0, fmt.Errorf("%s: value %d out of range for C.int", name, n)
+	}
+
+	return C.int(int32(n)), nil
+}
+
 func vsaPJRTError(op string, rc C.int) error {
 	if msg := strings.TrimSpace(C.GoString(C.xla_vsa_get_last_error())); msg != "" {
 		return fmt.Errorf("%s failed (rc=%d): %s", op, rc, msg)
@@ -251,6 +259,110 @@ func (xlaVSAOps *XLAVSAOps) Similarity(shape []int, data ...[]float64) ([]float6
 
 	if rc != 0 {
 		return nil, vsaPJRTError("xla_vsa_similarity", rc)
+	}
+
+	return out, nil
+}
+
+func (xlaVSAOps *XLAVSAOps) Permute(
+	shape []int,
+	shift int,
+	data ...[]float64,
+) ([]float64, error) {
+	xlaVSAOps.mu.Lock()
+	defer xlaVSAOps.mu.Unlock()
+
+	if xlaVSAOps.closed.Load() {
+		return nil, fmt.Errorf("Permute: XLAVSAOps shut down")
+	}
+
+	if len(shape) < 1 {
+		return nil, fmt.Errorf("Permute: len(shape) < 1")
+	}
+
+	n := shape[0]
+	if n <= 0 {
+		return nil, fmt.Errorf("Permute: n must be > 0")
+	}
+
+	cn, err := cIntVSA("Permute.n", n)
+	if err != nil {
+		return nil, err
+	}
+
+	cshift, err := cSignedIntVSA("Permute.shift", shift)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(data) < 1 || len(data[0]) < n {
+		return nil, fmt.Errorf("Permute: input slice shorter than n=%d", n)
+	}
+
+	out := make([]float64, n)
+	rc := C.xla_vsa_permute(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&out[0])),
+		cn,
+		cshift,
+	)
+	runtime.KeepAlive(data)
+	runtime.KeepAlive(out)
+
+	if rc != 0 {
+		return nil, vsaPJRTError("xla_vsa_permute", rc)
+	}
+
+	return out, nil
+}
+
+func (xlaVSAOps *XLAVSAOps) InversePermute(
+	shape []int,
+	shift int,
+	data ...[]float64,
+) ([]float64, error) {
+	xlaVSAOps.mu.Lock()
+	defer xlaVSAOps.mu.Unlock()
+
+	if xlaVSAOps.closed.Load() {
+		return nil, fmt.Errorf("InversePermute: XLAVSAOps shut down")
+	}
+
+	if len(shape) < 1 {
+		return nil, fmt.Errorf("InversePermute: len(shape) < 1")
+	}
+
+	n := shape[0]
+	if n <= 0 {
+		return nil, fmt.Errorf("InversePermute: n must be > 0")
+	}
+
+	cn, err := cIntVSA("InversePermute.n", n)
+	if err != nil {
+		return nil, err
+	}
+
+	cshift, err := cSignedIntVSA("InversePermute.shift", shift)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(data) < 1 || len(data[0]) < n {
+		return nil, fmt.Errorf("InversePermute: input slice shorter than n=%d", n)
+	}
+
+	out := make([]float64, n)
+	rc := C.xla_vsa_inverse_permute(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&out[0])),
+		cn,
+		cshift,
+	)
+	runtime.KeepAlive(data)
+	runtime.KeepAlive(out)
+
+	if rc != 0 {
+		return nil, vsaPJRTError("xla_vsa_inverse_permute", rc)
 	}
 
 	return out, nil

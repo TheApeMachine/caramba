@@ -1,4 +1,3 @@
-#include <metal_stdlib>
 using namespace metal;
 
 // --- Parallel LA Kernels ---
@@ -333,6 +332,168 @@ kernel void cate_effect_kernel(
         p0 += b0[1 + j] * xv;
     }
     cate[gid] = p1 - p0;
+}
+
+kernel void counterfactual_kernel(
+    device const float* xObs [[buffer(0)]],
+    device const float* yObs [[buffer(1)]],
+    device const float* beta [[buffer(2)]],
+    device const float* xCF [[buffer(3)]],
+    device float* out [[buffer(4)]],
+    constant int& N [[buffer(5)]],
+    constant int& NCF [[buffer(6)]],
+    uint gid [[thread_position_in_grid]])
+{
+    int total = N * NCF;
+    if (gid >= (uint)total) return;
+
+    int obsIndex = int(gid) / NCF;
+    int cfIndex = int(gid) - obsIndex * NCF;
+    float epsilon = yObs[obsIndex] - beta[obsIndex] * xObs[obsIndex];
+    out[gid] = beta[obsIndex] * xCF[cfIndex] + epsilon;
+}
+
+kernel void frontdoor_boundaries_kernel(
+    device const float* values [[buffer(0)]],
+    device float* boundaries [[buffer(1)]],
+    constant int& samples [[buffer(2)]],
+    constant int& bins [[buffer(3)]],
+    uint gid [[thread_position_in_grid]])
+{
+    int boundaryIndex = int(gid) + 1;
+    if (boundaryIndex >= bins) return;
+
+    int position = int((float(boundaryIndex) / float(bins)) * float(samples));
+    if (position >= samples) position = samples - 1;
+
+    float boundary = values[0];
+    for (int candidateIndex = 0; candidateIndex < samples; candidateIndex++) {
+        float candidate = values[candidateIndex];
+        int less = 0;
+        int equal = 0;
+
+        for (int sample = 0; sample < samples; sample++) {
+            float value = values[sample];
+            if (value < candidate) {
+                less++;
+            } else if (value == candidate) {
+                equal++;
+            }
+        }
+
+        if (less <= position && position < less + equal) {
+            boundary = candidate;
+            break;
+        }
+    }
+
+    boundaries[boundaryIndex - 1] = boundary;
+}
+
+kernel void frontdoor_assign_bins_kernel(
+    device const float* values [[buffer(0)]],
+    device const float* boundaries [[buffer(1)]],
+    device int* binsOut [[buffer(2)]],
+    constant int& samples [[buffer(3)]],
+    constant int& bins [[buffer(4)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid >= (uint)samples) return;
+
+    float value = values[gid];
+    int bin = 0;
+
+    while (bin < bins - 1 && !(value < boundaries[bin])) {
+        bin++;
+    }
+
+    binsOut[gid] = bin;
+}
+
+kernel void frontdoor_accumulate_kernel(
+    device const int* xBins [[buffer(0)]],
+    device const int* mBins [[buffer(1)]],
+    device const float* y [[buffer(2)]],
+    device atomic_float* pX [[buffer(3)]],
+    device atomic_float* countX [[buffer(4)]],
+    device atomic_float* pMGivenX [[buffer(5)]],
+    device atomic_float* eYGivenXM [[buffer(6)]],
+    device atomic_float* countXM [[buffer(7)]],
+    constant int& samples [[buffer(8)]],
+    constant int& nx [[buffer(9)]],
+    constant int& nm [[buffer(10)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid >= (uint)samples) return;
+
+    int xBin = xBins[gid];
+    int mBin = mBins[gid];
+    atomic_fetch_add_explicit(pX + xBin, 1.0f, memory_order_relaxed);
+    atomic_fetch_add_explicit(countX + xBin, 1.0f, memory_order_relaxed);
+    atomic_fetch_add_explicit(pMGivenX + mBin * nx + xBin, 1.0f, memory_order_relaxed);
+    atomic_fetch_add_explicit(eYGivenXM + xBin * nm + mBin, y[gid], memory_order_relaxed);
+    atomic_fetch_add_explicit(countXM + xBin * nm + mBin, 1.0f, memory_order_relaxed);
+}
+
+kernel void frontdoor_normalize_kernel(
+    device float* pX [[buffer(0)]],
+    device float* countX [[buffer(1)]],
+    device float* pMGivenX [[buffer(2)]],
+    device float* eYGivenXM [[buffer(3)]],
+    device float* countXM [[buffer(4)]],
+    constant int& samples [[buffer(5)]],
+    constant int& nx [[buffer(6)]],
+    constant int& nm [[buffer(7)]],
+    uint gid [[thread_position_in_grid]])
+{
+    int matrixTotal = nx * nm;
+
+    if (gid < (uint)nx) {
+        pX[gid] /= float(samples);
+    }
+
+    if (gid < (uint)matrixTotal) {
+        int xBin = int(gid) % nx;
+        if (countX[xBin] > 0.0f) {
+            pMGivenX[gid] /= countX[xBin];
+        }
+
+        if (countXM[gid] > 0.0f) {
+            eYGivenXM[gid] /= countXM[gid];
+        } else {
+            eYGivenXM[gid] = as_type<float>(0x7fc00000u);
+        }
+    }
+}
+
+kernel void frontdoor_effect_kernel(
+    device const float* pX [[buffer(0)]],
+    device const float* pMGivenX [[buffer(1)]],
+    device const float* eYGivenXM [[buffer(2)]],
+    device float* effect [[buffer(3)]],
+    constant int& nx [[buffer(4)]],
+    constant int& nm [[buffer(5)]],
+    uint gid [[thread_position_in_grid]])
+{
+    int xBin = int(gid);
+    if (xBin >= nx) return;
+
+    float value = 0.0f;
+
+    for (int mBin = 0; mBin < nm; mBin++) {
+        float inner = 0.0f;
+
+        for (int xPrime = 0; xPrime < nx; xPrime++) {
+            float mean = eYGivenXM[xPrime * nm + mBin];
+            if (!isnan(mean)) {
+                inner += mean * pX[xPrime];
+            }
+        }
+
+        value += pMGivenX[mBin * nx + xBin] * inner;
+    }
+
+    effect[xBin] = value;
 }
 
 // --- DAG Markov Kernels ---

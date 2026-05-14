@@ -25,6 +25,13 @@ static id<MTLComputePipelineState> gPSO_backdoor_effect = nil;
 static id<MTLComputePipelineState> gPSO_cate_split = nil;
 static id<MTLComputePipelineState> gPSO_cate_effect = nil;
 
+static id<MTLComputePipelineState> gPSO_counterfactual = nil;
+static id<MTLComputePipelineState> gPSO_frontdoor_boundaries = nil;
+static id<MTLComputePipelineState> gPSO_frontdoor_assign = nil;
+static id<MTLComputePipelineState> gPSO_frontdoor_accumulate = nil;
+static id<MTLComputePipelineState> gPSO_frontdoor_normalize = nil;
+static id<MTLComputePipelineState> gPSO_frontdoor_effect = nil;
+
 static id<MTLComputePipelineState> gPSO_dag_prep = nil;
 static id<MTLComputePipelineState> gPSO_dag_score = nil;
 
@@ -90,12 +97,21 @@ int metal_causal_init(const char *metallib_path) {
 		gPSO_cate_split = c_make_pso(gCDevice, lib, @"cate_split_kernel");
 		gPSO_cate_effect = c_make_pso(gCDevice, lib, @"cate_effect_kernel");
 
+		gPSO_counterfactual = c_make_pso(gCDevice, lib, @"counterfactual_kernel");
+		gPSO_frontdoor_boundaries = c_make_pso(gCDevice, lib, @"frontdoor_boundaries_kernel");
+		gPSO_frontdoor_assign = c_make_pso(gCDevice, lib, @"frontdoor_assign_bins_kernel");
+		gPSO_frontdoor_accumulate = c_make_pso(gCDevice, lib, @"frontdoor_accumulate_kernel");
+		gPSO_frontdoor_normalize = c_make_pso(gCDevice, lib, @"frontdoor_normalize_kernel");
+		gPSO_frontdoor_effect = c_make_pso(gCDevice, lib, @"frontdoor_effect_kernel");
+
 		gPSO_dag_prep = c_make_pso(gCDevice, lib, @"dag_markov_prep_kernel");
 		gPSO_dag_score = c_make_pso(gCDevice, lib, @"dag_markov_score_kernel");
 
 		if (!gPSO_axpy || !gPSO_sub || !gPSO_matvec || !gPSO_dotatom || !gPSO_ata || !gPSO_atb || !gPSO_matmul || !gPSO_chol_inv ||
 		    !gPSO_docalc_extract || !gPSO_docalc_assemble || !gPSO_backdoor_design || !gPSO_backdoor_effect ||
-		    !gPSO_cate_split || !gPSO_cate_effect || !gPSO_dag_prep || !gPSO_dag_score) {
+		    !gPSO_cate_split || !gPSO_cate_effect || !gPSO_counterfactual || !gPSO_frontdoor_boundaries ||
+		    !gPSO_frontdoor_assign || !gPSO_frontdoor_accumulate || !gPSO_frontdoor_normalize ||
+		    !gPSO_frontdoor_effect || !gPSO_dag_prep || !gPSO_dag_score) {
 			result = -1;
 			return;
 		}
@@ -112,6 +128,8 @@ int metal_causal_shutdown(void) {
 		gPSO_docalc_extract = nil; gPSO_docalc_assemble = nil;
 		gPSO_backdoor_design = nil; gPSO_backdoor_effect = nil;
 		gPSO_cate_split = nil; gPSO_cate_effect = nil;
+		gPSO_counterfactual = nil; gPSO_frontdoor_boundaries = nil; gPSO_frontdoor_assign = nil;
+		gPSO_frontdoor_accumulate = nil; gPSO_frontdoor_normalize = nil; gPSO_frontdoor_effect = nil;
 		gPSO_dag_prep = nil; gPSO_dag_score = nil;
 		gCQueue = nil; gCDevice = nil; gCInited = 0;
 	});
@@ -519,6 +537,184 @@ int metal_causal_cate(const float *X, const float *treatment, const float *Y, fl
 		if (rc != 0) return;
 		if (((int*)[errBuf contents])[0] != 0) { rc = -5; return; }
 		memcpy(cate, [b_cate contents], T*sizeof(float));
+	});
+	return rc;
+}
+
+int metal_causal_counterfactual(
+	const float *X_obs, const float *Y_obs, const float *beta, const float *X_cf,
+	float *out, int N, int N_cf)
+{
+	if (c_check()) return -3;
+	if (!X_obs || !Y_obs || !beta || !X_cf || !out || N <= 0 || N_cf <= 0) return -1;
+	__block int rc = 0;
+	c_ensure_serial();
+	dispatch_sync(gCSerial, ^{
+		size_t obsBytes = (size_t)N * sizeof(float);
+		size_t cfBytes = (size_t)N_cf * sizeof(float);
+		size_t outBytes = (size_t)N * (size_t)N_cf * sizeof(float);
+		id<MTLBuffer> bX = [gCDevice newBufferWithBytes:X_obs length:obsBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bY = [gCDevice newBufferWithBytes:Y_obs length:obsBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bBeta = [gCDevice newBufferWithBytes:beta length:obsBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bXcf = [gCDevice newBufferWithBytes:X_cf length:cfBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bOut = [gCDevice newBufferWithLength:outBytes options:MTLResourceStorageModeShared];
+		if (!bX || !bY || !bBeta || !bXcf || !bOut) { rc = -4; return; }
+
+		id<MTLCommandBuffer> cb = [gCQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+		[enc setComputePipelineState:gPSO_counterfactual];
+		[enc setBuffer:bX offset:0 atIndex:0];
+		[enc setBuffer:bY offset:0 atIndex:1];
+		[enc setBuffer:bBeta offset:0 atIndex:2];
+		[enc setBuffer:bXcf offset:0 atIndex:3];
+		[enc setBuffer:bOut offset:0 atIndex:4];
+		[enc setBytes:&N length:sizeof(N) atIndex:5];
+		[enc setBytes:&N_cf length:sizeof(N_cf) atIndex:6];
+		[enc dispatchThreads:MTLSizeMake((NSUInteger)(N * N_cf), 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_counterfactual.threadExecutionWidth, 1, 1)];
+		[enc endEncoding];
+		rc = c_wait(cb);
+		if (rc == 0) memcpy(out, [bOut contents], outBytes);
+	});
+	return rc;
+}
+
+int metal_causal_frontdoor(
+	const float *X, const float *M, const float *Y,
+	float *effect, int T, int nx, int nm)
+{
+	if (c_check()) return -3;
+	if (!X || !M || !Y || !effect || T <= 0 || nx <= 0 || nm <= 0) return -1;
+	__block int rc = 0;
+	c_ensure_serial();
+	dispatch_sync(gCSerial, ^{
+		size_t sampleBytes = (size_t)T * sizeof(float);
+		size_t xBoundaryBytes = (size_t)(nx > 1 ? nx - 1 : 1) * sizeof(float);
+		size_t mBoundaryBytes = (size_t)(nm > 1 ? nm - 1 : 1) * sizeof(float);
+		size_t xBytes = (size_t)nx * sizeof(float);
+		size_t matrixBytes = (size_t)nx * (size_t)nm * sizeof(float);
+		size_t binBytes = (size_t)T * sizeof(int);
+
+		id<MTLBuffer> bX = [gCDevice newBufferWithBytes:X length:sampleBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bM = [gCDevice newBufferWithBytes:M length:sampleBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bY = [gCDevice newBufferWithBytes:Y length:sampleBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bXBoundaries = [gCDevice newBufferWithLength:xBoundaryBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bMBoundaries = [gCDevice newBufferWithLength:mBoundaryBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bXBins = [gCDevice newBufferWithLength:binBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bMBins = [gCDevice newBufferWithLength:binBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bPX = [gCDevice newBufferWithLength:xBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bCountX = [gCDevice newBufferWithLength:xBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bMGivenX = [gCDevice newBufferWithLength:matrixBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bEYGivenXM = [gCDevice newBufferWithLength:matrixBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bCountXM = [gCDevice newBufferWithLength:matrixBytes options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bEffect = [gCDevice newBufferWithLength:xBytes options:MTLResourceStorageModeShared];
+
+		if (!bX || !bM || !bY || !bXBoundaries || !bMBoundaries || !bXBins || !bMBins ||
+		    !bPX || !bCountX || !bMGivenX || !bEYGivenXM || !bCountXM || !bEffect) {
+			rc = -4;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gCQueue commandBuffer];
+		id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+		[blit fillBuffer:bPX range:NSMakeRange(0, xBytes) value:0];
+		[blit fillBuffer:bCountX range:NSMakeRange(0, xBytes) value:0];
+		[blit fillBuffer:bMGivenX range:NSMakeRange(0, matrixBytes) value:0];
+		[blit fillBuffer:bEYGivenXM range:NSMakeRange(0, matrixBytes) value:0];
+		[blit fillBuffer:bCountXM range:NSMakeRange(0, matrixBytes) value:0];
+		[blit endEncoding];
+
+		if (nx > 1) {
+			id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+			[enc setComputePipelineState:gPSO_frontdoor_boundaries];
+			[enc setBuffer:bX offset:0 atIndex:0];
+			[enc setBuffer:bXBoundaries offset:0 atIndex:1];
+			[enc setBytes:&T length:sizeof(T) atIndex:2];
+			[enc setBytes:&nx length:sizeof(nx) atIndex:3];
+			[enc dispatchThreads:MTLSizeMake((NSUInteger)(nx - 1), 1, 1)
+			 threadsPerThreadgroup:MTLSizeMake(gPSO_frontdoor_boundaries.threadExecutionWidth, 1, 1)];
+			[enc endEncoding];
+		}
+
+		if (nm > 1) {
+			id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+			[enc setComputePipelineState:gPSO_frontdoor_boundaries];
+			[enc setBuffer:bM offset:0 atIndex:0];
+			[enc setBuffer:bMBoundaries offset:0 atIndex:1];
+			[enc setBytes:&T length:sizeof(T) atIndex:2];
+			[enc setBytes:&nm length:sizeof(nm) atIndex:3];
+			[enc dispatchThreads:MTLSizeMake((NSUInteger)(nm - 1), 1, 1)
+			 threadsPerThreadgroup:MTLSizeMake(gPSO_frontdoor_boundaries.threadExecutionWidth, 1, 1)];
+			[enc endEncoding];
+		}
+
+		id<MTLComputeCommandEncoder> encX = [cb computeCommandEncoder];
+		[encX setComputePipelineState:gPSO_frontdoor_assign];
+		[encX setBuffer:bX offset:0 atIndex:0];
+		[encX setBuffer:bXBoundaries offset:0 atIndex:1];
+		[encX setBuffer:bXBins offset:0 atIndex:2];
+		[encX setBytes:&T length:sizeof(T) atIndex:3];
+		[encX setBytes:&nx length:sizeof(nx) atIndex:4];
+		[encX dispatchThreads:MTLSizeMake((NSUInteger)T, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_frontdoor_assign.threadExecutionWidth, 1, 1)];
+		[encX endEncoding];
+
+		id<MTLComputeCommandEncoder> encM = [cb computeCommandEncoder];
+		[encM setComputePipelineState:gPSO_frontdoor_assign];
+		[encM setBuffer:bM offset:0 atIndex:0];
+		[encM setBuffer:bMBoundaries offset:0 atIndex:1];
+		[encM setBuffer:bMBins offset:0 atIndex:2];
+		[encM setBytes:&T length:sizeof(T) atIndex:3];
+		[encM setBytes:&nm length:sizeof(nm) atIndex:4];
+		[encM dispatchThreads:MTLSizeMake((NSUInteger)T, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_frontdoor_assign.threadExecutionWidth, 1, 1)];
+		[encM endEncoding];
+
+		id<MTLComputeCommandEncoder> encA = [cb computeCommandEncoder];
+		[encA setComputePipelineState:gPSO_frontdoor_accumulate];
+		[encA setBuffer:bXBins offset:0 atIndex:0];
+		[encA setBuffer:bMBins offset:0 atIndex:1];
+		[encA setBuffer:bY offset:0 atIndex:2];
+		[encA setBuffer:bPX offset:0 atIndex:3];
+		[encA setBuffer:bCountX offset:0 atIndex:4];
+		[encA setBuffer:bMGivenX offset:0 atIndex:5];
+		[encA setBuffer:bEYGivenXM offset:0 atIndex:6];
+		[encA setBuffer:bCountXM offset:0 atIndex:7];
+		[encA setBytes:&T length:sizeof(T) atIndex:8];
+		[encA setBytes:&nx length:sizeof(nx) atIndex:9];
+		[encA setBytes:&nm length:sizeof(nm) atIndex:10];
+		[encA dispatchThreads:MTLSizeMake((NSUInteger)T, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_frontdoor_accumulate.threadExecutionWidth, 1, 1)];
+		[encA endEncoding];
+
+		id<MTLComputeCommandEncoder> encN = [cb computeCommandEncoder];
+		[encN setComputePipelineState:gPSO_frontdoor_normalize];
+		[encN setBuffer:bPX offset:0 atIndex:0];
+		[encN setBuffer:bCountX offset:0 atIndex:1];
+		[encN setBuffer:bMGivenX offset:0 atIndex:2];
+		[encN setBuffer:bEYGivenXM offset:0 atIndex:3];
+		[encN setBuffer:bCountXM offset:0 atIndex:4];
+		[encN setBytes:&T length:sizeof(T) atIndex:5];
+		[encN setBytes:&nx length:sizeof(nx) atIndex:6];
+		[encN setBytes:&nm length:sizeof(nm) atIndex:7];
+		[encN dispatchThreads:MTLSizeMake((NSUInteger)(nx * nm), 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_frontdoor_normalize.threadExecutionWidth, 1, 1)];
+		[encN endEncoding];
+
+		id<MTLComputeCommandEncoder> encE = [cb computeCommandEncoder];
+		[encE setComputePipelineState:gPSO_frontdoor_effect];
+		[encE setBuffer:bPX offset:0 atIndex:0];
+		[encE setBuffer:bMGivenX offset:0 atIndex:1];
+		[encE setBuffer:bEYGivenXM offset:0 atIndex:2];
+		[encE setBuffer:bEffect offset:0 atIndex:3];
+		[encE setBytes:&nx length:sizeof(nx) atIndex:4];
+		[encE setBytes:&nm length:sizeof(nm) atIndex:5];
+		[encE dispatchThreads:MTLSizeMake((NSUInteger)nx, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_frontdoor_effect.threadExecutionWidth, 1, 1)];
+		[encE endEncoding];
+
+		rc = c_wait(cb);
+		if (rc == 0) memcpy(effect, [bEffect contents], xBytes);
 	});
 	return rc;
 }

@@ -11,8 +11,11 @@ func TestOperationDispatchParity(t *testing.T) {
 	Convey("Given the CPU operation dispatcher", t, func() {
 		Convey("It should expose every required catalog operation", func() {
 			supported := TensorOperationDispatchContract.SupportedIDSet()
+			requiredOperations := ir.RequiredOperationIDs()
 
-			for _, operationID := range ir.RequiredOperationIDs() {
+			So(requiredOperations, ShouldNotBeEmpty)
+
+			for _, operationID := range requiredOperations {
 				So(supported[operationID], ShouldBeTrue)
 			}
 		})

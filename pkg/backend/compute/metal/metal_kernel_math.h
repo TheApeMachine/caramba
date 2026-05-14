@@ -56,6 +56,12 @@ int metal_log(const float* src, float* dst, int n);
 // Softmax over last dim. src/dst have num_rows*dim_size elements.
 int metal_softmax(const float* src, float* dst, int num_rows, int dim_size);
 
+// LogSumExp over last dim. src has num_rows*dim_size elements; dst has num_rows.
+int metal_logsumexp(const float* src, float* dst, int num_rows, int dim_size);
+
+// Dropout. If training is zero or p is zero, copies input to output.
+int metal_dropout(const float* src, float* dst, int n, float p, int training, int seed);
+
 // Layer norm. src/dst: num_rows*d_model; weight/bias: d_model.
 int metal_layernorm(const float* src, float* dst,
                     const float* weight, const float* bias,
@@ -79,6 +85,14 @@ int metal_sqrt_vec(const float* src, float* dst, int n);
 int metal_add_scalar(float* dst, float scalar, int n);
 int metal_div_vec(const float* a, const float* b, float* dst, int n);
 int metal_clamp_vec(float* dst, float lo, float hi, int n);
+
+// Training and benchmark primitives.
+int metal_train_mse_loss(const float* predictions, const float* targets, float* out, int n);
+int metal_train_cross_entropy_loss(const float* logits, const float* targets, float* out, int n);
+int metal_train_mse_grad(const float* predictions, const float* targets, float* out, int n);
+int metal_train_cross_entropy_grad(const float* logits, const float* targets, float* out, int n);
+int metal_bench_accuracy(const float* predictions, const float* targets, float* out, int n);
+int metal_bench_f1_counts(const float* predictions, const float* targets, float* out, int n);
 
 #ifdef __cplusplus
 }

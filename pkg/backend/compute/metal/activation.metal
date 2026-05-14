@@ -60,6 +60,16 @@ kernel void sigmoid_forward(
     dst[i] = 0.5f * (1.0f + fast_tanh(src[i] * 0.5f));
 }
 
+kernel void swish_forward(
+    device const float* src [[buffer(0)]],
+    device float* dst       [[buffer(1)]],
+    uint i                  [[thread_position_in_grid]])
+{
+    float x = src[i];
+    float sig = 0.5f * (1.0f + fast_tanh(x * 0.5f));
+    dst[i] = x * sig;
+}
+
 kernel void swiglu_forward(
     device const float* src  [[buffer(0)]],
     device float* dst        [[buffer(1)]],

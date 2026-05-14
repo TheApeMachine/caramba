@@ -20,8 +20,17 @@ int metal_vsa_bind(const float* a, const float* b, float* out, int n);
 // L2-normalise: out[i] = in[i] / ||in||
 int metal_vsa_l2normalize(const float* in, float* out, int n);
 
+// Bundle count vectors laid out as count consecutive length-n vectors, then L2-normalise.
+int metal_vsa_bundle(const float* vectors, float* out, int count, int n);
+
 // Dot product: out[0] = dot(a, b)  (cosine sim assuming unit-norm inputs)
 int metal_vsa_dot(const float* a, const float* b, float* out, int n);
+
+// Cyclic permutation: out[i] = src[(i-shift) mod n].
+int metal_vsa_permute(const float* src, float* out, int n, int shift);
+
+// Inverse cyclic permutation: out[i] = src[(i+shift) mod n].
+int metal_vsa_inverse_permute(const float* src, float* out, int n, int shift);
 
 // After a failed return from any metal_vsa_* call on this thread, inspect TLS diagnostics.
 int metal_vsa_last_error_code(void);

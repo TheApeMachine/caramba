@@ -105,9 +105,25 @@ func (x *XLAProjection) Forward(shape []int, data ...[]float64) ([]float64, erro
 		return nil, fmt.Errorf("xla projection Forward: need x and weight (got %d buffers)", len(data))
 	}
 
+	if len(shape) < 2 {
+		return nil, fmt.Errorf("xla projection Forward: shape must have at least 2 dimensions")
+	}
+
+	if shape[0] <= 0 || shape[1] <= 0 {
+		return nil, fmt.Errorf("xla projection Forward: shape dimensions must be positive")
+	}
+
+	if len(data[0]) == 0 || len(data[1]) == 0 {
+		return nil, fmt.Errorf("xla projection Forward: x and weight must be non-empty")
+	}
+
 	var bias []float64
 
 	if len(data) >= 3 {
+		if len(data[2]) == 0 {
+			return nil, fmt.Errorf("xla projection Forward: bias must be non-empty when provided")
+		}
+
 		bias = data[2]
 	}
 

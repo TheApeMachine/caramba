@@ -59,8 +59,12 @@ func (x *XLAActivation) ensureCompiled(n int) error {
 
 // Forward dispatches to ReLU with the universal operation signature.
 func (x *XLAActivation) Forward(shape []int, data ...[]float64) ([]float64, error) {
-	if len(data) == 0 {
-		return []float64{}, nil
+	if len(data) != 1 {
+		return nil, fmt.Errorf("xla activation Forward: exactly one input is required")
+	}
+
+	if err := xlaValidateShapeProduct("xla activation Forward", shape, len(data[0])); err != nil {
+		return nil, err
 	}
 
 	return x.ReLU(data[0])
@@ -166,6 +170,27 @@ func (x *XLAActivation) Sigmoid(input []float64) ([]float64, error) {
 	)
 	if rc != 0 {
 		return nil, fmt.Errorf("xla_sigmoid failed")
+	}
+	return dst, nil
+}
+
+// Swish computes x * sigmoid(x) element-wise.
+func (x *XLAActivation) Swish(input []float64) ([]float64, error) {
+	n := len(input)
+	if n == 0 {
+		return []float64{}, nil
+	}
+	if err := x.ensureCompiled(n); err != nil {
+		return nil, err
+	}
+	dst := make([]float64, n)
+	rc := C.xla_swish(
+		(*C.double)(unsafe.Pointer(&input[0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(n),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("xla_swish failed")
 	}
 	return dst, nil
 }

@@ -16,6 +16,7 @@ static id<MTLComputePipelineState> gPSO_leaky   = nil;
 static id<MTLComputePipelineState> gPSO_gelu    = nil;
 static id<MTLComputePipelineState> gPSO_tanh    = nil;
 static id<MTLComputePipelineState> gPSO_sigmoid = nil;
+static id<MTLComputePipelineState> gPSO_swish   = nil;
 static id<MTLComputePipelineState> gPSO_swiglu  = nil;
 
 // ---------------------------------------------------------------------------
@@ -46,10 +47,12 @@ int metal_init(const char* metallib_path) {
         gPSO_gelu    = make_pso(lib, @"gelu_forward");
         gPSO_tanh    = make_pso(lib, @"tanh_forward");
         gPSO_sigmoid = make_pso(lib, @"sigmoid_forward");
+        gPSO_swish   = make_pso(lib, @"swish_forward");
         gPSO_swiglu  = make_pso(lib, @"swiglu_forward");
 
         if (!gPSO_relu || !gPSO_leaky || !gPSO_gelu ||
-            !gPSO_tanh || !gPSO_sigmoid || !gPSO_swiglu) return -1;
+            !gPSO_tanh || !gPSO_sigmoid || !gPSO_swish ||
+            !gPSO_swiglu) return -1;
 
         return 0;
     }
@@ -234,6 +237,10 @@ int metal_sigmoid(const float* src, float* dst, int n) {
     return dispatch_2buf(gPSO_sigmoid, src, n, dst, n, NULL, 0, n);
 }
 
+int metal_swish(const float* src, float* dst, int n) {
+    return dispatch_2buf(gPSO_swish, src, n, dst, n, NULL, 0, n);
+}
+
 int metal_swiglu(const float* src, float* dst, int n) {
     unsigned int un = (unsigned int)n;
     // src has 2*n elements (gates then values); dst has n elements.
@@ -298,6 +305,18 @@ int metal_sigmoid_tensor(const void* src, void* dst, int n) {
     NSUInteger minB = (NSUInteger)n * sizeof(float);
 
     return dispatch_tensor_2buf(gPSO_sigmoid, (void*)src, dst, NULL, 0, n, minB, minB);
+}
+
+int metal_swish_tensor(const void* src, void* dst, int n) {
+    if (n < 0) return -1;
+
+    if (n == 0) return 0;
+
+    if ((NSUInteger)n > ULONG_MAX / sizeof(float)) return -1;
+
+    NSUInteger minB = (NSUInteger)n * sizeof(float);
+
+    return dispatch_tensor_2buf(gPSO_swish, (void*)src, dst, NULL, 0, n, minB, minB);
 }
 
 int metal_swiglu_tensor(const void* src, void* dst, int n) {

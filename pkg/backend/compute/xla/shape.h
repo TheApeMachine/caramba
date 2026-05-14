@@ -44,6 +44,9 @@ int xla_concat(const double* srcA, int n_a,
                const double* srcB, int n_b,
                double* dst);
 
+int xla_split(const double* src, double* dst,
+              int outer, int dim_size, int split_size, int inner);
+
 // ViewAsHeads: [B,T,H,head_dim] -> [B,H,T,head_dim]
 int xla_view_as_heads(const double* src, double* dst,
                       int B, int T, int H, int head_dim);

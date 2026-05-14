@@ -31,7 +31,47 @@ func (x *XLAShapeOps) Forward(shape []int, data ...[]float64) ([]float64, error)
 		return []float64{}, nil
 	}
 
+	if len(data) > 1 {
+		return nil, fmt.Errorf("xla shape Forward: exactly one input is supported")
+	}
+
+	if err := xlaValidateShapeProduct("xla shape Forward", shape, len(data[0])); err != nil {
+		return nil, err
+	}
+
 	return x.Copy(data[0])
+}
+
+func xlaValidateShapeProduct(name string, shape []int, length int) error {
+	if len(shape) == 0 {
+		return fmt.Errorf("%s: shape is required", name)
+	}
+
+	maxInt := int(^uint(0) >> 1)
+	product := 1
+
+	for index, dimension := range shape {
+		if dimension < 0 {
+			return fmt.Errorf("%s: shape[%d] must be non-negative", name, index)
+		}
+
+		if dimension == 0 {
+			product = 0
+			break
+		}
+
+		if product > maxInt/dimension {
+			return fmt.Errorf("%s: shape product overflows int", name)
+		}
+
+		product *= dimension
+	}
+
+	if product != length {
+		return fmt.Errorf("%s: shape product %d does not match input length %d", name, product, length)
+	}
+
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +151,32 @@ func (x *XLAShapeOps) Concat(a, b []float64) ([]float64, error) {
 		(*C.double)(unsafe.Pointer(&dst[0])))
 	if rc != 0 {
 		return nil, fmt.Errorf("xla_concat failed")
+	}
+	return dst, nil
+}
+
+func (x *XLAShapeOps) Split(
+	input []float64,
+	outer int,
+	dimSize int,
+	splitSize int,
+	inner int,
+) ([]float64, error) {
+	if len(input) == 0 {
+		return []float64{}, nil
+	}
+
+	dst := make([]float64, len(input))
+	rc := C.xla_split(
+		(*C.double)(unsafe.Pointer(&input[0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(outer),
+		C.int(dimSize),
+		C.int(splitSize),
+		C.int(inner),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("xla_split failed")
 	}
 	return dst, nil
 }
