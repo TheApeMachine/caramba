@@ -5,7 +5,32 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/model"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
+
+type stateOperation interface {
+	Forward(*state.Dict) (*state.Dict, error)
+}
+
+func forwardModel(
+	operation stateOperation, stateDict *state.Dict, inputs ...[]float64,
+) []float64 {
+	values := make([]any, len(inputs))
+
+	for index := range inputs {
+		values[index] = inputs[index]
+	}
+
+	if len(values) > 0 {
+		stateDict.WithInputs(values...)
+	}
+
+	outputState, err := operation.Forward(stateDict)
+
+	So(err, ShouldBeNil)
+
+	return outputState.Out
+}
 
 // seedRegistry populates the global registry with a synthetic weight map
 // so tests do not need to touch disk or the network.
@@ -62,7 +87,11 @@ func TestSurgery_Remove(t *testing.T) {
 		op := model.NewSurgery(source, "remove", "transformer.h.0", "", "", nil)
 
 		Convey("It should remove all keys under the target prefix", func() {
-			result := op.Forward(nil, []float64{1})
+			stateDict := state.NewDict()
+			stateDict.Source = source
+			stateDict.Op = "remove"
+			stateDict.At = "transformer.h.0"
+			result := forwardModel(op, stateDict, []float64{1})
 			So(result[0], ShouldBeGreaterThanOrEqualTo, 0)
 
 			remaining, _ := model.GlobalRegistry().Get(source)
@@ -85,7 +114,13 @@ func TestSurgery_Replace(t *testing.T) {
 		op := model.NewSurgery(source, "replace", "transformer.h.0.attn.q", "", "transformer.h.0.attn.q_new", newWeights)
 
 		Convey("It should replace the target key with the new weights", func() {
-			op.Forward(nil, []float64{1})
+			stateDict := state.NewDict()
+			stateDict.Source = source
+			stateDict.Op = "replace"
+			stateDict.At = "transformer.h.0.attn.q"
+			stateDict.Name = "transformer.h.0.attn.q_new"
+			stateDict.Layer = newWeights
+			forwardModel(op, stateDict, []float64{1})
 
 			updated, _ := model.GlobalRegistry().Get(source)
 			So(updated["transformer.h.0.attn.q_new"], ShouldResemble, []float64{9, 9, 9})
@@ -104,7 +139,11 @@ func TestGraft_ReadMode(t *testing.T) {
 		op := model.NewGraft(source, "transformer.h.6.attn.v", "read")
 
 		Convey("It should emit the layer weights without modification", func() {
-			result := op.Forward(nil, []float64{1})
+			stateDict := state.NewDict()
+			stateDict.Source = source
+			stateDict.At = "transformer.h.6.attn.v"
+			stateDict.Mode = "read"
+			result := forwardModel(op, stateDict, []float64{1})
 			So(result, ShouldResemble, []float64{1, 2, 3, 4})
 
 			unchanged, _ := model.GlobalRegistry().Get(source)
@@ -125,7 +164,11 @@ func TestGraft_ReadWrite(t *testing.T) {
 
 		Convey("It should add the injection vector back into the layer", func() {
 			injection := []float64{0.5, 0.5, 0.5}
-			result := op.Forward(nil, []float64{1}, injection)
+			stateDict := state.NewDict()
+			stateDict.Source = source
+			stateDict.At = "transformer.h.12.attn.v"
+			stateDict.Mode = "read_write"
+			result := forwardModel(op, stateDict, []float64{1}, injection)
 			So(result, ShouldResemble, []float64{1.5, 1.5, 1.5})
 		})
 	})
@@ -144,7 +187,12 @@ func TestLoRA_Forward(t *testing.T) {
 		op := model.NewLoRA(source, "qv", nil, 2, 4)
 
 		Convey("It should adapt Q and V weights but not MLP", func() {
-			result := op.Forward(nil, []float64{1})
+			stateDict := state.NewDict()
+			stateDict.Source = source
+			stateDict.Preset = "qv"
+			stateDict.Rank = 2
+			stateDict.Alpha = 4
+			result := forwardModel(op, stateDict, []float64{1})
 			So(result[0], ShouldEqual, 2)
 
 			adapted, _ := model.GlobalRegistry().Get(source)
@@ -165,7 +213,11 @@ func TestFreeze_Forward(t *testing.T) {
 		op := model.NewFreeze(source, "transformer.h.*", "", true)
 
 		Convey("It should mark matching keys as frozen", func() {
-			op.Forward(nil, []float64{1})
+			stateDict := state.NewDict()
+			stateDict.Source = source
+			stateDict.Pattern = "transformer.h.*"
+			stateDict.Frozen = true
+			forwardModel(op, stateDict, []float64{1})
 
 			updated, _ := model.GlobalRegistry().Get(source)
 			So(model.IsFrozen(updated, "transformer.h.0.attn.q"), ShouldBeTrue)
@@ -186,7 +238,12 @@ func TestFreeze_Except(t *testing.T) {
 		op := model.NewFreeze(source, "transformer.h.*", "transformer.h.10.*", true)
 
 		Convey("It should freeze the matched layer but not the excepted one", func() {
-			op.Forward(nil, []float64{1})
+			stateDict := state.NewDict()
+			stateDict.Source = source
+			stateDict.Pattern = "transformer.h.*"
+			stateDict.Except = "transformer.h.10.*"
+			stateDict.Frozen = true
+			forwardModel(op, stateDict, []float64{1})
 
 			updated, _ := model.GlobalRegistry().Get(source)
 			So(model.IsFrozen(updated, "transformer.h.0.attn.q"), ShouldBeTrue)

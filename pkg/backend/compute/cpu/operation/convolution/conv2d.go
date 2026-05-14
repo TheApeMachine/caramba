@@ -1,8 +1,11 @@
 package convolution
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 // Conv2d applies a 2-D convolution over input [N, InC, H, W].
@@ -75,14 +78,98 @@ func NewConv2d(inC, outC, kH, kW, strideH, strideW, padH, padW, dilH, dilW, grou
 // Forward computes the 2-D convolution.
 // shape = [N, InC, H, W]; data[0] = input.
 // Returns [N, OutC, H_out, W_out].
-func (c *Conv2d) Forward(shape []int, data ...[]float64) []float64 {
-	n, inC, h, w := shape[0], shape[1], shape[2], shape[3]
+func (conv *Conv2d) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
 
-	return conv2dForward(
-		data[0], n, inC, h, w,
-		c.Weight, c.Bias,
-		c.OutChannels, c.KernelH, c.KernelW,
-		c.StrideH, c.StrideW, c.PadH, c.PadW, c.DilationH, c.DilationW,
-		c.Groups,
+	if len(shape) < 4 {
+		return nil, fmt.Errorf("convolution.conv2d: len(shape)=%d, need >= 4", len(shape))
+	}
+
+	if err := stateDict.RequireOperation("convolution.conv2d"); err != nil {
+		return nil, err
+	}
+
+	batch := shape[0]
+	inChannels := shape[1]
+	height := shape[2]
+	width := shape[3]
+	outChannels := stateDict.OutChannels
+	kernelH := stateDict.KernelH
+	kernelW := stateDict.KernelW
+	strideH := positiveDefault(stateDict.StrideH, 1)
+	strideW := positiveDefault(stateDict.StrideW, 1)
+	dilationH := positiveDefault(stateDict.DilationH, 1)
+	dilationW := positiveDefault(stateDict.DilationW, 1)
+	groups := positiveDefault(stateDict.Groups, 1)
+
+	if stateDict.InChannels != 0 && stateDict.InChannels != inChannels {
+		return nil, fmt.Errorf(
+			"convolution.conv2d: shape in_channels=%d does not match state InChannels=%d",
+			inChannels, stateDict.InChannels,
+		)
+	}
+
+	if err := validateConv2dState(
+		stateDict, batch, inChannels, height, width,
+		outChannels, kernelH, kernelW,
+		strideH, strideW, stateDict.PadH, stateDict.PadW,
+		dilationH, dilationW, groups,
+	); err != nil {
+		return nil, err
+	}
+
+	output := conv2dForward(
+		stateDict.Inputs[0], batch, inChannels, height, width,
+		stateDict.Weight, stateDict.Bias,
+		outChannels, kernelH, kernelW,
+		strideH, strideW, stateDict.PadH, stateDict.PadW, dilationH, dilationW,
+		groups,
 	)
+
+	stateDict.SetOperationOutput(output)
+
+	return stateDict, nil
+}
+
+func validateConv2dState(
+	stateDict *state.Dict,
+	batch, inChannels, height, width int,
+	outChannels, kernelH, kernelW int,
+	strideH, strideW, padH, padW, dilationH, dilationW, groups int,
+) error {
+	if batch <= 0 || inChannels <= 0 || height <= 0 || width <= 0 ||
+		outChannels <= 0 || kernelH <= 0 || kernelW <= 0 ||
+		strideH <= 0 || strideW <= 0 || dilationH <= 0 || dilationW <= 0 ||
+		groups <= 0 {
+		return fmt.Errorf("convolution.conv2d: invalid dimensions")
+	}
+
+	if inChannels%groups != 0 || outChannels%groups != 0 {
+		return fmt.Errorf("convolution.conv2d: groups=%d must divide InC=%d and OutC=%d", groups, inChannels, outChannels)
+	}
+
+	inputLength := batch * inChannels * height * width
+
+	if len(stateDict.Inputs[0]) != inputLength {
+		return fmt.Errorf("convolution.conv2d: len(input)=%d, need %d", len(stateDict.Inputs[0]), inputLength)
+	}
+
+	weightLength := outChannels * (inChannels / groups) * kernelH * kernelW
+
+	if len(stateDict.Weight) != weightLength {
+		return fmt.Errorf("convolution.conv2d: len(weight)=%d, need %d", len(stateDict.Weight), weightLength)
+	}
+
+	if len(stateDict.Bias) != outChannels {
+		return fmt.Errorf("convolution.conv2d: len(bias)=%d, need OutC=%d", len(stateDict.Bias), outChannels)
+	}
+
+	heightOut := (height+2*padH-dilationH*(kernelH-1)-1)/strideH + 1
+	widthOut := (width+2*padW-dilationW*(kernelW-1)-1)/strideW + 1
+
+	if heightOut <= 0 || widthOut <= 0 {
+		return fmt.Errorf("convolution.conv2d: output shape [%d,%d] must be positive", heightOut, widthOut)
+	}
+
+	return nil
 }

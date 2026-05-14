@@ -1,5 +1,11 @@
 package model
 
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
+
 /*
 Freeze marks weight groups as frozen or unfrozen in the WeightMap by
 storing a sentinel key. Downstream training nodes check this before
@@ -9,10 +15,11 @@ The convention: a key "<pattern>.frozen" with value []float64{1} means
 all weights matching <pattern> are frozen; []float64{0} means unfrozen.
 
 Config keys:
-  source   — must match the Loader node's source key
-  pattern  — glob pattern of layers to freeze/unfreeze
-  except   — optional glob pattern of layers to exclude from the operation
-  frozen   — true (default) to freeze, false to unfreeze
+
+	source   — must match the Loader node's source key
+	pattern  — glob pattern of layers to freeze/unfreeze
+	except   — optional glob pattern of layers to exclude from the operation
+	frozen   — true (default) to freeze, false to unfreeze
 */
 type Freeze struct {
 	source  string
@@ -38,24 +45,32 @@ Forward applies freeze/unfreeze markers to all matching weights.
 Input: data[0] = trigger token.
 Output: number of weight groups affected.
 */
-func (freeze *Freeze) Forward(_ []int, data ...[]float64) []float64 {
-	weights, ok := globalRegistry.Get(freeze.source)
-
-	if !ok {
-		return []float64{-1}
+func (freeze *Freeze) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
 	}
 
-	selected := weights.Select(freeze.pattern)
+	if stateDict.Source == "" || stateDict.Pattern == "" {
+		return nil, fmt.Errorf("model.freeze: Source and Pattern are required")
+	}
+
+	weights, ok := globalRegistry.Get(stateDict.Source)
+
+	if !ok {
+		return nil, fmt.Errorf("model.freeze: source %q not loaded", stateDict.Source)
+	}
+
+	selected := weights.Select(stateDict.Pattern)
 	affected := 0
 
 	sentinel := []float64{0}
 
-	if freeze.frozen {
+	if stateDict.Frozen {
 		sentinel = []float64{1}
 	}
 
 	for key := range selected {
-		if freeze.except != "" && matchGlobPrefix(freeze.except, key) { //nolint — prefix match intentional
+		if stateDict.Except != "" && matchGlobPrefix(stateDict.Except, key) { //nolint — prefix match intentional
 			continue
 		}
 
@@ -63,9 +78,10 @@ func (freeze *Freeze) Forward(_ []int, data ...[]float64) []float64 {
 		affected++
 	}
 
-	globalRegistry.store(freeze.source, weights)
+	globalRegistry.store(stateDict.Source, weights)
+	stateDict.SetOperationOutput([]float64{float64(affected)})
 
-	return []float64{float64(affected)}
+	return stateDict, nil
 }
 
 /*

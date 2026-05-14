@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 const huggingFaceBase = "https://huggingface.co"
@@ -25,9 +27,10 @@ let the Loader satisfy operation.Operation while storing the WeightMap
 internally for other model.* nodes to retrieve via the Registry.
 
 Config keys:
-  source  — HuggingFace repo ("org/name") or absolute local path
-  file    — filename within the repo (default: "model.safetensors")
-  cache   — local directory to cache downloads (default: ".model_cache")
+
+	source  — HuggingFace repo ("org/name") or absolute local path
+	file    — filename within the repo (default: "model.safetensors")
+	cache   — local directory to cache downloads (default: ".model_cache")
 */
 type Loader struct {
 	source  string
@@ -57,23 +60,48 @@ Forward loads the model on first call and emits a single float64 token
 The actual weights are held in Loader.weights and retrieved by downstream
 model.* nodes via the shared WeightRegistry.
 */
-func (loader *Loader) Forward(_ []int, _ ...[]float64) []float64 {
-	if loader.weights != nil {
-		globalRegistry.store(loader.source, loader.weights)
-
-		return []float64{float64(len(loader.weights))}
+func (loader *Loader) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
 	}
 
-	weights, err := loader.load()
+	source := stateDict.Source
+
+	if source == "" {
+		return nil, fmt.Errorf("model.loader: Source is required")
+	}
+
+	if weights, ok := globalRegistry.Get(source); ok {
+		loader.weights = weights
+		stateDict.SetOperationOutput([]float64{float64(len(weights))})
+
+		return stateDict, nil
+	}
+
+	file := stateDict.File
+
+	if file == "" {
+		file = "model.safetensors"
+	}
+
+	cache := stateDict.Cache
+
+	if cache == "" {
+		cache = ".model_cache"
+	}
+
+	configured := &Loader{source: source, file: file, cache: cache}
+	weights, err := configured.load()
 
 	if err != nil {
-		return []float64{-1}
+		return nil, err
 	}
 
 	loader.weights = weights
-	globalRegistry.store(loader.source, weights)
+	globalRegistry.store(source, weights)
+	stateDict.SetOperationOutput([]float64{float64(len(weights))})
 
-	return []float64{float64(len(weights))}
+	return stateDict, nil
 }
 
 /*

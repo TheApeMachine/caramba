@@ -1,8 +1,11 @@
 package convolution
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 // ConvTranspose2d applies a 2-D transposed convolution over input [N, InC, H, W].
@@ -82,33 +85,124 @@ func NewConvTranspose2d(inC, outC, kH, kW, sH, sW, pH, pW, outPadH, outPadW, dil
 //
 //	H_out = (H-1)*StrideH - 2*PadH + DilationH*(KH-1) + OutPadH + 1
 //	W_out = (W-1)*StrideW - 2*PadW + DilationW*(KW-1) + OutPadW + 1
-func (c *ConvTranspose2d) Forward(shape []int, data ...[]float64) []float64 {
-	n, inC, h, w := shape[0], shape[1], shape[2], shape[3]
-	x := data[0]
+func (conv *ConvTranspose2d) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
 
-	if c.DilationH == 1 && c.DilationW == 1 && c.PadH == 0 && c.PadW == 0 && c.OutPadH == 0 && c.OutPadW == 0 {
-		return convTranspose2dForwardFast(x, n, inC, h, w,
-			c.Weight, c.Bias,
-			c.OutChannels, c.KernelH, c.KernelW,
-			c.StrideH, c.StrideW, c.Groups,
+	if len(shape) < 4 {
+		return nil, fmt.Errorf("convolution.conv_transpose2d: len(shape)=%d, need >= 4", len(shape))
+	}
+
+	if err := stateDict.RequireOperation("convolution.conv_transpose2d"); err != nil {
+		return nil, err
+	}
+
+	batch := shape[0]
+	inChannels := shape[1]
+	height := shape[2]
+	width := shape[3]
+	outChannels := stateDict.OutChannels
+	kernelH := stateDict.KernelH
+	kernelW := stateDict.KernelW
+	strideH := positiveDefault(stateDict.StrideH, 1)
+	strideW := positiveDefault(stateDict.StrideW, 1)
+	dilationH := positiveDefault(stateDict.DilationH, 1)
+	dilationW := positiveDefault(stateDict.DilationW, 1)
+	groups := positiveDefault(stateDict.Groups, 1)
+
+	if err := validateConvTranspose2dState(
+		stateDict, batch, inChannels, height, width,
+		outChannels, kernelH, kernelW,
+		strideH, strideW, stateDict.PadH, stateDict.PadW,
+		stateDict.OutPadH, stateDict.OutPadW,
+		dilationH, dilationW, groups,
+	); err != nil {
+		return nil, err
+	}
+
+	input := stateDict.Inputs[0]
+
+	if dilationH == 1 && dilationW == 1 &&
+		stateDict.PadH == 0 && stateDict.PadW == 0 &&
+		stateDict.OutPadH == 0 && stateDict.OutPadW == 0 {
+		output := convTranspose2dForwardFast(
+			input, batch, inChannels, height, width,
+			stateDict.Weight, stateDict.Bias,
+			outChannels, kernelH, kernelW,
+			strideH, strideW, groups,
+		)
+
+		stateDict.SetOperationOutput(output)
+
+		return stateDict, nil
+	}
+
+	heightOut := (height-1)*strideH - 2*stateDict.PadH + dilationH*(kernelH-1) + stateDict.OutPadH + 1
+	widthOut := (width-1)*strideW - 2*stateDict.PadW + dilationW*(kernelW-1) + stateDict.OutPadW + 1
+
+	output := make([]float64, batch*outChannels*heightOut*widthOut)
+	applyConvTranspose2d(
+		output, input, stateDict.Weight, stateDict.Bias,
+		batch, inChannels, height, width,
+		outChannels, kernelH, kernelW,
+		strideH, strideW,
+		stateDict.PadH, stateDict.PadW,
+		dilationH, dilationW,
+		groups,
+		heightOut, widthOut,
+	)
+	stateDict.SetOperationOutput(output)
+
+	return stateDict, nil
+}
+
+func validateConvTranspose2dState(
+	stateDict *state.Dict,
+	batch, inChannels, height, width int,
+	outChannels, kernelH, kernelW int,
+	strideH, strideW, padH, padW, outPadH, outPadW int,
+	dilationH, dilationW, groups int,
+) error {
+	if batch <= 0 || inChannels <= 0 || height <= 0 || width <= 0 ||
+		outChannels <= 0 || kernelH <= 0 || kernelW <= 0 ||
+		strideH <= 0 || strideW <= 0 || dilationH <= 0 || dilationW <= 0 ||
+		groups <= 0 {
+		return fmt.Errorf("convolution.conv_transpose2d: invalid dimensions")
+	}
+
+	if inChannels%groups != 0 || outChannels%groups != 0 {
+		return fmt.Errorf(
+			"convolution.conv_transpose2d: groups=%d must divide InC=%d and OutC=%d",
+			groups, inChannels, outChannels,
 		)
 	}
 
-	kH, kW := c.KernelH, c.KernelW
-	hOut := (h-1)*c.StrideH - 2*c.PadH + c.DilationH*(kH-1) + c.OutPadH + 1
-	wOut := (w-1)*c.StrideW - 2*c.PadW + c.DilationW*(kW-1) + c.OutPadW + 1
-	outC := c.OutChannels
+	inputLength := batch * inChannels * height * width
 
-	out := make([]float64, n*outC*hOut*wOut)
-	applyConvTranspose2d(out, x, c.Weight, c.Bias,
-		n, inC, h, w,
-		outC, kH, kW,
-		c.StrideH, c.StrideW,
-		c.PadH, c.PadW,
-		c.DilationH, c.DilationW,
-		c.Groups,
-		hOut, wOut)
-	return out
+	if len(stateDict.Inputs[0]) != inputLength {
+		return fmt.Errorf("convolution.conv_transpose2d: len(input)=%d, need %d", len(stateDict.Inputs[0]), inputLength)
+	}
+
+	weightLength := inChannels * (outChannels / groups) * kernelH * kernelW
+
+	if len(stateDict.Weight) != weightLength {
+		return fmt.Errorf(
+			"convolution.conv_transpose2d: len(weight)=%d, need %d",
+			len(stateDict.Weight), weightLength,
+		)
+	}
+
+	if len(stateDict.Bias) != outChannels {
+		return fmt.Errorf("convolution.conv_transpose2d: len(bias)=%d, need OutC=%d", len(stateDict.Bias), outChannels)
+	}
+
+	heightOut := (height-1)*strideH - 2*padH + dilationH*(kernelH-1) + outPadH + 1
+	widthOut := (width-1)*strideW - 2*padW + dilationW*(kernelW-1) + outPadW + 1
+
+	if heightOut <= 0 || widthOut <= 0 {
+		return fmt.Errorf("convolution.conv_transpose2d: output shape [%d,%d] must be positive", heightOut, widthOut)
+	}
+
+	return nil
 }
 
 // applyConvTranspose2d is the pure-Go scatter-add implementation.

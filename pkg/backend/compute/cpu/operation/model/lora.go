@@ -5,6 +5,7 @@ import (
 	"math"
 
 	cpumath "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -79,26 +80,78 @@ Forward initialises LoRA matrices on first call then applies W' = W + B·A·scal
 The weight at each matched key must be a flat [out×in] row-major matrix.
 Shape is inferred from the stored dimensions on first call.
 */
-func (lora *LoRA) Forward(_ []int, data ...[]float64) []float64 {
-	weights, ok := globalRegistry.Get(lora.source)
+func (lora *LoRA) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
+	}
+
+	if stateDict.Source == "" {
+		return nil, fmt.Errorf("model.lora: Source is required")
+	}
+
+	weights, ok := globalRegistry.Get(stateDict.Source)
 
 	if !ok {
-		return []float64{-1}
+		return nil, fmt.Errorf("model.lora: source %q not loaded", stateDict.Source)
+	}
+
+	targets := stateDict.Targets
+
+	if len(targets) == 0 {
+		targets = presetsFor(stateDict.Preset)
+	}
+
+	rank := stateDict.Rank
+
+	if rank <= 0 {
+		rank = 8
+	}
+
+	alpha := stateDict.Alpha
+
+	if alpha <= 0 {
+		alpha = float64(rank * 2)
+	}
+
+	lora.rank = rank
+	lora.alpha = alpha
+
+	if lora.matmul == nil {
+		lora.matmul = CPUMatMul
+	}
+
+	if lora.matA == nil {
+		lora.matA = make(map[string][]float64)
+	}
+
+	if lora.matB == nil {
+		lora.matB = make(map[string][]float64)
+	}
+
+	if lora.dims == nil {
+		lora.dims = make(map[string][2]int)
 	}
 
 	adapted := 0
 
-	for _, pattern := range lora.targets {
+	for _, pattern := range targets {
 		for key, w := range weights.Select(pattern) {
 			lora.ensureMatrices(key, w)
-			weights[key] = lora.apply(w, lora.matA[key], lora.matB[key], lora.dims[key])
+			updated, err := lora.apply(w, lora.matA[key], lora.matB[key], lora.dims[key])
+
+			if err != nil {
+				return nil, err
+			}
+
+			weights[key] = updated
 			adapted++
 		}
 	}
 
-	globalRegistry.store(lora.source, weights)
+	globalRegistry.store(stateDict.Source, weights)
+	stateDict.SetOperationOutput([]float64{float64(adapted)})
 
-	return []float64{float64(adapted)}
+	return stateDict, nil
 }
 
 /*
@@ -168,7 +221,7 @@ func (lora *LoRA) SetDims(key string, out, in int) {
 //	A: [rank × in]   lora.matA[key]
 //	B: [out × rank]  lora.matB[key]
 //	B·A → [out × in] — same shape as W
-func (lora *LoRA) apply(w, a, b []float64, dims [2]int) []float64 {
+func (lora *LoRA) apply(w, a, b []float64, dims [2]int) ([]float64, error) {
 	out, in := dims[0], dims[1]
 	scale := lora.alpha / float64(lora.rank)
 
@@ -176,20 +229,20 @@ func (lora *LoRA) apply(w, a, b []float64, dims [2]int) []float64 {
 	delta, err := lora.matmul(b, a, out, lora.rank, in)
 
 	if err != nil {
-		panic(fmt.Errorf("lora: B·A matmul: %w", err))
+		return nil, fmt.Errorf("model.lora: B·A matmul: %w", err)
 	}
 
 	expected := out * in
 
 	if len(w) != expected || len(delta) != expected {
-		panic("lora: apply: len(w), len(delta) must equal out*in")
+		return nil, fmt.Errorf("model.lora: len(w), len(delta) must equal out*in")
 	}
 
 	result := make([]float64, expected)
 	copy(result, w)
 	cpumath.AddScaledVec(result, delta, scale)
 
-	return result
+	return result, nil
 }
 
 func presetsFor(preset string) []string {

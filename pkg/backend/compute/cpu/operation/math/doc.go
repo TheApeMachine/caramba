@@ -7,6 +7,6 @@ Import as:
 
 All operations implement the universal signature:
 
-	Forward(shape []int, data ...[]float64) []float64
+	Forward(stateDict *state.Dict) (*state.Dict, error)
 */
 package math

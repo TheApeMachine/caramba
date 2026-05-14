@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"sort"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -59,21 +61,44 @@ Output: the adapted activation (flat [dim]).
 On the first call with no input data (trigger-only mode from a Loader node),
 Forward initialises the matrices and returns a token count.
 */
-func (adapter *Adapter) Forward(_ []int, data ...[]float64) []float64 {
-	weights, ok := globalRegistry.Get(adapter.source)
+func (adapter *Adapter) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
+	}
+
+	if stateDict.Source == "" || stateDict.At == "" {
+		return nil, fmt.Errorf("model.adapter: Source and At are required")
+	}
+
+	weights, ok := globalRegistry.Get(stateDict.Source)
 
 	if !ok {
-		return []float64{-1}
+		return nil, fmt.Errorf("model.adapter: source %q not loaded", stateDict.Source)
 	}
 
-	selected := weights.Select(adapter.at)
+	selected := weights.Select(stateDict.At)
+	reduction := stateDict.Reduction
+
+	if reduction <= 0 {
+		reduction = 16
+	}
+
+	matmul := adapter.matmul
+
+	if matmul == nil {
+		matmul = CPUMatMul
+	}
 
 	// Trigger-only call (no activation input): initialise matrices.
-	if len(data) == 0 || len(data[0]) <= 1 {
-		return adapter.initialise(weights, selected)
+	if len(stateDict.Inputs) == 0 || len(stateDict.Inputs[0]) <= 1 {
+		inserted := initialiseAdapter(weights, selected, reduction)
+		globalRegistry.store(stateDict.Source, weights)
+		stateDict.SetOperationOutput([]float64{float64(inserted)})
+
+		return stateDict, nil
 	}
 
-	x := data[0]
+	x := stateDict.Inputs[0]
 	var out []float64
 	changed := false
 
@@ -93,29 +118,29 @@ func (adapter *Adapter) Forward(_ []int, data ...[]float64) []float64 {
 		wUp, upOK := weights[upKey]
 
 		if !downOK || !upOK {
-			adapter.insertMatrices(weights, key, len(x))
+			insertAdapterMatrices(weights, key, len(x), reduction)
 			wDown = weights[downKey]
 			wUp = weights[upKey]
 			changed = true
 		}
 
 		dim := len(x)
-		bottleneck := max(1, dim/adapter.reduction)
+		bottleneck := max(1, dim/reduction)
 
 		// h = W_down · x  →  [bottleneck × dim] · [dim × 1] = [bottleneck × 1]
-		h, err := adapter.matmul(wDown, x, bottleneck, dim, 1)
+		h, err := matmul(wDown, x, bottleneck, dim, 1)
 
 		if err != nil {
-			panic(fmt.Errorf("adapter: W_down matmul: %w", err))
+			return nil, fmt.Errorf("model.adapter: W_down matmul: %w", err)
 		}
 
 		reluInPlace(h)
 
 		// out = W_up · h + x  →  [dim × bottleneck] · [bottleneck × 1] = [dim × 1]
-		projected, err := adapter.matmul(wUp, h, dim, bottleneck, 1)
+		projected, err := matmul(wUp, h, dim, bottleneck, 1)
 
 		if err != nil {
-			panic(fmt.Errorf("adapter: W_up matmul: %w", err))
+			return nil, fmt.Errorf("model.adapter: W_up matmul: %w", err)
 		}
 
 		out = make([]float64, dim)
@@ -129,17 +154,21 @@ func (adapter *Adapter) Forward(_ []int, data ...[]float64) []float64 {
 	}
 
 	if changed {
-		globalRegistry.store(adapter.source, weights)
+		globalRegistry.store(stateDict.Source, weights)
 	}
 
 	if out == nil {
-		return data[0]
+		stateDict.SetOperationOutput(stateDict.Inputs[0])
+
+		return stateDict, nil
 	}
 
-	return out
+	stateDict.SetOperationOutput(out)
+
+	return stateDict, nil
 }
 
-func (adapter *Adapter) initialise(weights WeightMap, selected WeightMap) []float64 {
+func initialiseAdapter(weights WeightMap, selected WeightMap, reduction int) int {
 	inserted := 0
 
 	for key, w := range selected {
@@ -147,17 +176,15 @@ func (adapter *Adapter) initialise(weights WeightMap, selected WeightMap) []floa
 			continue
 		}
 
-		adapter.insertMatrices(weights, key, len(w))
+		insertAdapterMatrices(weights, key, len(w), reduction)
 		inserted++
 	}
 
-	globalRegistry.store(adapter.source, weights)
-
-	return []float64{float64(inserted)}
+	return inserted
 }
 
-func (adapter *Adapter) insertMatrices(weights WeightMap, key string, dim int) {
-	bottleneck := max(1, dim/adapter.reduction)
+func insertAdapterMatrices(weights WeightMap, key string, dim, reduction int) {
+	bottleneck := max(1, dim/reduction)
 
 	// W_down [bottleneck × dim]: gaussian init.
 	weights[key+".adapter.down"] = gaussianSlice(

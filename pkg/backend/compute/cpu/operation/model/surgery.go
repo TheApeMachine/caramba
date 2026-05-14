@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -12,12 +14,13 @@ removing layers. It operates on the WeightRegistry so changes are visible
 to all downstream nodes sharing the same source.
 
 Config keys:
-  source  — must match the Loader node's source key
-  op      — insert | replace | remove
-  at      — exact dot-path or index (e.g. "transformer.h.4" or "4")
-  after   — dot-path or index; used by insert to position the new layer
-  layer   — flat float64 slice to insert/replace (omit for remove)
-  name    — name to assign the inserted/replaced layer
+
+	source  — must match the Loader node's source key
+	op      — insert | replace | remove
+	at      — exact dot-path or index (e.g. "transformer.h.4" or "4")
+	after   — dot-path or index; used by insert to position the new layer
+	layer   — flat float64 slice to insert/replace (omit for remove)
+	name    — name to assign the inserted/replaced layer
 */
 type Surgery struct {
 	source string
@@ -47,37 +50,58 @@ Forward applies the surgery operation to the WeightMap held in the registry.
 Inputs: data[0] = trigger (output of Loader or prior Surgery node).
 Output: passthrough trigger token so nodes can chain.
 */
-func (surgery *Surgery) Forward(_ []int, data ...[]float64) []float64 {
-	weights, ok := globalRegistry.Get(surgery.source)
+func (surgery *Surgery) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
+	}
+
+	if stateDict.Source == "" || stateDict.Op == "" {
+		return nil, fmt.Errorf("model.surgery: Source and Op are required")
+	}
+
+	weights, ok := globalRegistry.Get(stateDict.Source)
 
 	if !ok {
-		return []float64{-1}
+		return nil, fmt.Errorf("model.surgery: source %q not loaded", stateDict.Source)
+	}
+
+	operation := &Surgery{
+		source: stateDict.Source,
+		op:     stateDict.Op,
+		at:     stateDict.At,
+		after:  stateDict.After,
+		name:   stateDict.Name,
+		layer:  stateDict.Layer,
 	}
 
 	var err error
 
-	switch surgery.op {
+	switch operation.op {
 	case "insert":
-		err = surgery.applyInsert(weights)
+		err = operation.applyInsert(weights)
 	case "replace":
-		err = surgery.applyReplace(weights)
+		err = operation.applyReplace(weights)
 	case "remove":
-		err = surgery.applyRemove(weights)
+		err = operation.applyRemove(weights)
 	default:
-		err = fmt.Errorf("model.surgery: unknown op %q", surgery.op)
+		err = fmt.Errorf("model.surgery: unknown op %q", operation.op)
 	}
 
 	if err != nil {
-		return []float64{-1}
+		return nil, err
 	}
 
-	globalRegistry.store(surgery.source, weights)
+	globalRegistry.store(stateDict.Source, weights)
 
-	if len(data) > 0 {
-		return data[0]
+	if len(stateDict.Inputs) > 0 {
+		stateDict.SetOperationOutput(stateDict.Inputs[0])
+
+		return stateDict, nil
 	}
 
-	return []float64{float64(len(weights))}
+	stateDict.SetOperationOutput([]float64{float64(len(weights))})
+
+	return stateDict, nil
 }
 
 func (surgery *Surgery) applyInsert(weights WeightMap) error {

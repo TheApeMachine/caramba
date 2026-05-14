@@ -127,31 +127,71 @@ func fitOLS(xMat, yVec []float64, indices []int, nx int) []float64 {
 		return coef
 	}
 
-	xSub := make([]float64, n*nFeat)
+	activeColumns := activeCovariateColumns(xMat, indices, nx)
+	reducedFeatures := len(activeColumns) + 1
+	xSub := make([]float64, n*reducedFeatures)
 	ySub := make([]float64, n)
 
 	for subIdx, obsIdx := range indices {
-		rowOff := subIdx * nFeat
+		rowOff := subIdx * reducedFeatures
 		xSub[rowOff] = 1.0
-		copy(xSub[rowOff+1:(subIdx+1)*nFeat], xMat[obsIdx*nx:(obsIdx+1)*nx])
+
+		for activeIndex, columnIndex := range activeColumns {
+			xSub[rowOff+1+activeIndex] = xMat[obsIdx*nx+columnIndex]
+		}
+
 		ySub[subIdx] = yVec[obsIdx]
 	}
 
 	const ridge = 1e-10
 
-	xtx := make([]float64, nFeat*nFeat)
-	applyMatMulTransposeLeft(xtx, xSub, xSub, n, nFeat, nFeat)
-	addRidgeToDiagInPlace(xtx, nFeat, ridge)
+	xtx := make([]float64, reducedFeatures*reducedFeatures)
+	applyMatMulTransposeLeft(xtx, xSub, xSub, n, reducedFeatures, reducedFeatures)
+	addRidgeToDiagInPlace(xtx, reducedFeatures, ridge)
 
-	xtxInv := invertSymPD(xtx, nFeat)
+	xtxInv := invertSymPD(xtx, reducedFeatures)
 
-	xty := make([]float64, nFeat)
-	applyMatVecTranspose(xty, xSub, ySub, n, nFeat)
+	xty := make([]float64, reducedFeatures)
+	applyMatVecTranspose(xty, xSub, ySub, n, reducedFeatures)
+
+	reducedBeta := make([]float64, reducedFeatures)
+	applyMatVec(reducedBeta, xtxInv, xty, reducedFeatures, reducedFeatures)
 
 	beta := make([]float64, nFeat)
-	applyMatVec(beta, xtxInv, xty, nFeat, nFeat)
+	beta[0] = reducedBeta[0]
+
+	for activeIndex, columnIndex := range activeColumns {
+		beta[1+columnIndex] = reducedBeta[1+activeIndex]
+	}
 
 	return beta
+}
+
+func activeCovariateColumns(xMat []float64, indices []int, nx int) []int {
+	activeColumns := make([]int, 0, nx)
+
+	for columnIndex := 0; columnIndex < nx; columnIndex++ {
+		mean := 0.0
+
+		for _, obsIdx := range indices {
+			mean += xMat[obsIdx*nx+columnIndex]
+		}
+
+		mean /= float64(len(indices))
+
+		variance := 0.0
+
+		for _, obsIdx := range indices {
+			diff := xMat[obsIdx*nx+columnIndex] - mean
+			variance += diff * diff
+		}
+
+		if variance > 1e-14 {
+			activeColumns = append(activeColumns, columnIndex)
+		}
+	}
+
+	return activeColumns
 }
 
 /*

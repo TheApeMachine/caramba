@@ -22,6 +22,13 @@ func MulVec(output, left, right []float64) {
 }
 
 /*
+MatMul writes left[M*K] x right[K*N] into output[M*N].
+*/
+func MatMul(output, left, right []float64, rows, inner, cols int) {
+	matmulKernel(output, left, right, rows, inner, cols)
+}
+
+/*
 AddScaledVec accumulates output[i] += scale * input[i].
 */
 func AddScaledVec(output, input []float64, scale float64) {

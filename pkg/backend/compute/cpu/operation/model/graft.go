@@ -1,5 +1,11 @@
 package model
 
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
+
 /*
 Graft is a tap point on a named layer. In read mode it emits the layer's
 current weights as a tensor output. In read_write mode it also accepts an
@@ -12,9 +18,10 @@ Wire a trained steering vector or probe output to data[1] and it will be
 added to the layer's weight slice before being stored back.
 
 Config keys:
-  source  — must match the Loader node's source key
-  at      — dot-path or glob pattern of the layer to tap
-  mode    — read | read_write (default: read)
+
+	source  — must match the Loader node's source key
+	at      — dot-path or glob pattern of the layer to tap
+	mode    — read | read_write (default: read)
 */
 type Graft struct {
 	source string
@@ -39,28 +46,40 @@ data[1] (the injection vector) back before storing. Returns the (possibly
 patched) layer weights as the output tensor.
 
 Inputs:
-  data[0] — trigger token (from Loader or Surgery)
-  data[1] — (read_write only) injection vector to add to the layer
+
+	data[0] — trigger token (from Loader or Surgery)
+	data[1] — (read_write only) injection vector to add to the layer
 
 Output:
-  flat float64 slice of the targeted layer's weights
-*/
-func (graft *Graft) Forward(_ []int, data ...[]float64) []float64 {
-	weights, ok := globalRegistry.Get(graft.source)
 
-	if !ok {
-		return nil
+	flat float64 slice of the targeted layer's weights
+*/
+func (graft *Graft) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
 	}
 
-	selected := weights.Select(graft.at)
+	if stateDict.Source == "" || stateDict.At == "" {
+		return nil, fmt.Errorf("model.graft: Source and At are required")
+	}
+
+	weights, ok := globalRegistry.Get(stateDict.Source)
+
+	if !ok {
+		return nil, fmt.Errorf("model.graft: source %q not loaded", stateDict.Source)
+	}
+
+	selected := weights.Select(stateDict.At)
 
 	flat := flatten(selected)
 
-	if graft.mode != "read_write" || len(data) < 2 || len(data[1]) == 0 {
-		return flat
+	if stateDict.Mode != "read_write" || len(stateDict.Inputs) < 2 || len(stateDict.Inputs[1]) == 0 {
+		stateDict.SetOperationOutput(flat)
+
+		return stateDict, nil
 	}
 
-	injection := data[1]
+	injection := stateDict.Inputs[1]
 	patched := make([]float64, len(flat))
 	copy(patched, flat)
 
@@ -71,10 +90,11 @@ func (graft *Graft) Forward(_ []int, data ...[]float64) []float64 {
 	}
 
 	// Write the patched values back into the matching keys.
-	writeBack(weights, graft.at, patched)
-	globalRegistry.store(graft.source, weights)
+	writeBack(weights, stateDict.At, patched)
+	globalRegistry.store(stateDict.Source, weights)
+	stateDict.SetOperationOutput(patched)
 
-	return patched
+	return stateDict, nil
 }
 
 // flatten returns all values from a WeightMap as a single ordered slice.

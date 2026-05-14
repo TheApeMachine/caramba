@@ -11,7 +11,7 @@ Operations:
 
 All operations use the universal signature:
 
-	Forward(shape []int, data ...[]float64) []float64
+	Forward(stateDict *state.Dict) (*state.Dict, error)
 
 Inner copy loops use SIMD (AVX2 / SSE2 / NEON) for bulk memory movement.
 */
