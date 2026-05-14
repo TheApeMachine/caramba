@@ -1,32 +1,20 @@
 package pooling
 
-import "math"
+import (
+	"fmt"
+	"math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 // MaxPool2d applies 2-D max pooling over a 4-D input [N, C, H, W].
-type MaxPool2d struct {
-	KernelH, KernelW     int
-	StrideH, StrideW     int
-	PadH, PadW           int
-	DilationH, DilationW int
-	CeilMode             bool
-}
+type MaxPool2d struct{}
 
-// NewMaxPool2d creates a MaxPool2d with the given parameters.
+// NewMaxPool2d creates a stateless MaxPool2d operation.
 func NewMaxPool2d(kernelH, kernelW, strideH, strideW, padH, padW, dilH, dilW int, ceil bool) *MaxPool2d {
-	return &MaxPool2d{
-		KernelH:   kernelH,
-		KernelW:   kernelW,
-		StrideH:   strideH,
-		StrideW:   strideW,
-		PadH:      padH,
-		PadW:      padW,
-		DilationH: dilH,
-		DilationW: dilW,
-		CeilMode:  ceil,
-	}
+	return &MaxPool2d{}
 }
 
-// outSize computes the output spatial dimension.
 func outSizeMax(in, kernel, stride, pad, dilation int, ceil bool) int {
 	eff := dilation*(kernel-1) + 1
 	if ceil {
@@ -35,57 +23,84 @@ func outSizeMax(in, kernel, stride, pad, dilation int, ceil bool) int {
 	return (in+2*pad-eff)/stride + 1
 }
 
-// Forward computes MaxPool2d.
-// shape = [N, C, H, W]; data[0] = flat input of length N*C*H*W.
-// Returns flat output of length N*C*H_out*W_out.
-func (p *MaxPool2d) Forward(shape []int, data ...[]float64) []float64 {
-	N, C, H, W := shape[0], shape[1], shape[2], shape[3]
-	Hout := outSizeMax(H, p.KernelH, p.StrideH, p.PadH, p.DilationH, p.CeilMode)
-	Wout := outSizeMax(W, p.KernelW, p.StrideW, p.PadW, p.DilationW, p.CeilMode)
+func (pool *MaxPool2d) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("pooling.max_pool2d"); err != nil {
+		return nil, err
+	}
 
-	x := data[0]
-	out := make([]float64, N*C*Hout*Wout)
+	N, C, H, W, err := poolingShape4("pooling.max_pool2d", stateDict)
 
-	for n := 0; n < N; n++ {
-		for c := 0; c < C; c++ {
-			baseIn := (n*C + c) * H * W
-			baseOut := (n*C + c) * Hout * Wout
-			for oh := 0; oh < Hout; oh++ {
-				for ow := 0; ow < Wout; ow++ {
-					hStart := oh*p.StrideH - p.PadH
-					wStart := ow*p.StrideW - p.PadW
+	if err != nil {
+		return nil, err
+	}
 
-					// Collect kernel values into a scratch slice for SIMD reduce.
+	config, err := poolingConfig("pooling.max_pool2d", stateDict)
+
+	if err != nil {
+		return nil, err
+	}
+
+	Hout := outSizeMax(H, config.kernelH, config.strideH, config.padH, config.dilationH, stateDict.Ceil)
+	Wout := outSizeMax(W, config.kernelW, config.strideW, config.padW, config.dilationW, stateDict.Ceil)
+
+	if Hout <= 0 || Wout <= 0 {
+		return nil, fmt.Errorf("pooling.max_pool2d: output spatial dimensions must be positive")
+	}
+
+	x := stateDict.Inputs[0]
+
+	if len(x) != N*C*H*W {
+		return nil, fmt.Errorf("pooling.max_pool2d: input length does not match shape")
+	}
+
+	stateDict.EnsureOperationOutLen(N * C * Hout * Wout)
+
+	for batchIndex := 0; batchIndex < N; batchIndex++ {
+		for channelIndex := 0; channelIndex < C; channelIndex++ {
+			baseIn := (batchIndex*C + channelIndex) * H * W
+			baseOut := (batchIndex*C + channelIndex) * Hout * Wout
+
+			for outputH := 0; outputH < Hout; outputH++ {
+				for outputW := 0; outputW < Wout; outputW++ {
+					hStart := outputH*config.strideH - config.padH
+					wStart := outputW*config.strideW - config.padW
 					var rowBuf [maxKernelElems]float64
-					cnt := 0
-					for kh := 0; kh < p.KernelH; kh++ {
-						ih := hStart + kh*p.DilationH
-						if ih < 0 || ih >= H {
+					count := 0
+
+					for kernelH := 0; kernelH < config.kernelH; kernelH++ {
+						inputH := hStart + kernelH*config.dilationH
+
+						if inputH < 0 || inputH >= H {
 							continue
 						}
-						rowStart := baseIn + ih*W
-						for kw := 0; kw < p.KernelW; kw++ {
-							iw := wStart + kw*p.DilationW
-							if iw < 0 || iw >= W {
+
+						rowStart := baseIn + inputH*W
+
+						for kernelW := 0; kernelW < config.kernelW; kernelW++ {
+							inputW := wStart + kernelW*config.dilationW
+
+							if inputW < 0 || inputW >= W {
 								continue
 							}
-							rowBuf[cnt] = x[rowStart+iw]
-							cnt++
+
+							rowBuf[count] = x[rowStart+inputW]
+							count++
 						}
 					}
-					var maxVal float64
-					if cnt == 0 {
-						maxVal = math.Inf(-1)
-					} else {
-						maxVal = kernelMax(rowBuf[:cnt])
+
+					maxValue := math.Inf(-1)
+
+					if count > 0 {
+						maxValue = kernelMax(rowBuf[:count])
 					}
-					out[baseOut+oh*Wout+ow] = maxVal
+
+					stateDict.Out[baseOut+outputH*Wout+outputW] = maxValue
 				}
 			}
 		}
 	}
-	return out
+
+	return stateDict, nil
 }
 
-// maxKernelElems is a generous upper bound for stack-allocated kernel buffers.
 const maxKernelElems = 1024

@@ -1,6 +1,10 @@
 package markov_blanket
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 Partition extracts sensory, active, internal, and external state vectors
@@ -19,72 +23,95 @@ type Partition struct{}
 
 func NewPartition() *Partition { return &Partition{} }
 
-func (op *Partition) Forward(shape []int, data ...[]float64) []float64 {
+func (partition *Partition) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 5 {
-		panic(fmt.Errorf("markov_blanket: Partition: len(shape)=%d, need 5", len(shape)).Error())
+		return nil, fmt.Errorf("markov_blanket.partition: len(shape)=%d, need 5", len(shape))
 	}
 
-	if len(data) < 5 {
-		panic(fmt.Errorf("markov_blanket: Partition: len(data)=%d, need 5", len(data)).Error())
+	if err := stateDict.RequireOperationInputs("markov_blanket.partition", 5); err != nil {
+		return nil, err
 	}
 
-	N, Ns, Na, Ni, Ne := shape[0], shape[1], shape[2], shape[3], shape[4]
-	x := data[0]
+	dimension := shape[0]
+	sensoryCount := shape[1]
+	activeCount := shape[2]
+	internalCount := shape[3]
+	externalCount := shape[4]
+	input := stateDict.Inputs[0]
 
-	if len(x) != N {
-		panic(fmt.Errorf("markov_blanket: Partition: len(x)=%d, need N=%d", len(x), N).Error())
+	if len(input) != dimension {
+		return nil, fmt.Errorf(
+			"markov_blanket.partition: len(x)=%d, need N=%d",
+			len(input), dimension,
+		)
 	}
 
-	smask, amask, imask, emask := data[1], data[2], data[3], data[4]
+	sensoryMask := stateDict.Inputs[1]
+	activeMask := stateDict.Inputs[2]
+	internalMask := stateDict.Inputs[3]
+	externalMask := stateDict.Inputs[4]
 
 	for _, label := range []struct {
 		name string
 		mask []float64
 	}{
-		{"sensory_mask", smask},
-		{"active_mask", amask},
-		{"internal_mask", imask},
-		{"external_mask", emask},
+		{"sensory_mask", sensoryMask},
+		{"active_mask", activeMask},
+		{"internal_mask", internalMask},
+		{"external_mask", externalMask},
 	} {
-		if len(label.mask) != N {
-			panic(fmt.Errorf(
-				"markov_blanket: Partition: len(%s)=%d, need N=%d",
-				label.name, len(label.mask), N,
-			).Error())
+		if len(label.mask) != dimension {
+			return nil, fmt.Errorf(
+				"markov_blanket.partition: len(%s)=%d, need N=%d",
+				label.name, len(label.mask), dimension,
+			)
 		}
 	}
 
-	for idx := range x {
+	for index := range input {
 		set := 0
 
-		if smask[idx] != 0 {
+		if sensoryMask[index] != 0 {
 			set++
 		}
 
-		if amask[idx] != 0 {
+		if activeMask[index] != 0 {
 			set++
 		}
 
-		if imask[idx] != 0 {
+		if internalMask[index] != 0 {
 			set++
 		}
 
-		if emask[idx] != 0 {
+		if externalMask[index] != 0 {
 			set++
 		}
 
 		if set > 1 {
-			panic(fmt.Errorf(
-				"markov_blanket: Partition: index %d has %d partition mask(s) set; at most one of sensory/active/internal/external may be non-zero",
-				idx, set,
-			).Error())
+			return nil, fmt.Errorf(
+				"markov_blanket.partition: index %d has %d partition mask(s) set",
+				index, set,
+			)
 		}
 	}
 
-	out := make([]float64, Ns+Na+Ni+Ne)
-	applyPartitionScalar(out, x, smask, amask, imask, emask, Ns, Na, Ni, Ne)
+	stateDict.EnsureOperationOutLen(sensoryCount + activeCount + internalCount + externalCount)
+	applyPartitionScalar(
+		stateDict.Out,
+		input,
+		sensoryMask,
+		activeMask,
+		internalMask,
+		externalMask,
+		sensoryCount,
+		activeCount,
+		internalCount,
+		externalCount,
+	)
 
-	return out
+	return stateDict, nil
 }
 
 // applyPartitionScalar fills out with values from x selected by masks.

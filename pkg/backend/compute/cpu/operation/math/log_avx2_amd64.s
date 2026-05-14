@@ -25,6 +25,8 @@ DATA ·logExpMask11+0(SB)/8, $0x7FF
 GLOBL ·logExpMask11(SB), RODATA, $8
 DATA ·logBias1023Q+0(SB)/8, $1023
 GLOBL ·logBias1023Q(SB), RODATA, $8
+DATA ·logBias1023D+0(SB)/8, $1023.0
+GLOBL ·logBias1023D(SB), RODATA, $8
 DATA ·logMagic52+0(SB)/8, $0x4330000000000000
 GLOBL ·logMagic52(SB), RODATA, $8
 DATA ·logMagic52D+0(SB)/8, $4503599627370496.0
@@ -71,13 +73,12 @@ loop_log_avx2:
 	VPSRLQ        $52, Y0, Y4
 	VPBROADCASTQ  ·logExpMask11(SB), Y5
 	VPAND         Y5, Y4, Y4               // Y4 = raw_exp (int64 lanes)
-	VPBROADCASTQ  ·logBias1023Q(SB), Y5
-	VPSUBQ        Y5, Y4, Y4               // Y4 = raw_exp - 1023 (signed)
-
-	// Convert int64 in Y4 to double via add-2^52 / sub-2^52 magic.
+	// Convert raw exponent to double via add-2^52 / sub-2^52 magic, then subtract bias.
 	VPBROADCASTQ  ·logMagic52(SB), Y5
 	VPADDQ        Y5, Y4, Y4
 	VBROADCASTSD  ·logMagic52D(SB), Y5
+	VSUBPD        Y5, Y4, Y4
+	VBROADCASTSD  ·logBias1023D(SB), Y5
 	VSUBPD        Y5, Y4, Y4               // Y4 = e as double
 
 	// If m > sqrt(2): m /= 2; e += 1
@@ -93,25 +94,32 @@ loop_log_avx2:
 	VDIVPD Y7, Y6, Y6
 	VMULPD Y6, Y6, Y7                      // t^2
 
-	// Horner: a6 + u*(a5 + u*(... + u*a0))
+	// Horner: ((((((a6*u + a5)*u + a4)*u + a3)*u + a2)*u + a1)*u + a0)
 	VBROADCASTSD ·logA6(SB), Y2
 	VBROADCASTSD ·logA5(SB), Y8
-	VFMADD213PD Y8, Y7, Y2
+	VMULPD Y7, Y2, Y2
+	VADDPD Y8, Y2, Y2
 	VBROADCASTSD ·logA4(SB), Y8
-	VFMADD213PD Y8, Y7, Y2
+	VMULPD Y7, Y2, Y2
+	VADDPD Y8, Y2, Y2
 	VBROADCASTSD ·logA3(SB), Y8
-	VFMADD213PD Y8, Y7, Y2
+	VMULPD Y7, Y2, Y2
+	VADDPD Y8, Y2, Y2
 	VBROADCASTSD ·logA2(SB), Y8
-	VFMADD213PD Y8, Y7, Y2
+	VMULPD Y7, Y2, Y2
+	VADDPD Y8, Y2, Y2
 	VBROADCASTSD ·logA1(SB), Y8
-	VFMADD213PD Y8, Y7, Y2
+	VMULPD Y7, Y2, Y2
+	VADDPD Y8, Y2, Y2
 	VBROADCASTSD ·logA0(SB), Y8
-	VFMADD213PD Y8, Y7, Y2                 // Y2 = P(t^2)
+	VMULPD Y7, Y2, Y2
+	VADDPD Y8, Y2, Y2                      // Y2 = P(t^2)
 
 	VMULPD Y6, Y2, Y2                      // t*P
 	VADDPD Y2, Y2, Y2                      // 2*t*P = log(m)
 
-	VFMADD231PD Y13, Y4, Y2                // log(m) + e*ln2
+	VMULPD Y13, Y4, Y4
+	VADDPD Y4, Y2, Y2                      // log(m) + e*ln2
 
 	VMOVUPD Y2, (AX)
 	ADDQ $32, AX

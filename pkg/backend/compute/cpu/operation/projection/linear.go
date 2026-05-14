@@ -3,130 +3,99 @@ package projection
 import (
 	"fmt"
 	"math"
-	"math/rand"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
-Linear applies a learnable affine transformation: output = x @ WeightT + bias.
+Linear applies a learnable affine transformation: output = x @ weight + bias.
 
-WeightT is stored pre-transposed [InFeatures × OutFeatures] so Forward
-does a single matmul with no per-call allocation.
+The state dict supplies:
+  - OpShape: [M, InFeatures]
+  - Inputs[0]: x, flattened [M * InFeatures]
+  - Weight: pre-transposed [InFeatures * OutFeatures]
+  - Bias: optional [OutFeatures]
+  - InFeatures, OutFeatures
 */
-type Linear struct {
-	WeightT     []float64 // [K × N] pre-transposed, K=InFeatures N=OutFeatures
-	Bias        []float64
-	InFeatures  int
-	OutFeatures int
+type Linear struct{}
+
+/*
+NewLinear instantiates a stateless Linear operation.
+*/
+func NewLinear(args ...int) *Linear {
+	return &Linear{}
 }
 
 /*
-NewLinear creates a Linear layer with Kaiming uniform weight initialisation.
-Bias is initialised uniformly in [-1/sqrt(InFeatures), 1/sqrt(InFeatures)].
+Forward computes output = x @ weight + bias.
 */
-func NewLinear(inFeatures, outFeatures int) *Linear {
-	bound := math.Sqrt(2.0 / float64(inFeatures))
-	weight := make([]float64, outFeatures*inFeatures)
-
-	for i := range weight {
-		weight[i] = (rand.Float64()*2 - 1) * bound
+func (linear *Linear) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("projection.linear"); err != nil {
+		return nil, err
 	}
 
-	biasBound := 1.0 / math.Sqrt(float64(inFeatures))
-	bias := make([]float64, outFeatures)
+	shape := stateDict.OperationShape()
 
-	for i := range bias {
-		bias[i] = (rand.Float64()*2 - 1) * biasBound
-	}
-
-	return &Linear{
-		WeightT:     transposeF64(weight, outFeatures, inFeatures),
-		Bias:        bias,
-		InFeatures:  inFeatures,
-		OutFeatures: outFeatures,
-	}
-}
-
-/*
-Forward computes output = x @ WeightT + bias.
-shape = [M, InFeatures] where M = batch*seq.
-data[0] = flattened input x.
-Returns [M * OutFeatures].
-*/
-func (linear *Linear) Forward(shape []int, data ...[]float64) []float64 {
 	if len(shape) < 1 {
-		panic("projection: Linear.Forward: empty shape")
+		return nil, fmt.Errorf("projection.linear: shape is required")
 	}
 
 	M := shape[0]
+	K := stateDict.InFeatures
+	N := stateDict.OutFeatures
+
+	if len(shape) > 1 && K == 0 {
+		K = shape[len(shape)-1]
+	}
 
 	if M < 0 {
-		panic(fmt.Sprintf("projection: Linear.Forward: shape[0]=%d must be >= 0", M))
+		return nil, fmt.Errorf("projection.linear: M must be non-negative, got %d", M)
 	}
 
-	if len(data) < 1 || data[0] == nil {
-		panic("projection: Linear.Forward: empty data")
+	if K <= 0 {
+		return nil, fmt.Errorf("projection.linear: in_features must be positive, got %d", K)
 	}
 
-	if linear.InFeatures <= 0 {
-		panic(fmt.Sprintf("projection: Linear.Forward: InFeatures=%d must be > 0", linear.InFeatures))
+	if N <= 0 {
+		return nil, fmt.Errorf("projection.linear: out_features must be positive, got %d", N)
 	}
 
-	if M > len(data[0])/linear.InFeatures {
-		panic(fmt.Sprintf(
-			"projection: Linear.Forward: insufficient data length: len(data[0])=%d for shape[0]=%d and InFeatures=%d (need len(data[0]) >= shape[0]*InFeatures)",
-			len(data[0]), M, linear.InFeatures,
-		))
+	if M > len(stateDict.Inputs[0])/K {
+		return nil, fmt.Errorf(
+			"projection.linear: input length %d is insufficient for M=%d and K=%d",
+			len(stateDict.Inputs[0]), M, K,
+		)
 	}
 
-	if linear.OutFeatures <= 0 {
-		panic(fmt.Sprintf("projection: Linear.Forward: OutFeatures=%d must be > 0", linear.OutFeatures))
+	if int64(K)*int64(N) < 0 || int64(K)*int64(N) > int64(math.MaxInt) {
+		return nil, fmt.Errorf("projection.linear: K*N overflows int")
 	}
 
-	wantW := int64(linear.InFeatures) * int64(linear.OutFeatures)
-
-	if wantW < 0 || wantW > int64(math.MaxInt) {
-		panic(fmt.Sprintf(
-			"projection: Linear.Forward: InFeatures*OutFeatures overflows int (InFeatures=%d OutFeatures=%d)",
-			linear.InFeatures, linear.OutFeatures,
-		))
+	if len(stateDict.Weight) != K*N {
+		return nil, fmt.Errorf(
+			"projection.linear: weight length %d does not match K*N=%d",
+			len(stateDict.Weight), K*N,
+		)
 	}
 
-	if len(linear.WeightT) != int(wantW) {
-		panic(fmt.Sprintf(
-			"projection: Linear.Forward: len(WeightT)=%d, want InFeatures*OutFeatures=%d",
-			len(linear.WeightT), int(wantW),
-		))
+	if len(stateDict.Bias) != 0 && len(stateDict.Bias) != N {
+		return nil, fmt.Errorf(
+			"projection.linear: bias length %d does not match N=%d",
+			len(stateDict.Bias), N,
+		)
 	}
 
-	if linear.Bias != nil && len(linear.Bias) != linear.OutFeatures {
-		panic(fmt.Sprintf(
-			"projection: Linear.Forward: len(Bias)=%d, want OutFeatures=%d",
-			len(linear.Bias), linear.OutFeatures,
-		))
+	if int64(M)*int64(N) < 0 || int64(M)*int64(N) > int64(math.MaxInt) {
+		return nil, fmt.Errorf("projection.linear: M*N overflows int")
 	}
 
-	if M == 0 {
-		return []float64{}
-	}
+	stateDict.EnsureOperationOutLen(M * N)
+	linearKernel(
+		stateDict.Out, stateDict.Inputs[0], stateDict.Weight, stateDict.Bias,
+		M, K, N,
+	)
 
-	if int64(M)*int64(linear.OutFeatures) < 0 ||
-		int64(M)*int64(linear.OutFeatures) > int64(math.MaxInt) {
-		panic(fmt.Sprintf(
-			"projection: Linear.Forward: M*OutFeatures overflows int (M=%d OutFeatures=%d)",
-			M, linear.OutFeatures,
-		))
-	}
-
-	K := linear.InFeatures
-	N := linear.OutFeatures
-	out := make([]float64, M*N)
-	applyMatmul(out, data[0], linear.WeightT, M, K, N)
-
-	if linear.Bias != nil {
-		addBias(out, linear.Bias, M, N)
-	}
-
-	return out
+	return stateDict, nil
 }
 
 func transposeF64(src []float64, rows, cols int) []float64 {
@@ -142,11 +111,11 @@ func transposeF64(src []float64, rows, cols int) []float64 {
 }
 
 func addBias(out, bias []float64, M, N int) {
-	for i := 0; i < M; i++ {
-		row := out[i*N : i*N+N]
+	for rowIndex := 0; rowIndex < M; rowIndex++ {
+		row := out[rowIndex*N : rowIndex*N+N]
 
-		for j, b := range bias {
-			row[j] += b
+		for columnIndex, value := range bias {
+			row[columnIndex] += value
 		}
 	}
 }

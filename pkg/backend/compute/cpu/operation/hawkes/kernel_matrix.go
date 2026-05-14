@@ -3,6 +3,8 @@ package hawkes
 import (
 	"fmt"
 	"math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -22,50 +24,52 @@ type KernelMatrix struct{}
 
 func NewKernelMatrix() *KernelMatrix { return &KernelMatrix{} }
 
-func (op *KernelMatrix) Forward(shape []int, data ...[]float64) []float64 {
+func (kernelMatrix *KernelMatrix) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 1 {
-		panic(fmt.Errorf("hawkes: KernelMatrix: len(shape)=%d, need >= 1", len(shape)).Error())
+		return nil, fmt.Errorf("hawkes.kernel_matrix: len(shape)=%d, need >= 1", len(shape))
 	}
 
-	if len(data) < 3 {
-		panic(fmt.Errorf("hawkes: KernelMatrix: len(data)=%d, need 3", len(data)).Error())
+	if err := stateDict.RequireOperationInputs("hawkes.kernel_matrix", 3); err != nil {
+		return nil, err
 	}
 
-	T := shape[0]
+	eventCount := shape[0]
 
-	if T <= 0 {
-		panic(fmt.Errorf("hawkes: KernelMatrix: T=%d, need T > 0", T).Error())
+	if eventCount <= 0 {
+		return nil, fmt.Errorf("hawkes.kernel_matrix: T=%d, need T > 0", eventCount)
 	}
 
-	times := data[0]
+	times := stateDict.Inputs[0]
 
-	if len(data[1]) < 1 || len(data[2]) < 1 {
-		panic(fmt.Errorf("hawkes: KernelMatrix: alpha and beta must be non-empty").Error())
+	if len(stateDict.Inputs[1]) < 1 || len(stateDict.Inputs[2]) < 1 {
+		return nil, fmt.Errorf("hawkes.kernel_matrix: alpha and beta must be non-empty")
 	}
 
-	alpha := data[1][0]
-	beta := data[2][0]
+	alpha := stateDict.Inputs[1][0]
+	beta := stateDict.Inputs[2][0]
 
-	if len(times) != T {
-		panic(fmt.Errorf(
-			"hawkes: KernelMatrix: len(times)=%d, need T=%d",
-			len(times), T,
-		).Error())
+	if len(times) != eventCount {
+		return nil, fmt.Errorf(
+			"hawkes.kernel_matrix: len(times)=%d, need T=%d",
+			len(times), eventCount,
+		)
 	}
 
-	for idx := 0; idx+1 < T; idx++ {
-		if times[idx] >= times[idx+1] {
-			panic(fmt.Errorf(
-				"hawkes: KernelMatrix: times must be strictly increasing (indices %d,%d: %v >= %v)",
-				idx, idx+1, times[idx], times[idx+1],
-			).Error())
+	for index := 0; index+1 < eventCount; index++ {
+		if times[index] >= times[index+1] {
+			return nil, fmt.Errorf(
+				"hawkes.kernel_matrix: times must be strictly increasing (indices %d,%d: %v >= %v)",
+				index, index+1, times[index], times[index+1],
+			)
 		}
 	}
 
-	out := make([]float64, T*T)
-	applyKernelMatrix(out, times, alpha, beta, T)
+	stateDict.EnsureOperationOutLen(eventCount * eventCount)
+	applyKernelMatrix(stateDict.Out, times, alpha, beta, eventCount)
 
-	return out
+	return stateDict, nil
 }
 
 func applyKernelMatrixScalar(out, times []float64, alpha, beta float64, T int) {

@@ -1,6 +1,10 @@
 package active_inference
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 BeliefUpdate performs a gradient descent step on the variational free energy
@@ -39,52 +43,74 @@ Forward computes one gradient descent step updating mu and log_sigma.
 Requires shape[0] = N > 0 and shape[1] so lr = float64(shape[1])*1e-4 satisfies 0 < lr <= 1.
 Returns [mu_new || log_sigma_new] of length 2*N.
 */
-func (op *BeliefUpdate) Forward(shape []int, data ...[]float64) []float64 {
+func (beliefUpdate *BeliefUpdate) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Sprintf("active_inference: BeliefUpdate.Forward: len(shape)=%d, need >= 2", len(shape)))
+		return nil, fmt.Errorf("active_inference.belief_update: len(shape)=%d, need >= 2", len(shape))
 	}
 
-	n := shape[0]
+	dimension := shape[0]
 
-	if n <= 0 {
-		panic(fmt.Sprintf("active_inference: BeliefUpdate.Forward: batch size n=%d from shape[0] must be positive", n))
+	if dimension <= 0 {
+		return nil, fmt.Errorf(
+			"active_inference.belief_update: dimension=%d from shape[0] must be positive",
+			dimension,
+		)
 	}
 
 	lrStep := shape[1]
 	lr := float64(lrStep) * 1e-4
 
 	if lrStep <= 0 {
-		panic(fmt.Sprintf(
-			"active_inference: BeliefUpdate.Forward: shape[1]=%d yields non-positive lr=%g (need shape[1] >= 1)",
+		return nil, fmt.Errorf(
+			"active_inference.belief_update: shape[1]=%d yields non-positive lr=%g (need shape[1] >= 1)",
 			lrStep, lr,
-		))
+		)
 	}
 
 	if lr > 1.0 {
-		panic(fmt.Sprintf(
-			"active_inference: BeliefUpdate.Forward: shape[1]=%d yields lr=%g > 1 (cap at shape[1]=10000)",
+		return nil, fmt.Errorf(
+			"active_inference.belief_update: shape[1]=%d yields lr=%g > 1 (cap at shape[1]=10000)",
 			lrStep, lr,
-		))
+		)
 	}
 
-	if len(data) < 3 {
-		panic(fmt.Sprintf("active_inference: BeliefUpdate.Forward: len(data)=%d, need >= 3", len(data)))
+	if err := stateDict.RequireOperationInputs("active_inference.belief_update", 3); err != nil {
+		return nil, err
 	}
 
-	if len(data[0]) != n {
-		panic(fmt.Sprintf("active_inference: BeliefUpdate.Forward: len(mu)=%d, need N=%d", len(data[0]), n))
+	if len(stateDict.Inputs[0]) != dimension {
+		return nil, fmt.Errorf(
+			"active_inference.belief_update: len(mu)=%d, need N=%d",
+			len(stateDict.Inputs[0]), dimension,
+		)
 	}
 
-	if len(data[1]) != n {
-		panic(fmt.Sprintf("active_inference: BeliefUpdate.Forward: len(log_sigma)=%d, need N=%d", len(data[1]), n))
+	if len(stateDict.Inputs[1]) != dimension {
+		return nil, fmt.Errorf(
+			"active_inference.belief_update: len(log_sigma)=%d, need N=%d",
+			len(stateDict.Inputs[1]), dimension,
+		)
 	}
 
-	if len(data[2]) != n {
-		panic(fmt.Sprintf("active_inference: BeliefUpdate.Forward: len(pred_err)=%d, need N=%d", len(data[2]), n))
+	if len(stateDict.Inputs[2]) != dimension {
+		return nil, fmt.Errorf(
+			"active_inference.belief_update: len(pred_err)=%d, need N=%d",
+			len(stateDict.Inputs[2]), dimension,
+		)
 	}
 
-	out := make([]float64, 2*n)
-	applyBeliefUpdate(out[:n], out[n:], data[0], data[1], data[2], lr, n)
+	stateDict.EnsureOperationOutLen(2 * dimension)
+	applyBeliefUpdate(
+		stateDict.Out[:dimension],
+		stateDict.Out[dimension:],
+		stateDict.Inputs[0],
+		stateDict.Inputs[1],
+		stateDict.Inputs[2],
+		lr,
+		dimension,
+	)
 
-	return out
+	return stateDict, nil
 }

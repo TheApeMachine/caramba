@@ -1,6 +1,10 @@
 package predictive_coding
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 PredictionError computes the precision-weighted prediction error ε = Π ⊙ (x - μ̂)
@@ -18,44 +22,37 @@ func NewPredictionError() *PredictionError { return &PredictionError{} }
 /*
 Forward computes ε = Π ⊙ (x - μ̂).
 */
-func (op *PredictionError) Forward(shape []int, data ...[]float64) []float64 {
+func (op *PredictionError) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperationInputs("predictive_coding.prediction_error", 2); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 1 {
-		panic(fmt.Sprintf("predictive_coding: PredictionError.Forward: empty shape"))
+		return nil, fmt.Errorf("predictive_coding.prediction_error: shape is required")
 	}
 
 	n := shape[0]
 
 	if n <= 0 {
-		panic(fmt.Sprintf(
-			"predictive_coding: PredictionError.Forward: shape[0] (n) must be positive, got n=%d",
-			n,
-		))
+		return nil, fmt.Errorf("predictive_coding.prediction_error: n must be positive, got %d", n)
 	}
 
-	if len(data) < 2 {
-		panic(fmt.Sprintf("predictive_coding: PredictionError.Forward: len(data)=%d, need >= 2", len(data)))
+	if len(stateDict.Inputs[0]) != n || len(stateDict.Inputs[1]) != n {
+		return nil, fmt.Errorf("predictive_coding.prediction_error: x and mu_hat must match n")
 	}
 
-	if len(data[0]) != n || len(data[1]) != n {
-		panic(fmt.Sprintf(
-			"predictive_coding: PredictionError.Forward: shape mismatch x=%d mu_hat=%d n=%d",
-			len(data[0]), len(data[1]), n,
-		))
-	}
+	stateDict.EnsureOperationOutLen(n)
+	applySubVec(stateDict.Out, stateDict.Inputs[0], stateDict.Inputs[1])
 
-	out := make([]float64, n)
-	applySubVec(out, data[0], data[1])
-
-	if len(data) >= 3 {
-		if len(data[2]) != n {
-			panic(fmt.Sprintf(
-				"predictive_coding: PredictionError.Forward: len(precision)=%d, need n=%d",
-				len(data[2]), n,
-			))
+	if len(stateDict.Inputs) >= 3 {
+		if len(stateDict.Inputs[2]) != n {
+			return nil, fmt.Errorf("predictive_coding.prediction_error: precision length must match n")
 		}
 
-		applyMulVec(out, out, data[2])
+		applyMulVec(stateDict.Out, stateDict.Out, stateDict.Inputs[2])
 	}
 
-	return out
+	return stateDict, nil
 }

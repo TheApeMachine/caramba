@@ -1,56 +1,112 @@
 /*
 Package embedding implements token-embedding lookup for transformer models.
-
-The TokenEmbedding operation maps integer token IDs (passed as float64) to
-dense embedding vectors drawn from a learned weight table.
-
-Forward signature: shape=[batch, seq_len], data[0]=tokens (float64 token IDs)
-Output: [batch*seq_len*DModel]
 */
 package embedding
 
 import (
-	"math/rand"
+	"fmt"
+	"math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
-// TokenEmbedding holds the embedding weight table and its dimensions.
-type TokenEmbedding struct {
-	// Weight is the flat embedding matrix, row-major: Weight[id*DModel : (id+1)*DModel]
-	Weight    []float64
-	VocabSize int
-	DModel    int
-	InitStd   float64
-}
+/*
+TokenEmbedding maps token IDs to dense embedding vectors supplied by the state dict.
+*/
+type TokenEmbedding struct{}
 
-// NewTokenEmbedding creates a TokenEmbedding and initialises the weight table
-// from a normal distribution N(0, initStd).  Pass initStd=0 to use the default
-// value of 0.02.
+/*
+NewTokenEmbedding instantiates a stateless token embedding operation.
+*/
 func NewTokenEmbedding(vocabSize, dModel int, initStd float64) *TokenEmbedding {
-	if initStd == 0 {
-		initStd = 0.02
-	}
-	w := make([]float64, vocabSize*dModel)
-	for i := range w {
-		w[i] = rand.NormFloat64() * initStd
-	}
-	return &TokenEmbedding{
-		Weight:    w,
-		VocabSize: vocabSize,
-		DModel:    dModel,
-		InitStd:   initStd,
-	}
+	return &TokenEmbedding{}
 }
 
-// Forward looks up the embedding vector for each token ID in data[0].
-//
-//   shape = [batch, seq_len]
-//   data[0] = flat float64 token IDs, length batch*seq_len
-//
-// Returns a flat []float64 of length batch*seq_len*DModel.
-func (te *TokenEmbedding) Forward(shape []int, data ...[]float64) []float64 {
-	tokens := data[0]
-	n := len(tokens) // batch * seq_len
-	out := make([]float64, n*te.DModel)
-	applyLookup(out, tokens, te.Weight, te.DModel)
-	return out
+/*
+Forward looks up the embedding vector for each token ID in Inputs[0].
+*/
+func (tokenEmbedding *TokenEmbedding) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("embedding.token_embedding"); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
+	if len(shape) < 1 {
+		return nil, fmt.Errorf("embedding.token_embedding: shape is required")
+	}
+
+	vocabSize := stateDict.VocabSize
+	dModel := stateDict.DModel
+
+	if vocabSize <= 0 {
+		return nil, fmt.Errorf("embedding.token_embedding: vocab_size must be positive, got %d", vocabSize)
+	}
+
+	if dModel <= 0 {
+		return nil, fmt.Errorf("embedding.token_embedding: d_model must be positive, got %d", dModel)
+	}
+
+	if len(stateDict.Weight) != vocabSize*dModel {
+		return nil, fmt.Errorf(
+			"embedding.token_embedding: weight length %d does not match vocab_size*d_model=%d",
+			len(stateDict.Weight), vocabSize*dModel,
+		)
+	}
+
+	tokenCount, err := tokenEmbeddingShapeSize(shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	tokens := stateDict.Inputs[0]
+
+	if len(tokens) != tokenCount {
+		return nil, fmt.Errorf(
+			"embedding.token_embedding: token length %d does not match shape product %d",
+			len(tokens), tokenCount,
+		)
+	}
+
+	for index, token := range tokens {
+		tokenID := int(token)
+
+		if token != math.Trunc(token) || tokenID < 0 || tokenID >= vocabSize {
+			return nil, fmt.Errorf(
+				"embedding.token_embedding: token[%d]=%v is outside vocab range [0,%d)",
+				index, token, vocabSize,
+			)
+		}
+	}
+
+	stateDict.EnsureOperationOutLen(tokenCount * dModel)
+	tokenEmbeddingKernel(stateDict.Out, tokens, stateDict.Weight, dModel)
+
+	return stateDict, nil
+}
+
+func tokenEmbeddingShapeSize(shape []int) (int, error) {
+	size := 1
+
+	for index, dimension := range shape {
+		if dimension < 0 {
+			return 0, fmt.Errorf(
+				"embedding.token_embedding: shape[%d]=%d must be non-negative",
+				index, dimension,
+			)
+		}
+
+		if dimension == 0 {
+			return 0, nil
+		}
+
+		if size > math.MaxInt/dimension {
+			return 0, fmt.Errorf("embedding.token_embedding: shape product overflows int")
+		}
+
+		size *= dimension
+	}
+
+	return size, nil
 }

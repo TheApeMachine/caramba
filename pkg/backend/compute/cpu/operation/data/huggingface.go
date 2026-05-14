@@ -8,6 +8,8 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 const datasetsBaseURL = "https://datasets-server.huggingface.co"
@@ -18,11 +20,12 @@ Each Forward call returns the next page of flattened float64 values.
 The shape slice encodes [rows, cols] so downstream nodes can reshape.
 
 Config keys:
-  dataset  — e.g. "glue"
-  config   — dataset config name, e.g. "sst2" (default "default")
-  split    — "train", "validation", "test" (default "train")
-  page     — rows per Forward call (default 100)
-  field    — which row field to extract as float64 (default "label")
+
+	dataset  — e.g. "glue"
+	config   — dataset config name, e.g. "sst2" (default "default")
+	split    — "train", "validation", "test" (default "train")
+	page     — rows per Forward call (default 100)
+	field    — which row field to extract as float64 (default "label")
 */
 type HuggingFace struct {
 	ctx     context.Context
@@ -62,28 +65,36 @@ Forward fetches the next page of rows and returns them as a flat float64 slice.
 shape[0] = actual rows returned, shape[1] = 1 (scalar field per row).
 Returns nil when the dataset is exhausted.
 */
-func (hf *HuggingFace) Forward(shape []int, _ ...[]float64) []float64 {
+func (hf *HuggingFace) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
+	}
+
 	if hf.done {
-		return nil
+		stateDict.SetOperationOutput(nil)
+
+		return stateDict, nil
 	}
 
 	rows, err := hf.fetchPage()
 
-	if err != nil || len(rows) == 0 {
+	if err != nil {
 		hf.done = true
 
-		return nil
+		return nil, err
 	}
 
-	if len(shape) >= 1 {
-		shape[0] = len(rows)
+	if len(rows) == 0 {
+		hf.done = true
+		stateDict.SetOperationOutput(nil)
+
+		return stateDict, nil
 	}
 
-	if len(shape) >= 2 {
-		shape[1] = 1
-	}
+	stateDict.WithShape([]int{len(rows), 1})
+	stateDict.SetOperationOutput(rows)
 
-	return rows
+	return stateDict, nil
 }
 
 /*

@@ -5,6 +5,7 @@ import (
 	"math"
 
 	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -34,36 +35,49 @@ func NewDAGMarkovFactorization() *DAGMarkovFactorization {
 /*
 Forward computes per-observation log probabilities under the DAG Markov factorization.
 */
-func (dagMarkov *DAGMarkovFactorization) Forward(shape []int, data ...[]float64) []float64 {
+func (dagMarkov *DAGMarkovFactorization) Forward(
+	stateDict *state.Dict,
+) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Errorf("causal: DAGMarkovFactorization.Forward: len(shape)=%d, need >= 2", len(shape)).Error())
+		return nil, fmt.Errorf("causal.dag_markov_factorization: len(shape)=%d, need >= 2", len(shape))
 	}
 
-	if len(data) < 2 {
-		panic(fmt.Errorf("causal: DAGMarkovFactorization.Forward: len(data)=%d, need >= 2", len(data)).Error())
+	if err := stateDict.RequireOperationInputs("causal.dag_markov_factorization", 2); err != nil {
+		return nil, err
 	}
 
 	n := shape[0]
 	t := shape[1]
 
-	xMat := data[0]
-	adj := data[1]
+	if n <= 0 || t <= 0 {
+		return nil, fmt.Errorf(
+			"causal.dag_markov_factorization: need N > 0 and T > 0 (got N=%d T=%d)",
+			n, t,
+		)
+	}
+
+	xMat := stateDict.Inputs[0]
+	adj := stateDict.Inputs[1]
 
 	if len(xMat) != t*n {
-		panic(fmt.Errorf(
-			"causal: DAGMarkovFactorization.Forward: len(X)=%d, need T*N=%d",
+		return nil, fmt.Errorf(
+			"causal.dag_markov_factorization: len(X)=%d, need T*N=%d",
 			len(xMat), t*n,
-		).Error())
+		)
 	}
 
 	if len(adj) != n*n {
-		panic(fmt.Errorf(
-			"causal: DAGMarkovFactorization.Forward: len(adj)=%d, need N*N=%d",
+		return nil, fmt.Errorf(
+			"causal.dag_markov_factorization: len(adj)=%d, need N*N=%d",
 			len(adj), n*n,
-		).Error())
+		)
 	}
 
-	validateDAGAcyclic(adj, n)
+	if err := validateDAGAcyclic(adj, n); err != nil {
+		return nil, err
+	}
 
 	// For each node, identify parents and fit a Gaussian conditional model.
 	// beta[i] [numParents] and sigma2[i] are learned from data.
@@ -193,7 +207,9 @@ func (dagMarkov *DAGMarkovFactorization) Forward(shape []int, data ...[]float64)
 		logProb[obsIdx] = logP
 	}
 
-	return logProb
+	stateDict.SetOperationOutput(logProb)
+
+	return stateDict, nil
 }
 
 /*
@@ -210,10 +226,10 @@ func makeRange(n int) []int {
 }
 
 /*
-validateDAGAcyclic panics if adj encodes a directed cycle. Entry adj[i*n+j] != 0 means
+validateDAGAcyclic rejects directed cycles. Entry adj[i*n+j] != 0 means
 edge j → i (j is a parent of i), matching node parent enumeration in Forward.
 */
-func validateDAGAcyclic(adj []float64, n int) {
+func validateDAGAcyclic(adj []float64, n int) error {
 	indeg := make([]int, n)
 
 	for child := 0; child < n; child++ {
@@ -252,6 +268,8 @@ func validateDAGAcyclic(adj []float64, n int) {
 	}
 
 	if ordered != n {
-		panic(fmt.Errorf("causal: DAGMarkovFactorization.Forward: adjacency is not a DAG (cycle detected)"))
+		return fmt.Errorf("causal.dag_markov_factorization: adjacency is not a DAG (cycle detected)")
 	}
+
+	return nil
 }

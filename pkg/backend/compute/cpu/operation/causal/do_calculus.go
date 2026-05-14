@@ -2,6 +2,8 @@ package causal
 
 import (
 	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -32,33 +34,37 @@ func NewDoCalculus() *DoCalculus {
 /*
 Forward computes the post-intervention distribution P(Y|do(X=x)).
 */
-func (doCalculus *DoCalculus) Forward(shape []int, data ...[]float64) []float64 {
+func (doCalculus *DoCalculus) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Errorf("causal: DoCalculus.Forward: len(shape)=%d, need >= 2", len(shape)).Error())
+		return nil, fmt.Errorf("causal.do_calculus: len(shape)=%d, need >= 2", len(shape))
 	}
 
-	if len(data) < 3 {
-		panic(fmt.Errorf("causal: DoCalculus.Forward: len(data)=%d, need >= 3", len(data)).Error())
+	if err := stateDict.RequireOperationInputs("causal.do_calculus", 3); err != nil {
+		return nil, err
 	}
 
 	n := shape[0]
 
-	if len(data[0]) != n*n {
-		panic(fmt.Errorf(
-			"causal: DoCalculus.Forward: len(data[0])=%d, need N*N=%d",
-			len(data[0]), n*n,
-		).Error())
+	if n <= 0 {
+		return nil, fmt.Errorf("causal.do_calculus: N=%d must be positive", n)
 	}
 
-	if len(data[1]) != n || len(data[2]) != n {
-		panic(fmt.Errorf(
-			"causal: DoCalculus.Forward: mask/values len mismatch, need %d", n,
-		).Error())
+	if len(stateDict.Inputs[0]) != n*n {
+		return nil, fmt.Errorf(
+			"causal.do_calculus: len(data[0])=%d, need N*N=%d",
+			len(stateDict.Inputs[0]), n*n,
+		)
 	}
 
-	covMatrix := data[0]
-	mask := data[1]
-	values := data[2]
+	if len(stateDict.Inputs[1]) != n || len(stateDict.Inputs[2]) != n {
+		return nil, fmt.Errorf("causal.do_calculus: mask/values len mismatch, need %d", n)
+	}
+
+	covMatrix := stateDict.Inputs[0]
+	mask := stateDict.Inputs[1]
+	values := stateDict.Inputs[2]
 
 	// Identify intervened and free variable indices.
 	intervened := make([]int, 0, n)
@@ -182,7 +188,9 @@ func (doCalculus *DoCalculus) Forward(shape []int, data ...[]float64) []float64 
 	copy(result[:n], adjustedMean)
 	copy(result[n:], adjustedCov)
 
-	return result
+	stateDict.SetOperationOutput(result)
+
+	return stateDict, nil
 }
 
 /*

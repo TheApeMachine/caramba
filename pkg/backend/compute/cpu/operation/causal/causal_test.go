@@ -5,7 +5,46 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
+
+type stateOperation interface {
+	Forward(*state.Dict) (*state.Dict, error)
+}
+
+func forwardCausal(
+	operation stateOperation, shape []int, inputs ...[]float64,
+) []float64 {
+	stateDict := state.NewDict().WithShape(shape)
+	values := make([]any, len(inputs))
+
+	for index := range inputs {
+		values[index] = inputs[index]
+	}
+
+	stateDict.WithInputs(values...)
+	outputState, err := operation.Forward(stateDict)
+
+	So(err, ShouldBeNil)
+
+	return outputState.Out
+}
+
+func forwardCausalErr(
+	operation stateOperation, shape []int, inputs ...[]float64,
+) error {
+	stateDict := state.NewDict().WithShape(shape)
+	values := make([]any, len(inputs))
+
+	for index := range inputs {
+		values[index] = inputs[index]
+	}
+
+	stateDict.WithInputs(values...)
+	_, err := operation.Forward(stateDict)
+
+	return err
+}
 
 func TestDoCalculus(t *testing.T) {
 	Convey("Given a DoCalculus operation", t, func() {
@@ -19,7 +58,7 @@ func TestDoCalculus(t *testing.T) {
 				mask := []float64{1, 0}   // intervene on variable 0
 				values := []float64{2, 0} // set X=2
 
-				out := op.Forward([]int{n, n, 1}, cov, mask, values)
+				out := forwardCausal(op, []int{n, n, 1}, cov, mask, values)
 
 				So(len(out), ShouldEqual, n+n*n)
 				// Mean of intervened variable should equal intervention value.
@@ -36,7 +75,7 @@ func TestDoCalculus(t *testing.T) {
 				mask := []float64{1, 0, 0}
 				values := []float64{1, 0, 0}
 
-				out := op.Forward([]int{n, n, 1}, cov, mask, values)
+				out := forwardCausal(op, []int{n, n, 1}, cov, mask, values)
 				adjCov := out[n:]
 
 				// Row 0 and col 0 should be zero.
@@ -54,7 +93,7 @@ func TestDoCalculus(t *testing.T) {
 				mask := make([]float64, n)
 				values := make([]float64, n)
 
-				out := op.Forward([]int{n, n, 1}, cov, mask, values)
+				out := forwardCausal(op, []int{n, n, 1}, cov, mask, values)
 
 				So(len(out), ShouldEqual, n+n*n)
 			})
@@ -80,7 +119,7 @@ func BenchmarkDoCalculus_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for iteration := 0; iteration < b.N; iteration++ {
-		op.Forward(shape, cov, mask, values)
+		forwardCausal(op, shape, cov, mask, values)
 	}
 }
 
@@ -89,13 +128,14 @@ func TestBackdoorAdjustment(t *testing.T) {
 		op := NewBackdoorAdjustment()
 
 		Convey("Forward", func() {
-			Convey("It should panic on zero N_x or zero T", func() {
-				So(func() {
-					op.Forward([]int{1, 0, 1, 10}, []float64{}, []float64{}, []float64{})
-				}, ShouldPanic)
-				So(func() {
-					op.Forward([]int{1, 1, 1, 0}, []float64{}, []float64{}, []float64{})
-				}, ShouldPanic)
+			Convey("It should error on zero N_x or zero T", func() {
+				err := forwardCausalErr(op, []int{1, 0, 1, 10}, []float64{}, []float64{}, []float64{})
+
+				So(err, ShouldNotBeNil)
+
+				err = forwardCausalErr(op, []int{1, 1, 1, 0}, []float64{}, []float64{}, []float64{})
+
+				So(err, ShouldNotBeNil)
 			})
 
 			Convey("It should return a causal effect vector of length N_y", func() {
@@ -111,7 +151,7 @@ func TestBackdoorAdjustment(t *testing.T) {
 					y[obsIdx] = 2.0 * x[obsIdx]
 				}
 
-				out := op.Forward([]int{ny, nx, nz, obs}, y, x, z)
+				out := forwardCausal(op, []int{ny, nx, nz, obs}, y, x, z)
 
 				So(len(out), ShouldEqual, ny)
 				// The causal effect should be close to 2.0
@@ -132,7 +172,7 @@ func TestBackdoorAdjustment(t *testing.T) {
 					y[obsIdx*2+1] = x[obsIdx*2+1] * 1.5
 				}
 
-				out := op.Forward([]int{ny, nx, nz, obs}, y, x, z)
+				out := forwardCausal(op, []int{ny, nx, nz, obs}, y, x, z)
 
 				So(len(out), ShouldEqual, ny)
 				// Mean |OLS X_coef| per dimension: Y0 depends only on X0 (≈3), Y1 only on X1 (≈1.5);
@@ -167,7 +207,7 @@ func BenchmarkBackdoorAdjustment_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for iteration := 0; iteration < b.N; iteration++ {
-		op.Forward(shape, y, x, z)
+		forwardCausal(op, shape, y, x, z)
 	}
 }
 
@@ -188,7 +228,7 @@ func TestFrontdoorAdjustment(t *testing.T) {
 					yVec[obsIdx] = mVec[obsIdx] * 1.5
 				}
 
-				out := op.Forward([]int{nx, nm, ny, obs}, xVec, mVec, yVec)
+				out := forwardCausal(op, []int{nx, nm, ny, obs}, xVec, mVec, yVec)
 
 				So(len(out), ShouldEqual, nx)
 				for _, effect := range out {
@@ -209,7 +249,7 @@ func TestFrontdoorAdjustment(t *testing.T) {
 					yVec[obsIdx] = float64(obsIdx%2) * 2.0
 				}
 
-				out := op.Forward([]int{nx, nm, ny, obs}, xVec, mVec, yVec)
+				out := forwardCausal(op, []int{nx, nm, ny, obs}, xVec, mVec, yVec)
 
 				So(len(out), ShouldEqual, nx)
 				for _, v := range out {
@@ -238,7 +278,7 @@ func BenchmarkFrontdoorAdjustment_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for iteration := 0; iteration < b.N; iteration++ {
-		op.Forward(shape, xVec, mVec, yVec)
+		forwardCausal(op, shape, xVec, mVec, yVec)
 	}
 }
 
@@ -256,7 +296,7 @@ func TestCounterfactual(t *testing.T) {
 				beta := []float64{2, 2, 2, 2, 2}
 				xCF := []float64{0, 5, 10}
 
-				out := op.Forward([]int{n, 3}, xObs, yObs, beta, xCF)
+				out := forwardCausal(op, []int{n, 3}, xObs, yObs, beta, xCF)
 
 				So(len(out), ShouldEqual, n*3)
 
@@ -281,7 +321,7 @@ func TestCounterfactual(t *testing.T) {
 					yObs[idx] = 1.5*xObs[idx] + 0.3
 				}
 
-				out := op.Forward([]int{n, nCF}, xObs, yObs, beta, xCF)
+				out := forwardCausal(op, []int{n, nCF}, xObs, yObs, beta, xCF)
 
 				So(len(out), ShouldEqual, n*nCF)
 
@@ -313,7 +353,7 @@ func BenchmarkCounterfactual_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for iteration := 0; iteration < b.N; iteration++ {
-		op.Forward(shape, xObs, yObs, beta, xCF)
+		forwardCausal(op, shape, xObs, yObs, beta, xCF)
 	}
 }
 
@@ -337,7 +377,7 @@ func TestIVEstimate(t *testing.T) {
 					y[obsIdx] = x[obsIdx] * 3.0
 				}
 
-				out := op.Forward([]int{obs, nz, nx, ny}, z, x, y)
+				out := forwardCausal(op, []int{obs, nz, nx, ny}, z, x, y)
 
 				So(len(out), ShouldEqual, nx*ny)
 			})
@@ -357,7 +397,7 @@ func TestIVEstimate(t *testing.T) {
 					y[obsIdx] = 4.0 * x[obsIdx]
 				}
 
-				out := op.Forward([]int{obs, nz, nx, ny}, z, x, y)
+				out := forwardCausal(op, []int{obs, nz, nx, ny}, z, x, y)
 
 				So(out[0], ShouldAlmostEqual, 4.0, 0.1)
 			})
@@ -388,7 +428,7 @@ func BenchmarkIVEstimate_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for iteration := 0; iteration < b.N; iteration++ {
-		op.Forward(shape, z, x, y)
+		forwardCausal(op, shape, z, x, y)
 	}
 }
 
@@ -409,7 +449,7 @@ func TestCATE(t *testing.T) {
 					y[obsIdx] = x[obsIdx]
 				}
 
-				out := op.Forward([]int{obs, nx, 1}, x, treatment, y)
+				out := forwardCausal(op, []int{obs, nx, 1}, x, treatment, y)
 
 				for _, v := range out {
 					So(math.IsNaN(v), ShouldBeTrue)
@@ -429,7 +469,7 @@ func TestCATE(t *testing.T) {
 					y[obsIdx] = x[obsIdx*nx]*2.0 + treatment[obsIdx]*3.0
 				}
 
-				out := op.Forward([]int{obs, nx, 1}, x, treatment, y)
+				out := forwardCausal(op, []int{obs, nx, 1}, x, treatment, y)
 
 				So(len(out), ShouldEqual, obs)
 				for _, v := range out {
@@ -451,7 +491,7 @@ func TestCATE(t *testing.T) {
 					y[obsIdx] = x[obsIdx] + 5.0*treatment[obsIdx]
 				}
 
-				out := op.Forward([]int{obs, nx, 1}, x, treatment, y)
+				out := forwardCausal(op, []int{obs, nx, 1}, x, treatment, y)
 
 				So(len(out), ShouldEqual, obs)
 				// Mean CATE should be in a reasonable range of 5.
@@ -485,7 +525,7 @@ func BenchmarkCATE_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for iteration := 0; iteration < b.N; iteration++ {
-		op.Forward(shape, x, treatment, y)
+		forwardCausal(op, shape, x, treatment, y)
 	}
 }
 
@@ -511,12 +551,12 @@ func TestDAGMarkovFactorization(t *testing.T) {
 					0, 1, 0,
 				}
 
-				out := op.Forward([]int{n, obs}, x, adj)
+				out := forwardCausal(op, []int{n, obs}, x, adj)
 
 				So(len(out), ShouldEqual, obs)
 			})
 
-			Convey("It should panic when adjacency contains a cycle", func() {
+			Convey("It should error when adjacency contains a cycle", func() {
 				n, obs := 2, 5
 				x := make([]float64, obs*n)
 				// Mutual dependency: 0→1 and 1→0
@@ -525,9 +565,10 @@ func TestDAGMarkovFactorization(t *testing.T) {
 					1, 0,
 				}
 
-				So(func() {
-					op.Forward([]int{n, obs}, x, adj)
-				}, ShouldPanic)
+				err := forwardCausalErr(op, []int{n, obs}, x, adj)
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "cycle")
 			})
 
 			Convey("It should produce finite log probabilities for valid data", func() {
@@ -542,7 +583,7 @@ func TestDAGMarkovFactorization(t *testing.T) {
 				// 0→1
 				adj := []float64{0, 0, 1, 0}
 
-				out := op.Forward([]int{n, obs}, x, adj)
+				out := forwardCausal(op, []int{n, obs}, x, adj)
 
 				for _, lp := range out {
 					So(math.IsNaN(lp), ShouldBeFalse)
@@ -569,8 +610,8 @@ func TestDAGMarkovFactorization(t *testing.T) {
 					xOOD[obsIdx*n+1] += 50.0
 				}
 
-				outIn := op.Forward([]int{n, obs}, xIn, adj)
-				outOOD := op.Forward([]int{n, obs}, xOOD, adj)
+				outIn := forwardCausal(op, []int{n, obs}, xIn, adj)
+				outOOD := forwardCausal(op, []int{n, obs}, xOOD, adj)
 
 				meanIn := 0.0
 				for _, v := range outIn {
@@ -611,6 +652,6 @@ func BenchmarkDAGMarkovFactorization_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for iteration := 0; iteration < b.N; iteration++ {
-		op.Forward(shape, x, adj)
+		forwardCausal(op, shape, x, adj)
 	}
 }

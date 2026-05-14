@@ -1,6 +1,10 @@
 package causal
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 IVEstimate computes the instrumental variable (2SLS) estimator for causal effects
@@ -30,84 +34,154 @@ func NewIVEstimate() *IVEstimate {
 /*
 Forward computes the 2SLS IV estimate.
 */
-func (ivEstimate *IVEstimate) Forward(shape []int, data ...[]float64) []float64 {
+func (ivEstimate *IVEstimate) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 4 {
-		panic(fmt.Errorf("causal: IVEstimate.Forward: len(shape)=%d, need >= 4", len(shape)))
+		return nil, fmt.Errorf("causal.iv_estimate: len(shape)=%d, need >= 4", len(shape))
 	}
 
-	if len(data) < 3 {
-		panic(fmt.Errorf("causal: IVEstimate.Forward: len(data)=%d, need >= 3", len(data)))
+	if err := stateDict.RequireOperationInputs("causal.iv_estimate", 3); err != nil {
+		return nil, err
 	}
 
-	t, nz, nx, ny := shape[0], shape[1], shape[2], shape[3]
+	samples := shape[0]
+	instrumentDimensions := shape[1]
+	treatmentDimensions := shape[2]
+	outcomeDimensions := shape[3]
 
-	if t < nz {
-		panic(fmt.Errorf("causal: IVEstimate.Forward: T=%d must be >= N_z=%d", t, nz))
+	if samples <= 0 || instrumentDimensions <= 0 ||
+		treatmentDimensions <= 0 || outcomeDimensions <= 0 {
+		return nil, fmt.Errorf(
+			"causal.iv_estimate: dimensions must be positive (T=%d N_z=%d N_x=%d N_y=%d)",
+			samples, instrumentDimensions, treatmentDimensions, outcomeDimensions,
+		)
 	}
 
-	if t < nx {
-		panic(fmt.Errorf("causal: IVEstimate.Forward: T=%d must be >= N_x=%d", t, nx))
+	if samples < instrumentDimensions {
+		return nil, fmt.Errorf(
+			"causal.iv_estimate: T=%d must be >= N_z=%d",
+			samples, instrumentDimensions,
+		)
 	}
 
-	zMat := data[0]
-	xMat := data[1]
-	yMat := data[2]
-
-	if len(zMat) != t*nz {
-		panic(fmt.Errorf(
-			"causal: IVEstimate.Forward: len(Z)=%d, need T*N_z=%d",
-			len(zMat), t*nz,
-		))
+	if samples < treatmentDimensions {
+		return nil, fmt.Errorf(
+			"causal.iv_estimate: T=%d must be >= N_x=%d",
+			samples, treatmentDimensions,
+		)
 	}
 
-	if len(xMat) != t*nx {
-		panic(fmt.Errorf(
-			"causal: IVEstimate.Forward: len(X)=%d, need T*N_x=%d",
-			len(xMat), t*nx,
-		))
+	zMat := stateDict.Inputs[0]
+	xMat := stateDict.Inputs[1]
+	yMat := stateDict.Inputs[2]
+
+	if len(zMat) != samples*instrumentDimensions {
+		return nil, fmt.Errorf(
+			"causal.iv_estimate: len(Z)=%d, need T*N_z=%d",
+			len(zMat), samples*instrumentDimensions,
+		)
 	}
 
-	if len(yMat) != t*ny {
-		panic(fmt.Errorf(
-			"causal: IVEstimate.Forward: len(Y)=%d, need T*N_y=%d",
-			len(yMat), t*ny,
-		))
+	if len(xMat) != samples*treatmentDimensions {
+		return nil, fmt.Errorf(
+			"causal.iv_estimate: len(X)=%d, need T*N_x=%d",
+			len(xMat), samples*treatmentDimensions,
+		)
+	}
+
+	if len(yMat) != samples*outcomeDimensions {
+		return nil, fmt.Errorf(
+			"causal.iv_estimate: len(Y)=%d, need T*N_y=%d",
+			len(yMat), samples*outcomeDimensions,
+		)
 	}
 
 	// Stage 1: X_hat = Z (Z^T Z)^{-1} Z^T X
 	// Z^T Z  [nz x nz]
-	ztZ := make([]float64, nz*nz)
-	applyMatMulTransposeLeft(ztZ, zMat, zMat, t, nz, nz)
+	ztZ := make([]float64, instrumentDimensions*instrumentDimensions)
+	applyMatMulTransposeLeft(
+		ztZ,
+		zMat,
+		zMat,
+		samples,
+		instrumentDimensions,
+		instrumentDimensions,
+	)
 
 	// (Z^T Z)^{-1}  [nz x nz]
-	ztZInv := invertSymPD(ztZ, nz)
+	ztZInv := invertSymPD(ztZ, instrumentDimensions)
 
 	// Z^T X  [nz x nx]
-	ztX := make([]float64, nz*nx)
-	applyMatMulTransposeLeft(ztX, zMat, xMat, t, nz, nx)
+	ztX := make([]float64, instrumentDimensions*treatmentDimensions)
+	applyMatMulTransposeLeft(
+		ztX,
+		zMat,
+		xMat,
+		samples,
+		instrumentDimensions,
+		treatmentDimensions,
+	)
 
 	// (Z^T Z)^{-1} Z^T X  [nz x nx]
-	proj := make([]float64, nz*nx)
-	applyMatMulFull(proj, ztZInv, ztX, nz, nz, nx)
+	proj := make([]float64, instrumentDimensions*treatmentDimensions)
+	applyMatMulFull(
+		proj,
+		ztZInv,
+		ztX,
+		instrumentDimensions,
+		instrumentDimensions,
+		treatmentDimensions,
+	)
 
 	// X_hat = Z @ proj  [T x nx]
-	xHat := make([]float64, t*nx)
-	applyMatMulFull(xHat, zMat, proj, t, nz, nx)
+	xHat := make([]float64, samples*treatmentDimensions)
+	applyMatMulFull(
+		xHat,
+		zMat,
+		proj,
+		samples,
+		instrumentDimensions,
+		treatmentDimensions,
+	)
 
 	// Stage 2: beta_iv = (X_hat^T X_hat)^{-1} X_hat^T Y
 	// X_hat^T X_hat  [nx x nx]
-	xhTxh := make([]float64, nx*nx)
-	applyMatMulTransposeLeft(xhTxh, xHat, xHat, t, nx, nx)
+	xhTxh := make([]float64, treatmentDimensions*treatmentDimensions)
+	applyMatMulTransposeLeft(
+		xhTxh,
+		xHat,
+		xHat,
+		samples,
+		treatmentDimensions,
+		treatmentDimensions,
+	)
 
-	xhTxhInv := invertSymPD(xhTxh, nx)
+	xhTxhInv := invertSymPD(xhTxh, treatmentDimensions)
 
 	// X_hat^T Y  [nx x ny]
-	xhTy := make([]float64, nx*ny)
-	applyMatMulTransposeLeft(xhTy, xHat, yMat, t, nx, ny)
+	xhTy := make([]float64, treatmentDimensions*outcomeDimensions)
+	applyMatMulTransposeLeft(
+		xhTy,
+		xHat,
+		yMat,
+		samples,
+		treatmentDimensions,
+		outcomeDimensions,
+	)
 
 	// beta_iv = (X_hat^T X_hat)^{-1} X_hat^T Y  [nx x ny]
-	betaIV := make([]float64, nx*ny)
-	applyMatMulFull(betaIV, xhTxhInv, xhTy, nx, nx, ny)
+	betaIV := make([]float64, treatmentDimensions*outcomeDimensions)
+	applyMatMulFull(
+		betaIV,
+		xhTxhInv,
+		xhTy,
+		treatmentDimensions,
+		treatmentDimensions,
+		outcomeDimensions,
+	)
 
-	return betaIV
+	stateDict.SetOperationOutput(betaIV)
+
+	return stateDict, nil
 }

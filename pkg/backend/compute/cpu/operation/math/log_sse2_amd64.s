@@ -34,15 +34,14 @@ loop_log_sse2:
 	MOVSD  ·logExpMask11(SB), X5
 	SHUFPD $0, X5, X5
 	PAND   X5, X4
-	MOVSD  ·logBias1023Q(SB), X5
-	SHUFPD $0, X5, X5
-	PSUBQ  X5, X4                          // e as int64
-
-	// int64 → double via magic add/sub
+	// raw exponent → double via magic add/sub, then subtract exponent bias.
 	MOVSD  ·logMagic52(SB), X5
 	SHUFPD $0, X5, X5
 	PADDQ  X5, X4
 	MOVSD  ·logMagic52D(SB), X5
+	SHUFPD $0, X5, X5
+	SUBPD  X5, X4
+	MOVSD  ·logBias1023D(SB), X5
 	SHUFPD $0, X5, X5
 	SUBPD  X5, X4                          // X4 = e as double
 

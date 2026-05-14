@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 func TestSDPA(t *testing.T) {
@@ -24,7 +25,13 @@ func TestSDPA(t *testing.T) {
 					v[i] = 1.0
 				}
 				shape := []int{batch, heads, seq, dim}
-				out := op.Forward(shape, q, k, v)
+				outputState, err := op.Forward(
+					state.NewDict().
+						WithShape(shape).
+						WithInputs(q, k, v),
+				)
+				So(err, ShouldBeNil)
+				out := outputState.Out
 				So(out, ShouldHaveLength, n)
 			})
 
@@ -40,7 +47,13 @@ func TestSDPA(t *testing.T) {
 					v[i] = 1.0
 				}
 				shape := []int{batch, heads, seq, dim}
-				out := op.Forward(shape, q, k, v)
+				outputState, err := op.Forward(
+					state.NewDict().
+						WithShape(shape).
+						WithInputs(q, k, v),
+				)
+				So(err, ShouldBeNil)
+				out := outputState.Out
 				for _, val := range out {
 					So(math.Abs(val-1.0), ShouldBeLessThan, 1e-9)
 				}
@@ -65,7 +78,11 @@ func BenchmarkSDPA_Forward(b *testing.B) {
 
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		op.Forward(shape, q, k, v)
+	for b.Loop() {
+		_, _ = op.Forward(
+			state.NewDict().
+				WithShape(shape).
+				WithInputs(q, k, v),
+		)
 	}
 }

@@ -40,7 +40,7 @@ inner_k:
 	LSL  $3, R15, R15
 	FMOVD (R10)(R15), F2
 
-	FMADDD F1, F2, F0, F0
+	FMADDD F1, F0, F2, F0
 
 	ADD  $1, R13, R13
 	CMP  R1, R13

@@ -1,6 +1,10 @@
 package predictive_coding
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 UpdateRepresentation performs the representation update step of predictive coding:
@@ -20,45 +24,40 @@ func NewUpdateRepresentation() *UpdateRepresentation { return &UpdateRepresentat
 /*
 Forward computes r_new = r + lr * (W^T @ eps_lower - eps_self).
 */
-func (op *UpdateRepresentation) Forward(shape []int, data ...[]float64) []float64 {
+func (op *UpdateRepresentation) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperationInputs("predictive_coding.update_representation", 4); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Sprintf("predictive_coding: UpdateRepresentation.Forward: len(shape)=%d, need >= 2", len(shape)))
+		return nil, fmt.Errorf("predictive_coding.update_representation: expected rank >= 2, got %d", len(shape))
 	}
 
 	dIn, dOut := shape[0], shape[1]
 
-	if len(data) < 5 {
-		panic(fmt.Sprintf("predictive_coding: UpdateRepresentation.Forward: len(data)=%d, need >= 5", len(data)))
-	}
-
-	r, W, epsLower, epsSelf, lrVec := data[0], data[1], data[2], data[3], data[4]
+	r, W, epsLower, epsSelf := stateDict.Inputs[0], stateDict.Inputs[1], stateDict.Inputs[2], stateDict.Inputs[3]
 
 	needW := rowMajorWeightLen(dOut, dIn)
 
 	if len(r) != dIn || len(W) != needW || len(epsLower) != dOut || len(epsSelf) != dIn {
-		panic(fmt.Sprintf(
-			"predictive_coding: UpdateRepresentation.Forward: shape mismatch r=%d W=%d eps_lower=%d eps_self=%d",
+		return nil, fmt.Errorf(
+			"predictive_coding.update_representation: shape mismatch r=%d W=%d eps_lower=%d eps_self=%d",
 			len(r), len(W), len(epsLower), len(epsSelf),
-		))
+		)
 	}
 
-	if len(lrVec) == 0 {
-		panic("predictive_coding: UpdateRepresentation.Forward: len(lr) must be >= 1")
+	if stateDict.LR == 0 {
+		return nil, fmt.Errorf("predictive_coding.update_representation: lr must be non-zero")
 	}
 
-	lr := lrVec[0]
 	signal := make([]float64, dIn)
-
-	// W^T @ eps_lower: signal[i] = sum_j W[j*dIn+i] * eps_lower[j]
 	applyMatVecTranspose(signal, W, epsLower, dOut, dIn)
-
-	// signal -= eps_self
 	applySubVecInPlace(signal, epsSelf)
+	stateDict.EnsureOperationOutLen(dIn)
+	copy(stateDict.Out, r)
+	applyAxpy(stateDict.Out, signal, stateDict.LR)
 
-	// r_new = r + lr * signal
-	out := make([]float64, dIn)
-	copy(out, r)
-	applyAxpy(out, signal, lr)
-
-	return out
+	return stateDict, nil
 }

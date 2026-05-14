@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 const lambdaStarEpsilon = 1e-12
@@ -25,59 +27,75 @@ type Simulate struct{}
 
 func NewSimulate() *Simulate { return &Simulate{} }
 
-func (op *Simulate) Forward(shape []int, data ...[]float64) []float64 {
+func (simulate *Simulate) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Errorf("hawkes: Simulate: len(shape)=%d, need >= 2", len(shape)))
+		return nil, fmt.Errorf("hawkes.simulate: len(shape)=%d, need >= 2", len(shape))
 	}
 
-	if len(data) < 4 {
-		panic(fmt.Errorf("hawkes: Simulate: len(data)=%d, need 4", len(data)))
+	if err := stateDict.RequireOperationInputs("hawkes.simulate", 4); err != nil {
+		return nil, err
 	}
 
-	K, maxSteps := shape[0], shape[1]
-	mu := data[0]
-	alpha := data[1]
-	beta := data[2]
-	tMaxSlice := data[3]
+	processCount := shape[0]
+	maxSteps := shape[1]
+	mu := stateDict.Inputs[0]
+	alpha := stateDict.Inputs[1]
+	beta := stateDict.Inputs[2]
+	tMaxSlice := stateDict.Inputs[3]
 
-	if len(mu) != K || len(alpha) != K || len(beta) != K {
-		panic(fmt.Errorf("hawkes: Simulate: mu/alpha/beta must have length K=%d", K))
+	if processCount <= 0 || maxSteps < 0 {
+		return nil, fmt.Errorf(
+			"hawkes.simulate: need K > 0 and maxSteps >= 0 (got K=%d maxSteps=%d)",
+			processCount, maxSteps,
+		)
 	}
 
-	for idx := range K {
-		if beta[idx] <= 0 {
-			panic(fmt.Errorf("hawkes: Simulate: beta[%d] must be > 0", idx))
+	if len(mu) != processCount || len(alpha) != processCount || len(beta) != processCount {
+		return nil, fmt.Errorf("hawkes.simulate: mu/alpha/beta must have length K=%d", processCount)
+	}
+
+	for index := range processCount {
+		if beta[index] <= 0 {
+			return nil, fmt.Errorf("hawkes.simulate: beta[%d] must be > 0", index)
 		}
 
-		if alpha[idx] < 0 {
-			panic(fmt.Errorf("hawkes: Simulate: alpha[%d] must be >= 0", idx))
+		if alpha[index] < 0 {
+			return nil, fmt.Errorf("hawkes.simulate: alpha[%d] must be >= 0", index)
 		}
 
-		if mu[idx] <= 0 {
-			panic(fmt.Errorf("hawkes: Simulate: mu[%d] must be > 0", idx))
+		if mu[index] <= 0 {
+			return nil, fmt.Errorf("hawkes.simulate: mu[%d] must be > 0", index)
 		}
 	}
 
 	if len(tMaxSlice) < 1 {
-		panic(fmt.Errorf("hawkes: Simulate: data[3] (T_max) must have length >= 1"))
+		return nil, fmt.Errorf("hawkes.simulate: T_max must have length >= 1")
 	}
 
 	tMax := tMaxSlice[0]
-	out := make([]float64, K*maxSteps)
+	stateDict.EnsureOperationOutLen(processCount * maxSteps)
 
-	for idx := range K * maxSteps {
-		out[idx] = -1
+	for index := range processCount * maxSteps {
+		stateDict.Out[index] = -1
 	}
 
-	for k := range K {
-		events := ogataThinningSingle(mu[k], alpha[k], beta[k], tMax, maxSteps)
+	for processIndex := range processCount {
+		events := ogataThinningSingle(
+			mu[processIndex],
+			alpha[processIndex],
+			beta[processIndex],
+			tMax,
+			maxSteps,
+		)
 
-		for idx, ev := range events {
-			out[k*maxSteps+idx] = ev
+		for eventIndex, eventTime := range events {
+			stateDict.Out[processIndex*maxSteps+eventIndex] = eventTime
 		}
 	}
 
-	return out
+	return stateDict, nil
 }
 
 // ogataThinningSingle runs Ogata's thinning for a single Hawkes process.

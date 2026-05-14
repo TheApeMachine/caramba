@@ -5,7 +5,30 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
+
+type stateOperation interface {
+	Forward(*state.Dict) (*state.Dict, error)
+}
+
+func forwardActive(
+	operation stateOperation, shape []int, inputs ...[]float64,
+) []float64 {
+	stateDict := state.NewDict().WithShape(shape)
+	values := make([]any, len(inputs))
+
+	for index := range inputs {
+		values[index] = inputs[index]
+	}
+
+	stateDict.WithInputs(values...)
+	outputState, err := operation.Forward(stateDict)
+
+	So(err, ShouldBeNil)
+
+	return outputState.Out
+}
 
 func assertAllFiniteFloats(vals []float64) {
 	for _, v := range vals {
@@ -24,7 +47,7 @@ func TestFreeEnergy(t *testing.T) {
 				n := 4
 				mu := make([]float64, n)
 				ls := make([]float64, n) // log_var = 0 → variance = 1
-				out := op.Forward([]int{n}, mu, ls)
+				out := forwardActive(op, []int{n}, mu, ls)
 				So(out, ShouldHaveLength, 1)
 				So(out[0], ShouldAlmostEqual, 0.0, 1e-9)
 			})
@@ -32,7 +55,7 @@ func TestFreeEnergy(t *testing.T) {
 			Convey("It should be positive for non-standard beliefs", func() {
 				mu := []float64{1.0, -1.0}
 				ls := []float64{0.5, 0.5}
-				out := op.Forward([]int{2}, mu, ls)
+				out := forwardActive(op, []int{2}, mu, ls)
 				So(out[0], ShouldBeGreaterThan, 0.0)
 			})
 
@@ -40,39 +63,42 @@ func TestFreeEnergy(t *testing.T) {
 				// F = 0.5*(1 + 1 - 0 - 1) = 0.5
 				mu := []float64{1.0}
 				ls := []float64{0.0}
-				out := op.Forward([]int{1}, mu, ls)
+				out := forwardActive(op, []int{1}, mu, ls)
 				So(out[0], ShouldAlmostEqual, 0.5, 1e-9)
 			})
 
 			Convey("It should return scalar zero for empty (N=0) inputs", func() {
-				out := op.Forward([]int{0}, []float64{}, []float64{})
+				out := forwardActive(op, []int{0}, []float64{}, []float64{})
 				So(out, ShouldHaveLength, 1)
 				So(out[0], ShouldAlmostEqual, 0.0, 1e-15)
 			})
 
-			Convey("It should panic when mu and log_var lengths disagree with N", func() {
-				So(func() {
-					op.Forward([]int{2}, []float64{1}, []float64{0, 0})
-				}, ShouldPanic)
+			Convey("It should error when mu and log_var lengths disagree with N", func() {
+				stateDict := state.NewDict().
+					WithShape([]int{2}).
+					WithInputs([]float64{1}, []float64{0, 0})
+				_, err := op.Forward(stateDict)
+
+				So(err, ShouldNotBeNil)
 			})
 
 			Convey("It should propagate NaN from inputs", func() {
-				out := op.Forward([]int{1}, []float64{math.NaN()}, []float64{0})
+				out := forwardActive(op, []int{1}, []float64{math.NaN()}, []float64{0})
 				So(math.IsNaN(out[0]), ShouldBeTrue)
 			})
 
 			Convey("It should propagate signed infinities from inputs", func() {
-				outPos := op.Forward([]int{1}, []float64{math.Inf(1)}, []float64{0.0})
+				outPos := forwardActive(op, []int{1}, []float64{math.Inf(1)}, []float64{0.0})
 				So(math.IsInf(outPos[0], 1), ShouldBeTrue)
 
-				outNeg := op.Forward([]int{1}, []float64{0.0}, []float64{math.Inf(-1)})
+				outNeg := forwardActive(op, []int{1}, []float64{0.0}, []float64{math.Inf(-1)})
 				So(math.IsNaN(outNeg[0]) || math.IsInf(outNeg[0], 0), ShouldBeTrue)
 			})
 
 			Convey("It should yield finite output for large-but-representable log-variance", func() {
 				mu := []float64{10.0, -10.0}
 				ls := []float64{50.0, 50.0}
-				out := op.Forward([]int{2}, mu, ls)
+				out := forwardActive(op, []int{2}, mu, ls)
 				assertAllFiniteFloats(out)
 			})
 		})
@@ -90,7 +116,7 @@ func TestBeliefUpdate(t *testing.T) {
 				mu := []float64{1.0, -2.0}
 				ls := []float64{0.0, 0.0}
 				pe := []float64{0.0, 0.0}
-				out := op.Forward([]int{2, 1}, mu, ls, pe) // lr=1e-4
+				out := forwardActive(op, []int{2, 1}, mu, ls, pe) // lr=1e-4
 				So(out, ShouldHaveLength, 4)
 				So(out[0], ShouldBeLessThan, mu[0])    // mu[0] decreased
 				So(out[1], ShouldBeGreaterThan, mu[1]) // mu[1] increased (less negative)
@@ -105,7 +131,7 @@ func TestBeliefUpdate(t *testing.T) {
 				wantMu := mu[0] - lr*(mu[0]+pe[0])
 				wantLS := ls[0] - lr*(math.Exp(ls[0])-1.0)
 
-				out := op.Forward([]int{1, lrStep}, mu, ls, pe)
+				out := forwardActive(op, []int{1, lrStep}, mu, ls, pe)
 				So(out, ShouldHaveLength, 2)
 				So(out[0], ShouldAlmostEqual, wantMu, 1e-9)
 				So(out[1], ShouldAlmostEqual, wantLS, 1e-9)
@@ -116,17 +142,20 @@ func TestBeliefUpdate(t *testing.T) {
 				mu := make([]float64, n)
 				ls := make([]float64, n)
 				pe := make([]float64, n)
-				out := op.Forward([]int{n, 1}, mu, ls, pe)
+				out := forwardActive(op, []int{n, 1}, mu, ls, pe)
 				So(out, ShouldHaveLength, 2*n)
 			})
 
-			Convey("It should panic when shape[1] yields non-positive lr", func() {
+			Convey("It should error when shape[1] yields non-positive lr", func() {
 				mu := []float64{1.5, -0.5}
 				ls := []float64{0.3, -0.3}
 				pe := []float64{0.1, 0.2}
-				So(func() {
-					op.Forward([]int{2, 0}, mu, ls, pe)
-				}, ShouldPanic)
+				stateDict := state.NewDict().
+					WithShape([]int{2, 0}).
+					WithInputs(mu, ls, pe)
+				_, err := op.Forward(stateDict)
+
+				So(err, ShouldNotBeNil)
 			})
 		})
 	})
@@ -141,7 +170,7 @@ func TestPrecisionWeight(t *testing.T) {
 				// exp(0) = 1 → no scaling
 				errVec := []float64{2.0, -3.0, 1.5}
 				lp := []float64{0.0, 0.0, 0.0}
-				out := op.Forward([]int{3}, errVec, lp)
+				out := forwardActive(op, []int{3}, errVec, lp)
 				So(out[0], ShouldAlmostEqual, 2.0, 1e-9)
 				So(out[1], ShouldAlmostEqual, -3.0, 1e-9)
 				So(out[2], ShouldAlmostEqual, 1.5, 1e-9)
@@ -150,14 +179,14 @@ func TestPrecisionWeight(t *testing.T) {
 			Convey("It should amplify errors when precision is high", func() {
 				errVec := []float64{1.0}
 				lp := []float64{math.Log(10.0)} // precision = 10
-				out := op.Forward([]int{1}, errVec, lp)
+				out := forwardActive(op, []int{1}, errVec, lp)
 				So(out[0], ShouldAlmostEqual, 10.0, 1e-6)
 			})
 
 			Convey("It should attenuate errors when precision is low", func() {
 				errVec := []float64{1.0}
 				lp := []float64{math.Log(0.5)} // precision = 0.5
-				out := op.Forward([]int{1}, errVec, lp)
+				out := forwardActive(op, []int{1}, errVec, lp)
 				So(out[0], ShouldAlmostEqual, 0.5, 1e-6)
 			})
 
@@ -165,7 +194,7 @@ func TestPrecisionWeight(t *testing.T) {
 				errVec := []float64{1.0}
 				lp := []float64{100.0}
 				want := math.Exp(100.0)
-				out := op.Forward([]int{1}, errVec, lp)
+				out := forwardActive(op, []int{1}, errVec, lp)
 				// SIMD exp uses polynomial range reduction; ~1e-7 relative precision.
 				relErr := math.Abs(out[0]-want) / want
 				So(relErr, ShouldBeLessThan, 1e-6)
@@ -175,18 +204,21 @@ func TestPrecisionWeight(t *testing.T) {
 			Convey("It should scale to near zero for very negative log_precision", func() {
 				errVec := []float64{2.0}
 				lp := []float64{-100.0}
-				out := op.Forward([]int{1}, errVec, lp)
+				out := forwardActive(op, []int{1}, errVec, lp)
 				So(out[0], ShouldAlmostEqual, 0.0, 1e-30)
 			})
 
-			Convey("It should panic on mismatched error vs log_precision lengths", func() {
-				So(func() {
-					op.Forward([]int{2}, []float64{1, 2}, []float64{0.0})
-				}, ShouldPanic)
+			Convey("It should error on mismatched error vs log_precision lengths", func() {
+				stateDict := state.NewDict().
+					WithShape([]int{2}).
+					WithInputs([]float64{1, 2}, []float64{0.0})
+				_, err := op.Forward(stateDict)
+
+				So(err, ShouldNotBeNil)
 			})
 
 			Convey("It should return empty output when N is zero", func() {
-				out := op.Forward([]int{0}, []float64{}, []float64{})
+				out := forwardActive(op, []int{0}, []float64{}, []float64{})
 				So(out, ShouldHaveLength, 0)
 			})
 		})
@@ -201,7 +233,7 @@ func TestExpectedFreeEnergy(t *testing.T) {
 			Convey("It should return zero for a one-hot distribution (no ambiguity)", func() {
 				// q[0,0]=1 → G[0] = -1*ln(1) = 0
 				q := []float64{1.0, 0.0} // 1 state, 2 outcomes
-				out := op.Forward([]int{1, 2}, q)
+				out := forwardActive(op, []int{1, 2}, q)
 				So(out, ShouldHaveLength, 2)
 				So(out[0], ShouldAlmostEqual, 0.0, 1e-6)
 			})
@@ -214,7 +246,7 @@ func TestExpectedFreeEnergy(t *testing.T) {
 				for idx := range q {
 					q[idx] = 1.0 / float64(K)
 				}
-				out := op.Forward([]int{n, K}, q)
+				out := forwardActive(op, []int{n, K}, q)
 				expected := math.Log(float64(K)) / float64(K)
 				So(out[0], ShouldAlmostEqual, expected, 1e-6)
 			})
@@ -225,31 +257,31 @@ func TestExpectedFreeEnergy(t *testing.T) {
 				for idx := range q {
 					q[idx] = 1.0 / float64(K)
 				}
-				out := op.Forward([]int{n, K}, q)
+				out := forwardActive(op, []int{n, K}, q)
 				So(out, ShouldHaveLength, K)
 			})
 
 			Convey("It should stay finite for negative entries (clamped in kernel)", func() {
 				q := []float64{-0.1, 1.1, 0.5, 0.5} // n=2, k=2 row-major
-				out := op.Forward([]int{2, 2}, q)
+				out := forwardActive(op, []int{2, 2}, q)
 				assertAllFiniteFloats(out)
 			})
 
 			Convey("It should stay finite when rows do not sum to one", func() {
 				q := []float64{0.5, 0.5, 0.6, 0.6} // sums 1.2 per row
-				out := op.Forward([]int{2, 2}, q)
+				out := forwardActive(op, []int{2, 2}, q)
 				assertAllFiniteFloats(out)
 			})
 
 			Convey("It should stay finite with zero probabilities", func() {
 				q := []float64{1.0, 0.0, 0.0, 1.0}
-				out := op.Forward([]int{2, 2}, q)
+				out := forwardActive(op, []int{2, 2}, q)
 				assertAllFiniteFloats(out)
 			})
 
 			Convey("It should stay finite for extremely small positive probabilities", func() {
 				q := []float64{1.0 - 1e-300, 1e-300}
-				out := op.Forward([]int{1, 2}, q)
+				out := forwardActive(op, []int{1, 2}, q)
 				assertAllFiniteFloats(out)
 			})
 		})
@@ -275,7 +307,7 @@ func BenchmarkFreeEnergy_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n}, mu, ls)
+		forwardActive(op, []int{n}, mu, ls)
 	}
 }
 
@@ -289,7 +321,7 @@ func BenchmarkFreeEnergy_Forward_Small(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n}, mu, ls)
+		forwardActive(op, []int{n}, mu, ls)
 	}
 }
 
@@ -303,7 +335,7 @@ func BenchmarkFreeEnergy_Forward_Large(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n}, mu, ls)
+		forwardActive(op, []int{n}, mu, ls)
 	}
 }
 
@@ -324,7 +356,7 @@ func BenchmarkBeliefUpdate_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n, 1}, mu, ls, pe)
+		forwardActive(op, []int{n, 1}, mu, ls, pe)
 	}
 }
 
@@ -339,7 +371,7 @@ func BenchmarkBeliefUpdate_Forward_Small(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n, 1}, mu, ls, pe)
+		forwardActive(op, []int{n, 1}, mu, ls, pe)
 	}
 }
 
@@ -354,7 +386,7 @@ func BenchmarkBeliefUpdate_Forward_Large(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n, 1}, mu, ls, pe)
+		forwardActive(op, []int{n, 1}, mu, ls, pe)
 	}
 }
 
@@ -373,7 +405,7 @@ func BenchmarkPrecisionWeight_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n}, errVec, lp)
+		forwardActive(op, []int{n}, errVec, lp)
 	}
 }
 
@@ -387,7 +419,7 @@ func BenchmarkPrecisionWeight_Forward_Small(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n}, errVec, lp)
+		forwardActive(op, []int{n}, errVec, lp)
 	}
 }
 
@@ -401,7 +433,7 @@ func BenchmarkPrecisionWeight_Forward_Large(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n}, errVec, lp)
+		forwardActive(op, []int{n}, errVec, lp)
 	}
 }
 
@@ -418,7 +450,7 @@ func BenchmarkExpectedFreeEnergy_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n, K}, q)
+		forwardActive(op, []int{n, K}, q)
 	}
 }
 
@@ -435,7 +467,7 @@ func BenchmarkExpectedFreeEnergy_Forward_Small(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n, K}, q)
+		forwardActive(op, []int{n, K}, q)
 	}
 }
 
@@ -452,6 +484,6 @@ func BenchmarkExpectedFreeEnergy_Forward_Large(b *testing.B) {
 	b.ResetTimer()
 
 	for idx := 0; idx < b.N; idx++ {
-		op.Forward([]int{n, K}, q)
+		forwardActive(op, []int{n, K}, q)
 	}
 }

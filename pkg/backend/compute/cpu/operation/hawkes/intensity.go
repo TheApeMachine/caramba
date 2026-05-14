@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"sort"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -24,42 +26,61 @@ type Intensity struct{}
 
 func NewIntensity() *Intensity { return &Intensity{} }
 
-func (op *Intensity) Forward(shape []int, data ...[]float64) []float64 {
+func (intensity *Intensity) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Errorf("hawkes: Intensity: len(shape)=%d, need >= 2", len(shape)).Error())
+		return nil, fmt.Errorf("hawkes.intensity: len(shape)=%d, need >= 2", len(shape))
 	}
 
-	if len(data) < 5 {
-		panic(fmt.Errorf("hawkes: Intensity: len(data)=%d, need at least 5", len(data)).Error())
+	if err := stateDict.RequireOperationInputs("hawkes.intensity", 5); err != nil {
+		return nil, err
 	}
 
-	K, T := shape[0], shape[1]
-	times := data[0]
-	alpha := data[1]
-	beta := data[2]
-	mu := data[3]
-	tSlice := data[4]
+	processCount := shape[0]
+	eventCount := shape[1]
+	times := stateDict.Inputs[0]
+	alpha := stateDict.Inputs[1]
+	beta := stateDict.Inputs[2]
+	mu := stateDict.Inputs[3]
+	timeSlice := stateDict.Inputs[4]
 
-	if len(times) != T {
-		panic(fmt.Errorf("hawkes: Intensity: len(times)=%d, need T=%d", len(times), T).Error())
+	if processCount <= 0 || eventCount < 0 {
+		return nil, fmt.Errorf(
+			"hawkes.intensity: need K > 0 and T >= 0 (got K=%d T=%d)",
+			processCount, eventCount,
+		)
 	}
 
-	if len(alpha) != K || len(beta) != K || len(mu) != K {
-		panic(fmt.Errorf(
-			"hawkes: Intensity: alpha/beta/mu lengths must equal K=%d",
-			K,
-		).Error())
+	if len(times) != eventCount {
+		return nil, fmt.Errorf("hawkes.intensity: len(times)=%d, need T=%d", len(times), eventCount)
 	}
 
-	if len(tSlice) < 1 {
-		panic(fmt.Errorf("hawkes: Intensity: data[4] (t) must have length >= 1").Error())
+	if len(alpha) != processCount || len(beta) != processCount || len(mu) != processCount {
+		return nil, fmt.Errorf(
+			"hawkes.intensity: alpha/beta/mu lengths must equal K=%d",
+			processCount,
+		)
 	}
 
-	t := tSlice[0]
-	out := make([]float64, K)
-	applyIntensity(out, times, alpha, beta, mu, t, K, T)
+	if len(timeSlice) < 1 {
+		return nil, fmt.Errorf("hawkes.intensity: current time input must have length >= 1")
+	}
 
-	return out
+	currentTime := timeSlice[0]
+	stateDict.EnsureOperationOutLen(processCount)
+	applyIntensity(
+		stateDict.Out,
+		times,
+		alpha,
+		beta,
+		mu,
+		currentTime,
+		processCount,
+		eventCount,
+	)
+
+	return stateDict, nil
 }
 
 func applyIntensityScalar(out, times, alpha, beta, mu []float64, t float64, K, T int) {

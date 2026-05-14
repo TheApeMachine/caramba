@@ -16,7 +16,7 @@ TEXT ·dotProductNEON(SB), NOSPLIT, $0-56
 loop_dp:
 	FMOVD.P 8(R0), F1
 	FMOVD.P 8(R1), F2
-	FMADDD  F1, F2, F0, F0
+	FMADDD  F1, F0, F2, F0
 	SUBS $1, R2, R2
 	BNE  loop_dp
 done_dp:
@@ -87,7 +87,7 @@ TEXT ·divScalarNEON(SB), NOSPLIT, $0-32
 	FMOVD  s+24(FP), F16
 	CBZ    R1, done_ds
 loop_ds:
-	FMOVD.P 8(R0), F0
+	FMOVD   (R0), F0
 	FDIVD   F16, F0, F0
 	FMOVD.P F0, 8(R0)
 	SUBS $1, R1, R1

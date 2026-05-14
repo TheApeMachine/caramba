@@ -1,6 +1,10 @@
 package predictive_coding
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 UpdateWeights performs the Hebbian weight update step of predictive coding:
@@ -19,38 +23,37 @@ func NewUpdateWeights() *UpdateWeights { return &UpdateWeights{} }
 /*
 Forward computes W_new[i*D_in+j] = W[i*D_in+j] + lr * eps[i] * r[j].
 */
-func (op *UpdateWeights) Forward(shape []int, data ...[]float64) []float64 {
+func (op *UpdateWeights) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperationInputs("predictive_coding.update_weights", 3); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Sprintf("predictive_coding: UpdateWeights.Forward: len(shape)=%d, need >= 2", len(shape)))
+		return nil, fmt.Errorf("predictive_coding.update_weights: expected rank >= 2, got %d", len(shape))
 	}
 
 	dOut, dIn := shape[0], shape[1]
 
-	if len(data) < 4 {
-		panic(fmt.Sprintf("predictive_coding: UpdateWeights.Forward: len(data)=%d, need >= 4", len(data)))
-	}
-
-	W, eps, r, lrVec := data[0], data[1], data[2], data[3]
+	W, eps, r := stateDict.Inputs[0], stateDict.Inputs[1], stateDict.Inputs[2]
 
 	needW := rowMajorWeightLen(dOut, dIn)
 
 	if len(W) != needW || len(eps) != dOut || len(r) != dIn {
-		panic(fmt.Sprintf(
-			"predictive_coding: UpdateWeights.Forward: shape mismatch W=%d eps=%d r=%d",
+		return nil, fmt.Errorf(
+			"predictive_coding.update_weights: shape mismatch W=%d eps=%d r=%d",
 			len(W), len(eps), len(r),
-		))
+		)
 	}
 
-	if len(lrVec) == 0 {
-		panic("predictive_coding: UpdateWeights.Forward: len(lr) must be >= 1")
+	if stateDict.LR == 0 {
+		return nil, fmt.Errorf("predictive_coding.update_weights: lr must be non-zero")
 	}
 
-	lr := lrVec[0]
-	out := make([]float64, dOut*dIn)
-	copy(out, W)
+	stateDict.EnsureOperationOutLen(dOut * dIn)
+	copy(stateDict.Out, W)
+	applyOuterAdd(stateDict.Out, eps, r, stateDict.LR, dOut, dIn)
 
-	// ΔW[i,j] = lr * eps[i] * r[j] — outer product scaled by lr
-	applyOuterAdd(out, eps, r, lr, dOut, dIn)
-
-	return out
+	return stateDict, nil
 }

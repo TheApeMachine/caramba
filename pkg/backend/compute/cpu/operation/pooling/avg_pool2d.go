@@ -1,90 +1,104 @@
 package pooling
 
-import "math"
+import (
+	"fmt"
+	"math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 // AvgPool2d applies 2-D average pooling over a 4-D input [N, C, H, W].
-type AvgPool2d struct {
-	KernelH, KernelW     int
-	StrideH, StrideW     int
-	PadH, PadW           int
-	DilationH, DilationW int
-	CeilMode             bool
-	CountIncludePad      bool
-	DivisorOverride      int // 0 means use natural kernel count
+type AvgPool2d struct{}
+
+// NewAvgPool2d creates a stateless AvgPool2d operation.
+func NewAvgPool2d(
+	kernelH, kernelW, strideH, strideW, padH, padW, dilH, dilW int,
+	ceil, countIncludePad bool, divisorOverride int,
+) *AvgPool2d {
+	return &AvgPool2d{}
 }
 
-// NewAvgPool2d creates an AvgPool2d with the given parameters.
-func NewAvgPool2d(kernelH, kernelW, strideH, strideW, padH, padW, dilH, dilW int, ceil, countIncludePad bool, divisorOverride int) *AvgPool2d {
-	return &AvgPool2d{
-		KernelH:         kernelH,
-		KernelW:         kernelW,
-		StrideH:         strideH,
-		StrideW:         strideW,
-		PadH:            padH,
-		PadW:            padW,
-		DilationH:       dilH,
-		DilationW:       dilW,
-		CeilMode:        ceil,
-		CountIncludePad: countIncludePad,
-		DivisorOverride: divisorOverride,
+func (pool *AvgPool2d) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("pooling.avg_pool2d"); err != nil {
+		return nil, err
 	}
-}
 
-// Forward computes AvgPool2d.
-// shape = [N, C, H, W]; data[0] = flat input of length N*C*H*W.
-// Returns flat output of length N*C*H_out*W_out.
-func (p *AvgPool2d) Forward(shape []int, data ...[]float64) []float64 {
-	N, C, H, W := shape[0], shape[1], shape[2], shape[3]
-	Hout := outSizeMax(H, p.KernelH, p.StrideH, p.PadH, p.DilationH, p.CeilMode)
-	Wout := outSizeMax(W, p.KernelW, p.StrideW, p.PadW, p.DilationW, p.CeilMode)
+	N, C, H, W, err := poolingShape4("pooling.avg_pool2d", stateDict)
 
-	x := data[0]
-	out := make([]float64, N*C*Hout*Wout)
+	if err != nil {
+		return nil, err
+	}
 
-	for n := 0; n < N; n++ {
-		for c := 0; c < C; c++ {
-			baseIn := (n*C + c) * H * W
-			baseOut := (n*C + c) * Hout * Wout
-			for oh := 0; oh < Hout; oh++ {
-				for ow := 0; ow < Wout; ow++ {
-					hStart := oh*p.StrideH - p.PadH
-					wStart := ow*p.StrideW - p.PadW
+	config, err := poolingConfig("pooling.avg_pool2d", stateDict)
 
+	if err != nil {
+		return nil, err
+	}
+
+	Hout := outSizeMax(H, config.kernelH, config.strideH, config.padH, config.dilationH, stateDict.Ceil)
+	Wout := outSizeMax(W, config.kernelW, config.strideW, config.padW, config.dilationW, stateDict.Ceil)
+
+	if Hout <= 0 || Wout <= 0 {
+		return nil, fmt.Errorf("pooling.avg_pool2d: output spatial dimensions must be positive")
+	}
+
+	x := stateDict.Inputs[0]
+
+	if len(x) != N*C*H*W {
+		return nil, fmt.Errorf("pooling.avg_pool2d: input length does not match shape")
+	}
+
+	stateDict.EnsureOperationOutLen(N * C * Hout * Wout)
+
+	for batchIndex := 0; batchIndex < N; batchIndex++ {
+		for channelIndex := 0; channelIndex < C; channelIndex++ {
+			baseIn := (batchIndex*C + channelIndex) * H * W
+			baseOut := (batchIndex*C + channelIndex) * Hout * Wout
+
+			for outputH := 0; outputH < Hout; outputH++ {
+				for outputW := 0; outputW < Wout; outputW++ {
+					hStart := outputH*config.strideH - config.padH
+					wStart := outputW*config.strideW - config.padW
 					var rowBuf [maxKernelElems]float64
-					cnt := 0
+					count := 0
 					kernelCount := 0
-					for kh := 0; kh < p.KernelH; kh++ {
-						ih := hStart + kh*p.DilationH
-						validH := ih >= 0 && ih < H
-						for kw := 0; kw < p.KernelW; kw++ {
+
+					for kernelH := 0; kernelH < config.kernelH; kernelH++ {
+						inputH := hStart + kernelH*config.dilationH
+						validH := inputH >= 0 && inputH < H
+
+						for kernelW := 0; kernelW < config.kernelW; kernelW++ {
 							kernelCount++
-							iw := wStart + kw*p.DilationW
-							if validH && iw >= 0 && iw < W {
-								rowBuf[cnt] = x[baseIn+ih*W+iw]
-								cnt++
+							inputW := wStart + kernelW*config.dilationW
+
+							if validH && inputW >= 0 && inputW < W {
+								rowBuf[count] = x[baseIn+inputH*W+inputW]
+								count++
 							}
 						}
 					}
 
-					divisor := cnt
-					if p.DivisorOverride != 0 {
-						divisor = p.DivisorOverride
-					} else if p.CountIncludePad {
+					divisor := count
+
+					if stateDict.Divisor != 0 {
+						divisor = stateDict.Divisor
+					} else if stateDict.CountPad {
 						divisor = kernelCount
 					}
 
-					var avg float64
-					if cnt > 0 && divisor > 0 {
-						avg = kernelSum(rowBuf[:cnt]) / float64(divisor)
+					avg := math.NaN()
+
+					if count > 0 && divisor > 0 {
+						avg = kernelSum(rowBuf[:count]) / float64(divisor)
 					} else if divisor > 0 {
 						avg = 0
-					} else {
-						avg = math.NaN()
 					}
-					out[baseOut+oh*Wout+ow] = avg
+
+					stateDict.Out[baseOut+outputH*Wout+outputW] = avg
 				}
 			}
 		}
 	}
-	return out
+
+	return stateDict, nil
 }

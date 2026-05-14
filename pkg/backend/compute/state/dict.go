@@ -111,7 +111,13 @@ type Dict struct {
 	RhoHist       []float64
 	Head          int
 	Count         int
+	Correct       int
+	Total         int
 	Step          int
+	TP            float64
+	FP            float64
+	FN            float64
+	Sum           float64
 	X             []float64
 }
 

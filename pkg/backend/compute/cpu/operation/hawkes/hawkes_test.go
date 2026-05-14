@@ -1,12 +1,50 @@
 package hawkes
 
 import (
-	"fmt"
 	"math"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
+
+type stateOperation interface {
+	Forward(*state.Dict) (*state.Dict, error)
+}
+
+func forwardHawkes(
+	operation stateOperation, shape []int, inputs ...[]float64,
+) []float64 {
+	stateDict := state.NewDict().WithShape(shape)
+	values := make([]any, len(inputs))
+
+	for index := range inputs {
+		values[index] = inputs[index]
+	}
+
+	stateDict.WithInputs(values...)
+	outputState, err := operation.Forward(stateDict)
+
+	So(err, ShouldBeNil)
+
+	return outputState.Out
+}
+
+func forwardHawkesErr(
+	operation stateOperation, shape []int, inputs ...[]float64,
+) error {
+	stateDict := state.NewDict().WithShape(shape)
+	values := make([]any, len(inputs))
+
+	for index := range inputs {
+		values[index] = inputs[index]
+	}
+
+	stateDict.WithInputs(values...)
+	_, err := operation.Forward(stateDict)
+
+	return err
+}
 
 func TestIntensity(t *testing.T) {
 	Convey("Given an Intensity operation", t, func() {
@@ -21,7 +59,7 @@ func TestIntensity(t *testing.T) {
 				beta := []float64{1.0}
 				mu := []float64{2.0}
 				tVal := []float64{5.0}
-				out := op.Forward(shape, times, alpha, beta, mu, tVal)
+				out := forwardHawkes(op, shape, times, alpha, beta, mu, tVal)
 				So(out, ShouldHaveLength, 1)
 				So(out[0], ShouldAlmostEqual, 2.0, 1e-9)
 			})
@@ -35,7 +73,7 @@ func TestIntensity(t *testing.T) {
 				beta := []float64{1.0}
 				mu := []float64{0.5}
 				tVal := []float64{1.0}
-				out := op.Forward(shape, times, alpha, beta, mu, tVal)
+				out := forwardHawkes(op, shape, times, alpha, beta, mu, tVal)
 				expected := 0.5 + math.Exp(-1.0)
 				So(out[0], ShouldAlmostEqual, expected, 1e-9)
 			})
@@ -47,7 +85,7 @@ func TestIntensity(t *testing.T) {
 				beta := []float64{1.0, 0.5}
 				mu := []float64{0.1, 0.2}
 				tVal := []float64{2.0}
-				out := op.Forward(shape, times, alpha, beta, mu, tVal)
+				out := forwardHawkes(op, shape, times, alpha, beta, mu, tVal)
 				So(out, ShouldHaveLength, 2)
 				e0 := 0.1 + 1.0*math.Exp(-1.0*2.0)
 				e1 := 0.2 + 2.0*math.Exp(-0.5*2.0)
@@ -55,15 +93,11 @@ func TestIntensity(t *testing.T) {
 				So(out[1], ShouldAlmostEqual, e1, 1e-9)
 			})
 
-			Convey("It should panic on insufficient data", func() {
-				So(func() {
-					defer func() {
-						recovered := recover()
-						So(recovered, ShouldNotBeNil)
-						So(fmt.Sprint(recovered), ShouldContainSubstring, "need at least 5")
-					}()
-					op.Forward([]int{1, 0}, []float64{})
-				}, ShouldNotPanic)
+			Convey("It should error on insufficient data", func() {
+				err := forwardHawkesErr(op, []int{1, 0}, []float64{})
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "input")
 			})
 		})
 	})
@@ -99,7 +133,7 @@ func TestKernelMatrix(t *testing.T) {
 				alpha := []float64{1.0}
 				beta := []float64{0.5}
 				shape := []int{3, 0, 0}
-				out := op.Forward(shape, times, alpha, beta)
+				out := forwardHawkes(op, shape, times, alpha, beta)
 				So(out, ShouldHaveLength, 9)
 				// Diagonal and below must be zero
 				So(out[0], ShouldEqual, 0) // [0,0]
@@ -120,7 +154,7 @@ func TestKernelMatrix(t *testing.T) {
 				alpha := []float64{2.0}
 				beta := []float64{1.0}
 				shape := []int{2, 0, 0}
-				out := op.Forward(shape, times, alpha, beta)
+				out := forwardHawkes(op, shape, times, alpha, beta)
 				// K[0,1] = 2 * exp(-1.0 * (1-0)) = 2*exp(-1)
 				expected := 2.0 * math.Exp(-1.0)
 				So(out[1], ShouldAlmostEqual, expected, 1e-9)
@@ -157,23 +191,19 @@ func TestLogLikelihood(t *testing.T) {
 				intensities := []float64{1.0, 2.0, 4.0}
 				integral := []float64{5.0}
 				expected := math.Log(1.0) + math.Log(2.0) + math.Log(4.0) - 5.0
-				out := op.Forward([]int{T}, times, intensities, integral)
+				out := forwardHawkes(op, []int{T}, times, intensities, integral)
 				So(out, ShouldHaveLength, 1)
 				So(out[0], ShouldAlmostEqual, expected, 1e-9)
 			})
 
-			Convey("It should panic on data length mismatch", func() {
-				So(func() {
-					defer func() {
-						recovered := recover()
-						So(recovered, ShouldNotBeNil)
-						So(fmt.Sprint(recovered), ShouldContainSubstring, "len(intensities)=2, need T=3")
-					}()
-					op.Forward([]int{3},
-						[]float64{1, 2, 3},
-						[]float64{1, 2},
-						[]float64{0})
-				}, ShouldNotPanic)
+			Convey("It should error on data length mismatch", func() {
+				err := forwardHawkesErr(op, []int{3},
+					[]float64{1, 2, 3},
+					[]float64{1, 2},
+					[]float64{0})
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "len(intensities)=2, need T=3")
 			})
 		})
 	})
@@ -193,7 +223,7 @@ func TestSimulate(t *testing.T) {
 				beta := []float64{2.0}
 				tMax := []float64{10.0}
 				shape := []int{K, maxSteps}
-				out := op.Forward(shape, mu, alpha, beta, tMax)
+				out := forwardHawkes(op, shape, mu, alpha, beta, tMax)
 				So(out, ShouldHaveLength, maxSteps)
 
 				for _, ev := range out {
@@ -212,7 +242,7 @@ func TestSimulate(t *testing.T) {
 				alpha := []float64{0.3}
 				beta := []float64{1.0}
 				tMax := []float64{5.0}
-				out := op.Forward([]int{K, maxSteps}, mu, alpha, beta, tMax)
+				out := forwardHawkes(op, []int{K, maxSteps}, mu, alpha, beta, tMax)
 
 				prev := -1.0
 
@@ -226,15 +256,10 @@ func TestSimulate(t *testing.T) {
 				}
 			})
 
-			Convey("It should panic on insufficient data", func() {
-				So(func() {
-					defer func() {
-						recovered := recover()
-						So(recovered, ShouldNotBeNil)
-						So(fmt.Sprint(recovered), ShouldContainSubstring, "need 4")
-					}()
-					op.Forward([]int{1, 10})
-				}, ShouldNotPanic)
+			Convey("It should error on insufficient data", func() {
+				err := forwardHawkesErr(op, []int{1, 10})
+
+				So(err, ShouldNotBeNil)
 			})
 		})
 	})
@@ -266,7 +291,7 @@ func BenchmarkIntensity_Forward(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		op.Forward(shape, times, alpha, beta, mu, tVal)
+		forwardHawkes(op, shape, times, alpha, beta, mu, tVal)
 	}
 }
 
@@ -287,7 +312,7 @@ func BenchmarkKernelMatrix_Forward(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		op.Forward(shape, times, alpha, beta)
+		forwardHawkes(op, shape, times, alpha, beta)
 	}
 }
 
@@ -308,7 +333,7 @@ func BenchmarkLogLikelihood_Forward(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		op.Forward(shape, times, intensities, integral)
+		forwardHawkes(op, shape, times, intensities, integral)
 	}
 }
 
@@ -325,6 +350,6 @@ func BenchmarkSimulate_Forward(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		op.Forward(shape, mu, alpha, beta, tMax)
+		forwardHawkes(op, shape, mu, alpha, beta, tMax)
 	}
 }

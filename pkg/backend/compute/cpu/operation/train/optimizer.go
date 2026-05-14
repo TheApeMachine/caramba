@@ -1,7 +1,6 @@
 package train
 
 import (
-	cpuopt "github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer/adam"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer/lion"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer/rmsprop"
@@ -15,29 +14,44 @@ Inputs: data[0] = params, data[1] = grads.
 Output: updated params.
 */
 type OptimizerStep struct {
-	inner cpuopt.Optimizer
+	inner state.Optimizer
 	state *state.Dict
 }
 
-func newOptimizerStep(inner cpuopt.Optimizer, stateDict *state.Dict) *OptimizerStep {
+func newOptimizerStep(inner state.Optimizer, stateDict *state.Dict) *OptimizerStep {
 	return &OptimizerStep{
 		inner: inner,
 		state: stateDict,
 	}
 }
 
-func (optimizerStep *OptimizerStep) Forward(_ []int, data ...[]float64) []float64 {
+func (optimizerStep *OptimizerStep) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
+	}
+
+	params := stateDict.Params
+	grads := stateDict.Grads
+
+	if len(params) == 0 && len(stateDict.Inputs) > 0 {
+		params = stateDict.Inputs[0]
+	}
+
+	if len(grads) == 0 && len(stateDict.Inputs) > 1 {
+		grads = stateDict.Inputs[1]
+	}
+
 	optimizerStep.state.
-		WithParams(data[0]).
-		WithGrads(data[1])
+		WithParams(params).
+		WithGrads(grads)
 
 	updated, err := optimizerStep.inner.Step(optimizerStep.state)
 
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return updated.Out
+	return updated, nil
 }
 
 /*

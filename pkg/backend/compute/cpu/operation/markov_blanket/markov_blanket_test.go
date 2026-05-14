@@ -1,11 +1,49 @@
 package markov_blanket
 
 import (
-	"fmt"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
+
+type stateOperation interface {
+	Forward(*state.Dict) (*state.Dict, error)
+}
+
+func forwardMarkov(
+	operation stateOperation, shape []int, inputs ...[]float64,
+) []float64 {
+	stateDict := state.NewDict().WithShape(shape)
+	values := make([]any, len(inputs))
+
+	for index := range inputs {
+		values[index] = inputs[index]
+	}
+
+	stateDict.WithInputs(values...)
+	outputState, err := operation.Forward(stateDict)
+
+	So(err, ShouldBeNil)
+
+	return outputState.Out
+}
+
+func forwardMarkovErr(
+	operation stateOperation, shape []int, inputs ...[]float64,
+) error {
+	stateDict := state.NewDict().WithShape(shape)
+	values := make([]any, len(inputs))
+
+	for index := range inputs {
+		values[index] = inputs[index]
+	}
+
+	stateDict.WithInputs(values...)
+	_, err := operation.Forward(stateDict)
+
+	return err
+}
 
 func TestPartition(t *testing.T) {
 	Convey("Given a Partition operation", t, func() {
@@ -20,7 +58,7 @@ func TestPartition(t *testing.T) {
 				imask := []float64{0, 0, 0, 1}
 				emask := []float64{0, 0, 0, 0}
 				shape := []int{4, 2, 1, 1, 0}
-				out := op.Forward(shape, x, smask, amask, imask, emask)
+				out := forwardMarkov(op, shape, x, smask, amask, imask, emask)
 				// Sensory: [10, 30], Active: [20], Internal: [40]
 				So(out, ShouldHaveLength, 4)
 				So(out[0], ShouldEqual, 10)
@@ -29,24 +67,26 @@ func TestPartition(t *testing.T) {
 				So(out[3], ShouldEqual, 40)
 			})
 
-			Convey("It should panic on shape length < 5", func() {
+			Convey("It should error on shape length < 5", func() {
 				x := []float64{10, 20, 30, 40}
 				smask := []float64{1, 0, 1, 0}
 				amask := []float64{0, 1, 0, 0}
 				imask := []float64{0, 0, 0, 1}
 				emask := []float64{0, 0, 0, 0}
-				So(func() { op.Forward([]int{4, 2}, x, smask, amask, imask, emask) }, ShouldPanic)
+				err := forwardMarkovErr(op, []int{4, 2}, x, smask, amask, imask, emask)
+
+				So(err, ShouldNotBeNil)
 			})
 
-			Convey("It should panic on data length < 5", func() {
+			Convey("It should error on data length < 5", func() {
 				shape := []int{4, 2, 1, 1, 0}
 				x := []float64{1, 2, 3, 4}
 				smask := []float64{1, 0, 1, 0}
 				amask := []float64{0, 1, 0, 0}
 				imask := []float64{0, 0, 0, 1}
-				So(func() {
-					op.Forward(shape, x, smask, amask, imask)
-				}, ShouldPanic)
+				err := forwardMarkovErr(op, shape, x, smask, amask, imask)
+
+				So(err, ShouldNotBeNil)
 			})
 		})
 	})
@@ -64,7 +104,7 @@ func TestFlowInternal(t *testing.T) {
 				xSens := []float64{5, 7, 9}
 				w := []float64{1, 0, 0, 0, 1, 0}
 				bias := []float64{1, 2}
-				out := op.Forward([]int{2, 3}, xSens, w, bias)
+				out := forwardMarkov(op, []int{2, 3}, xSens, w, bias)
 				So(out, ShouldHaveLength, 2)
 				So(out[0], ShouldAlmostEqual, 6.0, 1e-9)
 				So(out[1], ShouldAlmostEqual, 9.0, 1e-9)
@@ -74,30 +114,26 @@ func TestFlowInternal(t *testing.T) {
 				xSens := []float64{1, 2, 3}
 				w := make([]float64, 4*3)
 				bias := make([]float64, 4)
-				out := op.Forward([]int{4, 3}, xSens, w, bias)
+				out := forwardMarkov(op, []int{4, 3}, xSens, w, bias)
 				for _, val := range out {
 					So(val, ShouldAlmostEqual, 0.0, 1e-12)
 				}
 			})
 
-			Convey("It should panic on shape length < 2", func() {
-				So(func() {
-					defer func() {
-						recovered := recover()
-						So(recovered, ShouldNotBeNil)
-						So(fmt.Sprint(recovered), ShouldContainSubstring, "need >= 2")
-					}()
-					op.Forward([]int{4}, nil, nil, nil)
-				}, ShouldNotPanic)
+			Convey("It should error on shape length < 2", func() {
+				err := forwardMarkovErr(op, []int{4}, nil, nil, nil)
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "need >= 2")
 			})
 
-			Convey("It should panic when shape[2] != N_i", func() {
+			Convey("It should error when shape[2] != N_i", func() {
 				xSens := []float64{1, 2, 3}
 				w := make([]float64, 2*3)
 				bias := []float64{0, 0}
-				So(func() {
-					op.Forward([]int{2, 3, 99}, xSens, w, bias)
-				}, ShouldPanic)
+				err := forwardMarkovErr(op, []int{2, 3, 99}, xSens, w, bias)
+
+				So(err, ShouldNotBeNil)
 			})
 		})
 	})
@@ -115,7 +151,7 @@ func TestFlowActive(t *testing.T) {
 				xInt := []float64{4, 5}
 				w := []float64{2, 0, 0, 3}
 				bias := []float64{0, 0}
-				out := op.Forward([]int{2, 2}, xInt, w, bias)
+				out := forwardMarkov(op, []int{2, 2}, xInt, w, bias)
 				So(out, ShouldHaveLength, 2)
 				So(out[0], ShouldAlmostEqual, 8.0, 1e-9)
 				So(out[1], ShouldAlmostEqual, 15.0, 1e-9)
@@ -125,20 +161,16 @@ func TestFlowActive(t *testing.T) {
 				xInt := []float64{1, 0}
 				w := []float64{1, 0, 0, 1}
 				bias := []float64{10, 20}
-				out := op.Forward([]int{2, 2}, xInt, w, bias)
+				out := forwardMarkov(op, []int{2, 2}, xInt, w, bias)
 				So(out[0], ShouldAlmostEqual, 11.0, 1e-9)
 				So(out[1], ShouldAlmostEqual, 20.0, 1e-9)
 			})
 
-			Convey("It should panic on shape length < 2", func() {
-				So(func() {
-					defer func() {
-						recovered := recover()
-						So(recovered, ShouldNotBeNil)
-						So(fmt.Sprint(recovered), ShouldContainSubstring, "need >= 2")
-					}()
-					op.Forward([]int{4}, nil, nil, nil)
-				}, ShouldNotPanic)
+			Convey("It should error on shape length < 2", func() {
+				err := forwardMarkovErr(op, []int{4}, nil, nil, nil)
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "need >= 2")
 			})
 		})
 	})
@@ -162,7 +194,7 @@ func TestMutualInformation(t *testing.T) {
 					y[idx] = val
 				}
 
-				out := op.Forward([]int{1, 1}, x, y)
+				out := forwardMarkov(op, []int{1, 1}, x, y)
 				So(out, ShouldHaveLength, 1)
 				So(out[0], ShouldBeGreaterThanOrEqualTo, 0.0)
 			})
@@ -178,15 +210,17 @@ func TestMutualInformation(t *testing.T) {
 					y[idx] = -1.0
 				}
 
-				out := op.Forward([]int{1, 1}, x, y)
+				out := forwardMarkov(op, []int{1, 1}, x, y)
 				So(out, ShouldHaveLength, 1)
 				So(out[0], ShouldAlmostEqual, 0.0, 1e-6)
 			})
 
-			Convey("It should panic on insufficient shape", func() {
+			Convey("It should error on insufficient shape", func() {
 				x := []float64{1.0, 2.0}
 				y := []float64{3.0, 4.0}
-				So(func() { op.Forward([]int{2}, x, y) }, ShouldPanic)
+				err := forwardMarkovErr(op, []int{2}, x, y)
+
+				So(err, ShouldNotBeNil)
 			})
 		})
 	})
@@ -215,7 +249,7 @@ func BenchmarkFlowInternal_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		op.Forward(shape, xSens, w, bias)
+		forwardMarkov(op, shape, xSens, w, bias)
 	}
 }
 
@@ -238,7 +272,7 @@ func BenchmarkFlowActive_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		op.Forward(shape, xInt, w, bias)
+		forwardMarkov(op, shape, xInt, w, bias)
 	}
 }
 
@@ -260,6 +294,6 @@ func BenchmarkMutualInformation_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		op.Forward(shape, x, y)
+		forwardMarkov(op, shape, x, y)
 	}
 }

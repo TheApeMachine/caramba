@@ -1,6 +1,10 @@
 package active_inference
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 PrecisionWeight scales prediction errors by precision (inverse variance),
@@ -21,39 +25,50 @@ func NewPrecisionWeight() *PrecisionWeight { return &PrecisionWeight{} }
 Forward computes precision-weighted prediction errors: out[i] = error[i] * exp(log_prec[i]).
 Shape must be exactly one-dimensional: len(shape) == 1 with shape[0] = N. N may be zero (returns empty out).
 */
-func (op *PrecisionWeight) Forward(shape []int, data ...[]float64) []float64 {
+func (precisionWeight *PrecisionWeight) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) != 1 {
-		panic(fmt.Sprintf("active_inference: PrecisionWeight.Forward: len(shape)=%d, need exactly 1", len(shape)))
+		return nil, fmt.Errorf(
+			"active_inference.precision_weight: len(shape)=%d, need exactly 1",
+			len(shape),
+		)
 	}
 
-	n := shape[0]
+	dimension := shape[0]
 
-	if len(data) < 2 {
-		panic(fmt.Sprintf("active_inference: PrecisionWeight.Forward: len(data)=%d, need >= 2", len(data)))
+	if err := stateDict.RequireOperationInputs("active_inference.precision_weight", 2); err != nil {
+		return nil, err
 	}
 
-	if data[0] == nil {
-		panic("active_inference: PrecisionWeight.Forward: data[0] (error) is nil")
+	if dimension == 0 {
+		stateDict.SetOperationOutput([]float64{})
+
+		return stateDict, nil
 	}
 
-	if data[1] == nil {
-		panic("active_inference: PrecisionWeight.Forward: data[1] (log_precision) is nil")
+	if len(stateDict.Inputs[0]) != dimension {
+		return nil, fmt.Errorf(
+			"active_inference.precision_weight: len(error)=%d, need N=%d",
+			len(stateDict.Inputs[0]), dimension,
+		)
 	}
 
-	if n == 0 {
-		return []float64{}
+	if len(stateDict.Inputs[1]) != dimension {
+		return nil, fmt.Errorf(
+			"active_inference.precision_weight: len(log_precision)=%d, need N=%d",
+			len(stateDict.Inputs[1]), dimension,
+		)
 	}
 
-	if len(data[0]) != n {
-		panic(fmt.Sprintf("active_inference: PrecisionWeight.Forward: len(error)=%d, need N=%d", len(data[0]), n))
-	}
+	stateDict.EnsureOperationOutLen(dimension)
+	applyPrecisionWeight(
+		stateDict.Out,
+		stateDict.Inputs[0],
+		stateDict.Inputs[1],
+		dimension,
+		nil,
+	)
 
-	if len(data[1]) != n {
-		panic(fmt.Sprintf("active_inference: PrecisionWeight.Forward: len(log_precision)=%d, need N=%d", len(data[1]), n))
-	}
-
-	out := make([]float64, n)
-	applyPrecisionWeight(out, data[0], data[1], n, nil)
-
-	return out
+	return stateDict, nil
 }

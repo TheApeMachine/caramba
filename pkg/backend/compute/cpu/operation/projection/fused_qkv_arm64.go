@@ -2,7 +2,14 @@
 
 package projection
 
-// fusedQKVMatmulNEON delegates to the shared projection NEON matmul primitive.
-func fusedQKVMatmulNEON(dst, a, b []float64, M, K, N int) {
-	projMatmulNEON(dst, a, b, M, K, N)
+func fusedQKVKernel(dst, input, weight, bias []float64, M, K, N int) {
+	fusedQKVMatmulNEON(dst, input, weight, M, K, N)
+
+	if len(bias) != 0 {
+		addBias(dst, bias, M, N)
+	}
+}
+
+func fusedQKVMatmulNEON(dst, input, weight []float64, M, K, N int) {
+	projMatmulNEON(dst, input, weight, M, K, N)
 }

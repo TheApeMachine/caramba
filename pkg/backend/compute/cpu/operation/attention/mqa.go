@@ -1,5 +1,11 @@
 package attention
 
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
+
 // MQA implements Multi-Query Attention.
 // Q has num_heads heads; K and V share a single head (broadcast across Q heads).
 //
@@ -12,18 +18,28 @@ type MQA struct{}
 
 func NewMQA() *MQA { return &MQA{} }
 
-func (m *MQA) Forward(shape []int, data ...[]float64) []float64 {
-	batch := shape[0]
-	numHeads := shape[1]
-	seqLen := shape[2]
-	headDim := shape[3]
+func (m *MQA) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperationInputs("attention.mqa", 3); err != nil {
+		return nil, err
+	}
 
-	Q, K, V := data[0], data[1], data[2]
+	batch, numHeads, seqLen, headDim, err := attentionShape4("attention.mqa", stateDict)
+
+	if err != nil {
+		return nil, err
+	}
+
+	Q, K, V := stateDict.Inputs[0], stateDict.Inputs[1], stateDict.Inputs[2]
 	headStride := seqLen * headDim
 	kvBatchStride := headStride
 	qBatchStride := numHeads * headStride
 	total := batch * numHeads * headStride
-	out := make([]float64, total)
+
+	if len(Q) != total || len(K) != batch*headStride || len(V) != batch*headStride {
+		return nil, fmt.Errorf("attention.mqa: Q/K/V lengths do not match MQA shape")
+	}
+
+	stateDict.EnsureOperationOutLen(total)
 
 	for b := 0; b < batch; b++ {
 		kvOff := b * kvBatchStride
@@ -31,7 +47,7 @@ func (m *MQA) Forward(shape []int, data ...[]float64) []float64 {
 			qOff := b*qBatchStride + h*headStride
 			oOff := qOff
 			sdpaHead(
-				out[oOff:oOff+headStride],
+				stateDict.Out[oOff:oOff+headStride],
 				Q[qOff:qOff+headStride],
 				K[kvOff:kvOff+headStride],
 				V[kvOff:kvOff+headStride],
@@ -39,5 +55,6 @@ func (m *MQA) Forward(shape []int, data ...[]float64) []float64 {
 			)
 		}
 	}
-	return out
+
+	return stateDict, nil
 }

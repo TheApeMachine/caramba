@@ -6,7 +6,43 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	pc "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/predictive_coding"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
+
+func forwardPC(
+	operation interface {
+		Forward(*state.Dict) (*state.Dict, error)
+	},
+	shape []int,
+	inputs ...[]float64,
+) []float64 {
+	stateDict := state.NewDict().WithShape(shape)
+	stateDict.Inputs = append(stateDict.Inputs, inputs...)
+
+	outputState, err := operation.Forward(stateDict)
+
+	So(err, ShouldBeNil)
+
+	return outputState.Out
+}
+
+func forwardPCLR(
+	operation interface {
+		Forward(*state.Dict) (*state.Dict, error)
+	},
+	shape []int,
+	lr float64,
+	inputs ...[]float64,
+) []float64 {
+	stateDict := state.NewDict().WithShape(shape).WithLR(lr)
+	stateDict.Inputs = append(stateDict.Inputs, inputs...)
+
+	outputState, err := operation.Forward(stateDict)
+
+	So(err, ShouldBeNil)
+
+	return outputState.Out
+}
 
 func TestPrediction(t *testing.T) {
 	Convey("Given a Prediction operation", t, func() {
@@ -24,7 +60,7 @@ func TestPrediction(t *testing.T) {
 
 		Convey("It should compute W @ r correctly", func() {
 			op := pc.NewPrediction()
-			out := op.Forward([]int{dOut, dIn}, W, r)
+			out := forwardPC(op, []int{dOut, dIn}, W, r)
 
 			So(len(out), ShouldEqual, dOut)
 
@@ -35,7 +71,10 @@ func TestPrediction(t *testing.T) {
 
 		Convey("It should panic on shape mismatch", func() {
 			op := pc.NewPrediction()
-			So(func() { op.Forward([]int{dOut, dIn}, W, r[:dIn-1]) }, ShouldPanic)
+			stateDict := state.NewDict().WithShape([]int{dOut, dIn})
+			stateDict.Inputs = append(stateDict.Inputs, W, r[:dIn-1])
+			_, err := op.Forward(stateDict)
+			So(err, ShouldNotBeNil)
 		})
 	})
 }
@@ -55,7 +94,7 @@ func TestPredictionError(t *testing.T) {
 
 		Convey("It should compute unweighted prediction error", func() {
 			op := pc.NewPredictionError()
-			out := op.Forward([]int{n}, x, muHat)
+			out := forwardPC(op, []int{n}, x, muHat)
 
 			So(len(out), ShouldEqual, n)
 
@@ -66,7 +105,7 @@ func TestPredictionError(t *testing.T) {
 
 		Convey("It should compute precision-weighted prediction error", func() {
 			op := pc.NewPredictionError()
-			out := op.Forward([]int{n}, x, muHat, prec)
+			out := forwardPC(op, []int{n}, x, muHat, prec)
 
 			So(len(out), ShouldEqual, n)
 
@@ -85,7 +124,7 @@ func TestUpdateRepresentation(t *testing.T) {
 		r := make([]float64, dIn)
 		epsLower := make([]float64, dOut)
 		epsSelf := make([]float64, dIn)
-		lr := []float64{0.1}
+		lr := 0.1
 
 		for i := range r {
 			r[i] = 1.0
@@ -94,7 +133,7 @@ func TestUpdateRepresentation(t *testing.T) {
 		// W = zero: W^T @ eps_lower = 0; eps_self = 0; r_new = r + 0 = r
 		Convey("It should leave r unchanged when all errors are zero", func() {
 			op := pc.NewUpdateRepresentation()
-			out := op.Forward([]int{dIn, dOut}, r, W, epsLower, epsSelf, lr)
+			out := forwardPCLR(op, []int{dIn, dOut}, lr, r, W, epsLower, epsSelf)
 
 			So(len(out), ShouldEqual, dIn)
 
@@ -109,7 +148,7 @@ func TestUpdateRepresentation(t *testing.T) {
 			}
 
 			op := pc.NewUpdateRepresentation()
-			out := op.Forward([]int{dIn, dOut}, r, W, epsLower, epsSelf, lr)
+			out := forwardPCLR(op, []int{dIn, dOut}, lr, r, W, epsLower, epsSelf)
 
 			So(len(out), ShouldEqual, dIn)
 
@@ -127,14 +166,14 @@ func TestUpdateWeights(t *testing.T) {
 		W := make([]float64, dOut*dIn)
 		eps := make([]float64, dOut)
 		r := make([]float64, dIn)
-		lr := []float64{1.0}
+		lr := 1.0
 
 		eps[0] = 1.0
 		r[0] = 1.0
 
 		Convey("It should update W by the outer product of eps and r", func() {
 			op := pc.NewUpdateWeights()
-			out := op.Forward([]int{dOut, dIn}, W, eps, r, lr)
+			out := forwardPCLR(op, []int{dOut, dIn}, lr, W, eps, r)
 
 			So(len(out), ShouldEqual, dOut*dIn)
 			// W_new[0,0] = 0 + 1.0 * 1.0 * 1.0 = 1.0
@@ -159,9 +198,9 @@ func TestUpdateWeights(t *testing.T) {
 			x1 := []float64{1.0}
 
 			for i := 0; i < convergenceSteps; i++ {
-				muHat := opPred.Forward([]int{1, 1}, W1, r1)
-				eps := opErr.Forward([]int{1}, x1, muHat)
-				W1 = opWUpdate.Forward([]int{1, 1}, W1, eps, r1, []float64{0.1})
+				muHat := forwardPC(opPred, []int{1, 1}, W1, r1)
+				eps := forwardPC(opErr, []int{1}, x1, muHat)
+				W1 = forwardPCLR(opWUpdate, []int{1, 1}, 0.1, W1, eps, r1)
 			}
 
 			// After convergence W should be ~1.0 since r=1, x=1
@@ -186,8 +225,10 @@ func BenchmarkPrediction(b *testing.B) {
 	op := pc.NewPrediction()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		op.Forward([]int{dOut, dIn}, W, r)
+	for b.Loop() {
+		stateDict := state.NewDict().WithShape([]int{dOut, dIn})
+		stateDict.Inputs = append(stateDict.Inputs, W, r)
+		_, _ = op.Forward(stateDict)
 	}
 }
 
@@ -197,7 +238,7 @@ func BenchmarkUpdateRepresentation(b *testing.B) {
 	r := make([]float64, dIn)
 	epsLower := make([]float64, dOut)
 	epsSelf := make([]float64, dIn)
-	lr := []float64{0.1}
+	lr := 0.1
 
 	for i := range r {
 		r[i] = 1.0
@@ -207,8 +248,10 @@ func BenchmarkUpdateRepresentation(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		op.Forward([]int{dIn, dOut}, r, W, epsLower, epsSelf, lr)
+	for b.Loop() {
+		stateDict := state.NewDict().WithShape([]int{dIn, dOut}).WithLR(lr)
+		stateDict.Inputs = append(stateDict.Inputs, r, W, epsLower, epsSelf)
+		_, _ = op.Forward(stateDict)
 	}
 }
 
@@ -227,8 +270,10 @@ func BenchmarkPredictionError(b *testing.B) {
 	op := pc.NewPredictionError()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		op.Forward([]int{n}, x, muHat, prec)
+	for b.Loop() {
+		stateDict := state.NewDict().WithShape([]int{n})
+		stateDict.Inputs = append(stateDict.Inputs, x, muHat, prec)
+		_, _ = op.Forward(stateDict)
 	}
 }
 
@@ -237,7 +282,7 @@ func BenchmarkUpdateWeights(b *testing.B) {
 	W := make([]float64, dOut*dIn)
 	eps := make([]float64, dOut)
 	r := make([]float64, dIn)
-	lr := []float64{0.01}
+	lr := 0.01
 
 	for i := range eps {
 		eps[i] = float64(i) * 0.001
@@ -250,7 +295,9 @@ func BenchmarkUpdateWeights(b *testing.B) {
 	op := pc.NewUpdateWeights()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		op.Forward([]int{dOut, dIn}, W, eps, r, lr)
+	for b.Loop() {
+		stateDict := state.NewDict().WithShape([]int{dOut, dIn}).WithLR(lr)
+		stateDict.Inputs = append(stateDict.Inputs, W, eps, r)
+		_, _ = op.Forward(stateDict)
 	}
 }

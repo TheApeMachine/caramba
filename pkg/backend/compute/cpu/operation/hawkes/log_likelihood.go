@@ -5,6 +5,7 @@ import (
 	"math"
 
 	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -27,41 +28,48 @@ type LogLikelihood struct{}
 
 func NewLogLikelihood() *LogLikelihood { return &LogLikelihood{} }
 
-func (op *LogLikelihood) Forward(shape []int, data ...[]float64) []float64 {
+func (logLikelihood *LogLikelihood) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 1 {
-		panic(fmt.Errorf("hawkes: LogLikelihood: len(shape)=%d, need >= 1", len(shape)).Error())
+		return nil, fmt.Errorf("hawkes.log_likelihood: len(shape)=%d, need >= 1", len(shape))
 	}
 
-	if len(data) < 3 {
-		panic(fmt.Errorf("hawkes: LogLikelihood: len(data)=%d, need 3", len(data)).Error())
+	if err := stateDict.RequireOperationInputs("hawkes.log_likelihood", 3); err != nil {
+		return nil, err
 	}
 
-	T := shape[0]
-	times := data[0]
-	intensities := data[1]
-	baselineIntegral := data[2]
+	eventCount := shape[0]
+	times := stateDict.Inputs[0]
+	intensities := stateDict.Inputs[1]
+	baselineIntegral := stateDict.Inputs[2]
 
-	if len(times) != T {
-		panic(fmt.Errorf(
-			"hawkes: LogLikelihood: len(times)=%d, need T=%d",
-			len(times), T,
-		).Error())
+	if eventCount < 0 {
+		return nil, fmt.Errorf("hawkes.log_likelihood: T=%d, need T >= 0", eventCount)
 	}
 
-	if len(intensities) != T {
-		panic(fmt.Errorf(
-			"hawkes: LogLikelihood: len(intensities)=%d, need T=%d",
-			len(intensities), T,
-		).Error())
+	if len(times) != eventCount {
+		return nil, fmt.Errorf(
+			"hawkes.log_likelihood: len(times)=%d, need T=%d",
+			len(times), eventCount,
+		)
+	}
+
+	if len(intensities) != eventCount {
+		return nil, fmt.Errorf(
+			"hawkes.log_likelihood: len(intensities)=%d, need T=%d",
+			len(intensities), eventCount,
+		)
 	}
 
 	if len(baselineIntegral) < 1 {
-		panic(fmt.Errorf("hawkes: LogLikelihood: data[2] must have length >= 1").Error())
+		return nil, fmt.Errorf("hawkes.log_likelihood: baseline integral must have length >= 1")
 	}
 
-	ll := applyLogLikelihood(intensities, baselineIntegral[0], T)
+	logLikelihoodValue := applyLogLikelihood(intensities, baselineIntegral[0], eventCount)
+	stateDict.SetOperationOutput([]float64{logLikelihoodValue})
 
-	return []float64{ll}
+	return stateDict, nil
 }
 
 func applyLogLikelihood(intensities []float64, integral float64, T int) float64 {

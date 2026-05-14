@@ -1,6 +1,10 @@
 package markov_blanket
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 FlowActive computes the active state update conditioned on internal state:
@@ -18,45 +22,55 @@ type FlowActive struct{}
 
 func NewFlowActive() *FlowActive { return &FlowActive{} }
 
-func (op *FlowActive) Forward(shape []int, data ...[]float64) []float64 {
+func (flowActive *FlowActive) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Errorf("markov_blanket: FlowActive: len(shape)=%d, need >= 2", len(shape)).Error())
+		return nil, fmt.Errorf("markov_blanket.flow_active: len(shape)=%d, need >= 2", len(shape))
 	}
 
-	if len(data) < 3 {
-		panic(fmt.Errorf("markov_blanket: FlowActive: len(data)=%d, need 3", len(data)).Error())
+	if err := stateDict.RequireOperationInputs("markov_blanket.flow_active", 3); err != nil {
+		return nil, err
 	}
 
-	Na, Ni := shape[0], shape[1]
-	xInt := data[0]
-	wAct := data[1]
-	bias := data[2]
+	activeCount := shape[0]
+	internalCount := shape[1]
+	internal := stateDict.Inputs[0]
+	weight := stateDict.Inputs[1]
+	bias := stateDict.Inputs[2]
 
-	if len(xInt) != Ni {
-		panic(fmt.Errorf(
-			"markov_blanket: FlowActive: len(x_int)=%d, need N_i=%d",
-			len(xInt), Ni,
-		).Error())
+	if len(internal) != internalCount {
+		return nil, fmt.Errorf(
+			"markov_blanket.flow_active: len(x_int)=%d, need N_i=%d",
+			len(internal), internalCount,
+		)
 	}
 
-	if len(wAct) != Na*Ni {
-		panic(fmt.Errorf(
-			"markov_blanket: FlowActive: len(W_act)=%d, need N_a*N_i=%d",
-			len(wAct), Na*Ni,
-		).Error())
+	if len(weight) != activeCount*internalCount {
+		return nil, fmt.Errorf(
+			"markov_blanket.flow_active: len(W_act)=%d, need N_a*N_i=%d",
+			len(weight), activeCount*internalCount,
+		)
 	}
 
-	if len(bias) != Na {
-		panic(fmt.Errorf(
-			"markov_blanket: FlowActive: len(bias)=%d, need N_a=%d",
-			len(bias), Na,
-		).Error())
+	if len(bias) != activeCount {
+		return nil, fmt.Errorf(
+			"markov_blanket.flow_active: len(bias)=%d, need N_a=%d",
+			len(bias), activeCount,
+		)
 	}
 
-	out := make([]float64, Na)
-	applyFlowActive(out, xInt, wAct, bias, Na, Ni)
+	stateDict.EnsureOperationOutLen(activeCount)
+	applyFlowActive(
+		stateDict.Out,
+		internal,
+		weight,
+		bias,
+		activeCount,
+		internalCount,
+	)
 
-	return out
+	return stateDict, nil
 }
 
 func applyFlowActiveScalar(out, xInt, wAct, bias []float64, Na, Ni int) {

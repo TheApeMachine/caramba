@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -12,43 +14,68 @@ CheckpointSave persists the incoming parameter vector to disk.
 Input: data[0] = params. Output: passthrough of params.
 
 Config keys:
-  dir    — directory to write into (default "checkpoints")
-  prefix — filename prefix (default "ckpt")
+
+	dir    — directory to write into (default "checkpoints")
+	prefix — filename prefix (default "ckpt")
 
 The node is stateful: it increments a call counter used in the filename.
 */
 type CheckpointSave struct {
-	dir    string
-	prefix string
-	calls  int
 }
 
 func NewCheckpointSave(dir, prefix string) *CheckpointSave {
+	return &CheckpointSave{}
+}
+
+func (checkpointSave *CheckpointSave) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
+	}
+
+	params := stateDict.Params
+
+	if len(params) == 0 && len(stateDict.Inputs) > 0 {
+		params = stateDict.Inputs[0]
+	}
+
+	if len(params) == 0 {
+		return nil, fmt.Errorf("train.checkpoint_save: params are required")
+	}
+
+	dir := stateDict.Cache
+
 	if dir == "" {
 		dir = "checkpoints"
 	}
+
+	prefix := stateDict.Name
 
 	if prefix == "" {
 		prefix = "ckpt"
 	}
 
-	return &CheckpointSave{dir: dir, prefix: prefix}
-}
+	stateDict.Count++
 
-func (cs *CheckpointSave) Forward(_ []int, data ...[]float64) []float64 {
-	cs.calls++
-
-	err := os.MkdirAll(cs.dir, 0o755)
+	err := os.MkdirAll(dir, 0o755)
 
 	if err != nil {
-		return data[0]
+		return nil, err
 	}
 
-	path := filepath.Join(cs.dir, fmt.Sprintf("%s_%06d.json", cs.prefix, cs.calls))
-	raw, _ := json.Marshal(data[0])
-	_ = os.WriteFile(path, raw, 0o644)
+	path := filepath.Join(dir, fmt.Sprintf("%s_%06d.json", prefix, stateDict.Count))
+	raw, err := json.Marshal(params)
 
-	return data[0]
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		return nil, err
+	}
+
+	stateDict.SetOperationOutput(append(stateDict.Out[:0], params...))
+
+	return stateDict, nil
 }
 
 /*
@@ -56,35 +83,38 @@ CheckpointLoad reads a parameter vector from disk and emits it.
 It takes no meaningful inputs; shape is ignored.
 
 Config keys:
-  path — file to load (required)
+
+	path — file to load (required)
 */
 type CheckpointLoad struct {
-	path   string
-	params []float64
 }
 
 func NewCheckpointLoad(path string) *CheckpointLoad {
-	return &CheckpointLoad{path: path}
+	return &CheckpointLoad{}
 }
 
-func (cl *CheckpointLoad) Forward(_ []int, _ ...[]float64) []float64 {
-	if cl.params != nil {
-		return cl.params
+func (checkpointLoad *CheckpointLoad) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
 	}
 
-	raw, err := os.ReadFile(cl.path)
+	if stateDict.File == "" {
+		return nil, fmt.Errorf("train.checkpoint_load: file is required")
+	}
+
+	raw, err := os.ReadFile(stateDict.File)
 
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	var params []float64
 
-	if json.Unmarshal(raw, &params) != nil {
-		return nil
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return nil, err
 	}
 
-	cl.params = params
+	stateDict.SetOperationOutput(params)
 
-	return cl.params
+	return stateDict, nil
 }

@@ -2,13 +2,24 @@ package attention
 
 import (
 	"math"
-
-	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
 )
 
-// softmax computes in-place softmax via the fused math kernel.
+// softmax computes in-place softmax.
 func softmax(scores []float64) {
-	mathops.SoftmaxSlice(scores)
+	if len(scores) == 0 {
+		return
+	}
+
+	maxValue := reduceMax(scores)
+	sum := 0.0
+
+	for index, score := range scores {
+		value := math.Exp(score - maxValue)
+		scores[index] = value
+		sum += value
+	}
+
+	divScalar(scores, sum)
 }
 
 // sdpaHead — SDPA per head. Three SIMD kernels back the per-row pipeline:

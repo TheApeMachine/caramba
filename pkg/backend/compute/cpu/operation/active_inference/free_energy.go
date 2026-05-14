@@ -1,6 +1,10 @@
 package active_inference
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 FreeEnergy computes the variational free energy under a Gaussian approximate
@@ -23,35 +27,49 @@ func NewFreeEnergy() *FreeEnergy { return &FreeEnergy{} }
 Forward computes the Gaussian KL free energy
 F = 0.5 * sum(mu^2 + exp(log_var) - log_var - 1) with data[1] holding log_var (log of variance).
 */
-func (op *FreeEnergy) Forward(shape []int, data ...[]float64) []float64 {
+func (freeEnergy *FreeEnergy) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 1 {
-		panic(fmt.Sprintf("active_inference: FreeEnergy.Forward: len(shape)=%d, need >= 1", len(shape)))
+		return nil, fmt.Errorf("active_inference.free_energy: len(shape)=%d, need >= 1", len(shape))
 	}
 
-	n := shape[0]
+	observations := shape[0]
 
-	if len(data) < 2 {
-		panic(fmt.Sprintf("active_inference: FreeEnergy.Forward: len(data)=%d, need >= 2", len(data)))
+	if err := stateDict.RequireOperationInputs("active_inference.free_energy", 2); err != nil {
+		return nil, err
 	}
 
-	if n == 0 {
-		if len(data[0]) != 0 || len(data[1]) != 0 {
-			panic(fmt.Sprintf(
-				"active_inference: FreeEnergy.Forward: N=0 requires empty mu and log_var (got len %d, %d)",
-				len(data[0]), len(data[1]),
-			))
+	if observations == 0 {
+		if len(stateDict.Inputs[0]) != 0 || len(stateDict.Inputs[1]) != 0 {
+			return nil, fmt.Errorf(
+				"active_inference.free_energy: N=0 requires empty mu and log_var (got len %d, %d)",
+				len(stateDict.Inputs[0]), len(stateDict.Inputs[1]),
+			)
 		}
 
-		return []float64{0}
+		stateDict.SetOperationOutput([]float64{0})
+
+		return stateDict, nil
 	}
 
-	if len(data[0]) != n {
-		panic(fmt.Sprintf("active_inference: FreeEnergy.Forward: len(mu)=%d, need N=%d", len(data[0]), n))
+	if len(stateDict.Inputs[0]) != observations {
+		return nil, fmt.Errorf(
+			"active_inference.free_energy: len(mu)=%d, need N=%d",
+			len(stateDict.Inputs[0]), observations,
+		)
 	}
 
-	if len(data[1]) != n {
-		panic(fmt.Sprintf("active_inference: FreeEnergy.Forward: len(log_var)=%d, need N=%d", len(data[1]), n))
+	if len(stateDict.Inputs[1]) != observations {
+		return nil, fmt.Errorf(
+			"active_inference.free_energy: len(log_var)=%d, need N=%d",
+			len(stateDict.Inputs[1]), observations,
+		)
 	}
 
-	return []float64{applyFreeEnergy(data[0], data[1], n, nil)}
+	stateDict.SetOperationOutput([]float64{
+		applyFreeEnergy(stateDict.Inputs[0], stateDict.Inputs[1], observations, nil),
+	})
+
+	return stateDict, nil
 }

@@ -1,6 +1,10 @@
 package markov_blanket
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 FlowInternal computes the internal state update conditioned on sensory input:
@@ -18,52 +22,62 @@ type FlowInternal struct{}
 
 func NewFlowInternal() *FlowInternal { return &FlowInternal{} }
 
-func (op *FlowInternal) Forward(shape []int, data ...[]float64) []float64 {
+func (flowInternal *FlowInternal) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Errorf("markov_blanket: FlowInternal: len(shape)=%d, need >= 2", len(shape)).Error())
+		return nil, fmt.Errorf("markov_blanket.flow_internal: len(shape)=%d, need >= 2", len(shape))
 	}
 
-	if len(data) < 3 {
-		panic(fmt.Errorf("markov_blanket: FlowInternal: len(data)=%d, need 3", len(data)).Error())
+	if err := stateDict.RequireOperationInputs("markov_blanket.flow_internal", 3); err != nil {
+		return nil, err
 	}
 
 	if len(shape) >= 3 && shape[2] != shape[0] {
-		panic(fmt.Errorf(
-			"markov_blanket: FlowInternal: shape[2]=%d must match N_i=shape[0]=%d",
+		return nil, fmt.Errorf(
+			"markov_blanket.flow_internal: shape[2]=%d must match N_i=shape[0]=%d",
 			shape[2], shape[0],
-		).Error())
+		)
 	}
 
-	Ni, Ns := shape[0], shape[1]
-	xSens := data[0]
-	wInt := data[1]
-	bias := data[2]
+	internalCount := shape[0]
+	sensoryCount := shape[1]
+	sensory := stateDict.Inputs[0]
+	weight := stateDict.Inputs[1]
+	bias := stateDict.Inputs[2]
 
-	if len(xSens) != Ns {
-		panic(fmt.Errorf(
-			"markov_blanket: FlowInternal: len(x_sens)=%d, need N_s=%d",
-			len(xSens), Ns,
-		).Error())
+	if len(sensory) != sensoryCount {
+		return nil, fmt.Errorf(
+			"markov_blanket.flow_internal: len(x_sens)=%d, need N_s=%d",
+			len(sensory), sensoryCount,
+		)
 	}
 
-	if len(wInt) != Ni*Ns {
-		panic(fmt.Errorf(
-			"markov_blanket: FlowInternal: len(W_int)=%d, need N_i*N_s=%d",
-			len(wInt), Ni*Ns,
-		).Error())
+	if len(weight) != internalCount*sensoryCount {
+		return nil, fmt.Errorf(
+			"markov_blanket.flow_internal: len(W_int)=%d, need N_i*N_s=%d",
+			len(weight), internalCount*sensoryCount,
+		)
 	}
 
-	if len(bias) != Ni {
-		panic(fmt.Errorf(
-			"markov_blanket: FlowInternal: len(bias)=%d, need N_i=%d",
-			len(bias), Ni,
-		).Error())
+	if len(bias) != internalCount {
+		return nil, fmt.Errorf(
+			"markov_blanket.flow_internal: len(bias)=%d, need N_i=%d",
+			len(bias), internalCount,
+		)
 	}
 
-	out := make([]float64, Ni)
-	applyFlowInternal(out, xSens, wInt, bias, Ni, Ns)
+	stateDict.EnsureOperationOutLen(internalCount)
+	applyFlowInternal(
+		stateDict.Out,
+		sensory,
+		weight,
+		bias,
+		internalCount,
+		sensoryCount,
+	)
 
-	return out
+	return stateDict, nil
 }
 
 func applyFlowInternalScalar(out, xSens, wInt, bias []float64, Ni, Ns int) {

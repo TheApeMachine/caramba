@@ -1,6 +1,10 @@
 package causal
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 Counterfactual runs Pearl's abduction–action–prediction for a heterogeneous linear SCM:
@@ -33,38 +37,44 @@ func NewCounterfactual() *Counterfactual {
 /*
 Forward runs the counterfactual query.
 */
-func (_ *Counterfactual) Forward(shape []int, data ...[]float64) []float64 {
+func (counterfactual *Counterfactual) Forward(
+	stateDict *state.Dict,
+) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Errorf("causal: Counterfactual.Forward: len(shape)=%d, need >= 2", len(shape)))
+		return nil, fmt.Errorf("causal.counterfactual: len(shape)=%d, need >= 2", len(shape))
 	}
 
-	if len(data) < 4 {
-		panic(fmt.Errorf("causal: Counterfactual.Forward: len(data)=%d, need >= 4", len(data)))
+	if err := stateDict.RequireOperationInputs("causal.counterfactual", 4); err != nil {
+		return nil, err
 	}
 
 	n := shape[0]
 	nCF := shape[1]
 
 	if n <= 0 {
-		panic(fmt.Errorf("causal: Counterfactual.Forward: N=%d from shape[0] must be positive", n))
+		return nil, fmt.Errorf("causal.counterfactual: N=%d from shape[0] must be positive", n)
 	}
 
-	xObs := data[0]
-	yObs := data[1]
-	beta := data[2]
-	xCF := data[3]
+	if nCF < 0 {
+		return nil, fmt.Errorf("causal.counterfactual: N_cf=%d from shape[1] must be non-negative", nCF)
+	}
+
+	xObs := stateDict.Inputs[0]
+	yObs := stateDict.Inputs[1]
+	beta := stateDict.Inputs[2]
+	xCF := stateDict.Inputs[3]
 
 	if len(xObs) != n || len(yObs) != n || len(beta) != n {
-		panic(fmt.Errorf(
-			"causal: Counterfactual.Forward: X_obs/Y_obs/beta must have len N=%d", n,
-		))
+		return nil, fmt.Errorf("causal.counterfactual: X_obs/Y_obs/beta must have len N=%d", n)
 	}
 
 	if len(xCF) != nCF {
-		panic(fmt.Errorf(
-			"causal: Counterfactual.Forward: len(X_cf)=%d, need N_cf=%d",
+		return nil, fmt.Errorf(
+			"causal.counterfactual: len(X_cf)=%d, need N_cf=%d",
 			len(xCF), nCF,
-		))
+		)
 	}
 
 	epsilon := make([]float64, n)
@@ -73,15 +83,15 @@ func (_ *Counterfactual) Forward(shape []int, data ...[]float64) []float64 {
 		epsilon[obsIdx] = yObs[obsIdx] - beta[obsIdx]*xObs[obsIdx]
 	}
 
-	yCF := make([]float64, n*nCF)
+	stateDict.EnsureOperationOutLen(n * nCF)
 
 	for obsIdx := 0; obsIdx < n; obsIdx++ {
 		base := obsIdx * nCF
 
 		for cfIdx := 0; cfIdx < nCF; cfIdx++ {
-			yCF[base+cfIdx] = beta[obsIdx]*xCF[cfIdx] + epsilon[obsIdx]
+			stateDict.Out[base+cfIdx] = beta[obsIdx]*xCF[cfIdx] + epsilon[obsIdx]
 		}
 	}
 
-	return yCF
+	return stateDict, nil
 }

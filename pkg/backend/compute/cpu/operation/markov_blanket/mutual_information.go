@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -23,45 +24,64 @@ type MutualInformation struct{}
 
 func NewMutualInformation() *MutualInformation { return &MutualInformation{} }
 
-func (op *MutualInformation) Forward(shape []int, data ...[]float64) []float64 {
+func (mutualInformation *MutualInformation) Forward(
+	stateDict *state.Dict,
+) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Errorf("markov_blanket: MutualInformation: len(shape)=%d, need 2", len(shape)).Error())
+		return nil, fmt.Errorf("markov_blanket.mutual_information: len(shape)=%d, need 2", len(shape))
 	}
 
-	if len(data) < 2 {
-		panic(fmt.Errorf("markov_blanket: MutualInformation: len(data)=%d, need 2", len(data)).Error())
+	if err := stateDict.RequireOperationInputs("markov_blanket.mutual_information", 2); err != nil {
+		return nil, err
 	}
 
-	N, M := shape[0], shape[1]
-	xData := data[0]
-	yData := data[1]
+	inputDimensions := shape[0]
+	outputDimensions := shape[1]
+	inputData := stateDict.Inputs[0]
+	outputData := stateDict.Inputs[1]
 
-	if len(xData)%N != 0 {
-		panic(fmt.Errorf(
-			"markov_blanket: MutualInformation: len(X)=%d not divisible by N=%d",
-			len(xData), N,
-		).Error())
+	if inputDimensions <= 0 || outputDimensions <= 0 {
+		return nil, fmt.Errorf(
+			"markov_blanket.mutual_information: dimensions must be positive (N=%d M=%d)",
+			inputDimensions, outputDimensions,
+		)
 	}
 
-	T := len(xData) / N
-
-	if T < 2 {
-		panic(fmt.Sprintf(
-			"markov_blanket: MutualInformation: need at least 2 samples (T>=2) before computeMI(xData, yData, T, N, M); got T=%d len(xData)=%d len(yData)=%d N=%d M=%d",
-			T, len(xData), len(yData), N, M,
-		))
+	if len(inputData)%inputDimensions != 0 {
+		return nil, fmt.Errorf(
+			"markov_blanket.mutual_information: len(X)=%d not divisible by N=%d",
+			len(inputData), inputDimensions,
+		)
 	}
 
-	if len(yData) != T*M {
-		panic(fmt.Errorf(
-			"markov_blanket: MutualInformation: len(Y)=%d, need T*M=%d",
-			len(yData), T*M,
-		).Error())
+	samples := len(inputData) / inputDimensions
+
+	if samples < 2 {
+		return nil, fmt.Errorf(
+			"markov_blanket.mutual_information: need at least 2 samples (T>=2); got T=%d len(X)=%d len(Y)=%d N=%d M=%d",
+			samples, len(inputData), len(outputData), inputDimensions, outputDimensions,
+		)
 	}
 
-	mi := computeMI(xData, yData, T, N, M)
+	if len(outputData) != samples*outputDimensions {
+		return nil, fmt.Errorf(
+			"markov_blanket.mutual_information: len(Y)=%d, need T*M=%d",
+			len(outputData), samples*outputDimensions,
+		)
+	}
 
-	return []float64{mi}
+	mutualInfo := computeMI(
+		inputData,
+		outputData,
+		samples,
+		inputDimensions,
+		outputDimensions,
+	)
+	stateDict.SetOperationOutput([]float64{mutualInfo})
+
+	return stateDict, nil
 }
 
 // computeMI estimates MI using the Gaussian approximation via log-det ratio.

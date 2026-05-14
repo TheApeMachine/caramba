@@ -4,125 +4,112 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
 FusedQKV computes Q, K, V projections in a single matmul.
 
-WeightT is stored pre-transposed [DIn × (DQ+DK+DV)] to avoid per-call
-transpose allocation. Forward computes x @ WeightT directly.
+The state dict supplies:
+  - OpShape: [M, DIn]
+  - Inputs[0]: x, flattened [M * DIn]
+  - Weight: pre-transposed [DIn * (DQ+DK+DV)]
+  - Bias: optional [DQ+DK+DV]
+  - DIn, DQ, DK, DV
 */
-type FusedQKV struct {
-	WeightT []float64 // [DIn × (DQ+DK+DV)] pre-transposed
-	Bias    []float64
-	DIn     int
-	DQ      int
-	DK      int
-	DV      int
+type FusedQKV struct{}
+
+/*
+NewFusedQKV instantiates a stateless FusedQKV operation.
+*/
+func NewFusedQKV(args ...int) *FusedQKV {
+	return &FusedQKV{}
 }
 
 /*
-NewFusedQKV creates a FusedQKV layer with Kaiming uniform weight init using an implicit deterministic seed (see NewFusedQKVWithSeed).
-*/
-func NewFusedQKV(dIn, dQ, dK, dV int) *FusedQKV {
-	return NewFusedQKVWithSeed(dIn, dQ, dK, dV, 1)
-}
-
-/*
-NewFusedQKVWithSeed creates a FusedQKV with Kaiming uniform weight init driven by the given seed.
+NewFusedQKVWithSeed instantiates a stateless FusedQKV operation.
 */
 func NewFusedQKVWithSeed(dIn, dQ, dK, dV int, seed int64) *FusedQKV {
-	return NewFusedQKVWithRNG(dIn, dQ, dK, dV, rand.New(rand.NewSource(seed)))
+	return &FusedQKV{}
 }
 
 /*
-NewFusedQKVWithRNG creates a FusedQKV using the caller-owned RNG for weight and bias init.
+NewFusedQKVWithRNG instantiates a stateless FusedQKV operation.
 */
 func NewFusedQKVWithRNG(dIn, dQ, dK, dV int, rng *rand.Rand) *FusedQKV {
-	outDim := dQ + dK + dV
-	bound := math.Sqrt(2.0 / float64(dIn))
-	weight := make([]float64, outDim*dIn)
-
-	for i := range weight {
-		weight[i] = (rng.Float64()*2 - 1) * bound
-	}
-
-	biasBound := 1.0 / math.Sqrt(float64(dIn))
-	bias := make([]float64, outDim)
-
-	for i := range bias {
-		bias[i] = (rng.Float64()*2 - 1) * biasBound
-	}
-
-	return &FusedQKV{
-		WeightT: transposeF64(weight, outDim, dIn),
-		Bias:    bias,
-		DIn:     dIn,
-		DQ:      dQ,
-		DK:      dK,
-		DV:      dV,
-	}
+	return &FusedQKV{}
 }
 
 /*
-Forward computes output = x @ WeightT [+ bias].
-Returns flat [M*(DQ+DK+DV)]; caller splits by DQ, DK, DV.
+Forward computes output = x @ weight [+ bias].
 */
-func (fqkv *FusedQKV) Forward(shape []int, data ...[]float64) []float64 {
-	N := fqkv.DQ + fqkv.DK + fqkv.DV
+func (fqkv *FusedQKV) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("projection.fused_qkv"); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
 
 	if len(shape) < 1 {
-		panic("projection: FusedQKV.Forward: empty shape")
+		return nil, fmt.Errorf("projection.fused_qkv: shape is required")
 	}
 
 	M := shape[0]
+	K := stateDict.DIn
+
+	if len(shape) > 1 && K == 0 {
+		K = shape[len(shape)-1]
+	}
+
+	N := stateDict.DQ + stateDict.DK + stateDict.DV
 
 	if M <= 0 {
-		panic(fmt.Sprintf("projection: FusedQKV.Forward: shape[0]=%d must be > 0", M))
+		return nil, fmt.Errorf("projection.fused_qkv: M must be positive, got %d", M)
 	}
 
-	if fqkv.DIn <= 0 {
-		panic(fmt.Sprintf("projection: FusedQKV.Forward: DIn=%d must be > 0", fqkv.DIn))
+	if K <= 0 {
+		return nil, fmt.Errorf("projection.fused_qkv: d_in must be positive, got %d", K)
 	}
 
-	if len(data) < 1 || data[0] == nil {
-		panic("projection: FusedQKV.Forward: missing data[0]")
+	if N <= 0 {
+		return nil, fmt.Errorf("projection.fused_qkv: DQ+DK+DV must be positive, got %d", N)
 	}
 
-	if M > len(data[0])/fqkv.DIn {
-		panic(fmt.Sprintf(
-			"projection: FusedQKV.Forward: len(data[0])=%d insufficient for shape[0]=%d and DIn=%d (need len(data[0]) >= shape[0]*DIn)",
-			len(data[0]), M, fqkv.DIn,
-		))
+	if M > len(stateDict.Inputs[0])/K {
+		return nil, fmt.Errorf(
+			"projection.fused_qkv: input length %d is insufficient for M=%d and K=%d",
+			len(stateDict.Inputs[0]), M, K,
+		)
 	}
 
-	wantW := int64(fqkv.DIn) * int64(N)
-
-	if wantW < 0 || wantW > int64(math.MaxInt) || len(fqkv.WeightT) != int(wantW) {
-		panic(fmt.Sprintf(
-			"projection: FusedQKV.Forward: len(WeightT)=%d want DIn*(DQ+DK+DV)=%d (DIn=%d N=%d)",
-			len(fqkv.WeightT), int(wantW), fqkv.DIn, N,
-		))
+	if int64(K)*int64(N) < 0 || int64(K)*int64(N) > int64(math.MaxInt) {
+		return nil, fmt.Errorf("projection.fused_qkv: K*N overflows int")
 	}
 
-	if fqkv.Bias != nil && len(fqkv.Bias) != N {
-		panic(fmt.Sprintf(
-			"projection: FusedQKV.Forward: len(Bias)=%d want DQ+DK+DV=%d",
-			len(fqkv.Bias), N,
-		))
+	if len(stateDict.Weight) != K*N {
+		return nil, fmt.Errorf(
+			"projection.fused_qkv: weight length %d does not match K*N=%d",
+			len(stateDict.Weight), K*N,
+		)
+	}
+
+	if len(stateDict.Bias) != 0 && len(stateDict.Bias) != N {
+		return nil, fmt.Errorf(
+			"projection.fused_qkv: bias length %d does not match N=%d",
+			len(stateDict.Bias), N,
+		)
 	}
 
 	if int64(M)*int64(N) < 0 || int64(M)*int64(N) > int64(math.MaxInt) {
-		panic(fmt.Sprintf("projection: FusedQKV.Forward: M*N overflows int (M=%d N=%d)", M, N))
+		return nil, fmt.Errorf("projection.fused_qkv: M*N overflows int")
 	}
 
-	K := fqkv.DIn
-	out := make([]float64, M*N)
-	applyMatmul(out, data[0], fqkv.WeightT, M, K, N)
+	stateDict.EnsureOperationOutLen(M * N)
+	fusedQKVKernel(
+		stateDict.Out, stateDict.Inputs[0], stateDict.Weight, stateDict.Bias,
+		M, K, N,
+	)
 
-	if fqkv.Bias != nil {
-		addBias(out, fqkv.Bias, M, N)
-	}
-
-	return out
+	return stateDict, nil
 }

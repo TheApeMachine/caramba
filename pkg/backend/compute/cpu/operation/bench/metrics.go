@@ -1,100 +1,116 @@
 package bench
 
 import (
-	mathops "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+	"fmt"
+	"math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
-Accuracy accumulates per-sample argmax accuracy.
-Inputs: data[0] = predicted logits/probs, data[1] = one-hot targets.
-Output: running mean accuracy as single-element slice.
+Accuracy accumulates per-sample argmax accuracy in the supplied state dict.
 */
-type Accuracy struct {
-	correct int
-	total   int
-}
+type Accuracy struct{}
 
 func NewAccuracy() *Accuracy { return &Accuracy{} }
 
-func (acc *Accuracy) Forward(_ []int, data ...[]float64) []float64 {
-	acc.total++
-
-	if argmax(data[0]) == argmax(data[1]) {
-		acc.correct++
+func (accuracy *Accuracy) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperationInputs("bench.accuracy", 2); err != nil {
+		return nil, err
 	}
 
-	return []float64{float64(acc.correct) / float64(acc.total)}
+	predicted, targets := stateDict.Inputs[0], stateDict.Inputs[1]
+
+	if len(predicted) == 0 || len(predicted) != len(targets) {
+		return nil, fmt.Errorf("bench.accuracy: prediction and target lengths must match and be non-zero")
+	}
+
+	stateDict.Total++
+
+	if argmax(predicted) == argmax(targets) {
+		stateDict.Correct++
+	}
+
+	stateDict.EnsureOperationOutLen(1)
+	stateDict.Out[0] = float64(stateDict.Correct) / float64(stateDict.Total)
+
+	return stateDict, nil
 }
 
 /*
-Perplexity accumulates per-sample cross-entropy and computes exp(mean CE).
-Inputs: data[0] = predicted probabilities, data[1] = one-hot targets.
-Output: running perplexity as single-element slice.
+Perplexity accumulates per-sample cross-entropy in the supplied state dict.
 */
-type Perplexity struct {
-	sumCE float64
-	total int
-}
+type Perplexity struct{}
 
 func NewPerplexity() *Perplexity { return &Perplexity{} }
 
-func (px *Perplexity) Forward(_ []int, data ...[]float64) []float64 {
-	px.total++
+func (perplexity *Perplexity) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperationInputs("bench.perplexity", 2); err != nil {
+		return nil, err
+	}
 
-	n := len(data[0])
-	probs := make([]float64, n)
-	copy(probs, data[0])
-	mathops.AddScalarVec(probs, 1e-9)
+	probs, targets := stateDict.Inputs[0], stateDict.Inputs[1]
 
-	logp := make([]float64, n)
-	mathops.LogVec(logp, probs)
-	mathops.MulVec(logp, logp, data[1])
-	ce := -mathops.ReduceSum(logp)
+	if len(probs) == 0 || len(probs) != len(targets) {
+		return nil, fmt.Errorf("bench.perplexity: probability and target lengths must match and be non-zero")
+	}
 
-	px.sumCE += ce
+	crossEntropy := 0.0
 
-	// Single scalar exp via the SIMD primitive (1-element slice).
-	avg := []float64{px.sumCE / float64(px.total)}
-	mathops.ExpVec(avg, avg)
+	for index, target := range targets {
+		crossEntropy -= math.Log(probs[index]+1e-9) * target
+	}
 
-	return avg
+	stateDict.Total++
+	stateDict.Sum += crossEntropy
+	stateDict.EnsureOperationOutLen(1)
+	stateDict.Out[0] = math.Exp(stateDict.Sum / float64(stateDict.Total))
+
+	return stateDict, nil
 }
 
 /*
-F1 accumulates binary classification TP/FP/FN and emits macro F1.
-Inputs: data[0] = predicted probabilities (threshold 0.5), data[1] = binary targets.
-Output: running F1 as single-element slice.
+F1 accumulates binary classification TP/FP/FN in the supplied state dict.
 */
-type F1 struct {
-	tp, fp, fn float64
-}
+type F1 struct{}
 
 func NewF1() *F1 { return &F1{} }
 
-func (f1 *F1) Forward(_ []int, data ...[]float64) []float64 {
+func (f1 *F1) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperationInputs("bench.f1", 2); err != nil {
+		return nil, err
+	}
+
+	predicted, targets := stateDict.Inputs[0], stateDict.Inputs[1]
+
+	if len(predicted) != len(targets) {
+		return nil, fmt.Errorf("bench.f1: prediction and target lengths must match")
+	}
+
 	threshold := 0.5
 
-	for idx := range data[0] {
-		pred := data[0][idx] >= threshold
-		actual := data[1][idx] >= threshold
+	for index := range predicted {
+		pred := predicted[index] >= threshold
+		actual := targets[index] >= threshold
 
 		switch {
 		case pred && actual:
-			f1.tp++
+			stateDict.TP++
 		case pred && !actual:
-			f1.fp++
+			stateDict.FP++
 		case !pred && actual:
-			f1.fn++
+			stateDict.FN++
 		}
 	}
 
-	precision := f1.tp / (f1.tp + f1.fp + 1e-9)
-	recall := f1.tp / (f1.tp + f1.fn + 1e-9)
+	precision := stateDict.TP / (stateDict.TP + stateDict.FP + 1e-9)
+	recall := stateDict.TP / (stateDict.TP + stateDict.FN + 1e-9)
+	stateDict.EnsureOperationOutLen(1)
+	stateDict.Out[0] = 2 * precision * recall / (precision + recall + 1e-9)
 
-	return []float64{2 * precision * recall / (precision + recall + 1e-9)}
+	return stateDict, nil
 }
 
 func argmax(xs []float64) int {
 	return argmaxImpl(xs)
 }
-

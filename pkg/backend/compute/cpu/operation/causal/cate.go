@@ -3,6 +3,8 @@ package causal
 import (
 	"fmt"
 	"math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -31,39 +33,46 @@ func NewCATE() *CATE {
 /*
 Forward computes the CATE for each observation.
 */
-func (cate *CATE) Forward(shape []int, data ...[]float64) []float64 {
+func (cate *CATE) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Errorf("causal: CATE.Forward: len(shape)=%d, need >= 2", len(shape)).Error())
+		return nil, fmt.Errorf("causal.cate: len(shape)=%d, need >= 2", len(shape))
 	}
 
-	if len(data) < 3 {
-		panic(fmt.Errorf("causal: CATE.Forward: len(data)=%d, need >= 3", len(data)).Error())
+	if err := stateDict.RequireOperationInputs("causal.cate", 3); err != nil {
+		return nil, err
 	}
 
-	t := shape[0]
-	nx := shape[1]
+	samples := shape[0]
+	covariateDimensions := shape[1]
 
-	xMat := data[0]
-	treatment := data[1]
-	yVec := data[2]
+	xMat := stateDict.Inputs[0]
+	treatment := stateDict.Inputs[1]
+	yVec := stateDict.Inputs[2]
 
-	if len(xMat) != t*nx {
-		panic(fmt.Errorf(
-			"causal: CATE.Forward: len(X)=%d, need T*N_x=%d",
-			len(xMat), t*nx,
-		).Error())
+	if samples <= 0 || covariateDimensions <= 0 {
+		return nil, fmt.Errorf(
+			"causal.cate: need T > 0 and N_x > 0 (got T=%d N_x=%d)",
+			samples, covariateDimensions,
+		)
 	}
 
-	if len(treatment) != t || len(yVec) != t {
-		panic(fmt.Errorf(
-			"causal: CATE.Forward: T_treatment and Y must have len T=%d", t,
-		).Error())
+	if len(xMat) != samples*covariateDimensions {
+		return nil, fmt.Errorf(
+			"causal.cate: len(X)=%d, need T*N_x=%d",
+			len(xMat), samples*covariateDimensions,
+		)
 	}
 
-	treatedIdx := make([]int, 0, t)
-	controlIdx := make([]int, 0, t)
+	if len(treatment) != samples || len(yVec) != samples {
+		return nil, fmt.Errorf("causal.cate: T_treatment and Y must have len T=%d", samples)
+	}
 
-	for obsIdx := 0; obsIdx < t; obsIdx++ {
+	treatedIdx := make([]int, 0, samples)
+	controlIdx := make([]int, 0, samples)
+
+	for obsIdx := 0; obsIdx < samples; obsIdx++ {
 		if treatment[obsIdx] >= 0.5 {
 			treatedIdx = append(treatedIdx, obsIdx)
 		} else {
@@ -71,27 +80,33 @@ func (cate *CATE) Forward(shape []int, data ...[]float64) []float64 {
 		}
 	}
 
-	cateValues := make([]float64, t)
+	cateValues := make([]float64, samples)
 
 	if len(treatedIdx) == 0 || len(controlIdx) == 0 {
 		for obsIdx := range cateValues {
 			cateValues[obsIdx] = math.NaN()
 		}
 
-		return cateValues
+		stateDict.SetOperationOutput(cateValues)
+
+		return stateDict, nil
 	}
 
-	beta1 := fitOLS(xMat, yVec, treatedIdx, nx)
-	beta0 := fitOLS(xMat, yVec, controlIdx, nx)
+	beta1 := fitOLS(xMat, yVec, treatedIdx, covariateDimensions)
+	beta0 := fitOLS(xMat, yVec, controlIdx, covariateDimensions)
 
-	for obsIdx := 0; obsIdx < t; obsIdx++ {
-		xRow := xMat[obsIdx*nx : (obsIdx+1)*nx]
+	for obsIdx := 0; obsIdx < samples; obsIdx++ {
+		rowStart := obsIdx * covariateDimensions
+		rowEnd := rowStart + covariateDimensions
+		xRow := xMat[rowStart:rowEnd]
 		mu1 := beta1[0] + dotProduct(beta1[1:], xRow)
 		mu0 := beta0[0] + dotProduct(beta0[1:], xRow)
 		cateValues[obsIdx] = mu1 - mu0
 	}
 
-	return cateValues
+	stateDict.SetOperationOutput(cateValues)
+
+	return stateDict, nil
 }
 
 /*

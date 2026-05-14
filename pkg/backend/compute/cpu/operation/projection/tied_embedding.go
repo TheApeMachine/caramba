@@ -3,134 +3,109 @@ package projection
 import (
 	"fmt"
 	"math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
 TiedEmbedding projects hidden states back to vocabulary logits using the
-transposed token embedding matrix.
-
-WeightT is the pre-transposed form [DModel × VocabSize] so Forward performs
-one matmul with no per-call allocation. The caller owns the original
-[VocabSize × DModel] weight; this type caches its transpose.
+transposed token embedding matrix supplied by the state dict.
 */
-type TiedEmbedding struct {
-	WeightT   []float64 // [DModel × VocabSize] pre-transposed
-	VocabSize int
-	DModel    int
-}
+type TiedEmbedding struct{}
 
 /*
-NewTiedEmbedding creates a TiedEmbedding projection.
-weight must already be initialised (shared with the token embedding table),
-layout [VocabSize × DModel] row-major.
+NewTiedEmbedding instantiates a stateless tied embedding projection.
 */
 func NewTiedEmbedding(weight []float64, vocabSize, dModel int) (*TiedEmbedding, error) {
-	if vocabSize <= 0 || dModel <= 0 {
-		return nil, fmt.Errorf("projection: NewTiedEmbedding requires vocabSize > 0 and dModel > 0 (got %d, %d)", vocabSize, dModel)
-	}
-
-	need := int64(vocabSize) * int64(dModel)
-
-	if need < 0 || need > int64(math.MaxInt) {
-		return nil, fmt.Errorf(
-			"projection: NewTiedEmbedding: vocabSize*dModel overflows int (vocabSize=%d dModel=%d)",
-			vocabSize, dModel,
-		)
-	}
-
-	if int64(len(weight)) < need {
-		return nil, fmt.Errorf(
-			"projection: NewTiedEmbedding: len(weight)=%d < vocabSize*dModel=%d",
-			len(weight), need,
-		)
-	}
-
-	return &TiedEmbedding{
-		WeightT:   transposeF64(weight, vocabSize, dModel),
-		VocabSize: vocabSize,
-		DModel:    dModel,
-	}, nil
+	return &TiedEmbedding{}, nil
 }
 
 /*
-Forward computes logits = x @ WeightT.
-shape = [batch, seq, DModel]; M = batch*seq.
-data[0] = flattened hidden states [M * DModel].
-Returns [M * VocabSize].
+Forward computes logits = x @ weight.
 */
-func (te *TiedEmbedding) Forward(shape []int, data ...[]float64) []float64 {
+func (tiedEmbedding *TiedEmbedding) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("projection.tied_embedding"); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 1 {
-		panic("projection: TiedEmbedding.Forward: empty shape")
+		return nil, fmt.Errorf("projection.tied_embedding: shape is required")
 	}
 
-	last := shape[len(shape)-1]
+	K := stateDict.DModel
 
-	if last != te.DModel {
-		panic(fmt.Sprintf(
-			"projection: TiedEmbedding.Forward: shape[last]=%d must equal DModel=%d",
-			last, te.DModel,
-		))
+	if K == 0 {
+		K = shape[len(shape)-1]
 	}
 
-	if len(data) < 1 || data[0] == nil {
-		panic("projection: TiedEmbedding.Forward: empty data")
+	N := stateDict.VocabSize
+
+	if K <= 0 {
+		return nil, fmt.Errorf("projection.tied_embedding: d_model must be positive, got %d", K)
+	}
+
+	if N <= 0 {
+		return nil, fmt.Errorf("projection.tied_embedding: vocab_size must be positive, got %d", N)
+	}
+
+	if shape[len(shape)-1] != K {
+		return nil, fmt.Errorf(
+			"projection.tied_embedding: shape last dim %d does not match DModel=%d",
+			shape[len(shape)-1], K,
+		)
 	}
 
 	M := 1
 
-	for idx := 0; idx < len(shape)-1; idx++ {
-		if shape[idx] < 0 {
-			panic(fmt.Sprintf("projection: TiedEmbedding.Forward: shape[%d]=%d must be >= 0", idx, shape[idx]))
+	for dimensionIndex := 0; dimensionIndex < len(shape)-1; dimensionIndex++ {
+		dimension := shape[dimensionIndex]
+
+		if dimension < 0 {
+			return nil, fmt.Errorf(
+				"projection.tied_embedding: shape[%d]=%d must be non-negative",
+				dimensionIndex, dimension,
+			)
 		}
 
-		if shape[idx] == 0 {
+		if dimension == 0 {
 			M = 0
 
 			break
 		}
 
-		if M > math.MaxInt/shape[idx] {
-			panic(fmt.Sprintf(
-				"projection: TiedEmbedding.Forward: batch product overflows int (partial M=%d next=%d)",
-				M, shape[idx],
-			))
+		if M > math.MaxInt/dimension {
+			return nil, fmt.Errorf("projection.tied_embedding: batch product overflows int")
 		}
 
-		M *= shape[idx]
+		M *= dimension
 	}
 
-	if M == 0 {
-		return []float64{}
+	if M > len(stateDict.Inputs[0])/K {
+		return nil, fmt.Errorf(
+			"projection.tied_embedding: input length %d is insufficient for M=%d and K=%d",
+			len(stateDict.Inputs[0]), M, K,
+		)
 	}
 
-	K := te.DModel
-	N := te.VocabSize
-
-	if K > 0 && M > len(data[0])/K {
-		panic(fmt.Sprintf(
-			"projection: TiedEmbedding.Forward: len(data[0])=%d insufficient for M=%d and DModel=%d (need len >= M*DModel)",
-			len(data[0]), M, te.DModel,
-		))
+	if int64(K)*int64(N) < 0 || int64(K)*int64(N) > int64(math.MaxInt) {
+		return nil, fmt.Errorf("projection.tied_embedding: K*N overflows int")
 	}
 
-	wantW := int64(K) * int64(N)
-
-	if wantW < 0 || wantW > int64(math.MaxInt) || len(te.WeightT) != int(wantW) {
-		panic(fmt.Sprintf(
-			"projection: TiedEmbedding.Forward: len(WeightT)=%d want DModel*VocabSize=%d",
-			len(te.WeightT), int(wantW),
-		))
+	if len(stateDict.Weight) != K*N {
+		return nil, fmt.Errorf(
+			"projection.tied_embedding: weight length %d does not match K*N=%d",
+			len(stateDict.Weight), K*N,
+		)
 	}
 
 	if int64(M)*int64(N) < 0 || int64(M)*int64(N) > int64(math.MaxInt) {
-		panic(fmt.Sprintf(
-			"projection: TiedEmbedding.Forward: M*VocabSize overflows int (M=%d VocabSize=%d)",
-			M, N,
-		))
+		return nil, fmt.Errorf("projection.tied_embedding: M*N overflows int")
 	}
 
-	out := make([]float64, M*N)
-	applyMatmul(out, data[0], te.WeightT, M, K, N)
+	stateDict.EnsureOperationOutLen(M * N)
+	tiedEmbeddingKernel(stateDict.Out, stateDict.Inputs[0], stateDict.Weight, M, K, N)
 
-	return out
+	return stateDict, nil
 }

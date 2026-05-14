@@ -1,6 +1,10 @@
 package predictive_coding
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 Prediction computes the top-down prediction μ̂ = W @ r from a higher-level
@@ -18,34 +22,36 @@ func NewPrediction() *Prediction { return &Prediction{} }
 /*
 Forward computes μ̂ = W @ r where W is [D_out, D_in] row-major and r is [D_in].
 */
-func (op *Prediction) Forward(shape []int, data ...[]float64) []float64 {
+func (op *Prediction) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperationInputs("predictive_coding.prediction", 2); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 2 {
-		panic(fmt.Sprintf("predictive_coding: Prediction.Forward: len(shape)=%d, need >= 2", len(shape)))
+		return nil, fmt.Errorf("predictive_coding.prediction: expected rank >= 2, got %d", len(shape))
 	}
 
 	dOut, dIn := shape[0], shape[1]
 	needW := rowMajorWeightLen(dOut, dIn)
 
-	if len(data) < 2 {
-		panic(fmt.Sprintf("predictive_coding: Prediction.Forward: len(data)=%d, need >= 2", len(data)))
+	if len(stateDict.Inputs[0]) != needW {
+		return nil, fmt.Errorf(
+			"predictive_coding.prediction: W length %d does not match D_out*D_in=%d",
+			len(stateDict.Inputs[0]), needW,
+		)
 	}
 
-	if len(data[0]) != needW {
-		panic(fmt.Sprintf(
-			"predictive_coding: Prediction.Forward: len(W)=%d, need D_out*D_in=%d",
-			len(data[0]), needW,
-		))
+	if len(stateDict.Inputs[1]) != dIn {
+		return nil, fmt.Errorf(
+			"predictive_coding.prediction: r length %d does not match D_in=%d",
+			len(stateDict.Inputs[1]), dIn,
+		)
 	}
 
-	if len(data[1]) != dIn {
-		panic(fmt.Sprintf(
-			"predictive_coding: Prediction.Forward: len(r)=%d, need D_in=%d",
-			len(data[1]), dIn,
-		))
-	}
+	stateDict.EnsureOperationOutLen(dOut)
+	applyMatVec(stateDict.Out, stateDict.Inputs[0], stateDict.Inputs[1], dOut, dIn)
 
-	out := make([]float64, dOut)
-	applyMatVec(out, data[0], data[1], dOut, dIn)
-
-	return out
+	return stateDict, nil
 }
