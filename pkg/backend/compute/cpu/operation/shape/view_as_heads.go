@@ -41,9 +41,9 @@ func (viewAsHeads *ViewAsHeads) Forward(stateDict *state.Dict) (*state.Dict, err
 
 	headDim := dimension / stateDict.NumHeads
 	stateDict.EnsureOperationOutLen(len(stateDict.Inputs[0]))
-	transposeKernel(
+	viewAsHeadsKernel(
 		stateDict.Out, stateDict.Inputs[0],
-		[]int{batch, tokens, stateDict.NumHeads, headDim}, 1, 2,
+		batch, tokens, stateDict.NumHeads, headDim,
 	)
 
 	return stateDict, nil

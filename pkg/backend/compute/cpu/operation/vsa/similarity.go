@@ -1,6 +1,10 @@
 package vsa
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 Similarity computes the dot-product cosine similarity between two VSA hypervectors.
@@ -18,23 +22,26 @@ func NewSimilarity() *Similarity { return &Similarity{} }
 /*
 Forward returns a length-1 slice containing the dot product of data[0] and data[1].
 */
-func (similarity *Similarity) Forward(shape []int, data ...[]float64) []float64 {
-	if len(data) < 2 || data[0] == nil || data[1] == nil {
-		panic(fmt.Sprintf("vsa: Similarity.Forward: len(data)=%d, need >= 2 with non-nil data[0], data[1]", len(data)))
+func (similarity *Similarity) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperationInputs("vsa.similarity", 2); err != nil {
+		return nil, err
 	}
 
-	na, nb := len(data[0]), len(data[1])
+	na, nb := len(stateDict.Inputs[0]), len(stateDict.Inputs[1])
 
 	if na != nb {
-		panic(fmt.Sprintf(
-			"vsa: Similarity.Forward before applyDot: len(data[0])=%d len(data[1])=%d must match",
+		return nil, fmt.Errorf(
+			"vsa.similarity: input lengths must match, got %d and %d",
 			na, nb,
-		))
+		)
 	}
 
 	if na == 0 {
-		panic("vsa: Similarity.Forward: empty vectors not allowed before applyDot")
+		return nil, fmt.Errorf("vsa.similarity: empty vectors are not allowed")
 	}
 
-	return []float64{applyDot(data[0], data[1])}
+	stateDict.EnsureOperationOutLen(1)
+	stateDict.Out[0] = similarityKernel(stateDict.Inputs[0], stateDict.Inputs[1])
+
+	return stateDict, nil
 }

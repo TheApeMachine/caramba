@@ -2,6 +2,8 @@ package vsa
 
 import (
 	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -21,41 +23,42 @@ func NewBundle() *Bundle { return &Bundle{} }
 Forward sums all input vectors then L2-normalises the result.
 If len(data)==0, returns a zero vector of length n (no normalisation step).
 */
-func (bundle *Bundle) Forward(shape []int, data ...[]float64) []float64 {
+func (bundle *Bundle) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 1 {
-		panic("vsa: Bundle.Forward: len(shape) < 1")
+		return nil, fmt.Errorf("vsa.bundle: shape is required")
 	}
 
 	n := shape[0]
 
 	if n < 0 {
-		panic(fmt.Sprintf("vsa: Bundle.Forward: shape[0] (n) must be non-negative, got n=%d", n))
+		return nil, fmt.Errorf("vsa.bundle: n must be non-negative, got %d", n)
 	}
 
-	if n == 0 {
-		return []float64{}
-	}
-
-	for i, vec := range data {
+	for index, vec := range stateDict.Inputs {
 		if len(vec) != n {
-			panic(fmt.Sprintf(
-				"vsa: Bundle.Forward: data[%d] len=%d, need n=%d",
-				i, len(vec), n,
-			))
+			return nil, fmt.Errorf(
+				"vsa.bundle: input %d length %d does not match n %d",
+				index, len(vec), n,
+			)
 		}
 	}
 
-	out := make([]float64, n)
+	stateDict.EnsureOperationOutLen(n)
 
-	if len(data) == 0 {
-		return out
+	if len(stateDict.Inputs) == 0 {
+		clear(stateDict.Out)
+
+		return stateDict, nil
 	}
 
-	for _, vec := range data {
-		bundleAccum(out, vec)
-	}
+	clear(stateDict.Out)
+	bundleKernel(stateDict.Out, stateDict.Inputs)
 
-	applyL2Normalize(out)
-
-	return out
+	return stateDict, nil
 }
