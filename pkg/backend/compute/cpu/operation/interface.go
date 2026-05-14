@@ -1,11 +1,12 @@
 package operation
 
+import "github.com/theapemachine/caramba/pkg/backend/compute/state"
+
 /*
-Operation applies an elementwise transform to a float64 slice and returns a new slice.
-Each call may allocate; callers should not assume buffer reuse.
+Operation applies one backend-native operation to a state dictionary.
 */
 type Operation interface {
-	Forward(shape []int, data ...[]float64) []float64
+	Forward(*state.Dict) (*state.Dict, error)
 }
 
 /*

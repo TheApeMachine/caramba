@@ -1,0 +1,172 @@
+#include "textflag.h"
+
+// adamwStepAVX2(out, mState, vState, params, grads []float64,
+//               beta1, oneMinusBeta1, beta2, oneMinusBeta2,
+//               lrT, eps, lrWD float64)
+//
+// AVX2+FMA AdamW update, four float64 lanes per iteration.
+TEXT ·adamwStepAVX2(SB), NOSPLIT, $0-176
+	MOVQ out+0(FP), AX
+	MOVQ m+24(FP), R8
+	MOVQ v+48(FP), R9
+	MOVQ params+72(FP), R10
+	MOVQ grads+96(FP), R11
+	MOVQ out_len+8(FP), CX
+
+	VBROADCASTSD beta1+120(FP), Y8
+	VBROADCASTSD oneMinusBeta1+128(FP), Y9
+	VBROADCASTSD beta2+136(FP), Y10
+	VBROADCASTSD oneMinusBeta2+144(FP), Y11
+	VBROADCASTSD lrT+152(FP), Y12
+	VBROADCASTSD eps+160(FP), Y13
+	VBROADCASTSD lrWD+168(FP), Y14
+
+	CMPQ CX, $4
+	JL   adamw_avx2_tail
+
+adamw_avx2_loop:
+	VMOVUPD (R8), Y0
+	VMOVUPD (R9), Y1
+	VMOVUPD (R10), Y2
+	VMOVUPD (R11), Y3
+
+	VMULPD Y3, Y3, Y4
+
+	VMULPD      Y8, Y0, Y0
+	VFMADD231PD Y9, Y3, Y0
+	VMOVUPD     Y0, (R8)
+
+	VMULPD      Y10, Y1, Y1
+	VFMADD231PD Y11, Y4, Y1
+	VMOVUPD     Y1, (R9)
+
+	VSQRTPD Y1, Y5
+	VADDPD  Y13, Y5, Y5
+
+	VDIVPD Y5, Y0, Y6
+
+	VMOVAPD      Y2, Y7
+	VFNMADD231PD Y14, Y2, Y7
+	VFNMADD231PD Y12, Y6, Y7
+	VMOVUPD      Y7, (AX)
+
+	ADDQ $32, AX
+	ADDQ $32, R8
+	ADDQ $32, R9
+	ADDQ $32, R10
+	ADDQ $32, R11
+	SUBQ $4, CX
+	CMPQ CX, $4
+	JGE  adamw_avx2_loop
+
+adamw_avx2_tail:
+	CMPQ CX, $2
+	JL   adamw_avx2_scalar
+
+	MOVUPD (R8), X0
+	MOVUPD (R9), X1
+	MOVUPD (R10), X2
+	MOVUPD (R11), X3
+
+	MOVAPD X3, X4
+	MULPD  X3, X4
+
+	MOVSD  beta1+120(FP), X8
+	SHUFPD $0, X8, X8
+	MULPD  X8, X0
+	MOVSD  oneMinusBeta1+128(FP), X9
+	SHUFPD $0, X9, X9
+	MOVAPD X3, X5
+	MULPD  X9, X5
+	ADDPD  X5, X0
+	MOVUPD X0, (R8)
+
+	MOVSD  beta2+136(FP), X10
+	SHUFPD $0, X10, X10
+	MULPD  X10, X1
+	MOVSD  oneMinusBeta2+144(FP), X11
+	SHUFPD $0, X11, X11
+	MOVAPD X4, X5
+	MULPD  X11, X5
+	ADDPD  X5, X1
+	MOVUPD X1, (R9)
+
+	MOVAPD X1, X5
+	SQRTPD X5, X5
+	MOVSD  eps+160(FP), X13
+	SHUFPD $0, X13, X13
+	ADDPD  X13, X5
+
+	MOVAPD X0, X6
+	DIVPD  X5, X6
+
+	MOVSD  lrWD+168(FP), X14
+	SHUFPD $0, X14, X14
+	MOVAPD X2, X7
+	MOVAPD X2, X15
+	MULPD  X14, X15
+	SUBPD  X15, X7
+
+	MOVSD  lrT+152(FP), X12
+	SHUFPD $0, X12, X12
+	MULPD  X12, X6
+	SUBPD  X6, X7
+	MOVUPD X7, (AX)
+
+	ADDQ $16, AX
+	ADDQ $16, R8
+	ADDQ $16, R9
+	ADDQ $16, R10
+	ADDQ $16, R11
+	SUBQ $2, CX
+
+adamw_avx2_scalar:
+	CMPQ CX, $0
+	JLE  adamw_avx2_done
+
+	MOVSD (R8), X0
+	MOVSD (R9), X1
+	MOVSD (R10), X2
+	MOVSD (R11), X3
+
+	MOVAPD X3, X4
+	MULSD  X3, X4
+
+	MOVSD beta1+120(FP), X8
+	MULSD X8, X0
+	MOVSD oneMinusBeta1+128(FP), X9
+	MOVAPD X3, X5
+	MULSD X9, X5
+	ADDSD X5, X0
+	MOVSD X0, (R8)
+
+	MOVSD beta2+136(FP), X10
+	MULSD X10, X1
+	MOVSD oneMinusBeta2+144(FP), X11
+	MOVAPD X4, X5
+	MULSD X11, X5
+	ADDSD X5, X1
+	MOVSD X1, (R9)
+
+	MOVAPD X1, X5
+	SQRTSD X5, X5
+	MOVSD eps+160(FP), X13
+	ADDSD X13, X5
+
+	MOVAPD X0, X6
+	DIVSD X5, X6
+
+	MOVSD lrWD+168(FP), X14
+	MOVAPD X2, X7
+	MOVAPD X2, X15
+	MULSD X14, X15
+	SUBSD X15, X7
+
+	MOVSD lrT+152(FP), X12
+	MULSD X12, X6
+	SUBSD X6, X7
+	MOVSD X7, (AX)
+
+adamw_avx2_done:
+	VZEROUPPER
+	RET

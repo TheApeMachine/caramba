@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 func TestCausalMask(t *testing.T) {
@@ -14,22 +15,22 @@ func TestCausalMask(t *testing.T) {
 		Convey("Forward", func() {
 			Convey("It should produce a lower-triangular mask of zeros with -inf above diagonal", func() {
 				seq := 4
-				out := op.Forward([]int{seq})
+				out := forwardCausalMask(op, []int{seq})
 				So(out, ShouldHaveLength, seq*seq)
-				for i := 0; i < seq; i++ {
-					for j := 0; j < seq; j++ {
-						v := out[i*seq+j]
-						if j <= i {
-							So(v, ShouldEqual, 0.0)
+				for row := 0; row < seq; row++ {
+					for col := 0; col < seq; col++ {
+						value := out[row*seq+col]
+						if col <= row {
+							So(value, ShouldEqual, 0.0)
 						} else {
-							So(math.IsInf(v, -1), ShouldBeTrue)
+							So(math.IsInf(value, -1), ShouldBeTrue)
 						}
 					}
 				}
 			})
 
 			Convey("It should produce a 1x1 mask of zero for seq_len=1", func() {
-				out := op.Forward([]int{1})
+				out := forwardCausalMask(op, []int{1})
 				So(out, ShouldResemble, []float64{0.0})
 			})
 		})
@@ -40,9 +41,17 @@ func BenchmarkCausalMask_Forward(b *testing.B) {
 	op := NewCausalMask()
 	shape := []int{512}
 
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		op.Forward(shape)
+	for b.Loop() {
+		stateDict := state.NewDict().WithShape(shape)
+		_, _ = op.Forward(stateDict)
 	}
+}
+
+func forwardCausalMask(op *CausalMask, shape []int) []float64 {
+	stateDict := state.NewDict().WithShape(shape)
+	outputState, err := op.Forward(stateDict)
+
+	So(err, ShouldBeNil)
+
+	return outputState.Out
 }

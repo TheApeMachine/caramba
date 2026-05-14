@@ -10,7 +10,14 @@
 // Strategy: broadcast -Inf into Y15, use scalar zero stores for attended
 // positions and VMOVUPD for masked portions (4 doubles at a time).
 
-DATA ·avx2NegInf+0(SB)/8, $0xFFF0000000000000  // -Inf as float64
+DATA ·avx2NegInf+0(SB)/1, $0x00
+DATA ·avx2NegInf+1(SB)/1, $0x00
+DATA ·avx2NegInf+2(SB)/1, $0x00
+DATA ·avx2NegInf+3(SB)/1, $0x00
+DATA ·avx2NegInf+4(SB)/1, $0x00
+DATA ·avx2NegInf+5(SB)/1, $0x00
+DATA ·avx2NegInf+6(SB)/1, $0xF0
+DATA ·avx2NegInf+7(SB)/1, $0xFF
 GLOBL ·avx2NegInf(SB), RODATA|NOPTR, $8
 
 TEXT ·CausalMaskAVX2(SB), NOSPLIT, $0-32

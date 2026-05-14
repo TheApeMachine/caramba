@@ -1,49 +1,82 @@
 package rmsprop
 
+import "github.com/theapemachine/caramba/pkg/backend/compute/state"
+
 /*
 RMSProp — running average of squared gradients. All four variants (plain,
 centered, momentum, centered-momentum) execute through dedicated AVX2/SSE2/NEON
 kernels with the entire update pipeline fused.
 */
 type RMSProp struct {
-	LR       float64
-	Alpha    float64
-	Eps      float64
-	Momentum float64
-	WD       float64
-	Centered bool
-	v, buf   []float64
-	gradAvg  []float64
 }
 
-func NewRMSProp(lr, alpha, eps, momentum, wd float64, centered bool) *RMSProp {
-	return &RMSProp{LR: lr, Alpha: alpha, Eps: eps, Momentum: momentum, WD: wd, Centered: centered}
+func NewRMSProp() *RMSProp {
+	return &RMSProp{}
 }
 
-func (rms *RMSProp) Step(params, grads []float64) []float64 {
-	n := len(params)
-
-	if rms.v == nil {
-		rms.v = make([]float64, n)
-		rms.buf = make([]float64, n)
-
-		if rms.Centered {
-			rms.gradAvg = make([]float64, n)
-		}
+func (rms *RMSProp) Step(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireReady("rmsprop"); err != nil {
+		return nil, err
 	}
 
-	out := make([]float64, n)
+	stateDict.EnsureBuf()
+
+	if stateDict.Centered {
+		stateDict.EnsureGradAvg()
+	}
 
 	switch {
-	case rms.Centered && rms.Momentum != 0:
-		rmspropCenteredMomentum(out, rms.v, rms.gradAvg, rms.buf, params, grads, rms.LR, rms.Alpha, rms.Eps, rms.Momentum, rms.WD)
-	case rms.Centered:
-		rmspropCentered(out, rms.v, rms.gradAvg, params, grads, rms.LR, rms.Alpha, rms.Eps, rms.WD)
-	case rms.Momentum != 0:
-		rmspropMomentum(out, rms.v, rms.buf, params, grads, rms.LR, rms.Alpha, rms.Eps, rms.Momentum, rms.WD)
+	case stateDict.Centered && stateDict.Momentum != 0:
+		rmspropCenteredMomentum(
+			stateDict.Out,
+			stateDict.V,
+			stateDict.GradAvg,
+			stateDict.Buf,
+			stateDict.Params,
+			stateDict.Grads,
+			stateDict.LR,
+			stateDict.Alpha,
+			stateDict.Eps,
+			stateDict.Momentum,
+			stateDict.WD,
+		)
+	case stateDict.Centered:
+		rmspropCentered(
+			stateDict.Out,
+			stateDict.V,
+			stateDict.GradAvg,
+			stateDict.Params,
+			stateDict.Grads,
+			stateDict.LR,
+			stateDict.Alpha,
+			stateDict.Eps,
+			stateDict.WD,
+		)
+	case stateDict.Momentum != 0:
+		rmspropMomentum(
+			stateDict.Out,
+			stateDict.V,
+			stateDict.Buf,
+			stateDict.Params,
+			stateDict.Grads,
+			stateDict.LR,
+			stateDict.Alpha,
+			stateDict.Eps,
+			stateDict.Momentum,
+			stateDict.WD,
+		)
 	default:
-		rmspropPlain(out, rms.v, params, grads, rms.LR, rms.Alpha, rms.Eps, rms.WD)
+		rmspropPlain(
+			stateDict.Out,
+			stateDict.V,
+			stateDict.Params,
+			stateDict.Grads,
+			stateDict.LR,
+			stateDict.Alpha,
+			stateDict.Eps,
+			stateDict.WD,
+		)
 	}
 
-	return out
+	return stateDict, nil
 }

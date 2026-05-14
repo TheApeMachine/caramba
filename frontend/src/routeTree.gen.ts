@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as RequestFeatureRouteImport } from './routes/request-feature'
+import { Route as NodegraphDevRouteImport } from './routes/nodegraph-dev'
+import { Route as NodegraphRouteImport } from './routes/nodegraph'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResearchIndexRouteImport } from './routes/research/index'
 import { Route as KanbanIndexRouteImport } from './routes/kanban/index'
@@ -43,6 +45,16 @@ const SignInRoute = SignInRouteImport.update({
 const RequestFeatureRoute = RequestFeatureRouteImport.update({
   id: '/request-feature',
   path: '/request-feature',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NodegraphDevRoute = NodegraphDevRouteImport.update({
+  id: '/nodegraph-dev',
+  path: '/nodegraph-dev',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NodegraphRoute = NodegraphRouteImport.update({
+  id: '/nodegraph',
+  path: '/nodegraph',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -136,6 +148,8 @@ const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/nodegraph': typeof NodegraphRoute
+  '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
@@ -158,6 +172,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/nodegraph': typeof NodegraphRoute
+  '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
@@ -180,6 +196,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/nodegraph': typeof NodegraphRoute
+  '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
@@ -204,6 +222,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/nodegraph'
+    | '/nodegraph-dev'
     | '/request-feature'
     | '/sign-in'
     | '/sign-up'
@@ -226,6 +246,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/nodegraph'
+    | '/nodegraph-dev'
     | '/request-feature'
     | '/sign-in'
     | '/sign-up'
@@ -247,6 +269,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/nodegraph'
+    | '/nodegraph-dev'
     | '/request-feature'
     | '/sign-in'
     | '/sign-up'
@@ -270,6 +294,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  NodegraphRoute: typeof NodegraphRoute
+  NodegraphDevRoute: typeof NodegraphDevRoute
   RequestFeatureRoute: typeof RequestFeatureRoute
   SignInRoute: typeof SignInRoute
   SignUpRoute: typeof SignUpRoute
@@ -309,6 +335,20 @@ declare module '@tanstack/react-router' {
       path: '/request-feature'
       fullPath: '/request-feature'
       preLoaderRoute: typeof RequestFeatureRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/nodegraph-dev': {
+      id: '/nodegraph-dev'
+      path: '/nodegraph-dev'
+      fullPath: '/nodegraph-dev'
+      preLoaderRoute: typeof NodegraphDevRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/nodegraph': {
+      id: '/nodegraph'
+      path: '/nodegraph'
+      fullPath: '/nodegraph'
+      preLoaderRoute: typeof NodegraphRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -450,6 +490,8 @@ const ResearchEditRouteRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  NodegraphRoute: NodegraphRoute,
+  NodegraphDevRoute: NodegraphDevRoute,
   RequestFeatureRoute: RequestFeatureRoute,
   SignInRoute: SignInRoute,
   SignUpRoute: SignUpRoute,

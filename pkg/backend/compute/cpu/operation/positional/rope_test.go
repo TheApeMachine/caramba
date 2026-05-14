@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 func TestRoPE(t *testing.T) {
@@ -19,7 +20,13 @@ func TestRoPE(t *testing.T) {
 				for i := range in {
 					in[i] = float64(i+1) / float64(n)
 				}
-				out := op.Forward([]int{batch, heads, seq, dim}, in)
+				outputState, err := op.Forward(
+					state.NewDict().
+						WithShape([]int{batch, heads, seq, dim}).
+						WithInput(in),
+				)
+				So(err, ShouldBeNil)
+				out := outputState.Out
 				So(out, ShouldHaveLength, n)
 
 				// Compare norm per position — rotation must preserve length.
@@ -40,7 +47,13 @@ func TestRoPE(t *testing.T) {
 				for i := range in {
 					in[i] = 1.0
 				}
-				out := op.Forward([]int{batch, heads, seq, dim}, in)
+				outputState, err := op.Forward(
+					state.NewDict().
+						WithShape([]int{batch, heads, seq, dim}).
+						WithInput(in),
+				)
+				So(err, ShouldBeNil)
+				out := outputState.Out
 				pos0 := out[:dim]
 				pos1 := out[dim : 2*dim]
 				same := true
@@ -68,7 +81,7 @@ func BenchmarkRoPE_Forward(b *testing.B) {
 
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		op.Forward(shape, in)
+	for b.Loop() {
+		_, _ = op.Forward(state.NewDict().WithShape(shape).WithInput(in))
 	}
 }

@@ -1,12 +1,12 @@
 import { ClerkProvider } from "@clerk/tanstack-react-start";
 import { auth } from "@clerk/tanstack-react-start/server";
-import type { QueryClient } from "@tanstack/react-query";
 import { TanStackDevtools } from "@tanstack/react-devtools";
+import type { QueryClient } from "@tanstack/react-query";
 import {
-	HeadContent,
-	Scripts,
 	createRootRouteWithContext,
+	HeadContent,
 	redirect,
+	Scripts,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import type React from "react";
@@ -20,11 +20,11 @@ import appCss from "../styles.css?url";
 
 const RootDocument = ({ children }: { children: React.ReactNode }) => {
 	return (
-		<html lang="en" className="dark">
+		<html lang="en" className="dark" suppressHydrationWarning>
 			<head>
 				<HeadContent />
 			</head>
-			<body className="flex h-full min-h-svh flex-col">
+			<body className="flex h-full min-h-svh flex-col" suppressHydrationWarning>
 				<ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up">
 					<ToastProvider>
 						<Page>
@@ -60,40 +60,42 @@ const RootDocument = ({ children }: { children: React.ReactNode }) => {
 	);
 };
 
-export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-	beforeLoad: async ({ location }) => {
-		if (isAuthenticationPublicPath(location.pathname)) {
-			return;
-		}
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
+	{
+		beforeLoad: async ({ location }) => {
+			if (isAuthenticationPublicPath(location.pathname)) {
+				return;
+			}
 
-		if (!import.meta.env.SSR) {
-			return;
-		}
+			if (!import.meta.env.SSR) {
+				return;
+			}
 
-		const authenticationState = await auth();
+			const authenticationState = await auth();
 
-		if (!authenticationState.userId) {
-			throw redirect({
-				to: "/sign-in",
-				search:
-					location.pathname !== "/" && location.pathname !== ""
-						? { redirect: location.pathname }
-						: {},
-			});
-		}
+			if (!authenticationState.userId) {
+				throw redirect({
+					to: "/sign-in",
+					search:
+						location.pathname !== "/" && location.pathname !== ""
+							? { redirect: location.pathname }
+							: {},
+				});
+			}
+		},
+		head: () => ({
+			title: "caramba",
+			meta: [
+				{ charSet: "utf-8" },
+				{ name: "viewport", content: "width=device-width, initial-scale=1" },
+			],
+			links: [{ rel: "stylesheet", href: appCss }],
+		}),
+		shellComponent: RootDocument,
+		notFoundComponent: () => (
+			<div className="flex h-full items-center justify-center text-muted-foreground">
+				Page not found
+			</div>
+		),
 	},
-	head: () => ({
-		title: "caramba",
-		meta: [
-			{ charSet: "utf-8" },
-			{ name: "viewport", content: "width=device-width, initial-scale=1" },
-		],
-		links: [{ rel: "stylesheet", href: appCss }],
-	}),
-	shellComponent: RootDocument,
-	notFoundComponent: () => (
-		<div className="flex h-full items-center justify-center text-muted-foreground">
-			Page not found
-		</div>
-	),
-});
+);

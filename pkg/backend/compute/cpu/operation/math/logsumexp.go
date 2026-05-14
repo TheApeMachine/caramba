@@ -1,21 +1,39 @@
 package math
 
-// LogSumExp computes log(sum(exp(x))) over the last dimension via a dedicated
-// AVX2/SSE2/NEON kernel — max, exp, sum, log all fused inline.
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
+
+/*
+LogSumExp computes log(sum(exp(x))) over the last dimension via a dedicated
+AVX2/SSE2/NEON kernel: max, exp, sum, log all fused inline.
+*/
 type LogSumExp struct{}
 
 func NewLogSumExp() *LogSumExp { return &LogSumExp{} }
 
-func (op *LogSumExp) Forward(shape []int, data ...[]float64) []float64 {
-	x := data[0]
-	dimSize := shape[len(shape)-1]
-	n := len(x) / dimSize
-	out := make([]float64, n)
-
-	for i := 0; i < n; i++ {
-		row := x[i*dimSize : (i+1)*dimSize]
-		out[i] = logSumExpRowSIMD(row)
+func (logSumExp *LogSumExp) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("math.logsumexp"); err != nil {
+		return nil, err
 	}
 
-	return out
+	dimSize := stateDict.OperationLastDim()
+
+	if dimSize <= 0 {
+		return nil, fmt.Errorf("math.logsumexp: last dimension must be positive, got %d", dimSize)
+	}
+
+	if len(stateDict.Inputs[0])%dimSize != 0 {
+		return nil, fmt.Errorf(
+			"math.logsumexp: input length %d is not divisible by dim %d",
+			len(stateDict.Inputs[0]), dimSize,
+		)
+	}
+
+	stateDict.EnsureOperationOutLen(len(stateDict.Inputs[0]) / dimSize)
+	logSumExpKernel(stateDict.Out, stateDict.Inputs[0], dimSize)
+
+	return stateDict, nil
 }

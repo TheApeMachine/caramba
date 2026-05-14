@@ -3,8 +3,22 @@
 // CausalMaskSSE2(dst []float64, seqLen int)
 // ABI0: dst+0(FP)=ptr, dst_len+8(FP)=len, dst_cap+16(FP)=cap, seqLen+24(FP)=int
 
-DATA ·sse2NegInf+0(SB)/8, $0xFFF0000000000000   // -Inf
-DATA ·sse2NegInf+8(SB)/8, $0xFFF0000000000000   // -Inf
+DATA ·sse2NegInf+0(SB)/1, $0x00
+DATA ·sse2NegInf+1(SB)/1, $0x00
+DATA ·sse2NegInf+2(SB)/1, $0x00
+DATA ·sse2NegInf+3(SB)/1, $0x00
+DATA ·sse2NegInf+4(SB)/1, $0x00
+DATA ·sse2NegInf+5(SB)/1, $0x00
+DATA ·sse2NegInf+6(SB)/1, $0xF0
+DATA ·sse2NegInf+7(SB)/1, $0xFF
+DATA ·sse2NegInf+8(SB)/1, $0x00
+DATA ·sse2NegInf+9(SB)/1, $0x00
+DATA ·sse2NegInf+10(SB)/1, $0x00
+DATA ·sse2NegInf+11(SB)/1, $0x00
+DATA ·sse2NegInf+12(SB)/1, $0x00
+DATA ·sse2NegInf+13(SB)/1, $0x00
+DATA ·sse2NegInf+14(SB)/1, $0xF0
+DATA ·sse2NegInf+15(SB)/1, $0xFF
 GLOBL ·sse2NegInf(SB), RODATA|NOPTR, $16
 
 TEXT ·CausalMaskSSE2(SB), NOSPLIT, $0-32

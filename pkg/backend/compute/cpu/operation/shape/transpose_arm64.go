@@ -7,7 +7,10 @@ package shape
 //go:noescape
 func CopyNEON(dst, src []float64)
 
-// copyBlock copies src into dst using the NEON SIMD path.
 func copyBlock(dst, src []float64) {
 	CopyNEON(dst, src)
+}
+
+func transposeKernel(dst, src []float64, shape []int, dim0, dim1 int) {
+	transposeGenericKernel(dst, src, shape, dim0, dim1)
 }

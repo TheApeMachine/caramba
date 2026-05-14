@@ -1,6 +1,11 @@
 package positional
 
-import "math"
+import (
+	"fmt"
+	"math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 RoPE applies Rotary Position Embeddings to Q or K tensors.
@@ -18,21 +23,21 @@ The cos/sin tables are built via an angle-recurrence kernel: theta_i and the
 single-step cos/sin per pair are precomputed once (O(numPairs)), then a
 SIMD AVX2/SSE2/NEON kernel advances all numPairs angles per t in lockstep.
 */
-type RoPE struct {
-	Base    float64
-	HeadDim int
+type RoPE struct{}
+
+/*
+NewRoPE instantiates a stateless RoPE operation.
+*/
+func NewRoPE(args ...any) *RoPE {
+	return &RoPE{}
 }
 
-func NewRoPE(base float64, headDim int) *RoPE {
+func buildRoPETables(base float64, headDim, seqLen int) (cosTable, sinTable []float64) {
 	if base == 0 {
 		base = 10000.0
 	}
 
-	return &RoPE{Base: base, HeadDim: headDim}
-}
-
-func (r *RoPE) buildTables(seqLen int) (cosTable, sinTable []float64) {
-	numPairs := r.HeadDim / 2
+	numPairs := headDim / 2
 	n := seqLen * numPairs
 	cosTable = make([]float64, n)
 	sinTable = make([]float64, n)
@@ -45,7 +50,7 @@ func (r *RoPE) buildTables(seqLen int) (cosTable, sinTable []float64) {
 	sinStep := make([]float64, numPairs)
 
 	for i := 0; i < numPairs; i++ {
-		theta := 1.0 / math.Pow(r.Base, float64(2*i)/float64(r.HeadDim))
+		theta := 1.0 / math.Pow(base, float64(2*i)/float64(headDim))
 		cosStep[i] = math.Cos(theta)
 		sinStep[i] = math.Sin(theta)
 	}
@@ -69,23 +74,46 @@ func (r *RoPE) buildTables(seqLen int) (cosTable, sinTable []float64) {
 	return
 }
 
-func (r *RoPE) Forward(shape []int, data ...[]float64) []float64 {
+func (rope *RoPE) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("positional.rope"); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
+	if len(shape) != 4 {
+		return nil, fmt.Errorf("positional.rope: expected rank 4, got %d", len(shape))
+	}
+
 	batch := shape[0]
 	numHeads := shape[1]
 	seqLen := shape[2]
 	headDim := shape[3]
 
-	if r.HeadDim == 0 {
-		r.HeadDim = headDim
+	if stateDict.HeadDim != 0 && stateDict.HeadDim != headDim {
+		return nil, fmt.Errorf(
+			"positional.rope: head_dim %d does not match shape head dim %d",
+			stateDict.HeadDim, headDim,
+		)
 	}
 
-	x := data[0]
-	out := make([]float64, len(x))
+	if headDim%2 != 0 {
+		return nil, fmt.Errorf("positional.rope: expected even head dim, got %d", headDim)
+	}
 
-	cosTable, sinTable := r.buildTables(seqLen)
+	if len(stateDict.Inputs[0]) != batch*numHeads*seqLen*headDim {
+		return nil, fmt.Errorf(
+			"positional.rope: input length %d does not match shape product %d",
+			len(stateDict.Inputs[0]), batch*numHeads*seqLen*headDim,
+		)
+	}
+
 	numPairs := headDim / 2
+	cosTable, sinTable := buildRoPETables(stateDict.Base, headDim, seqLen)
+	ropeKernel(
+		stateDict.Out, stateDict.Inputs[0], cosTable, sinTable,
+		batch, numHeads, seqLen, numPairs,
+	)
 
-	applyRoPE(out, x, cosTable, sinTable, batch, numHeads, seqLen, numPairs)
-
-	return out
+	return stateDict, nil
 }

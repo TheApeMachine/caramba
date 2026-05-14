@@ -1,14 +1,20 @@
 package math
 
-// Log computes log(x) elementwise via vectorized SIMD assembly.
+import "github.com/theapemachine/caramba/pkg/backend/compute/state"
+
+/*
+Log computes log(x) elementwise via vectorized SIMD assembly.
+*/
 type Log struct{}
 
 func NewLog() *Log { return &Log{} }
 
-func (op *Log) Forward(shape []int, data ...[]float64) []float64 {
-	x := data[0]
-	out := make([]float64, len(x))
-	logVec(out, x)
+func (log *Log) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("math.log"); err != nil {
+		return nil, err
+	}
 
-	return out
+	logKernel(stateDict.Out, stateDict.Inputs[0])
+
+	return stateDict, nil
 }

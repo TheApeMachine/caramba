@@ -25,7 +25,7 @@ func TestRunner(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "no execution targets provided")
 		})
 
-		Convey("Execute should fail loudly until graph execution is wired", func() {
+		Convey("Execute should materialize input targets", func() {
 			graph := ir.NewGraph()
 			shape, err := tensor.NewShape([]int{2, 2})
 			So(err, ShouldBeNil)
@@ -36,9 +36,9 @@ func TestRunner(t *testing.T) {
 
 			results, err := runner.Execute(ctx, graph, []*ir.Node{node})
 
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "graph execution is not wired")
-			So(results, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(results, ShouldNotBeNil)
+			So(results[node.ID()], ShouldNotBeNil)
 		})
 	})
 }
@@ -54,14 +54,15 @@ func BenchmarkRunner(b *testing.B) {
 	b.Run("SimpleGraph", func(b *testing.B) {
 		graph := ir.NewGraph()
 		node := ir.NewNode("in", ir.OpInput, shape)
+		node.SetMetadata("values", []float64{1, 2, 3, 4})
 		graph.AddNode(node)
 		targets := []*ir.Node{node}
 
 		b.ResetTimer()
 		for b.Loop() {
 			_, err := runner.Execute(ctx, graph, targets)
-			if err == nil {
-				b.Fatal("Execute unexpectedly succeeded")
+			if err != nil {
+				b.Fatalf("Execute failed: %v", err)
 			}
 		}
 	})

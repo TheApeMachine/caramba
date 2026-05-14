@@ -8,7 +8,7 @@ func SigmoidAVX2(dst, src []float64)
 //go:noescape
 func SigmoidSSE2(dst, src []float64)
 
-func applySigmoid(dst, src []float64) {
+func sigmoidKernel(dst, src []float64) {
 	elementCount := len(src)
 
 	if len(dst) < elementCount {

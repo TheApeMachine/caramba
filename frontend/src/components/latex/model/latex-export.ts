@@ -45,7 +45,7 @@ function blockToLatex(block: PaperBlock): string {
 	}
 	const lines = block.text
 		.split("\n")
-		.map((line: string) => escapeLatexText(line.trim()))
+		.map((line) => escapeLatexText(line.trim()))
 		.filter(Boolean);
 	if (lines.length === 0) {
 		return "";

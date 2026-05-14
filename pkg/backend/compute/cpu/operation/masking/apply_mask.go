@@ -1,21 +1,36 @@
 package masking
 
-// ApplyMask applies an additive mask to attention scores.
-//
-// Convention: mask[i] = 0.0 to attend, -Inf to block.
-// output[i] = scores[i] + mask[i]
-//
-// Forward: shape=[batch, heads, seq, seq], data[0]=scores, data[1]=mask
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
+
+/*
+ApplyMask applies an additive mask to attention scores.
+
+Convention: mask[i] = 0.0 to attend, -Inf to block.
+output[i] = scores[i] + mask[i]
+*/
 type ApplyMask struct{}
 
 func NewApplyMask() *ApplyMask { return &ApplyMask{} }
 
-func (op *ApplyMask) Forward(shape []int, data ...[]float64) []float64 {
-	scores := data[0]
-	mask := data[1]
-	out := make([]float64, len(scores))
-	applyMaskAdd(out, scores, mask)
-	return out
+func (applyMask *ApplyMask) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperationInputs("masking.apply", 2); err != nil {
+		return nil, err
+	}
+
+	if len(stateDict.Inputs[0]) != len(stateDict.Inputs[1]) {
+		return nil, fmt.Errorf(
+			"masking.apply: scores and mask length mismatch: scores=%d mask=%d",
+			len(stateDict.Inputs[0]), len(stateDict.Inputs[1]),
+		)
+	}
+
+	applyMaskKernel(stateDict.Out, stateDict.Inputs[0], stateDict.Inputs[1])
+
+	return stateDict, nil
 }
 
 // applyMaskScalar is the pure-Go fallback.

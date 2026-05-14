@@ -5,23 +5,25 @@
 //
 // For each row i: write (i+1) zeros then (seqLen-i-1) -Inf values.
 
-DATA ·neonNegInf+0(SB)/8, $0xFFF0000000000000
-GLOBL ·neonNegInf(SB), RODATA|NOPTR, $8
 DATA ·neonZero+0(SB)/8, $0.0
 GLOBL ·neonZero(SB), RODATA|NOPTR, $8
 
-TEXT ·CausalMaskNEON(SB), NOSPLIT, $0-32
+TEXT ·CausalMaskNEON(SB), NOSPLIT, $0-40
 	MOVD dst+0(FP), R0        // R0 = dst ptr
 	MOVD seqLen+24(FP), R1    // R1 = seqLen
 	CBZ  R1, cm_neon_done
 
-	FMOVD ·neonNegInf(SB), F31   // F31 = -Inf
+	MOVD $0x7FF0000000000000, R6
+	MOVD $1, R7
+	LSL  $63, R7, R7
+	ORR  R7, R6, R6
+	FMOVD R6, F31               // F31 = -Inf
 	FMOVD ·neonZero(SB), F30    // F30 = 0.0
 
 	MOVD ZR, R2                 // R2 = row i = 0
 
 cm_neon_row:
-	CMP R2, R1
+	CMP R1, R2
 	BGE cm_neon_done
 
 	// Write (i+1) zeros

@@ -341,6 +341,7 @@ sw_loop:
 	FMOVD (R4), F10
 	FCMPD F0, F0
 	BVS sw_store
+	FMOVD F0, F11                             // preserve original gate
 	FNEGD F0, F0
 	FMINNMD F23, F0, F0
 	FMAXNMD F24, F0, F0
@@ -382,8 +383,9 @@ sw_loop:
 
 	FMOVD ·atC0(SB), F4
 	FADDD F4, F2, F2                          // 1+e^{-gate}
-	FDIVD F2, F4, F4                          // sigmoid
-	FMULD F10, F4, F0                         // * value
+	FDIVD F2, F4, F4                          // sigmoid(gate)
+	FMULD F11, F4, F4                         // swish(gate) = gate * sigmoid(gate)
+	FMULD F10, F4, F0                         // swish(gate) * value
 sw_store:
 	FMOVD F0, (R0)
 	ADD $8, R0, R0

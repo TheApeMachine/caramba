@@ -1,31 +1,60 @@
 package math
 
-// LayerNorm normalizes over the last dimension.
-// data[0]=x [batch*seq*d_model], shape=[batch, seq, d_model].
-// y = (x - mean) / sqrt(var + eps) * Weight + Bias.
-// Each row runs through a fused AVX2/SSE2/NEON kernel — mean, variance,
-// sqrt, normalize, and affine transform all in one assembly pass.
-type LayerNorm struct {
-	Eps    float64
-	Weight []float64
-	Bias   []float64
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
+
+/*
+LayerNorm normalizes over the last dimension.
+data[0]=x [batch*seq*d_model], shape=[batch, seq, d_model].
+y = (x - mean) / sqrt(var + eps) * Weight + Bias.
+Each row runs through a fused AVX2/SSE2/NEON kernel: mean, variance,
+sqrt, normalize, and affine transform all in one assembly pass.
+*/
+type LayerNorm struct{}
+
+func NewLayerNorm() *LayerNorm {
+	return &LayerNorm{}
 }
 
-func NewLayerNorm(eps float64, weight, bias []float64) *LayerNorm {
-	return &LayerNorm{Eps: eps, Weight: weight, Bias: bias}
-}
-
-func (op *LayerNorm) Forward(shape []int, data ...[]float64) []float64 {
-	x := data[0]
-	dModel := shape[len(shape)-1]
-	n := len(x) / dModel
-	out := make([]float64, len(x))
-
-	for i := 0; i < n; i++ {
-		row := x[i*dModel : (i+1)*dModel]
-		o := out[i*dModel : (i+1)*dModel]
-		layerNormRow(o, row, op.Weight, op.Bias, op.Eps)
+func (layerNorm *LayerNorm) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("math.layernorm"); err != nil {
+		return nil, err
 	}
 
-	return out
+	dModel := stateDict.OperationLastDim()
+
+	if dModel <= 0 {
+		return nil, fmt.Errorf("math.layernorm: last dimension must be positive, got %d", dModel)
+	}
+
+	if len(stateDict.Inputs[0])%dModel != 0 {
+		return nil, fmt.Errorf(
+			"math.layernorm: input length %d is not divisible by dim %d",
+			len(stateDict.Inputs[0]), dModel,
+		)
+	}
+
+	if len(stateDict.Weight) != dModel {
+		return nil, fmt.Errorf(
+			"math.layernorm: weight length %d does not match dim %d",
+			len(stateDict.Weight), dModel,
+		)
+	}
+
+	if len(stateDict.Bias) != dModel {
+		return nil, fmt.Errorf(
+			"math.layernorm: bias length %d does not match dim %d",
+			len(stateDict.Bias), dModel,
+		)
+	}
+
+	layerNormKernel(
+		stateDict.Out, stateDict.Inputs[0], stateDict.Weight, stateDict.Bias,
+		stateDict.Eps, dModel,
+	)
+
+	return stateDict, nil
 }

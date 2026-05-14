@@ -1,27 +1,47 @@
 package math
 
-// RMSNorm computes y = x / rms(x) * Weight where rms = sqrt(mean(x²) + eps).
-// Each row is dispatched to a fused AVX2/SSE2/NEON kernel.
-type RMSNorm struct {
-	Eps    float64
-	Weight []float64
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
+
+/*
+RMSNorm computes y = x / rms(x) * Weight where rms = sqrt(mean(x²) + eps).
+Each row is dispatched to a fused AVX2/SSE2/NEON kernel.
+*/
+type RMSNorm struct{}
+
+func NewRMSNorm() *RMSNorm {
+	return &RMSNorm{}
 }
 
-func NewRMSNorm(eps float64, weight []float64) *RMSNorm {
-	return &RMSNorm{Eps: eps, Weight: weight}
-}
-
-func (op *RMSNorm) Forward(shape []int, data ...[]float64) []float64 {
-	x := data[0]
-	dModel := shape[len(shape)-1]
-	n := len(x) / dModel
-	out := make([]float64, len(x))
-
-	for i := 0; i < n; i++ {
-		row := x[i*dModel : (i+1)*dModel]
-		o := out[i*dModel : (i+1)*dModel]
-		rmsNormRow(o, row, op.Weight, op.Eps)
+func (rmsNorm *RMSNorm) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("math.rmsnorm"); err != nil {
+		return nil, err
 	}
 
-	return out
+	dModel := stateDict.OperationLastDim()
+
+	if dModel <= 0 {
+		return nil, fmt.Errorf("math.rmsnorm: last dimension must be positive, got %d", dModel)
+	}
+
+	if len(stateDict.Inputs[0])%dModel != 0 {
+		return nil, fmt.Errorf(
+			"math.rmsnorm: input length %d is not divisible by dim %d",
+			len(stateDict.Inputs[0]), dModel,
+		)
+	}
+
+	if len(stateDict.Weight) != dModel {
+		return nil, fmt.Errorf(
+			"math.rmsnorm: weight length %d does not match dim %d",
+			len(stateDict.Weight), dModel,
+		)
+	}
+
+	rmsNormKernel(stateDict.Out, stateDict.Inputs[0], stateDict.Weight, stateDict.Eps, dModel)
+
+	return stateDict, nil
 }

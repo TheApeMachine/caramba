@@ -5,37 +5,40 @@ package xla
 import cpumodel "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/model"
 
 /*
-XLAModelOps stubs the XLA model ops — all methods delegate to the CPU
-implementation with CPUMatMul when XLA is unavailable.
+XLAModelOps stubs the XLA model ops when XLA is not built in.
 */
 type XLAModelOps struct{}
 
 func NewXLAModelOps() *XLAModelOps { return &XLAModelOps{} }
 
 func (xlaModel *XLAModelOps) NewLoader(source, file, cache string) *cpumodel.Loader {
-	return cpumodel.NewLoader(source, file, cache)
+	return &cpumodel.Loader{}
 }
 
 func (xlaModel *XLAModelOps) NewSurgery(
 	source, op, at, after, name string, layer []float64,
 ) *cpumodel.Surgery {
-	return cpumodel.NewSurgery(source, op, at, after, name, layer)
+	return &cpumodel.Surgery{}
 }
 
 func (xlaModel *XLAModelOps) NewGraft(source, at, mode string) *cpumodel.Graft {
-	return cpumodel.NewGraft(source, at, mode)
+	return &cpumodel.Graft{}
 }
 
 func (xlaModel *XLAModelOps) NewLoRA(
 	source, preset string, targets []string, rank int, alpha float64,
 ) *cpumodel.LoRA {
-	return cpumodel.NewLoRA(source, preset, targets, rank, alpha)
+	return cpumodel.NewLoRAWithMatMul(source, preset, targets, rank, alpha, xlaUnavailableMatMul)
 }
 
 func (xlaModel *XLAModelOps) NewAdapter(source, at string, reduction int) *cpumodel.Adapter {
-	return cpumodel.NewAdapter(source, at, reduction)
+	return cpumodel.NewAdapterWithMatMul(source, at, reduction, xlaUnavailableMatMul)
 }
 
 func (xlaModel *XLAModelOps) NewFreeze(source, pattern, except string, frozen bool) *cpumodel.Freeze {
-	return cpumodel.NewFreeze(source, pattern, except, frozen)
+	return &cpumodel.Freeze{}
+}
+
+func xlaUnavailableMatMul(a, b []float64, M, K, N int) ([]float64, error) {
+	return nil, xlaOptimizerUnavailable()
 }

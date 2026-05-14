@@ -90,7 +90,7 @@ func TestTensorBackend_SwiGLU(t *testing.T) {
 
 			values, err := output.CloneFloat64()
 			So(err, ShouldBeNil)
-			So(values[0], ShouldAlmostEqual, 1.0, 1e-9)
+			So(values[0], ShouldAlmostEqual, 0.0, 1e-9)
 			So(values[1], ShouldBeGreaterThan, 2.0)
 		})
 	})

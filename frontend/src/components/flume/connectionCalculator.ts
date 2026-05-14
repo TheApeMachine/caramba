@@ -1,7 +1,6 @@
 import { curveBasis, line } from "d3-shape";
 import type { RefObject } from "react";
 import type FlumeCache from "#/components/flume/Cache";
-import styles from "#/components/flume/Connection/Connection.module.css";
 import { CONNECTIONS_ID } from "#/components/flume/constants";
 import type {
 	Coordinate,
@@ -449,7 +448,10 @@ export const createSVG = ({
 	obstaclesHorizontal?: ReadonlyArray<ObstacleRect>;
 }) => {
 	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-	svg.setAttribute("class", styles.svg);
+	svg.setAttribute(
+		"style",
+		"position:absolute;left:0;top:0;pointer-events:none;z-index:0;overflow:visible;",
+	);
 	const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
 	const curve = calculateEdgePath(
 		routingMode,
@@ -505,12 +507,6 @@ export const createConnections = (
 			? Array.from(allObstaclesById.values())
 			: undefined;
 
-		// Viewport bounds in canvas coordinates — used to skip off-screen edges.
-		const vpLeft   = byScale(-stageHalfWidth);
-		const vpRight  = byScale( stageHalfWidth);
-		const vpTop    = byScale(-stageHalfHeight);
-		const vpBottom = byScale( stageHalfHeight);
-
 		Object.values(nodes).forEach((node) => {
 			if (node.connections?.inputs) {
 				Object.entries(node.connections.inputs).forEach(
@@ -544,15 +540,6 @@ export const createConnections = (
 										toPort.y - stage.y + toHalfH - stageHalfHeight,
 									),
 								};
-
-								// Skip edges where both endpoints are outside the viewport.
-								const fromVisible =
-									fromCoord.x >= vpLeft && fromCoord.x <= vpRight &&
-									fromCoord.y >= vpTop  && fromCoord.y <= vpBottom;
-								const toVisible =
-									toCoord.x >= vpLeft && toCoord.x <= vpRight &&
-									toCoord.y >= vpTop  && toCoord.y <= vpBottom;
-								if (!fromVisible && !toVisible) return;
 
 								// Per-edge obstacle set: exclude the two endpoint nodes for horizontal legs.
 								const obstaclesVertical = allObstacles;

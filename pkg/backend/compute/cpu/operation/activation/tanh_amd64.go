@@ -8,7 +8,7 @@ func TanhAVX2(dst, src []float64)
 //go:noescape
 func TanhSSE2(dst, src []float64)
 
-func applyTanh(dst, src []float64) {
+func tanhKernel(dst, src []float64) {
 	elementCount := len(src)
 
 	if len(dst) < elementCount {

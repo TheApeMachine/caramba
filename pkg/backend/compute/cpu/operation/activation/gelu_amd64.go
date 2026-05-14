@@ -20,9 +20,9 @@ func GeLUAVX2(dst, x []float64)
 //go:noescape
 func GeLUSSE2(dst, x []float64)
 
-func applyGeLU(dst, src []float64) {
+func geluKernel(dst, src []float64) {
 	if len(dst) != len(src) {
-		panic(fmt.Sprintf("applyGeLU: dst and src length mismatch: dst=%d src=%d", len(dst), len(src)))
+		panic(fmt.Sprintf("geluKernel: dst and src length mismatch: dst=%d src=%d", len(dst), len(src)))
 	}
 
 	width := 2

@@ -168,6 +168,45 @@ type Float64Tensor interface {
 }
 
 /*
+Float64From creates a host-owned float64 tensor from a one-dimensional value slice.
+*/
+func Float64From(values []float64) (Float64Tensor, error) {
+	shape, err := NewShape([]int{len(values)})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return NewHostBackend().UploadFloat64(shape, values)
+}
+
+/*
+MustFloat64From is the panic-on-error variant of Float64From for compact setup.
+*/
+func MustFloat64From(values []float64) Float64Tensor {
+	value, err := Float64From(values)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return value
+}
+
+/*
+MustCloneFloat64 is the panic-on-error variant of Float64Tensor.CloneFloat64.
+*/
+func MustCloneFloat64(value Float64Tensor) []float64 {
+	values, err := value.CloneFloat64()
+
+	if err != nil {
+		panic(err)
+	}
+
+	return values
+}
+
+/*
 Backend owns persistent tensors for one compute location.
 */
 type Backend interface {

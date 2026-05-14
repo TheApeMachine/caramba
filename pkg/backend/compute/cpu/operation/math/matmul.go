@@ -3,6 +3,8 @@ package math
 import (
 	"fmt"
 	"math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 /*
@@ -13,49 +15,51 @@ type Matmul struct{}
 
 func NewMatmul() *Matmul { return &Matmul{} }
 
-func (op *Matmul) Forward(shape []int, data ...[]float64) []float64 {
+func (matmul *Matmul) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperationInputs("math.matmul", 2); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
 	if len(shape) < 3 {
-		panic(fmt.Errorf("math: Matmul.Forward: len(shape)=%d, need >= 3", len(shape)).Error())
+		return nil, fmt.Errorf("math.matmul: len(shape)=%d, need >= 3", len(shape))
 	}
 
 	M, K, N := shape[0], shape[1], shape[2]
-
-	if len(data) < 2 {
-		panic(fmt.Errorf("math: Matmul.Forward: len(data)=%d, need >= 2", len(data)).Error())
-	}
 
 	mk := int64(M) * int64(K)
 	kn := int64(K) * int64(N)
 	mn := int64(M) * int64(N)
 
 	if mk < 0 || mk > int64(math.MaxInt) {
-		panic(fmt.Errorf("math: Matmul.Forward: M*K overflows int (M=%d K=%d)", M, K).Error())
+		return nil, fmt.Errorf("math.matmul: M*K overflows int (M=%d K=%d)", M, K)
 	}
 
 	if kn < 0 || kn > int64(math.MaxInt) {
-		panic(fmt.Errorf("math: Matmul.Forward: K*N overflows int (K=%d N=%d)", K, N).Error())
+		return nil, fmt.Errorf("math.matmul: K*N overflows int (K=%d N=%d)", K, N)
 	}
 
 	if mn < 0 || mn > int64(math.MaxInt) {
-		panic(fmt.Errorf("math: Matmul.Forward: M*N overflows int (M=%d N=%d)", M, N).Error())
+		return nil, fmt.Errorf("math.matmul: M*N overflows int (M=%d N=%d)", M, N)
 	}
 
-	if len(data[0]) != int(mk) {
-		panic(fmt.Errorf(
-			"math: Matmul.Forward: len(data[0])=%d, need M*K=%d (M=%d K=%d)",
-			len(data[0]), int(mk), M, K,
-		).Error())
+	if len(stateDict.Inputs[0]) != int(mk) {
+		return nil, fmt.Errorf(
+			"math.matmul: len(input[0])=%d, need M*K=%d (M=%d K=%d)",
+			len(stateDict.Inputs[0]), int(mk), M, K,
+		)
 	}
 
-	if len(data[1]) != int(kn) {
-		panic(fmt.Errorf(
-			"math: Matmul.Forward: len(data[1])=%d, need K*N=%d (K=%d N=%d)",
-			len(data[1]), int(kn), K, N,
-		).Error())
+	if len(stateDict.Inputs[1]) != int(kn) {
+		return nil, fmt.Errorf(
+			"math.matmul: len(input[1])=%d, need K*N=%d (K=%d N=%d)",
+			len(stateDict.Inputs[1]), int(kn), K, N,
+		)
 	}
 
-	out := make([]float64, M*N)
-	applyMatMul(out, data[0], data[1], M, K, N)
+	stateDict.EnsureOperationOutLen(int(mn))
+	matmulKernel(stateDict.Out, stateDict.Inputs[0], stateDict.Inputs[1], M, K, N)
 
-	return out
+	return stateDict, nil
 }

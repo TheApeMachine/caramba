@@ -6,6 +6,7 @@ import (
 
 	cpuactivation "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/activation"
 	cpumath "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/math"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -89,7 +90,22 @@ ReLU applies max(0, x) without leaving the host backend.
 func (tensorBackend *TensorBackend) ReLU(
 	input computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {
-	return tensorBackend.unary(input, tensorBackend.relu.Forward)
+	values, err := tensorBackend.values(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	stateDict := state.NewDict(tensorBackend).
+		WithShape(input.Shape().Dims()).
+		WithInput(values)
+	outputState, err := tensorBackend.relu.Forward(stateDict)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tensorBackend.storage.AdoptFloat64(input.Shape(), outputState.Out)
 }
 
 /*
@@ -98,9 +114,24 @@ LeakyReLU applies max(alpha*x, x) without leaving the host backend.
 func (tensorBackend *TensorBackend) LeakyReLU(
 	input computetensor.Float64Tensor, alpha float64,
 ) (computetensor.Float64Tensor, error) {
-	operation := cpuactivation.NewLeakyReLU(alpha)
+	values, err := tensorBackend.values(input)
 
-	return tensorBackend.unary(input, operation.Forward)
+	if err != nil {
+		return nil, err
+	}
+
+	operation := cpuactivation.NewLeakyReLU()
+	stateDict := state.NewDict(tensorBackend).
+		WithShape(input.Shape().Dims()).
+		WithInput(values).
+		WithAlpha(alpha)
+	outputState, err := operation.Forward(stateDict)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tensorBackend.storage.AdoptFloat64(input.Shape(), outputState.Out)
 }
 
 /*
@@ -109,7 +140,22 @@ GELU applies approximate GELU without leaving the host backend.
 func (tensorBackend *TensorBackend) GELU(
 	input computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {
-	return tensorBackend.unary(input, tensorBackend.gelu.Forward)
+	values, err := tensorBackend.values(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	stateDict := state.NewDict(tensorBackend).
+		WithShape(input.Shape().Dims()).
+		WithInput(values)
+	outputState, err := tensorBackend.gelu.Forward(stateDict)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tensorBackend.storage.AdoptFloat64(input.Shape(), outputState.Out)
 }
 
 /*
@@ -118,7 +164,22 @@ Tanh applies approximate tanh without leaving the host backend.
 func (tensorBackend *TensorBackend) Tanh(
 	input computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {
-	return tensorBackend.unary(input, tensorBackend.tanh.Forward)
+	values, err := tensorBackend.values(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	stateDict := state.NewDict(tensorBackend).
+		WithShape(input.Shape().Dims()).
+		WithInput(values)
+	outputState, err := tensorBackend.tanh.Forward(stateDict)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tensorBackend.storage.AdoptFloat64(input.Shape(), outputState.Out)
 }
 
 /*
@@ -127,7 +188,22 @@ Sigmoid applies approximate sigmoid without leaving the host backend.
 func (tensorBackend *TensorBackend) Sigmoid(
 	input computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {
-	return tensorBackend.unary(input, tensorBackend.sigmoid.Forward)
+	values, err := tensorBackend.values(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	stateDict := state.NewDict(tensorBackend).
+		WithShape(input.Shape().Dims()).
+		WithInput(values)
+	outputState, err := tensorBackend.sigmoid.Forward(stateDict)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tensorBackend.storage.AdoptFloat64(input.Shape(), outputState.Out)
 }
 
 /*
@@ -148,9 +224,16 @@ func (tensorBackend *TensorBackend) SwiGLU(
 		return nil, err
 	}
 
-	output := tensorBackend.swiglu.Forward(outputShape.Dims(), values)
+	stateDict := state.NewDict(tensorBackend).
+		WithShape(input.Shape().Dims()).
+		WithInput(values)
+	outputState, err := tensorBackend.swiglu.Forward(stateDict)
 
-	return tensorBackend.storage.AdoptFloat64(outputShape, output)
+	if err != nil {
+		return nil, err
+	}
+
+	return tensorBackend.storage.AdoptFloat64(outputShape, outputState.Out)
 }
 
 /*
@@ -159,7 +242,36 @@ Add performs elementwise addition without leaving the host backend.
 func (tensorBackend *TensorBackend) Add(
 	left, right computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {
-	return tensorBackend.binary(left, right, tensorBackend.add.Forward)
+	if left == nil || right == nil {
+		return nil, fmt.Errorf("cpu tensor: add requires non-nil tensors")
+	}
+
+	if !left.Shape().Equal(right.Shape()) {
+		return nil, fmt.Errorf("cpu tensor: add shape mismatch")
+	}
+
+	leftValues, err := tensorBackend.values(left)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rightValues, err := tensorBackend.values(right)
+
+	if err != nil {
+		return nil, err
+	}
+
+	stateDict := state.NewDict(tensorBackend).
+		WithShape(left.Shape().Dims()).
+		WithInputs(leftValues, rightValues)
+	outputState, err := tensorBackend.add.Forward(stateDict)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tensorBackend.storage.AdoptFloat64(left.Shape(), outputState.Out)
 }
 
 /*
@@ -168,7 +280,36 @@ Mul performs elementwise multiplication without leaving the host backend.
 func (tensorBackend *TensorBackend) Mul(
 	left, right computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {
-	return tensorBackend.binary(left, right, tensorBackend.mul.Forward)
+	if left == nil || right == nil {
+		return nil, fmt.Errorf("cpu tensor: mul requires non-nil tensors")
+	}
+
+	if !left.Shape().Equal(right.Shape()) {
+		return nil, fmt.Errorf("cpu tensor: mul shape mismatch")
+	}
+
+	leftValues, err := tensorBackend.values(left)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rightValues, err := tensorBackend.values(right)
+
+	if err != nil {
+		return nil, err
+	}
+
+	stateDict := state.NewDict(tensorBackend).
+		WithShape(left.Shape().Dims()).
+		WithInputs(leftValues, rightValues)
+	outputState, err := tensorBackend.mul.Forward(stateDict)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tensorBackend.storage.AdoptFloat64(left.Shape(), outputState.Out)
 }
 
 /*
@@ -215,13 +356,16 @@ func (tensorBackend *TensorBackend) Matmul(
 		return nil, err
 	}
 
-	output := tensorBackend.matmul.Forward(
-		[]int{leftDims[0], leftDims[1], rightDims[1]},
-		leftValues,
-		rightValues,
-	)
+	stateDict := state.NewDict(tensorBackend).
+		WithShape([]int{leftDims[0], leftDims[1], rightDims[1]}).
+		WithInputs(leftValues, rightValues)
+	outputState, err := tensorBackend.matmul.Forward(stateDict)
 
-	return tensorBackend.storage.AdoptFloat64(outputShape, output)
+	if err != nil {
+		return nil, err
+	}
+
+	return tensorBackend.storage.AdoptFloat64(outputShape, outputState.Out)
 }
 
 /*
@@ -240,50 +384,6 @@ func (tensorBackend *TensorBackend) MatmulAddGELU(
 	left, right, bias computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {
 	return tensorBackend.matmulAdd(left, right, bias, true)
-}
-
-type unaryFloat64Kernel func([]int, ...[]float64) []float64
-
-func (tensorBackend *TensorBackend) unary(
-	input computetensor.Float64Tensor, kernel unaryFloat64Kernel,
-) (computetensor.Float64Tensor, error) {
-	values, err := tensorBackend.values(input)
-
-	if err != nil {
-		return nil, err
-	}
-
-	output := kernel(input.Shape().Dims(), values)
-
-	return tensorBackend.storage.AdoptFloat64(input.Shape(), output)
-}
-
-func (tensorBackend *TensorBackend) binary(
-	left, right computetensor.Float64Tensor, kernel unaryFloat64Kernel,
-) (computetensor.Float64Tensor, error) {
-	if left == nil || right == nil {
-		return nil, fmt.Errorf("cpu tensor: binary operation requires non-nil tensors")
-	}
-
-	if !left.Shape().Equal(right.Shape()) {
-		return nil, fmt.Errorf("cpu tensor: binary operation shape mismatch")
-	}
-
-	leftValues, err := tensorBackend.values(left)
-
-	if err != nil {
-		return nil, err
-	}
-
-	rightValues, err := tensorBackend.values(right)
-
-	if err != nil {
-		return nil, err
-	}
-
-	output := kernel(left.Shape().Dims(), leftValues, rightValues)
-
-	return tensorBackend.storage.AdoptFloat64(left.Shape(), output)
 }
 
 func (tensorBackend *TensorBackend) values(

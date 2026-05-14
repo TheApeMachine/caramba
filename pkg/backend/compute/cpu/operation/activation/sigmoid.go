@@ -1,20 +1,22 @@
 package activation
 
-// Sigmoid applies 1/(1+exp(-x)) approximated via rational tanh elementwise.
+import "github.com/theapemachine/caramba/pkg/backend/compute/state"
+
+/*
+Sigmoid applies 1/(1+exp(-x)) approximated via rational tanh elementwise.
+*/
 type Sigmoid struct{}
 
 func NewSigmoid() *Sigmoid {
 	return &Sigmoid{}
 }
 
-func (sig *Sigmoid) Forward(shape []int, data ...[]float64) []float64 {
-	if len(data) == 0 || len(data[0]) == 0 {
-		return []float64{}
+func (sigmoid *Sigmoid) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("activation.sigmoid"); err != nil {
+		return nil, err
 	}
 
-	input := data[0]
-	out := make([]float64, len(input))
-	applySigmoid(out, input)
+	sigmoidKernel(stateDict.Out, stateDict.Inputs[0])
 
-	return out
+	return stateDict, nil
 }

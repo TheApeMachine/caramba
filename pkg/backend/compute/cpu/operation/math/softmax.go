@@ -1,28 +1,39 @@
 package math
 
-// Softmax computes softmax over the last dimension of the input.
-// Each row passes through a dedicated AVX2/SSE2/NEON kernel that fuses max,
-// exp (polynomial range-reduced), sum, and reciprocal-divide inline.
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
+
+/*
+Softmax computes softmax over the last dimension of the input.
+Each row passes through a dedicated AVX2/SSE2/NEON kernel that fuses max,
+exp (polynomial range-reduced), sum, and reciprocal-divide inline.
+*/
 type Softmax struct{}
 
 func NewSoftmax() *Softmax { return &Softmax{} }
 
-func (op *Softmax) Forward(shape []int, data ...[]float64) []float64 {
-	x := data[0]
-	dimSize := shape[len(shape)-1]
-	out := make([]float64, len(x))
-	copy(out, x)
-	n := len(x) / dimSize
-
-	for i := 0; i < n; i++ {
-		row := out[i*dimSize : (i+1)*dimSize]
-		softmaxRow(row)
+func (softmax *Softmax) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("math.softmax"); err != nil {
+		return nil, err
 	}
 
-	return out
-}
+	dimSize := stateDict.OperationLastDim()
 
-// softmaxRow dispatches to the fused SIMD kernel.
-func softmaxRow(row []float64) {
-	softmaxRowSIMD(row)
+	if dimSize <= 0 {
+		return nil, fmt.Errorf("math.softmax: last dimension must be positive, got %d", dimSize)
+	}
+
+	if len(stateDict.Inputs[0])%dimSize != 0 {
+		return nil, fmt.Errorf(
+			"math.softmax: input length %d is not divisible by dim %d",
+			len(stateDict.Inputs[0]), dimSize,
+		)
+	}
+
+	softmaxKernel(stateDict.Out, stateDict.Inputs[0], dimSize)
+
+	return stateDict, nil
 }

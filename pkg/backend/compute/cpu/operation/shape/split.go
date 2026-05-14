@@ -1,27 +1,37 @@
 package shape
 
-// Split divides a tensor into equal-sized chunks of SplitSize along Dim and
-// returns all chunks concatenated into one flat buffer.
-// The caller can recover individual chunks because each has the same size:
-// (product-of-shape / shape[Dim]) * SplitSize elements.
-//
-// Forward(shape, data[0]) -> flat buffer containing all chunks in order.
-type Split struct {
-	SplitSize int
-	Dim       int
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
+
+/*
+Split divides a tensor into equal-sized chunks of SplitSize along Dim and
+returns all chunks concatenated into one flat buffer.
+*/
+type Split struct{}
+
+func NewSplit(args ...int) *Split {
+	return &Split{}
 }
 
-// NewSplit creates a Split operation.
-func NewSplit(splitSize, dim int) *Split {
-	return &Split{SplitSize: splitSize, Dim: dim}
-}
+func (split *Split) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("shape.split"); err != nil {
+		return nil, err
+	}
 
-// Forward splits data[0] into chunks of SplitSize along Dim and returns them
-// concatenated.  shape is the full tensor shape.
-func (s *Split) Forward(shape []int, data ...[]float64) []float64 {
-	src := data[0]
+	shape := stateDict.OperationShape()
 	rank := len(shape)
-	dim := s.Dim
+	dim := stateDict.Dim
+
+	if dim < 0 || dim >= rank {
+		return nil, fmt.Errorf("shape.split: dim %d out of range rank %d", dim, rank)
+	}
+
+	if stateDict.SplitSize <= 0 {
+		return nil, fmt.Errorf("shape.split: split_size must be positive, got %d", stateDict.SplitSize)
+	}
 
 	outer := 1
 	for d := 0; d < dim; d++ {
@@ -33,24 +43,18 @@ func (s *Split) Forward(shape []int, data ...[]float64) []float64 {
 	}
 
 	dimSize := shape[dim]
-	numChunks := dimSize / s.SplitSize
-
-	// Output is the same data rearranged — total size identical.
-	total := len(src)
-	dst := make([]float64, total)
-
-	// For each chunk k, collect the corresponding SplitSize rows from each
-	// outer slice and place them consecutively.
-	chunkElems := outer * s.SplitSize * inner
-	for k := 0; k < numChunks; k++ {
-		dstOff := k * chunkElems
-		for o := 0; o < outer; o++ {
-			srcOff := (o*dimSize + k*s.SplitSize) * inner
-			n := s.SplitSize * inner
-			copy(dst[dstOff:dstOff+n], src[srcOff:srcOff+n])
-			dstOff += n
-		}
+	if dimSize%stateDict.SplitSize != 0 {
+		return nil, fmt.Errorf(
+			"shape.split: dim size %d is not divisible by split size %d",
+			dimSize, stateDict.SplitSize,
+		)
 	}
 
-	return dst
+	stateDict.EnsureOperationOutLen(len(stateDict.Inputs[0]))
+	splitKernel(
+		stateDict.Out, stateDict.Inputs[0],
+		outer, dimSize, stateDict.SplitSize, inner,
+	)
+
+	return stateDict, nil
 }

@@ -10,9 +10,9 @@ func ReLUAVX2(dst, src []float64)
 //go:noescape
 func ReLUSSE2(dst, src []float64)
 
-func applyReLU(dst, src []float64) {
+func reluKernel(dst, src []float64) {
 	if len(dst) != len(src) {
-		panic(fmt.Sprintf("applyReLU: dst and src length mismatch: dst=%d src=%d", len(dst), len(src)))
+		panic(fmt.Sprintf("reluKernel: dst and src length mismatch: dst=%d src=%d", len(dst), len(src)))
 	}
 
 	width := 2

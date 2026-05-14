@@ -16,7 +16,7 @@ func CausalMaskAVX2(dst []float64, seqLen int)
 //go:noescape
 func CausalMaskSSE2(dst []float64, seqLen int)
 
-func applyCausalMask(dst []float64, seqLen int) {
+func causalMaskKernel(dst []float64, seqLen int) {
 	if useAVX2 {
 		CausalMaskAVX2(dst, seqLen)
 	} else {

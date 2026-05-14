@@ -11,7 +11,7 @@ GLOBL ·swigluOne(SB), RODATA|NOPTR, $8
 
 // SwiGLUNEON(dst, src []float64)
 // src has 2n elements: gates[0..n-1] | values[n..2n-1]
-// dst has n elements: sigmoid(gate[i]) * value[i]
+// dst has n elements: gate[i] * sigmoid(gate[i]) * value[i]   (swish(gate) * value)
 // ABI0: dst+0(FP)=ptr, dst_len+8(FP)=len(=n), dst_cap+16(FP)=cap,
 //       src_base+24(FP)=ptr, src_len+32(FP)=len(=2n), src_cap+40(FP)=cap
 
@@ -44,7 +44,8 @@ loop:
 	FDIVD F4, F5, F6     // tanh(gate/2)
 	FADDD F29, F6, F6    // 1+tanh
 	FMULD F28, F6, F6    // sigmoid(gate)
-	FMULD F20, F6, F7    // sigmoid*value
+	FMULD F0, F6, F6     // swish(gate) = gate * sigmoid(gate)
+	FMULD F20, F6, F7    // swish(gate) * value
 	FMOVD.P F7, 8(R0)
 	SUBS $1, R1, R1
 	BNE  loop

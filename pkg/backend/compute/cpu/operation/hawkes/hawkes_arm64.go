@@ -16,11 +16,7 @@ func hawkesExcitation(events []float64, now, beta, alpha float64) float64 {
 }
 
 func hawkesKernelRow(out, events []float64, ti, alpha, beta float64) {
-	n := len(out)
-
-	if len(events) < n {
-		n = len(events)
-	}
+	n := min(len(out), len(events))
 
 	if n == 0 {
 		return

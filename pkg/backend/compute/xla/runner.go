@@ -28,10 +28,21 @@ func NewRunner() *Runner {
 func NewRunnerForPlatform(platform string) *Runner {
 	backend, err := NewTensorBackend(platform)
 
+	if err != nil {
+		return &Runner{
+			platform: platform,
+			backend:  backend,
+			err:      err,
+		}
+	}
+
+	return NewRunnerWithBackend(platform, backend)
+}
+
+func NewRunnerWithBackend(platform string, backend *TensorBackend) *Runner {
 	return &Runner{
 		platform: platform,
 		backend:  backend,
-		err:      err,
 	}
 }
 

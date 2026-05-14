@@ -20,11 +20,14 @@ func CopyAVX2(dst, src []float64)
 //go:noescape
 func CopySSE2(dst, src []float64)
 
-// copyBlock copies src into dst using the best available SIMD path.
 func copyBlock(dst, src []float64) {
 	if useAVX2 {
 		CopyAVX2(dst, src)
 	} else {
 		CopySSE2(dst, src)
 	}
+}
+
+func transposeKernel(dst, src []float64, shape []int, dim0, dim1 int) {
+	transposeGenericKernel(dst, src, shape, dim0, dim1)
 }

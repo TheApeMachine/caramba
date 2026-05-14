@@ -13,7 +13,7 @@ GLOBL ·swigluNegOne_amd64(SB), RODATA, $8
 
 // SwiGLUAVX2(dst, src []float64)
 // src.len = 2n; gates = src[0..n-1], values = src[n..2n-1]
-// dst.len = n; dst[i] = sigmoid(gate[i]) * value[i]
+// dst.len = n; dst[i] = gate[i] * sigmoid(gate[i]) * value[i]   (swish(gate) * value)
 // ABI0: dst+0(FP)=ptr, dst_len+8(FP)=len(=n), dst_cap+16(FP)=cap,
 //       src_base+24(FP)=ptr, src_len+32(FP)=len(=2n), src_cap+40(FP)=cap
 TEXT ·SwiGLUAVX2(SB), NOSPLIT, $0-48
@@ -55,8 +55,9 @@ loop:
 	VMINPD Y13, Y6, Y6
 	VMAXPD Y14, Y6, Y6
 	VADDPD Y13, Y6, Y6
-	VMULPD Y12, Y6, Y6         // sigmoid
-	VMULPD Y1, Y6, Y7
+	VMULPD Y12, Y6, Y6         // sigmoid(gate)
+	VMULPD Y0, Y6, Y6          // swish(gate) = gate * sigmoid(gate)
+	VMULPD Y1, Y6, Y7          // swish(gate) * value
 	VMOVUPD Y7, (AX)
 	ADDQ $32, AX
 	ADDQ $32, DI

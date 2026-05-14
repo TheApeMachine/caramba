@@ -2,11 +2,7 @@
 
 package metal
 
-import (
-	"fmt"
-
-	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-)
+import computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 
 var _ computetensor.Backend = (*TensorBackend)(nil)
 
@@ -19,7 +15,7 @@ type TensorBackend struct{}
 NewTensorBackend creates a Metal tensor backend stub.
 */
 func NewTensorBackend() (*TensorBackend, error) {
-	return &TensorBackend{}, fmt.Errorf("metal tensor: build on darwin with cgo")
+	return &TensorBackend{}, metalUnavailable()
 }
 
 /*
@@ -35,7 +31,7 @@ UploadFloat64 rejects uploads when Metal support is not built in.
 func (*TensorBackend) UploadFloat64(
 	shape computetensor.Shape, values []float64,
 ) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("metal tensor: build on darwin with cgo")
+	return nil, metalUnavailable()
 }
 
 /*
@@ -44,7 +40,7 @@ DownloadFloat64 rejects downloads when Metal support is not built in.
 func (*TensorBackend) DownloadFloat64(
 	input computetensor.Float64Tensor,
 ) ([]float64, error) {
-	return nil, fmt.Errorf("metal tensor: build on darwin with cgo")
+	return nil, metalUnavailable()
 }
 
 /*

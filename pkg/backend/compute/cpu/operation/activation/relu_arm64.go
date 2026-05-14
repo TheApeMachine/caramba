@@ -7,9 +7,9 @@ import "fmt"
 //go:noescape
 func ReLUNEON(dst, src []float64)
 
-func applyReLU(dst, src []float64) {
+func reluKernel(dst, src []float64) {
 	if len(dst) < len(src) {
-		panic(fmt.Sprintf("applyReLU: dst shorter than src (dst=%d src=%d)", len(dst), len(src)))
+		panic(fmt.Sprintf("reluKernel: dst shorter than src (dst=%d src=%d)", len(dst), len(src)))
 	}
 
 	limit := len(src) / 2 * 2

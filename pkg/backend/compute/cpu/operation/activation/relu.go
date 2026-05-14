@@ -1,5 +1,7 @@
 package activation
 
+import "github.com/theapemachine/caramba/pkg/backend/compute/state"
+
 /*
 ReLU applies elementwise max(0, x) using SIMD on amd64/arm64.
 */
@@ -9,12 +11,12 @@ func NewReLU() *ReLU {
 	return &ReLU{}
 }
 
-func (relu *ReLU) Forward(shape []int, data ...[]float64) []float64 {
-	if len(data) == 0 || len(data[0]) == 0 {
-		return []float64{}
+func (relu *ReLU) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("activation.relu"); err != nil {
+		return nil, err
 	}
-	input := data[0]
-	out := make([]float64, len(input))
-	applyReLU(out, input)
-	return out
+
+	reluKernel(stateDict.Out, stateDict.Inputs[0])
+
+	return stateDict, nil
 }

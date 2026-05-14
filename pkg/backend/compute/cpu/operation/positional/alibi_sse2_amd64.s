@@ -1,6 +1,3 @@
-//go:build amd64 && alibi_asm
-// +build amd64,alibi_asm
-
 #include "textflag.h"
 
 // ALiBiRowSSE2(dst []float64, slope float64, q int, seqLenK int)
@@ -14,7 +11,7 @@ TEXT ·ALiBiRowSSE2(SB), NOSPLIT, $0-48
 	MOVQ seqLenK+40(FP), DX
 
 	MOVQ   BX, X0              // slope
-	CVTSI2SD CX, X1             // float64(q)
+	CVTSQ2SD CX, X1             // float64(q)
 	MULSD    X0, X1             // slope*q
 	MOVSD    X1, X2             // save slope*q
 
@@ -24,7 +21,7 @@ loop:
 	JLE  done
 
 	MOVQ R8, R9
-	CVTSI2SD R9, X3             // float64(k)
+	CVTSQ2SD R9, X3             // float64(k)
 	MULSD X0, X3                // slope*k
 	SUBSD X2, X3                // slope*k - slope*q = slope*(k-q)
 	MOVSD X3, (AX)

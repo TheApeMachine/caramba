@@ -1,5 +1,7 @@
 package adagrad
 
+import "github.com/theapemachine/caramba/pkg/backend/compute/state"
+
 /*
 AdaGrad accumulates squared gradients and scales the learning rate per parameter.
 G  += g²
@@ -9,35 +11,36 @@ Full pipeline (incl. optional weight decay) is implemented in dedicated
 AVX2/SSE2/NEON kernels — no Go-side primitive composition.
 */
 type AdaGrad struct {
-	LR      float64
-	Eps     float64
-	LRDecay float64
-	WD      float64
-	G       []float64
-	step    int
 }
 
-func NewAdaGrad(lr, eps, lrDecay, wd float64) *AdaGrad {
-	return &AdaGrad{LR: lr, Eps: eps, LRDecay: lrDecay, WD: wd}
+func NewAdaGrad() *AdaGrad {
+	return &AdaGrad{}
 }
 
-func (ag *AdaGrad) Step(params, grads []float64) []float64 {
-	n := len(params)
-	ag.step++
-
-	if ag.G == nil {
-		ag.G = make([]float64, n)
+func (ag *AdaGrad) Step(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireReady("adagrad"); err != nil {
+		return nil, err
 	}
 
-	clr := ag.LR
-	if ag.LRDecay != 0 {
-		clr /= 1 + float64(ag.step-1)*ag.LRDecay
+	stateDict.Step++
+
+	clr := stateDict.LR
+
+	if stateDict.LRDecay != 0 {
+		clr /= 1 + float64(stateDict.Step-1)*stateDict.LRDecay
 	}
 
-	out := make([]float64, n)
-	adagradStep(out, ag.G, params, grads, clr, ag.Eps, ag.WD)
+	adagradStep(
+		stateDict.Out,
+		stateDict.V,
+		stateDict.Params,
+		stateDict.Grads,
+		clr,
+		stateDict.Eps,
+		stateDict.WD,
+	)
 
-	return out
+	return stateDict, nil
 }
 
 /*
@@ -59,16 +62,30 @@ func NewAdaDelta(rho, eps, wd float64) *AdaDelta {
 	return &AdaDelta{Rho: rho, Eps: eps, WD: wd}
 }
 
-func (ad *AdaDelta) Step(params, grads []float64) []float64 {
-	n := len(params)
+func (ad *AdaDelta) Step(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireReady("adadelta"); err != nil {
+		return nil, err
+	}
+
+	n := len(stateDict.Params)
 
 	if ad.eg2 == nil {
 		ad.eg2 = make([]float64, n)
 		ad.edp2 = make([]float64, n)
 	}
 
-	out := make([]float64, n)
-	adadeltaStep(out, ad.eg2, ad.edp2, params, grads, ad.Rho, ad.Eps, ad.WD)
+	stateDict.Out = make([]float64, n)
+	stateDict.X = stateDict.Out
+	adadeltaStep(
+		stateDict.Out,
+		ad.eg2,
+		ad.edp2,
+		stateDict.Params,
+		stateDict.Grads,
+		ad.Rho,
+		ad.Eps,
+		ad.WD,
+	)
 
-	return out
+	return stateDict, nil
 }

@@ -10,10 +10,10 @@ func SwiGLUAVX2(dst, src []float64)
 //go:noescape
 func SwiGLUSSE2(dst, src []float64)
 
-func applySwiGLU(dst, src []float64) {
+func swigluKernel(dst, src []float64) {
 	if len(src) != 2*len(dst) {
 		panic(fmt.Sprintf(
-			"applySwiGLU: expected len(src)==2*len(dst), got len(dst)=%d len(src)=%d",
+			"swigluKernel: expected len(src)==2*len(dst), got len(dst)=%d len(src)=%d",
 			len(dst), len(src),
 		))
 	}

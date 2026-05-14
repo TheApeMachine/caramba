@@ -366,6 +366,7 @@ swig_loop:
 	MOVSD X0, (AX)
 	JMP swig_next
 swig_finite:
+	MOVAPD X0, X11                            // preserve original gate
 	XORPD X4, X4
 	SUBSD X0, X4
 	MOVAPD X4, X0
@@ -417,7 +418,8 @@ swig_finite:
 	MOVSD ·atC0(SB), X4
 	ADDSD X4, X2                              // 1+e^{-gate}
 	DIVSD X2, X4                              // sigmoid(gate)
-	MULSD X10, X4                             // sigmoid*value
+	MULSD X11, X4                             // swish(gate) = gate * sigmoid(gate)
+	MULSD X10, X4                             // swish(gate) * value
 	MOVSD X4, (AX)
 swig_next:
 	ADDQ $8, AX

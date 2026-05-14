@@ -10,6 +10,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/bench"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/causal"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/convolution"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/embedding"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/hawkes"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/markov_blanket"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/masking"
@@ -26,6 +27,113 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
+
+type OperationDispatchContract struct{}
+
+var TensorOperationDispatchContract = OperationDispatchContract{}
+
+func (operationDispatchContract OperationDispatchContract) SupportedIDSet() map[ir.OpType]bool {
+	return map[ir.OpType]bool{
+		ir.OpInput:                                true,
+		ir.OpAdd:                                  true,
+		ir.OpMul:                                  true,
+		ir.OpMatmul:                               true,
+		ir.OpReLU:                                 true,
+		ir.OpLeakyReLU:                            true,
+		ir.OpGELU:                                 true,
+		ir.OpTanh:                                 true,
+		ir.OpSigmoid:                              true,
+		ir.OpSwiGLU:                               true,
+		ir.OpFused:                                true,
+		"activation.relu":                         true,
+		"activation.leaky_relu":                   true,
+		"activation.gelu":                         true,
+		"activation.tanh":                         true,
+		"activation.sigmoid":                      true,
+		"activation.swiglu":                       true,
+		"activation.swish":                        true,
+		"attention.sdpa":                          true,
+		"attention.mqa":                           true,
+		"attention.gqa":                           true,
+		"attention.sliding_window":                true,
+		"masking.apply":                           true,
+		"masking.causal":                          true,
+		"math.add":                                true,
+		"math.mul":                                true,
+		"math.matmul":                             true,
+		"math.exp":                                true,
+		"math.log":                                true,
+		"math.logsumexp":                          true,
+		"math.softmax":                            true,
+		"math.outer":                              true,
+		"math.sign":                               true,
+		"math.inv_sqrt_dim_scale":                 true,
+		"math.dropout":                            true,
+		"math.rmsnorm":                            true,
+		"math.layernorm":                          true,
+		"shape.reshape":                           true,
+		"shape.transpose":                         true,
+		"shape.concat":                            true,
+		"shape.split":                             true,
+		"shape.view_as_heads":                     true,
+		"shape.merge_heads":                       true,
+		"positional.rope":                         true,
+		"positional.alibi":                        true,
+		"embedding.token":                         true,
+		"convolution.conv1d":                      true,
+		"convolution.conv2d":                      true,
+		"convolution.conv3d":                      true,
+		"convolution.conv_transpose2d":            true,
+		"pooling.max_pool2d":                      true,
+		"pooling.avg_pool2d":                      true,
+		"pooling.adaptive_avg_pool2d":             true,
+		"pooling.adaptive_max_pool2d":             true,
+		"projection.linear":                       true,
+		"projection.fused_qkv":                    true,
+		"hawkes.intensity":                        true,
+		"hawkes.kernel_matrix":                    true,
+		"hawkes.log_likelihood":                   true,
+		"hawkes.simulate":                         true,
+		"vsa.bind":                                true,
+		"vsa.bundle":                              true,
+		"vsa.similarity":                          true,
+		"vsa.permute":                             true,
+		"vsa.inverse_permute":                     true,
+		"active_inference.belief_update":          true,
+		"active_inference.expected_free_energy":   true,
+		"active_inference.free_energy":            true,
+		"active_inference.precision_weight":       true,
+		"predictive_coding.prediction":            true,
+		"predictive_coding.prediction_error":      true,
+		"predictive_coding.update_representation": true,
+		"predictive_coding.update_weights":        true,
+		"markov_blanket.flow_active":              true,
+		"markov_blanket.flow_internal":            true,
+		"markov_blanket.mutual_information":       true,
+		"markov_blanket.partition":                true,
+		"causal.backdoor_adjustment":              true,
+		"causal.cate":                             true,
+		"causal.counterfactual":                   true,
+		"causal.dag_markov_factorization":         true,
+		"causal.do_calculus":                      true,
+		"causal.frontdoor_adjustment":             true,
+		"causal.iv_estimate":                      true,
+		"train.loss.mse":                          true,
+		"train.loss.cross_entropy":                true,
+		"train.loss.mse_grad":                     true,
+		"train.loss.cross_entropy_grad":           true,
+		"train.optimizer.adam":                    true,
+		"train.optimizer.adamw":                   true,
+		"train.optimizer.sgd":                     true,
+		"train.optimizer.lion":                    true,
+		"train.optimizer.rmsprop":                 true,
+		"bench.accuracy":                          true,
+		"bench.perplexity":                        true,
+		"bench.f1":                                true,
+		"model.graft":                             true,
+		"model.freeze":                            true,
+	}
+}
 
 func (tensorBackend *TensorBackend) Apply(
 	ctx context.Context,
@@ -167,21 +275,11 @@ func (tensorBackend *TensorBackend) applyOperation(
 	case "math.inv_sqrt_dim_scale":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewInvSqrtDimScale())
 	case "math.dropout":
-		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewDropout(
-			floatConfig(node, "p", 0),
-			boolConfig(node, "training", false),
-		))
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewDropout())
 	case "math.rmsnorm":
-		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewRMSNorm(
-			floatConfig(node, "eps", 1e-5),
-			floatSliceConfig(node, "weight"),
-		))
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewRMSNorm())
 	case "math.layernorm":
-		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewLayerNorm(
-			floatConfig(node, "eps", 1e-5),
-			floatSliceConfig(node, "weight"),
-			floatSliceConfig(node, "bias"),
-		))
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewLayerNorm())
 	case "shape.reshape":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, shape.NewReshape(intSliceConfig(node, "shape")))
 	case "shape.transpose":
@@ -215,6 +313,12 @@ func (tensorBackend *TensorBackend) applyOperation(
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, positional.NewALiBi(
 			intConfig(node, "num_heads", 1),
 			boolConfig(node, "causal", true),
+		))
+	case "embedding.token":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, embedding.NewTokenEmbedding(
+			intConfig(node, "vocab_size", 1),
+			intConfig(node, "d_model", 1),
+			floatConfig(node, "init_std", 0.02),
 		))
 	case "convolution.conv1d":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, convolution.NewConv1d(
@@ -371,6 +475,17 @@ func (tensorBackend *TensorBackend) applyOperation(
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewSGDStep(
 			floatConfig(node, "lr", 1e-3), floatConfig(node, "momentum", 0),
 			floatConfig(node, "wd", 0), boolConfig(node, "nesterov", false),
+		))
+	case "train.optimizer.lion":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewLionStep(
+			floatConfig(node, "lr", 1e-4), floatConfig(node, "beta1", 0.9),
+			floatConfig(node, "beta2", 0.99), floatConfig(node, "wd", 0),
+		))
+	case "train.optimizer.rmsprop":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewRMSPropStep(
+			floatConfig(node, "lr", 1e-2), floatConfig(node, "alpha", 0.99),
+			floatConfig(node, "eps", 1e-8), floatConfig(node, "momentum", 0),
+			floatConfig(node, "wd", 0),
 		))
 	case "bench.accuracy":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, bench.NewAccuracy())

@@ -1,39 +1,43 @@
 package hebbian
 
+import "github.com/theapemachine/caramba/pkg/backend/compute/state"
+
 /*
 Hebbian / Oja / BCM rules. Each Step delegates to a fused AVX2/SSE2/NEON
 kernel — weight update, norm computation, and optional rescale are all
 in assembly.
 */
 type Hebbian struct {
-	LR      float64
-	MaxNorm float64
 }
 
-func NewHebbian(lr, maxNorm float64) *Hebbian {
-	return &Hebbian{LR: lr, MaxNorm: maxNorm}
+func NewHebbian() *Hebbian {
+	return &Hebbian{}
 }
 
-func (hebb *Hebbian) Step(params, grads []float64) []float64 {
-	out := make([]float64, len(params))
-
-	if hebb.MaxNorm > 0 {
-		norm := hebbStepNorm(out, params, grads, hebb.LR)
-		if norm > hebb.MaxNorm {
-			hebbScale(out, hebb.MaxNorm/norm)
-		}
-
-		return out
+func (hebb *Hebbian) Step(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireReady("hebbian"); err != nil {
+		return nil, err
 	}
 
-	hebbStep(out, params, grads, hebb.LR)
+	if stateDict.MaxNorm > 0 {
+		norm := hebbStepNorm(stateDict.Out, stateDict.Params, stateDict.Grads, stateDict.LR)
 
-	return out
+		if norm > stateDict.MaxNorm {
+			hebbScale(stateDict.Out, stateDict.MaxNorm/norm)
+		}
+
+		return stateDict, nil
+	}
+
+	hebbStep(stateDict.Out, stateDict.Params, stateDict.Grads, stateDict.LR)
+
+	return stateDict, nil
 }
 
 /*
 OjaRule extends Hebb with a decay term that keeps weights on the unit sphere.
-  ΔW = η * (post*pre - post²*W)
+
+	ΔW = η * (post*pre - post²*W)
 */
 type OjaRule struct {
 	LR float64
@@ -53,8 +57,9 @@ func (oja *OjaRule) Step(params, grads []float64) []float64 {
 
 /*
 BCM (Bienenstock-Cooper-Munro) — sliding threshold.
-  θ  = τ⁻¹ * E[post²]
-  ΔW = η * post * (post - θ) * pre
+
+	θ  = τ⁻¹ * E[post²]
+	ΔW = η * post * (post - θ) * pre
 */
 type BCM struct {
 	LR    float64

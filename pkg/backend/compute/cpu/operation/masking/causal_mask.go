@@ -1,6 +1,11 @@
 package masking
 
-import "math"
+import (
+	"fmt"
+	"math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 // CausalMask generates a causal (lower-triangular) attention mask.
 //
@@ -16,11 +21,27 @@ type CausalMask struct{}
 
 func NewCausalMask() *CausalMask { return &CausalMask{} }
 
-func (op *CausalMask) Forward(shape []int, data ...[]float64) []float64 {
+func (causalMask *CausalMask) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
+	if len(shape) == 0 {
+		return nil, fmt.Errorf("masking.causal: shape is required")
+	}
+
 	seqLen := shape[len(shape)-1]
-	out := make([]float64, seqLen*seqLen)
-	applyCausalMask(out, seqLen)
-	return out
+
+	if seqLen < 0 {
+		return nil, fmt.Errorf("masking.causal: seq_len must be non-negative, got %d", seqLen)
+	}
+
+	stateDict.EnsureOperationOutLen(seqLen * seqLen)
+	causalMaskKernel(stateDict.Out, seqLen)
+
+	return stateDict, nil
 }
 
 // causalMaskScalar is the pure-Go fallback used when no SIMD path covers

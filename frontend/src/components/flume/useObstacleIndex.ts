@@ -51,6 +51,7 @@ export function useObstacleIndex(
 
 		const measure = (el: Element) => {
 			const nid = el.getAttribute("data-node-id");
+			console.log("measure, nid", nid)
 			if (!nid) return;
 
 			const stageRect = container.getBoundingClientRect();
@@ -85,6 +86,7 @@ export function useObstacleIndex(
 				for (const node of record.addedNodes) {
 					if (!(node instanceof Element)) continue;
 					if (node.matches('[data-flume-component="node"][data-node-id]')) {
+						console.log(`matches [data-flume-component="node"][data-node-id]`)
 						resizeObserver.observe(node);
 						measure(node);
 					} else {
@@ -127,6 +129,10 @@ export function useConnectionWorker(
 	scaleRef: React.RefObject<number>,
 ) {
 	const workerRef = React.useRef<Worker | null>(null);
+	const portElCacheRef = React.useRef<Map<string, Element>>(new Map());
+	const pathElCacheRef = React.useRef<Map<string, SVGPathElement>>(new Map());
+	const pendingNodesRef = React.useRef<Record<string, FlumeNode> | null>(null);
+	const rafIdRef = React.useRef<number | null>(null);
 
 	React.useEffect(() => {
 		const worker = new Worker(
@@ -135,77 +141,145 @@ export function useConnectionWorker(
 		);
 
 		worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+			const pathCache = pathElCacheRef.current;
+			let written = 0;
+			let missing = 0;
 			for (const { id, d } of event.data.paths) {
-				const path = document.querySelector<SVGPathElement>(
-					`[data-connection-id="${id}"]`,
-				);
-				path?.setAttribute("d", d);
+				let path = pathCache.get(id);
+				if (!path || !path.isConnected) {
+					path =
+						document.querySelector<SVGPathElement>(
+							`[data-connection-id="${id}"]`,
+						) ?? undefined;
+					if (path) pathCache.set(id, path);
+					else pathCache.delete(id);
+				}
+				if (path) {
+					path.setAttribute("d", d);
+					written++;
+				} else {
+					missing++;
+				}
+			}
+			if (typeof window !== "undefined") {
+				(window as unknown as { __flumeOnMessageDebug?: { written: number; missing: number; total: number } }).__flumeOnMessageDebug = {
+					written,
+					missing,
+					total: event.data.paths.length,
+				};
 			}
 		};
 
 		workerRef.current = worker;
-		return () => worker.terminate();
+		return () => {
+			worker.terminate();
+			portElCacheRef.current.clear();
+			pathElCacheRef.current.clear();
+		};
 	}, []);
+
+	const dispatch = React.useCallback(() => {
+		rafIdRef.current = null;
+		const nodes = pendingNodesRef.current;
+		pendingNodesRef.current = null;
+		if (!nodes) return;
+
+		const worker = workerRef.current;
+		if (!worker) return;
+
+		const container = getStageContainer(editorId);
+		if (!container) return;
+
+		const stageRect = container.getBoundingClientRect();
+		const hw = stageRect.width / 2;
+		const hh = stageRect.height / 2;
+		const inv = safeInv(scaleRef.current);
+
+		const allObstacles = Array.from(indexRef.current.entries());
+		const obstaclesVertical = allObstacles.map(([, r]) => r);
+		const connections: ConnectionPathRequest[] = [];
+		const portCache = portElCacheRef.current;
+
+		const lookupPort = (
+			nodeId: string,
+			portName: string,
+			transputType: "input" | "output",
+		): Element | null => {
+			const key = `${nodeId}|${portName}|${transputType}`;
+			const cached = portCache.get(key);
+			if (cached?.isConnected) return cached;
+			const el = container.querySelector(
+				`[data-node-id="${nodeId}"] [data-port-name="${portName}"][data-port-transput-type="${transputType}"]`,
+			);
+			if (el) portCache.set(key, el);
+			else portCache.delete(key);
+			return el;
+		};
+
+		for (const node of Object.values(nodes)) {
+			if (!node.connections?.inputs) continue;
+
+			for (const [inputName, outputs] of Object.entries(node.connections.inputs)) {
+				for (const output of outputs) {
+					const fromEl = lookupPort(output.nodeId, output.portName, "output");
+					const toEl = lookupPort(node.id, inputName, "input");
+					if (!fromEl || !toEl) continue;
+
+					const fromRect = fromEl.getBoundingClientRect();
+					const toRect = toEl.getBoundingClientRect();
+
+					const from: Coordinate = {
+						x: inv * (fromRect.x - stageRect.x + fromRect.width / 2 - hw),
+						y: inv * (fromRect.y - stageRect.y + fromRect.height / 2 - hh),
+					};
+					const to: Coordinate = {
+						x: inv * (toRect.x - stageRect.x + toRect.width / 2 - hw),
+						y: inv * (toRect.y - stageRect.y + toRect.height / 2 - hh),
+					};
+
+					connections.push({
+						id: connectionId(output.nodeId, output.portName, node.id, inputName),
+						from,
+						to,
+						routingMode,
+						obstaclesVertical,
+						obstaclesHorizontal:
+							routingMode === "orthogonal"
+								? allObstacles
+										.filter(([nid]) => nid !== output.nodeId && nid !== node.id)
+										.map(([, r]) => r)
+								: obstaclesVertical,
+					});
+				}
+			}
+		}
+
+		if (typeof window !== "undefined") {
+			(window as unknown as { __flumeWorkerDebug?: { sent: number; nodes: number } }).__flumeWorkerDebug = {
+				sent: connections.length,
+				nodes: Object.keys(nodes).length,
+			};
+		}
+		if (connections.length > 0) {
+			console.log("posting message")
+			worker.postMessage({ connections } satisfies WorkerRequest);
+		}
+	}, [editorId, routingMode, indexRef, scaleRef]);
 
 	return React.useCallback(
 		(nodes: Record<string, FlumeNode>) => {
-			const worker = workerRef.current;
-			if (!worker || routingMode !== "orthogonal") return;
-
-			const container = getStageContainer(editorId);
-			if (!container) return;
-
-			const stageRect = container.getBoundingClientRect();
-			const hw = stageRect.width / 2;
-			const hh = stageRect.height / 2;
-			const inv = safeInv(scaleRef.current);
-
-			const allObstacles = Array.from(indexRef.current.entries());
-			const connections: ConnectionPathRequest[] = [];
-
-			for (const node of Object.values(nodes)) {
-				if (!node.connections?.inputs) continue;
-
-				for (const [inputName, outputs] of Object.entries(node.connections.inputs)) {
-					for (const output of outputs) {
-						const fromEl = container.querySelector(
-							`[data-node-id="${output.nodeId}"] [data-port-name="${output.portName}"][data-port-transput-type="output"]`,
-						);
-						const toEl = container.querySelector(
-							`[data-node-id="${node.id}"] [data-port-name="${inputName}"][data-port-transput-type="input"]`,
-						);
-						if (!fromEl || !toEl) continue;
-
-						const fromRect = fromEl.getBoundingClientRect();
-						const toRect = toEl.getBoundingClientRect();
-
-						const from: Coordinate = {
-							x: inv * (fromRect.x - stageRect.x + fromRect.width / 2 - hw),
-							y: inv * (fromRect.y - stageRect.y + fromRect.height / 2 - hh),
-						};
-						const to: Coordinate = {
-							x: inv * (toRect.x - stageRect.x + toRect.width / 2 - hw),
-							y: inv * (toRect.y - stageRect.y + toRect.height / 2 - hh),
-						};
-
-						connections.push({
-							id: connectionId(output.nodeId, output.portName, node.id, inputName),
-							from,
-							to,
-							routingMode,
-							obstaclesVertical: allObstacles.map(([, r]) => r),
-							obstaclesHorizontal: allObstacles
-								.filter(([nid]) => nid !== output.nodeId && nid !== node.id)
-								.map(([, r]) => r),
-						});
-					}
-				}
+			if (typeof window !== "undefined") {
+				const w = window as unknown as {
+					__flumeCalls?: number;
+					__flumeLastNodeCount?: number;
+				};
+				w.__flumeCalls = (w.__flumeCalls ?? 0) + 1;
+				w.__flumeLastNodeCount = Object.keys(nodes).length;
 			}
-
-			if (connections.length > 0) {
-				worker.postMessage({ connections } satisfies WorkerRequest);
-			}
+			pendingNodesRef.current = nodes;
+			if (rafIdRef.current !== null) return;
+			rafIdRef.current = requestAnimationFrame(dispatch);
 		},
-		[editorId, routingMode, indexRef, scaleRef],
+		[dispatch],
 	);
 }

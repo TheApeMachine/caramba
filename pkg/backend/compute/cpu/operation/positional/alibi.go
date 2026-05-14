@@ -1,6 +1,11 @@
 package positional
 
-import "math"
+import (
+	"fmt"
+	"math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 ALiBi computes the Attention with Linear Biases tensor.
@@ -21,14 +26,11 @@ Forward:
   - no data required (pass nil or empty)
   - output: [num_heads * seq_len_q * seq_len_k] bias values (row-major)
 */
-type ALiBi struct {
-	NumHeads int
-	Causal   bool
-}
+type ALiBi struct{}
 
 // NewALiBi returns an ALiBi for the given number of heads.
-func NewALiBi(numHeads int, causal bool) *ALiBi {
-	return &ALiBi{NumHeads: numHeads, Causal: causal}
+func NewALiBi(args ...any) *ALiBi {
+	return &ALiBi{}
 }
 
 // buildSlopes returns the per-head slope values.
@@ -68,14 +70,24 @@ func buildSlopes(numHeads int) []float64 {
 
 // Forward computes the ALiBi bias tensor.
 // shape=[num_heads, seq_len_q, seq_len_k]; data is ignored.
-func (a *ALiBi) Forward(shape []int, data ...[]float64) []float64 {
+func (alibi *ALiBi) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.Err(); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
+	if len(shape) != 3 {
+		return nil, fmt.Errorf("positional.alibi: expected rank 3, got %d", len(shape))
+	}
+
 	numHeads := shape[0]
 	seqLenQ := shape[1]
 	seqLenK := shape[2]
 
 	slopes := buildSlopes(numHeads)
-	out := make([]float64, numHeads*seqLenQ*seqLenK)
+	stateDict.EnsureOperationOutLen(numHeads * seqLenQ * seqLenK)
+	alibiKernel(stateDict.Out, slopes, seqLenQ, seqLenK, stateDict.Causal)
 
-	applyALiBi(out, slopes, seqLenQ, seqLenK, a.Causal)
-	return out
+	return stateDict, nil
 }

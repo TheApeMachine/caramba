@@ -1,20 +1,22 @@
 package activation
 
-// Tanh applies the rational-approximation tanh elementwise using SIMD on amd64/arm64.
+import "github.com/theapemachine/caramba/pkg/backend/compute/state"
+
+/*
+Tanh applies the rational-approximation tanh elementwise using SIMD on amd64/arm64.
+*/
 type Tanh struct{}
 
 func NewTanh() *Tanh {
 	return &Tanh{}
 }
 
-func (tan *Tanh) Forward(shape []int, data ...[]float64) []float64 {
-	if len(data) == 0 || len(data[0]) == 0 {
-		return []float64{}
+func (tanh *Tanh) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("activation.tanh"); err != nil {
+		return nil, err
 	}
 
-	input := data[0]
-	out := make([]float64, len(input))
-	applyTanh(out, input)
+	tanhKernel(stateDict.Out, stateDict.Inputs[0])
 
-	return out
+	return stateDict, nil
 }

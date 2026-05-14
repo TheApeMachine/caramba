@@ -8,7 +8,7 @@ func ApplyMaskAVX2(dst, scores, mask []float64)
 //go:noescape
 func ApplyMaskSSE2(dst, scores, mask []float64)
 
-func applyMaskAdd(dst, scores, mask []float64) {
+func applyMaskKernel(dst, scores, mask []float64) {
 	if useAVX2 {
 		ApplyMaskAVX2(dst, scores, mask)
 	} else {

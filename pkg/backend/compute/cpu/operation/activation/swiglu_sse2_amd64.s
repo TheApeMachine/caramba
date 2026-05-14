@@ -3,6 +3,7 @@
 // Constants in swiglu_avx2_amd64.s
 
 // SwiGLUSSE2(dst, src []float64)
+// dst[i] = gate[i] * sigmoid(gate[i]) * value[i]   (swish(gate) * value)
 // ABI0: dst+0(FP)=ptr, dst_len+8(FP)=len(=n),
 //       src_base+24(FP)=ptr, src_len+32(FP)=len(=2n)
 TEXT ·SwiGLUSSE2(SB), NOSPLIT, $0-48
@@ -51,8 +52,9 @@ loop:
 	MINPD  X13, X7
 	MAXPD  X14, X7
 	ADDPD  X13, X7
-	MULPD  X12, X7
-	MULPD  X1, X7
+	MULPD  X12, X7        // sigmoid(gate)
+	MULPD  X0, X7         // swish(gate) = gate * sigmoid(gate)
+	MULPD  X1, X7         // swish(gate) * value
 	MOVUPD X7, (AX)
 	ADDQ $16, AX
 	ADDQ $16, DI

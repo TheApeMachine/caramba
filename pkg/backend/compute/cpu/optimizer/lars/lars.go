@@ -1,6 +1,10 @@
 package lars
 
-import stdmath "math"
+import (
+	stdmath "math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 LARS (Layer-wise Adaptive Rate Scaling). Trust ratio and effective gradient
@@ -8,38 +12,37 @@ are computed in scalar (single layer-wide scalars), then a fused AVX2/SSE2/NEON
 kernel writes the per-element update.
 */
 type LARS struct {
-	LR       float64
-	Momentum float64
-	WD       float64
-	Eta      float64
-	Eps      float64
-	velocity []float64
 }
 
-func NewLARS(lr, momentum, wd, eta, eps float64) *LARS {
-	return &LARS{LR: lr, Momentum: momentum, WD: wd, Eta: eta, Eps: eps}
+func NewLARS() *LARS {
+	return &LARS{}
 }
 
-func (lars *LARS) Step(params, grads []float64) []float64 {
-	n := len(params)
-
-	if lars.velocity == nil {
-		lars.velocity = make([]float64, n)
+func (lars *LARS) Step(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireReady("lars"); err != nil {
+		return nil, err
 	}
 
-	pNorm := stdmath.Sqrt(lambL2NormSq(params))
-	gNorm := stdmath.Sqrt(lambL2NormSq(grads))
+	pNorm := stdmath.Sqrt(lambL2NormSq(stateDict.Params))
+	gNorm := stdmath.Sqrt(lambL2NormSq(stateDict.Grads))
 
-	localLR := lars.LR
+	localLR := stateDict.LR
 
 	if pNorm > 0 && gNorm > 0 {
-		localLR = lars.Eta * pNorm / (gNorm + lars.WD*pNorm + lars.Eps)
+		localLR = stateDict.Eta * pNorm / (gNorm + stateDict.WD*pNorm + stateDict.Eps)
 	}
 
-	out := make([]float64, n)
-	larsStep(out, lars.velocity, params, grads, localLR, lars.Momentum, lars.WD)
+	larsStep(
+		stateDict.Out,
+		stateDict.M,
+		stateDict.Params,
+		stateDict.Grads,
+		localLR,
+		stateDict.Momentum,
+		stateDict.WD,
+	)
 
-	return out
+	return stateDict, nil
 }
 
 /*
@@ -60,8 +63,12 @@ func NewLAMB(lr, beta1, beta2, eps, wd float64) *LAMB {
 	return &LAMB{LR: lr, Beta1: beta1, Beta2: beta2, Eps: eps, WD: wd}
 }
 
-func (lamb *LAMB) Step(params, grads []float64) []float64 {
-	n := len(params)
+func (lamb *LAMB) Step(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireReady("lamb"); err != nil {
+		return nil, err
+	}
+
+	n := len(stateDict.Params)
 	lamb.step++
 
 	if lamb.m == nil {
@@ -69,13 +76,15 @@ func (lamb *LAMB) Step(params, grads []float64) []float64 {
 		lamb.v = make([]float64, n)
 	}
 
-	lambEMA(lamb.m, lamb.v, grads, lamb.Beta1, lamb.Beta2)
+	lambEMA(lamb.m, lamb.v, stateDict.Grads, lamb.Beta1, lamb.Beta2)
 
 	bc1Inv := 1.0 / (1 - stdmath.Pow(lamb.Beta1, float64(lamb.step)))
 	bc2Inv := 1.0 / (1 - stdmath.Pow(lamb.Beta2, float64(lamb.step)))
 
-	pNorm := stdmath.Sqrt(lambL2NormSq(params))
-	uNormSq := lambUpdateNormSq(lamb.m, lamb.v, params, bc1Inv, bc2Inv, lamb.Eps, lamb.WD)
+	pNorm := stdmath.Sqrt(lambL2NormSq(stateDict.Params))
+	uNormSq := lambUpdateNormSq(
+		lamb.m, lamb.v, stateDict.Params, bc1Inv, bc2Inv, lamb.Eps, lamb.WD,
+	)
 	uNorm := stdmath.Sqrt(uNormSq)
 
 	ratio := lamb.LR
@@ -84,8 +93,20 @@ func (lamb *LAMB) Step(params, grads []float64) []float64 {
 		ratio = lamb.LR * pNorm / uNorm
 	}
 
-	out := make([]float64, n)
-	lambStep(out, lamb.m, lamb.v, params, grads, ratio, bc1Inv, bc2Inv, lamb.Eps, lamb.WD)
+	stateDict.Out = make([]float64, n)
+	stateDict.X = stateDict.Out
+	lambStep(
+		stateDict.Out,
+		lamb.m,
+		lamb.v,
+		stateDict.Params,
+		stateDict.Grads,
+		ratio,
+		bc1Inv,
+		bc2Inv,
+		lamb.Eps,
+		lamb.WD,
+	)
 
-	return out
+	return stateDict, nil
 }

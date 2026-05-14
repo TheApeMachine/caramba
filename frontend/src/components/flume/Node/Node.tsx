@@ -189,7 +189,7 @@ const Node = ({
 	const handleDrag = ({ x, y }: Coordinate) => {
 		if (nodeWrapper.current) {
 			nodeWrapper.current.style.transform = `translate(${x}px,${y}px)`;
-			if (edgeRouting === "orthogonal" && recalculateWorker) {
+			if (recalculateWorker) {
 				recalculateWorker(nodeMap);
 			} else {
 				updateNodeConnections();

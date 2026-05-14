@@ -51,9 +51,8 @@ GLOBL ·hexC11(SB), RODATA, $8
 //   F4          : 2^r bit-cast scratch (loop)
 //   F5..F15,F17 : polynomial coefficients C11..C0 (12 regs)
 //   F16         : Σ acc (sum)
-//   F18         : 1.0 (used after the polynomial)
 //   F20..F26    : range-reduction constants
-//   F19,F27..F31: unused
+//   F18,F19,F27..F31: unused
 TEXT ·hawkesExcitationNEON(SB), NOSPLIT, $0-56
 	MOVD events+0(FP), R0
 	MOVD events_len+8(FP), R1

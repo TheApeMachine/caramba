@@ -79,7 +79,11 @@ export const paperInsertBlock = toolDefinition({
 	if (!api) return { error: "Paper editor is not open." };
 
 	const blocks = api.getBlocks();
-	const afterId = typed.afterId === "last" ? (blocks.at(-1)?.id ?? blocks[0].id) : typed.afterId;
+	const lastId = blocks.at(-1)?.id;
+	if (typed.afterId === "last" && !lastId) {
+		return { error: "Paper has no blocks to insert after." };
+	}
+	const afterId = typed.afterId === "last" ? (lastId as string) : typed.afterId;
 
 	let newId: string;
 

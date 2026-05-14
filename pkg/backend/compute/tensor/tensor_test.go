@@ -140,6 +140,19 @@ func TestShape_Equal(t *testing.T) {
 	})
 }
 
+func TestFloat64From(t *testing.T) {
+	convey.Convey("Given float64 values", t, func() {
+		value, err := Float64From([]float64{1, 2, 3})
+
+		convey.Convey("It should create a host-owned vector tensor", func() {
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(value.Location(), convey.ShouldEqual, Host)
+			convey.So(value.Shape().Dims(), convey.ShouldResemble, []int{3})
+			convey.So(MustCloneFloat64(value), convey.ShouldResemble, []float64{1, 2, 3})
+		})
+	})
+}
+
 func TestNewHostBackend(t *testing.T) {
 	convey.Convey("Given a new host backend", t, func() {
 		hostBackend := NewHostBackend()

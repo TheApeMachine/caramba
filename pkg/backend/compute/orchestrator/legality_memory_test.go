@@ -58,9 +58,10 @@ func TestLegalityAwareFusion(t *testing.T) {
 
 func TestBackendCapabilities(t *testing.T) {
 	Convey("Given backend capability declarations", t, func() {
-		Convey("It should expose broad CPU support without giving CUDA silent fallbacks", func() {
+		Convey("It should expose full backend support without wildcard fallbacks", func() {
 			So(CapabilitiesForLocation(tensor.Host).Supports("attention.sdpa"), ShouldBeTrue)
-			So(CapabilitiesForLocation(tensor.CUDA).Supports("attention.sdpa"), ShouldBeFalse)
+			So(CapabilitiesForLocation(tensor.Host).Supports("*"), ShouldBeFalse)
+			So(CapabilitiesForLocation(tensor.CUDA).Supports("attention.sdpa"), ShouldBeTrue)
 			So(CapabilitiesForLocation(tensor.CUDA).Supports(ir.OpMatmul), ShouldBeTrue)
 		})
 
@@ -69,7 +70,7 @@ func TestBackendCapabilities(t *testing.T) {
 
 			So(metal.Supports("attention.sdpa"), ShouldBeTrue)
 			So(metal.Supports("vsa.bind"), ShouldBeTrue)
-			So(metal.Supports("train.optimizer.adam"), ShouldBeFalse)
+			So(metal.Supports("train.optimizer.adam"), ShouldBeTrue)
 			So(metal.Precision("attention.sdpa"), ShouldEqual, tensor.Float32)
 		})
 	})

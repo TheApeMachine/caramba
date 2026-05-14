@@ -21,6 +21,7 @@
 #include "_pooling_xla.cpp"
 #include "_positional_xla.cpp"
 #include "_projection_xla.cpp"
+#include "_optimizer_xla.cpp"
 #include "_reference_xla_ops.cpp"
 
 #endif // __XLA_BUILD__

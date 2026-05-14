@@ -1,6 +1,10 @@
 package lbfgs
 
-import stdmath "math"
+import (
+	stdmath "math"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
 
 /*
 L-BFGS (Limited-memory Broyden–Fletcher–Goldfarb–Shanno). Two-loop recursion
@@ -8,72 +12,57 @@ operates entirely through AVX2/SSE2/NEON kernels: vector subtract, dot product,
 AXPY, scale, and the final parameter step.
 */
 type LBFGS struct {
-	LR         float64
-	HistSize   int
-	LineSearch bool
-	C1         float64
-
-	sHist [][]float64
-	yHist [][]float64
-	rhoH  []float64
-	prevP []float64
-	prevG []float64
-	head  int
-	count int
 }
 
-func NewLBFGS(lr float64, histSize int, lineSearch bool) *LBFGS {
-	return &LBFGS{
-		LR:         lr,
-		HistSize:   histSize,
-		LineSearch: lineSearch,
-		C1:         1e-4,
-		sHist:      make([][]float64, histSize),
-		yHist:      make([][]float64, histSize),
-		rhoH:       make([]float64, histSize),
+func NewLBFGS() *LBFGS {
+	return &LBFGS{}
+}
+
+func (lb *LBFGS) Step(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireReady("lbfgs"); err != nil {
+		return nil, err
 	}
-}
 
-func (lb *LBFGS) Step(params, grads []float64) []float64 {
-	n := len(params)
+	stateDict.EnsureHistory()
+	n := len(stateDict.Params)
 
-	if lb.prevP != nil {
+	if stateDict.PrevParams != nil {
 		s := make([]float64, n)
 		y := make([]float64, n)
-		lbfgsSub(s, params, lb.prevP)
-		lbfgsSub(y, grads, lb.prevG)
+		lbfgsSub(s, stateDict.Params, stateDict.PrevParams)
+		lbfgsSub(y, stateDict.Grads, stateDict.PrevGrads)
 
 		ys := lbfgsDot(y, s)
 
 		if ys > 1e-10 {
-			slot := lb.head % lb.HistSize
-			lb.sHist[slot] = s
-			lb.yHist[slot] = y
-			lb.rhoH[slot] = 1 / ys
-			lb.head++
+			slot := stateDict.Head % stateDict.HistSize
+			stateDict.SHist[slot] = s
+			stateDict.YHist[slot] = y
+			stateDict.RhoHist[slot] = 1 / ys
+			stateDict.Head++
 
-			if lb.count < lb.HistSize {
-				lb.count++
+			if stateDict.Count < stateDict.HistSize {
+				stateDict.Count++
 			}
 		}
 	}
 
 	q := make([]float64, n)
-	copy(q, grads)
-	alphas := make([]float64, lb.count)
+	copy(q, stateDict.Grads)
+	alphas := make([]float64, stateDict.Count)
 
-	for i := lb.count - 1; i >= 0; i-- {
-		slot := (lb.head - 1 - i + lb.HistSize*2) % lb.HistSize
-		alphas[i] = lb.rhoH[slot] * lbfgsDot(lb.sHist[slot], q)
-		lbfgsAddScaled(q, lb.yHist[slot], -alphas[i])
+	for i := stateDict.Count - 1; i >= 0; i-- {
+		slot := (stateDict.Head - 1 - i + stateDict.HistSize*2) % stateDict.HistSize
+		alphas[i] = stateDict.RhoHist[slot] * lbfgsDot(stateDict.SHist[slot], q)
+		lbfgsAddScaled(q, stateDict.YHist[slot], -alphas[i])
 	}
 
 	r := make([]float64, n)
 
-	if lb.count > 0 {
-		slot := (lb.head - 1 + lb.HistSize*2) % lb.HistSize
-		yy := lbfgsDot(lb.yHist[slot], lb.yHist[slot])
-		ys := lbfgsDot(lb.yHist[slot], lb.sHist[slot])
+	if stateDict.Count > 0 {
+		slot := (stateDict.Head - 1 + stateDict.HistSize*2) % stateDict.HistSize
+		yy := lbfgsDot(stateDict.YHist[slot], stateDict.YHist[slot])
+		ys := lbfgsDot(stateDict.YHist[slot], stateDict.SHist[slot])
 		gamma := ys / yy
 		copy(r, q)
 		lbfgsScale(r, gamma)
@@ -81,35 +70,39 @@ func (lb *LBFGS) Step(params, grads []float64) []float64 {
 		copy(r, q)
 	}
 
-	for i := 0; i < lb.count; i++ {
-		slot := (lb.head - lb.count + i + lb.HistSize*2) % lb.HistSize
-		beta := lb.rhoH[slot] * lbfgsDot(lb.yHist[slot], r)
-		lbfgsAddScaled(r, lb.sHist[slot], alphas[i]-beta)
+	for i := 0; i < stateDict.Count; i++ {
+		slot := (stateDict.Head - stateDict.Count + i + stateDict.HistSize*2) % stateDict.HistSize
+		beta := stateDict.RhoHist[slot] * lbfgsDot(stateDict.YHist[slot], r)
+		lbfgsAddScaled(r, stateDict.SHist[slot], alphas[i]-beta)
 	}
 
-	lr := lb.LR
+	lr := stateDict.LR
 
-	if lb.LineSearch {
-		lr = lb.armijoLR(grads, r, lr)
+	if stateDict.LineSearch {
+		lr = lb.armijoLR(stateDict, r, lr)
 	}
 
-	out := make([]float64, n)
-	lbfgsParamStep(out, params, r, lr)
+	lbfgsParamStep(stateDict.Out, stateDict.Params, r, lr)
 
-	lb.prevP = make([]float64, n)
-	lb.prevG = make([]float64, n)
-	copy(lb.prevP, params)
-	copy(lb.prevG, grads)
+	stateDict.PrevParams = make([]float64, n)
+	stateDict.PrevGrads = make([]float64, n)
+	copy(stateDict.PrevParams, stateDict.Params)
+	copy(stateDict.PrevGrads, stateDict.Grads)
 
-	return out
+	return stateDict, nil
 }
 
-func (lb *LBFGS) armijoLR(grads, direction []float64, lr float64) float64 {
-	f0 := lbfgsDot(grads, grads)
-	slope := -lbfgsDot(grads, direction)
+func (lb *LBFGS) armijoLR(stateDict *state.Dict, direction []float64, lr float64) float64 {
+	f0 := lbfgsDot(stateDict.Grads, stateDict.Grads)
+	slope := -lbfgsDot(stateDict.Grads, direction)
+	c1 := stateDict.C1
+
+	if c1 == 0 {
+		c1 = 1e-4
+	}
 
 	for range 50 {
-		decrease := f0 - lb.C1*lr*slope
+		decrease := f0 - c1*lr*slope
 
 		if decrease > 0 {
 			break

@@ -1,27 +1,34 @@
 package shape
 
-// MergeHeads is the inverse of ViewAsHeads.
-// [B, H, T, head_dim] -> [B, T, H*head_dim]
-//
-// Algorithm:
-//  1. Transpose dims 1 and 2: [B, H, T, head_dim] -> [B, T, H, head_dim].
-//  2. Reshape (free): [B, T, H, head_dim] -> [B, T, H*head_dim].
-//
-// Forward(shape=[B,H,T,head_dim], data[0]) -> flat [B,T,H*head_dim] buffer.
+import (
+	"fmt"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+)
+
+/*
+MergeHeads is the inverse of ViewAsHeads.
+[B, H, T, head_dim] -> [B, T, H*head_dim]
+*/
 type MergeHeads struct{}
 
-// NewMergeHeads creates the operation.
 func NewMergeHeads() *MergeHeads {
 	return &MergeHeads{}
 }
 
-// Forward returns [B, T, H*head_dim] as a flat buffer.
-// shape must be [B, H, T, head_dim].
-func (m *MergeHeads) Forward(shape []int, data ...[]float64) []float64 {
-	// Transpose dims 1 (H) and 2 (T) -> [B, T, H, head_dim].
-	t := &Transpose{Dim0: 1, Dim1: 2}
-	transposed := t.Forward(shape, data[0])
-	// The data is now laid out as [B, T, H, head_dim] — no further copy needed
-	// for the logical reshape to [B, T, H*head_dim].
-	return transposed
+func (mergeHeads *MergeHeads) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("shape.merge_heads"); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
+	if len(shape) != 4 {
+		return nil, fmt.Errorf("shape.merge_heads: expected rank 4, got %d", len(shape))
+	}
+
+	stateDict.EnsureOperationOutLen(len(stateDict.Inputs[0]))
+	transposeKernel(stateDict.Out, stateDict.Inputs[0], shape, 1, 2)
+
+	return stateDict, nil
 }

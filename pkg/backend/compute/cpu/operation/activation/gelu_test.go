@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 func TestGelu(t *testing.T) {
@@ -13,22 +14,22 @@ func TestGelu(t *testing.T) {
 
 		Convey("Forward", func() {
 			Convey("It should return ~0 for large negative inputs", func() {
-				out := op.Forward([]int{4}, []float64{-10, -8, -6, -5})
+				out := forwardGelu(op, []float64{-10, -8, -6, -5})
 				for _, v := range out {
 					So(v, ShouldAlmostEqual, 0, 1e-3)
 				}
 			})
 
 			Convey("It should return ~x for large positive inputs", func() {
-				out := op.Forward([]int{4}, []float64{5, 6, 8, 10})
 				in := []float64{5, 6, 8, 10}
+				out := forwardGelu(op, in)
 				for i, v := range out {
 					So(v, ShouldAlmostEqual, in[i], 1e-3)
 				}
 			})
 
 			Convey("It should return ~0 for zero input", func() {
-				out := op.Forward([]int{4}, []float64{0, 0, 0, 0})
+				out := forwardGelu(op, []float64{0, 0, 0, 0})
 				for _, v := range out {
 					So(math.Abs(v), ShouldBeLessThan, 1e-9)
 				}
@@ -48,6 +49,19 @@ func BenchmarkGelu_Forward(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		op.Forward(shape, input)
+		stateDict := state.NewDict().WithShape(shape).WithInput(input)
+		_, _ = op.Forward(stateDict)
 	}
+}
+
+func forwardGelu(op *Gelu, input []float64) []float64 {
+	stateDict := state.NewDict().
+		WithShape([]int{len(input)}).
+		WithInput(input)
+
+	out, err := op.Forward(stateDict)
+
+	So(err, ShouldBeNil)
+
+	return out.Out
 }

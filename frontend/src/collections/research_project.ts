@@ -9,7 +9,7 @@ export const ResearchProject = z.object({
 	description: z.string(),
 	organization_slug: z.string().default(""),
 	project_slug: z.preprocess(
-		(v: unknown): string | null => (v === "" ? null : (v as string)),
+		(v) => (v === "" ? null : v),
 		z.string().min(1).nullable().optional(),
 	),
 	created_at: z.coerce.date(),
@@ -56,7 +56,10 @@ export const researchProjectCollection = createCollection(
 				return { timeout: 60_000, txid: result.txid };
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
-				const code = (err as { code?: string }).code;
+				const code =
+					typeof err === "object" && err !== null && "code" in err
+						? String((err as { code: unknown }).code)
+						: undefined;
 				console.error(
 					`createResearchProject failed: ${message}${code ? ` [code=${code}]` : ""}`,
 				);

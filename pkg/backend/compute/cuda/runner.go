@@ -20,8 +20,12 @@ type Runner struct {
 NewRunner instantiates a new CUDA runner.
 */
 func NewRunner() *Runner {
+	return NewRunnerWithBackend(NewTensorBackend())
+}
+
+func NewRunnerWithBackend(backend *TensorBackend) *Runner {
 	return &Runner{
-		backend: NewTensorBackend(),
+		backend: backend,
 	}
 }
 

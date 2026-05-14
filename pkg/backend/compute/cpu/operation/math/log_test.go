@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
 func TestLog_Forward(t *testing.T) {
@@ -14,7 +15,7 @@ func TestLog_Forward(t *testing.T) {
 		Convey("Forward", func() {
 			Convey("It should match math.Log for sample positives", func() {
 				inputs := []float64{1.0, 2.0, 0.5, gomath.E, 10.0, 100.0, 1e6, 1e-6, 1e10}
-				out := op.Forward([]int{len(inputs)}, inputs)
+				out := forwardMath(op, []int{len(inputs)}, inputs)
 				for index, value := range inputs {
 					expected := gomath.Log(value)
 					absErr := gomath.Abs(out[index] - expected)
@@ -28,7 +29,7 @@ func TestLog_Forward(t *testing.T) {
 				for index := range inputs {
 					inputs[index] = float64(index)*0.5 + 0.001
 				}
-				out := op.Forward([]int{len(inputs)}, inputs)
+				out := forwardMath(op, []int{len(inputs)}, inputs)
 				for index, value := range inputs {
 					expected := gomath.Log(value)
 					absErr := gomath.Abs(out[index] - expected)
@@ -46,8 +47,10 @@ func BenchmarkLog_Forward(b *testing.B) {
 	for index := range data {
 		data[index] = float64(index)*0.5 + 0.001
 	}
-	b.ResetTimer()
-	for repeat := 0; repeat < b.N; repeat++ {
-		op.Forward([]int{1024}, data)
+	for b.Loop() {
+		stateDict := state.NewDict().
+			WithShape([]int{1024}).
+			WithInput(data)
+		_, _ = op.Forward(stateDict)
 	}
 }

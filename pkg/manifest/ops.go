@@ -67,8 +67,7 @@ func registerActivation() {
 		return activation.NewSwiGLU(), nil
 	})
 	Register("activation.leaky_relu", func(config map[string]any) (operation.Operation, error) {
-		alpha, _ := config["alpha"].(float64)
-		return activation.NewLeakyReLU(alpha), nil
+		return activation.NewLeakyReLU(), nil
 	})
 }
 
@@ -229,23 +228,13 @@ func registerMath() {
 		return math.NewSoftmax(), nil
 	})
 	Register("math.layernorm", func(config map[string]any) (operation.Operation, error) {
-		eps, _ := config["eps"].(float64)
-		if eps == 0 {
-			eps = 1e-5
-		}
-		return math.NewLayerNorm(eps, nil, nil), nil
+		return math.NewLayerNorm(), nil
 	})
 	Register("math.rmsnorm", func(config map[string]any) (operation.Operation, error) {
-		eps, _ := config["eps"].(float64)
-		if eps == 0 {
-			eps = 1e-6
-		}
-		return math.NewRMSNorm(eps, nil), nil
+		return math.NewRMSNorm(), nil
 	})
 	Register("math.dropout", func(config map[string]any) (operation.Operation, error) {
-		p, _ := config["p"].(float64)
-		training, _ := config["training"].(bool)
-		return math.NewDropout(p, training), nil
+		return math.NewDropout(), nil
 	})
 	Register("math.exp", func(_ map[string]any) (operation.Operation, error) {
 		return math.NewExp(), nil

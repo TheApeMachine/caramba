@@ -1,5 +1,7 @@
 package activation
 
+import "github.com/theapemachine/caramba/pkg/backend/compute/state"
+
 /*
 Gelu evaluates the standard approximate GELU map using SIMD instructions on
 amd64/arm64 and a scalar fallback on other platforms.
@@ -16,13 +18,12 @@ func NewGelu() *Gelu {
 	return &Gelu{}
 }
 
-/*
-Forward maps each input element through the approximate GELU formulation and
-returns freshly allocated outputs.
-*/
-func (gelu *Gelu) Forward(shape []int, data ...[]float64) []float64 {
-	input := data[0]
-	out := make([]float64, len(input))
-	applyGeLU(out, input)
-	return out
+func (gelu *Gelu) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("activation.gelu"); err != nil {
+		return nil, err
+	}
+
+	geluKernel(stateDict.Out, stateDict.Inputs[0])
+
+	return stateDict, nil
 }

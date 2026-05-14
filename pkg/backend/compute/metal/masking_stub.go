@@ -6,20 +6,20 @@ type MetalMasking struct{}
 type MetalCausalMask struct{}
 type MetalApplyMask struct{}
 
-func NewMasking(metallib string) (*MetalMasking, error) { return nil, errMetalUnavailable }
+func NewMasking(metallib string) (*MetalMasking, error) { return nil, metalUnavailable() }
 
 func (m *MetalMasking) NewCausalMask() *MetalCausalMask {
-	panic("MetalMasking.NewCausalMask: metal masking backend unavailable (darwin + cgo required)")
+	return &MetalCausalMask{}
 }
 
 func (op *MetalCausalMask) Forward(shape []int, data ...[]float64) ([]float64, error) {
-	return nil, errMetalUnavailable
+	return nil, metalUnavailable()
 }
 
 func (m *MetalMasking) NewApplyMask() *MetalApplyMask {
-	panic("MetalMasking.NewApplyMask: metal masking backend unavailable (darwin + cgo required)")
+	return &MetalApplyMask{}
 }
 
 func (op *MetalApplyMask) Forward(shape []int, data ...[]float64) ([]float64, error) {
-	return nil, errMetalUnavailable
+	return nil, metalUnavailable()
 }

@@ -10,10 +10,9 @@ func LeakyReLUAVX2(dst, src []float64, alpha float64)
 //go:noescape
 func LeakyReLUSSE2(dst, src []float64, alpha float64)
 
-// applyLeakyReLU writes len(src) elements into dst; dst and src must have equal length.
-func applyLeakyReLU(dst, src []float64, alpha float64) {
+func leakyReLUKernel(dst, src []float64, alpha float64) {
 	if len(dst) != len(src) {
-		panic(fmt.Sprintf("applyLeakyReLU: dst and src length mismatch: dst=%d src=%d", len(dst), len(src)))
+		panic(fmt.Sprintf("leakyReLUKernel: dst and src length mismatch: dst=%d src=%d", len(dst), len(src)))
 	}
 
 	width := 2
