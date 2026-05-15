@@ -45,6 +45,14 @@ No backend falls back silently. If a kernel isn't implemented for a target backe
 | `embedding.alibi`       | Attention with linear biases (ALiBi)         |
 | `embedding.sinusoidal`  | Fixed sinusoidal position encoding           |
 
+### Tokenizer
+
+| Op ID              | Description                                      |
+|--------------------|--------------------------------------------------|
+| `tokenizer.load`   | Load a tokenizer.json artifact into the registry |
+| `tokenizer.encode` | Encode prompt text into token IDs                |
+| `tokenizer.decode` | Decode generated token IDs back into text        |
+
 ### Normalization
 
 | Op ID              | Description                    |

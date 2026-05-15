@@ -57,17 +57,17 @@ func init() {
 		&cfgFile,
 		"config",
 		"",
-		"path to config file (default: try cmd/cfg/config.yml, ./config.yml, $HOME/.mosaic/config.yml, then embedded default)",
+		"path to config file (default: try cmd/asset/config.yml, ./config.yml, $HOME/.caramba/config.yml, then embedded default)",
 	)
 }
 
 /*
 initConfig loads config.yml from, in order:
   - path given by --config (if set)
-  - ./cmd/cfg/config.yml (repo checkout)
+  - ./cmd/asset/config.yml (repo checkout)
   - ./config.yml
-  - $HOME/.six/config.yml
-  - embedded cmd/cfg/config.yml
+  - $HOME/.caramba/config.yml
+  - embedded cmd/asset/config.yml
 */
 func initConfig() {
 	defer errnie.Apply(config.NewErrnieConfig())
@@ -85,7 +85,7 @@ func initConfig() {
 		if err := tryRead(cfgFile); err == nil {
 			loaded = true
 		} else {
-			fmt.Fprintf(os.Stderr, "mosaic: config file %q: %v\n", cfgFile, err)
+			fmt.Fprintf(os.Stderr, "caramba: config file %q: %v\n", cfgFile, err)
 
 			os.Exit(1)
 		}
@@ -93,12 +93,12 @@ func initConfig() {
 
 	if !loaded {
 		paths := []string{
-			"cmd/cfg/config.yml",
+			"cmd/asset/config.yml",
 			"config.yml",
 		}
 
 		if home, err := os.UserHomeDir(); err == nil {
-			paths = append(paths, filepath.Join(home, ".mosaic", "config.yml"))
+			paths = append(paths, filepath.Join(home, ".caramba", "config.yml"))
 		}
 
 		for _, p := range paths {
@@ -110,7 +110,6 @@ func initConfig() {
 	}
 
 	if !loaded {
-		fmt.Println("config file not found, using embedded config")
 		cfgReader, openErr := embedded.Open("asset/config.yml")
 
 		if openErr != nil {

@@ -113,6 +113,9 @@ go install github.com/theapemachine/caramba@latest
 # Run the API server
 caramba serve
 
+# Start a terminal chat shell
+caramba chat
+
 # Submit a manifest
 caramba research run manifest.yaml
 
@@ -137,6 +140,26 @@ locators like `hf://model/openai-community/gpt2@main`. The cache records refs,
 commit-pinned snapshots, content-addressed blobs, and metadata for every pulled
 file. Xet-backed files are detected from Hub resolve headers and reconstructed
 through CAS when `hub.xet.active` is enabled.
+
+Tokenizer operations use the same Hub cache. `tokenizer.load` registers a
+`tokenizer.json` artifact, `tokenizer.encode` turns prompt text into token IDs
+that can feed `embedding.token`, and `tokenizer.decode` turns generated IDs back
+into text. The first tokenizer backend is Hugging Face ByteLevel BPE, covering
+GPT-style decoder models without delegating tokenization to Python.
+
+The `chat` command provides the terminal prompt and streaming path for local
+model interaction:
+
+```bash
+caramba chat
+caramba chat --model openai-community/gpt2
+caramba chat --prompt "Explain attention in one sentence."
+```
+
+Until the CausalLM runner is connected, `chat` defaults to the explicit preview
+runtime. Preview mode can load the model tokenizer through the Hub cache and
+streams a deterministic response through the same generator boundary the model
+runtime will use.
 
 ---
 

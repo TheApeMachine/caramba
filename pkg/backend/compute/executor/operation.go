@@ -66,6 +66,7 @@ func applyStateMetadata(stateDict *state.Dict, node NodeSpec) {
 	stateDict.Cache = stringConfig(node, "cache", stateDict.Cache)
 	stateDict.Revision = stringConfig(node, "revision", stateDict.Revision)
 	stateDict.RepoType = stringConfig(node, "repo_type", stateDict.RepoType)
+	stateDict.Text = stringConfig(node, "text", stateDict.Text)
 	stateDict.Op = stringConfig(node, "op", stateDict.Op)
 	stateDict.At = stringConfig(node, "at", stateDict.At)
 	stateDict.After = stringConfig(node, "after", stateDict.After)
@@ -103,8 +104,17 @@ func applyStateMetadata(stateDict *state.Dict, node NodeSpec) {
 	stateDict.Ceil = boolConfig(node, "ceil", stateDict.Ceil)
 	stateDict.CountPad = boolConfig(node, "count_include_pad", stateDict.CountPad)
 	stateDict.CountPad = boolConfig(node, "count_pad", stateDict.CountPad)
+	stateDict.Truncate = boolConfig(node, "truncate", stateDict.Truncate)
+	stateDict.SkipSpecialTokens = boolConfig(
+		node,
+		"skip_special_tokens",
+		stateDict.SkipSpecialTokens,
+	)
 
 	stateDict.HistSize = intConfig(node, "hist_size", stateDict.HistSize)
+	stateDict.MaxLength = intConfig(node, "max_length", stateDict.MaxLength)
+	stateDict.PadTo = intConfig(node, "pad_to", stateDict.PadTo)
+	stateDict.PadID = intConfig(node, "pad_id", stateDict.PadID)
 	stateDict.Dim = intConfig(node, "dim", stateDict.Dim)
 	stateDict.Dim0 = intConfig(node, "dim0", stateDict.Dim0)
 	stateDict.Dim1 = intConfig(node, "dim1", stateDict.Dim1)

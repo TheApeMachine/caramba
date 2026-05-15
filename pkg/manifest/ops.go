@@ -23,6 +23,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/predictive_coding"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/projection"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/shape"
+	tokenizerop "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/tokenizer"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/train"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/vsa"
 )
@@ -46,6 +47,7 @@ func init() {
 	registerPredictiveCoding()
 	registerProjection()
 	registerShape()
+	registerTokenizer()
 	registerTrain()
 	registerVSA()
 }
@@ -435,6 +437,18 @@ func registerData() {
 		page := intParamDefault(config, "page", 100)
 
 		return data.NewHuggingFace(dataset, datasetConfig, split, field, page), nil
+	})
+}
+
+func registerTokenizer() {
+	Register("tokenizer.load", func(_ map[string]any) (operation.Operation, error) {
+		return tokenizerop.NewLoad(), nil
+	})
+	Register("tokenizer.encode", func(_ map[string]any) (operation.Operation, error) {
+		return tokenizerop.NewEncode(), nil
+	})
+	Register("tokenizer.decode", func(_ map[string]any) (operation.Operation, error) {
+		return tokenizerop.NewDecode(), nil
 	})
 }
 
