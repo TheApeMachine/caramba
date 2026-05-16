@@ -49,6 +49,10 @@ func (binder *Binder) bindNode(node *ir.Node) error {
 
 		return binder.bindVectorOrMatrix(node, "bias", biasNames(node.ID()))
 	case "math.rmsnorm":
+		if !nodeRMSNormAffine(node) {
+			return nil
+		}
+
 		return binder.bindVectorOrMatrix(node, "weight", weightNames(node.ID()))
 	case "math.groupnorm":
 		if err := binder.bindVectorOrMatrix(node, "weight", weightNames(node.ID())); err != nil {
@@ -110,6 +114,22 @@ func (binder *Binder) bindLinear(node *ir.Node) error {
 	}
 
 	if weight, bias, ok, err := binder.fusedQKV(node, inFeatures, outFeatures); ok || err != nil {
+		if err != nil {
+			return err
+		}
+
+		node.SetMetadata("weight", weight)
+
+		if len(bias) > 0 {
+			node.SetMetadata("bias", bias)
+		}
+
+		return nil
+	}
+
+	if weight, bias, ok, err := binder.fluxSinglePackedLinear(
+		node, inFeatures, outFeatures,
+	); ok || err != nil {
 		if err != nil {
 			return err
 		}
@@ -431,6 +451,8 @@ func tensorNames(prefixes []string, suffix string) []string {
 func prefixes(nodeID string) []string {
 	out := []string{nodeID}
 
+	out = append(out, fluxTransformerAliases(nodeID)...)
+
 	switch nodeID {
 	case "token_embedding":
 		out = append(out, "transformer.wte", "wte")
@@ -476,6 +498,26 @@ func prefixes(nodeID string) []string {
 	}
 
 	return out
+}
+
+func fluxTransformerAliases(nodeID string) []string {
+	aliases := make([]string, 0, 1)
+
+	if strings.HasSuffix(nodeID, ".ff.net.0.proj") {
+		aliases = append(
+			aliases,
+			strings.TrimSuffix(nodeID, ".ff.net.0.proj")+".ff.linear_in",
+		)
+	}
+
+	if strings.HasSuffix(nodeID, ".ff.net.2") {
+		aliases = append(
+			aliases,
+			strings.TrimSuffix(nodeID, ".ff.net.2")+".ff.linear_out",
+		)
+	}
+
+	return aliases
 }
 
 func splitLayerNode(nodeID string) (string, string, bool) {
@@ -544,7 +586,185 @@ func torchLinearWeight(name string) bool {
 		return true
 	}
 
-	return strings.HasPrefix(name, "model.layers.")
+	return strings.HasPrefix(name, "model.layers.") ||
+		strings.HasPrefix(name, "transformer_blocks.") ||
+		strings.HasPrefix(name, "single_transformer_blocks.") ||
+		strings.HasPrefix(name, "context_embedder.") ||
+		strings.HasPrefix(name, "x_embedder.") ||
+		strings.HasPrefix(name, "norm_out.linear.") ||
+		strings.HasPrefix(name, "proj_out.")
+}
+
+func (binder *Binder) fluxSinglePackedLinear(
+	node *ir.Node, inFeatures, outFeatures int,
+) ([]float64, []float64, bool, error) {
+	layer, part, ok := fluxSinglePart(node.ID())
+
+	if !ok {
+		return nil, nil, false, nil
+	}
+
+	switch part {
+	case "attn.to_q", "attn.to_k", "attn.to_v", "proj_mlp":
+		if !binder.store.Has(fluxSingleQKVMLPName(layer)) {
+			return nil, nil, false, nil
+		}
+
+		weight, err := binder.fluxSingleQKVMLPWeight(
+			layer, part, inFeatures, outFeatures,
+		)
+
+		return weight, nil, true, err
+	case "attn.to_out.0", "proj_out":
+		if !binder.store.Has(fluxSingleOutputName(layer)) {
+			return nil, nil, false, nil
+		}
+
+		weight, err := binder.fluxSingleOutputWeight(
+			layer, part, inFeatures, outFeatures,
+		)
+
+		return weight, nil, true, err
+	default:
+		return nil, nil, false, nil
+	}
+}
+
+func fluxSinglePart(nodeID string) (string, string, bool) {
+	rest, ok := strings.CutPrefix(nodeID, "single_transformer_blocks.")
+
+	if !ok {
+		return "", "", false
+	}
+
+	layer, part, ok := strings.Cut(rest, ".")
+
+	if !ok {
+		return "", "", false
+	}
+
+	if _, err := strconv.Atoi(layer); err != nil {
+		return "", "", false
+	}
+
+	return layer, part, true
+}
+
+func (binder *Binder) fluxSingleQKVMLPWeight(
+	layer string, part string, inFeatures int, outFeatures int,
+) ([]float64, error) {
+	name := fluxSingleQKVMLPName(layer)
+
+	info, _ := binder.store.Info(name)
+	values, err := binder.store.Values(name)
+
+	if err != nil {
+		return nil, err
+	}
+
+	start := fluxSingleQKVMLPStart(part, inFeatures, outFeatures)
+
+	return binder.store.Derived(
+		fmt.Sprintf("flux-single-qkv-mlp:%s:%s:%d:%d", name, part, inFeatures, outFeatures),
+		func() ([]float64, error) {
+			return slicePackedLinearRows(
+				values, info.Shape, inFeatures, outFeatures, start, outFeatures,
+			)
+		},
+	)
+}
+
+func fluxSingleQKVMLPName(layer string) string {
+	return "single_transformer_blocks." + layer + ".attn.to_qkv_mlp_proj.weight"
+}
+
+func fluxSingleQKVMLPStart(part string, inFeatures int, outFeatures int) int {
+	switch part {
+	case "attn.to_q":
+		return 0
+	case "attn.to_k":
+		return outFeatures
+	case "attn.to_v":
+		return outFeatures * 2
+	default:
+		return inFeatures * 3
+	}
+}
+
+func (binder *Binder) fluxSingleOutputWeight(
+	layer string, part string, inFeatures int, outFeatures int,
+) ([]float64, error) {
+	name := fluxSingleOutputName(layer)
+
+	info, _ := binder.store.Info(name)
+	values, err := binder.store.Values(name)
+
+	if err != nil {
+		return nil, err
+	}
+
+	totalInFeatures, err := linearInputFeatures(info.Shape, outFeatures)
+
+	if err != nil {
+		return nil, err
+	}
+
+	start := 0
+
+	if part == "proj_out" {
+		start = totalInFeatures - inFeatures
+	}
+
+	if start < 0 || start+inFeatures > totalInFeatures {
+		return nil, fmt.Errorf(
+			"single stream output slice [%d:%d] exceeds input width %d",
+			start,
+			start+inFeatures,
+			totalInFeatures,
+		)
+	}
+
+	return binder.store.Derived(
+		fmt.Sprintf(
+			"flux-single-output:%s:%s:%d:%d:%d",
+			name,
+			part,
+			inFeatures,
+			outFeatures,
+			start,
+		),
+		func() ([]float64, error) {
+			weight, err := orientLinearWeight(
+				name, values, info.Shape, totalInFeatures, outFeatures,
+			)
+
+			if err != nil {
+				return nil, err
+			}
+
+			return sliceRows(weight, totalInFeatures, outFeatures, start, inFeatures), nil
+		},
+	)
+}
+
+func fluxSingleOutputName(layer string) string {
+	return "single_transformer_blocks." + layer + ".attn.to_out.weight"
+}
+
+func linearInputFeatures(shape []int, outFeatures int) (int, error) {
+	if len(shape) != 2 {
+		return 0, fmt.Errorf("linear tensor must be rank 2, got %v", shape)
+	}
+
+	if shape[0] == outFeatures {
+		return shape[1], nil
+	}
+
+	if shape[1] == outFeatures {
+		return shape[0], nil
+	}
+
+	return 0, fmt.Errorf("linear tensor shape %v does not include out_features %d", shape, outFeatures)
 }
 
 func slicePackedLinear(
@@ -565,6 +785,36 @@ func slicePackedLinear(
 		return nil, fmt.Errorf(
 			"packed qkv shape %v does not match [%d %d] or [%d %d]",
 			shape, inFeatures, outFeatures*3, outFeatures*3, inFeatures,
+		)
+	}
+}
+
+func slicePackedLinearRows(
+	values []float64,
+	shape []int,
+	inFeatures int,
+	outFeatures int,
+	start int,
+	width int,
+) ([]float64, error) {
+	if len(shape) != 2 {
+		return nil, fmt.Errorf("packed tensor must be rank 2, got %v", shape)
+	}
+
+	switch {
+	case shape[0] == inFeatures && shape[1] >= start+width:
+		return sliceColumns(values, inFeatures, shape[1], start, width), nil
+	case shape[1] == inFeatures && shape[0] >= start+width:
+		rows := sliceRows(values, shape[0], inFeatures, start, width)
+
+		return transpose(rows, width, inFeatures), nil
+	default:
+		return nil, fmt.Errorf(
+			"packed tensor shape %v cannot provide [%d %d] slice at %d",
+			shape,
+			inFeatures,
+			outFeatures,
+			start,
 		)
 	}
 }
@@ -650,4 +900,22 @@ func nodeConfigIntAny(node *ir.Node, keys ...string) int {
 	}
 
 	return 0
+}
+
+func nodeRMSNormAffine(node *ir.Node) bool {
+	affine := nodeConfigBool(node, "affine", true)
+
+	return nodeConfigBool(node, "elementwise_affine", affine)
+}
+
+func nodeConfigBool(node *ir.Node, key string, fallback bool) bool {
+	value := node.Metadata()[key]
+
+	typed, ok := value.(bool)
+
+	if !ok {
+		return fallback
+	}
+
+	return typed
 }

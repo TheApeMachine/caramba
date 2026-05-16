@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
@@ -76,6 +77,8 @@ func OperationState(
 	inputs []tensor.Float64Tensor,
 	values [][]float64,
 ) *state.Dict {
+	node = WithDerivedMetadata(node, inputs)
+
 	stateDict := OperationConfig(node).
 		WithShape(OperationShape(node, inputs))
 
@@ -90,6 +93,55 @@ func OperationState(
 	}
 
 	return stateDict
+}
+
+func WithDerivedMetadata(node NodeSpec, inputs []tensor.Float64Tensor) NodeSpec {
+	if !strings.EqualFold(string(node.Op), "math.rmsnorm") {
+		return node
+	}
+
+	if rmsNormAffine(node) {
+		return node
+	}
+
+	if len(floatSliceConfig(node, "weight", nil)) > 0 {
+		return node
+	}
+
+	shape := OperationShape(node, inputs)
+
+	if len(shape) == 0 {
+		return node
+	}
+
+	dModel := shape[len(shape)-1]
+
+	if dModel <= 0 {
+		return node
+	}
+
+	metadata := make(map[string]any, len(node.Metadata)+1)
+	maps.Copy(metadata, node.Metadata)
+	metadata["weight"] = unitWeight(dModel)
+	node.Metadata = metadata
+
+	return node
+}
+
+func rmsNormAffine(node NodeSpec) bool {
+	affine := boolConfig(node, "affine", true)
+
+	return boolConfig(node, "elementwise_affine", affine)
+}
+
+func unitWeight(length int) []float64 {
+	weight := make([]float64, length)
+
+	for index := range weight {
+		weight[index] = 1
+	}
+
+	return weight
 }
 
 func OperationConfig(node NodeSpec) *state.Dict {

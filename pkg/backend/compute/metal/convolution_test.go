@@ -9,6 +9,66 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
+func TestConvolutionOps_Conv2d(test *testing.T) {
+	Convey("Given Metal 2-D convolution", test, func() {
+		convolutionOps := &ConvolutionOps{}
+
+		Convey("It should reject missing bias before dispatching to Metal", func() {
+			_, err := convolutionOps.Conv2d(
+				[]float64{1},
+				1,
+				1,
+				1,
+				1,
+				[]float64{1},
+				nil,
+				1,
+				1,
+				1,
+				1,
+				1,
+				0,
+				0,
+				1,
+				1,
+				1,
+				1,
+				1,
+			)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "metal.conv2d: len(bias)=0")
+		})
+
+		Convey("It should reject inconsistent output geometry before dispatching to Metal", func() {
+			_, err := convolutionOps.Conv2d(
+				[]float64{1, 2, 3, 4},
+				1,
+				1,
+				2,
+				2,
+				[]float64{1},
+				[]float64{0},
+				1,
+				1,
+				1,
+				1,
+				1,
+				0,
+				0,
+				1,
+				1,
+				1,
+				1,
+				1,
+			)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "does not match expected")
+		})
+	})
+}
+
 func TestConvolutionOps_ConvTranspose2d(test *testing.T) {
 	lib := metallibPathOrSkip(test, "convolution.metallib")
 
@@ -87,6 +147,47 @@ func BenchmarkConvolutionOps_ConvTranspose2d(benchmark *testing.B) {
 
 	for benchmark.Loop() {
 		if _, err := convolutionOps.ConvTranspose2d(
+			input,
+			1,
+			1,
+			1,
+			8192,
+			weight,
+			bias,
+			1,
+			1,
+			1,
+			1,
+			1,
+			0,
+			0,
+			1,
+			1,
+			1,
+			1,
+			8192,
+		); err != nil {
+			benchmark.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkConvolutionOps_Conv2d(benchmark *testing.B) {
+	lib := metallibPathOrSkip(benchmark, "convolution.metallib")
+	convolutionOps, err := NewConvolutionOps(lib)
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	input := metalConvolutionSequence(8192, 0.017, -0.11)
+	weight := []float64{0.375}
+	bias := []float64{-0.25}
+
+	benchmark.ResetTimer()
+
+	for benchmark.Loop() {
+		if _, err := convolutionOps.Conv2d(
 			input,
 			1,
 			1,

@@ -261,7 +261,7 @@ func ungroup4(grouped []byte) []byte {
 	remainder := length % 4
 	sizes := [4]int{base, base, base, base}
 
-	for index := 0; index < remainder; index++ {
+	for index := range remainder {
 		sizes[index]++
 	}
 

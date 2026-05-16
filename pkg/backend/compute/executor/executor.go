@@ -331,6 +331,8 @@ func (executor *Executor) releaseAfterUse(id string) error {
 func (executor *Executor) apply(
 	ctx context.Context, node NodeSpec, inputs []tensor.Float64Tensor,
 ) (tensor.Float64Tensor, error) {
+	node = WithDerivedMetadata(node, inputs)
+
 	return executor.backend.Apply(ctx, node, inputs)
 }
 

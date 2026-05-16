@@ -314,6 +314,142 @@ func TestBindIR(test *testing.T) {
 		})
 	})
 
+	Convey("Given FLUX transformer safetensors names", test, func() {
+		path := filepath.Join(test.TempDir(), "flux.safetensors")
+		err := writeTestSafeTensors(path, []testTensor{
+			{
+				name:   "transformer_blocks.0.attn.to_q.weight",
+				shape:  []int{2, 2},
+				values: []float64{1, 2, 3, 4},
+			},
+			{
+				name:   "transformer_blocks.0.ff.linear_in.weight",
+				shape:  []int{4, 2},
+				values: []float64{5, 6, 7, 8, 9, 10, 11, 12},
+			},
+			{
+				name:  "single_transformer_blocks.0.attn.to_qkv_mlp_proj.weight",
+				shape: []int{10, 2},
+				values: []float64{
+					13, 14, 15, 16,
+					17, 18, 19, 20,
+					21, 22, 23, 24,
+					25, 26, 27, 28,
+					29, 30, 31, 32,
+				},
+			},
+			{
+				name:  "single_transformer_blocks.0.attn.to_out.weight",
+				shape: []int{2, 6},
+				values: []float64{
+					33, 34, 35, 36, 37, 38,
+					39, 40, 41, 42, 43, 44,
+				},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		store, err := Open(path)
+		So(err, ShouldBeNil)
+
+		shape, err := tensor.NewShape([]int{1, 1, 2})
+		So(err, ShouldBeNil)
+
+		graph := ir.NewGraph()
+		affineFreeNorm := ir.NewNode(
+			"transformer_blocks.0.norm1",
+			ir.OpType("math.rmsnorm"),
+			shape,
+		)
+		affineFreeNorm.SetOperationID("math.rmsnorm")
+		affineFreeNorm.SetMetadata("affine", false)
+		query := ir.NewNode(
+			"transformer_blocks.0.attn.to_q",
+			ir.OpType("projection.linear"),
+			shape,
+		)
+		query.SetOperationID("projection.linear")
+		query.SetMetadata("in_features", 2)
+		query.SetMetadata("out_features", 2)
+		feedForwardIn := ir.NewNode(
+			"transformer_blocks.0.ff.net.0.proj",
+			ir.OpType("projection.linear"),
+			shape,
+		)
+		feedForwardIn.SetOperationID("projection.linear")
+		feedForwardIn.SetMetadata("in_features", 2)
+		feedForwardIn.SetMetadata("out_features", 4)
+		singleQuery := ir.NewNode(
+			"single_transformer_blocks.0.attn.to_q",
+			ir.OpType("projection.linear"),
+			shape,
+		)
+		singleQuery.SetOperationID("projection.linear")
+		singleQuery.SetMetadata("in_features", 2)
+		singleQuery.SetMetadata("out_features", 2)
+		singleMLP := ir.NewNode(
+			"single_transformer_blocks.0.proj_mlp",
+			ir.OpType("projection.linear"),
+			shape,
+		)
+		singleMLP.SetOperationID("projection.linear")
+		singleMLP.SetMetadata("in_features", 2)
+		singleMLP.SetMetadata("out_features", 4)
+		singleAttentionOut := ir.NewNode(
+			"single_transformer_blocks.0.attn.to_out.0",
+			ir.OpType("projection.linear"),
+			shape,
+		)
+		singleAttentionOut.SetOperationID("projection.linear")
+		singleAttentionOut.SetMetadata("in_features", 2)
+		singleAttentionOut.SetMetadata("out_features", 2)
+		singleMLPOut := ir.NewNode(
+			"single_transformer_blocks.0.proj_out",
+			ir.OpType("projection.linear"),
+			shape,
+		)
+		singleMLPOut.SetOperationID("projection.linear")
+		singleMLPOut.SetMetadata("in_features", 4)
+		singleMLPOut.SetMetadata("out_features", 2)
+		graph.AddNode(affineFreeNorm)
+		graph.AddNode(query)
+		graph.AddNode(feedForwardIn)
+		graph.AddNode(singleQuery)
+		graph.AddNode(singleMLP)
+		graph.AddNode(singleAttentionOut)
+		graph.AddNode(singleMLPOut)
+
+		Convey("It should bind affine-free norms and packed FLUX projections", func() {
+			err := BindIR(graph, store)
+			So(err, ShouldBeNil)
+
+			_, bound := affineFreeNorm.Metadata()["weight"]
+			So(bound, ShouldBeFalse)
+			So(query.Metadata()["weight"], ShouldResemble, []float64{1, 3, 2, 4})
+			So(
+				feedForwardIn.Metadata()["weight"],
+				ShouldResemble,
+				[]float64{5, 7, 9, 11, 6, 8, 10, 12},
+			)
+			So(singleQuery.Metadata()["weight"], ShouldResemble, []float64{13, 15, 14, 16})
+			So(
+				singleMLP.Metadata()["weight"],
+				ShouldResemble,
+				[]float64{25, 27, 29, 31, 26, 28, 30, 32},
+			)
+			So(
+				singleAttentionOut.Metadata()["weight"],
+				ShouldResemble,
+				[]float64{33, 39, 34, 40},
+			)
+			So(
+				singleMLPOut.Metadata()["weight"],
+				ShouldResemble,
+				[]float64{35, 41, 36, 42, 37, 43, 38, 44},
+			)
+		})
+	})
+
 	Convey("Given Llama PyTorch linear safetensors names", test, func() {
 		path := filepath.Join(test.TempDir(), "model.safetensors")
 		err := writeTestSafeTensors(path, []testTensor{

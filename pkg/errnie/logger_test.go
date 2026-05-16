@@ -201,6 +201,26 @@ func TestTrace(t *testing.T) {
 	})
 }
 
+func TestSuppressLogging(t *testing.T) {
+	Convey("Given SuppressLogging", t, func() {
+		out := captureStdout(t, func() {
+			Apply(&config.ErrnieConfig{Level: "debug"})
+			restore := SuppressLogging()
+
+			Info("hidden-info")
+			Warn("hidden-warn")
+			Debug("hidden-debug")
+			So(Error(errors.New("hidden-error")), ShouldNotBeNil)
+			restore()
+			restore()
+			Info("visible-info")
+		})
+
+		So(out, ShouldNotContainSubstring, "hidden")
+		So(out, ShouldContainSubstring, "visible-info")
+	})
+}
+
 func BenchmarkApply(b *testing.B) {
 	saved := log.DefaultLogger
 	defer func() {

@@ -1,12 +1,10 @@
 # 🌈 caramba
 
-**A substrate for AI research.**
+**A substrate for A.I. research.**
 
-Caramba treats a neural architecture as a declared artifact: a typed tensor graph described in YAML, compiled through a pipeline of verification, fusion, and scheduling, then lowered to the backend you select. The same description runs on CPU, CUDA, Metal, or XLA — with hand-written kernels on each path and tight ULP parity against a scalar reference. There are no silent fallbacks; if a kernel is missing for a backend, the build fails.
+Aiming to be an end-to-end research stack, caramba does everything in its power to let the researcher focus on their ideas, without having to worry about having to micro-manage the process.
 
-Around that core, caramba provides the surfaces an architecture needs to be useful: a Hugging Face Hub resolver that binds pretrained weights into named graph nodes by structure, a streaming chat runtime with resident KV caches, a diffusion pipeline that runs through the same manifest path, a visual node-graph editor that round-trips to the same YAML the CLI consumes, and a provenance ledger that signs the graph and weights together so a trained model carries its own history.
-
-The intent is a platform where the architecture itself — including the unconventional operations researchers actually want to study — is the unit of work, and where running it at full performance on the hardware in front of you is the platform's job, not yours.
+Out of the box, caramba provides you with the tools to quickly iterate on ideas, and the ability to deeply inspect results.
 
 ---
 
@@ -62,8 +60,10 @@ The intent is a platform where the architecture itself — including the unconve
 - [ ] Layer Surgery tools
 - [ ] Hyperparameter Tuner
 - [ ] Distributed Training
+- [ ] Integrated Benchmarking Suite
 - [ ] Deeply Integrated A.I. Assistant and Research Team
 - [ ] Ergonomic WYSIWYG LaTeX Paper Editor
+- [ ] Multi-User/Team Collaboration
 
 ## A manifest is a model
 
@@ -173,6 +173,12 @@ decoder lives at `model/diffusion/flux-2-klein-4b-vae-decoder.yml`. The image
 command resolves those assets from the manifest, encodes the prompt, runs the
 FlowMatch Euler denoising loop, decodes the latents through the manifest-backed
 VAE when configured, and writes an RGB PNG:
+
+The FLUX.2 binding path follows the checkpoint structure directly: affine-free
+RMSNorm nodes are declared in the manifest, Diffusers Linear tensors are bound
+with PyTorch row-major orientation, and the single-stream packed QKV/MLP plus
+split `to_out` weights are sliced into the manifest graph without introducing a
+model-specific runtime.
 
 ```bash
 caramba image --manifest model/diffusion/flux-2-klein-4b.yml "a brass observatory on a storm cliff"

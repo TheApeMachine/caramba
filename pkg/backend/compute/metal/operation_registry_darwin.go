@@ -1440,7 +1440,11 @@ func (conv *Conv1D) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		stateDict.OutW,
 	)
 
-	return setMetalOutput(stateDict, output, err)
+	if err != nil {
+		return nil, fmt.Errorf("metal.convolution.conv1d node %q: %w", stateDict.NodeID, err)
+	}
+
+	return setMetalOutput(stateDict, output, nil)
 }
 
 func (conv *Conv2D) Forward(stateDict *state.Dict) (*state.Dict, error) {
@@ -1463,7 +1467,11 @@ func (conv *Conv2D) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		defaultInt(stateDict.Groups, 1), stateDict.OutH, stateDict.OutW,
 	)
 
-	return setMetalOutput(stateDict, output, err)
+	if err != nil {
+		return nil, fmt.Errorf("metal.convolution.conv2d node %q: %w", stateDict.NodeID, err)
+	}
+
+	return setMetalOutput(stateDict, output, nil)
 }
 
 func (conv *Conv3D) Forward(stateDict *state.Dict) (*state.Dict, error) {
@@ -1490,7 +1498,11 @@ func (conv *Conv3D) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		stateDict.Dim0, stateDict.OutH, stateDict.OutW,
 	)
 
-	return setMetalOutput(stateDict, output, err)
+	if err != nil {
+		return nil, fmt.Errorf("metal.convolution.conv3d node %q: %w", stateDict.NodeID, err)
+	}
+
+	return setMetalOutput(stateDict, output, nil)
 }
 
 func (conv *ConvTranspose2D) Forward(stateDict *state.Dict) (*state.Dict, error) {
@@ -1513,7 +1525,15 @@ func (conv *ConvTranspose2D) Forward(stateDict *state.Dict) (*state.Dict, error)
 		defaultInt(stateDict.Groups, 1), stateDict.OutH, stateDict.OutW,
 	)
 
-	return setMetalOutput(stateDict, output, err)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"metal.convolution.conv_transpose2d node %q: %w",
+			stateDict.NodeID,
+			err,
+		)
+	}
+
+	return setMetalOutput(stateDict, output, nil)
 }
 
 type MaxPool2D struct{ pooling *PoolingOps }

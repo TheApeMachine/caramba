@@ -117,7 +117,7 @@ system:
             op: math.rmsnorm
             in: ["h_${i}"]
             out: ["tb_norm1_${i}"]
-            config: { eps: 1e-06 }
+            config: { eps: 1e-06, affine: false }
 
           - id: "transformer_blocks.${i}.attn.to_q"
             op: projection.linear
@@ -199,7 +199,7 @@ system:
             op: math.rmsnorm
             in: ["tb_mid_${i}"]
             out: ["tb_norm2_${i}"]
-            config: { eps: 1e-06 }
+            config: { eps: 1e-06, affine: false }
 
           - id: "transformer_blocks.${i}.ff.net.0.proj"
             op: projection.linear
@@ -231,7 +231,7 @@ system:
             op: math.rmsnorm
             in: ["h_${offset_i}"]
             out: ["st_norm_${i}"]
-            config: { eps: 1e-06 }
+            config: { eps: 1e-06, affine: false }
 
           - id: "single_transformer_blocks.${i}.attn.to_q"
             op: projection.linear
@@ -335,7 +335,7 @@ system:
         op: math.rmsnorm
         in: [h_25]
         out: [final_norm]
-        config: { eps: 1e-06 }
+        config: { eps: 1e-06, affine: false }
 
       - id: proj_out
         op: projection.linear

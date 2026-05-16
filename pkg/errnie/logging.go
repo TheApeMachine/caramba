@@ -1,13 +1,9 @@
-package qpool
+package errnie
 
-import (
-	"sync"
-
-	"github.com/theapemachine/caramba/pkg/errnie"
-)
+import "sync"
 
 /*
-LogController controls qpool's standard logger emission.
+LogController controls errnie logger emission.
 */
 type LogController struct {
 	lock       sync.Mutex
@@ -17,25 +13,15 @@ type LogController struct {
 var defaultLogController = &LogController{}
 
 /*
-SuppressLogging disables qpool and errnie standard logging until the returned
-restore function is called.
+SuppressLogging disables errnie logging until the returned restore function is
+called.
 */
 func SuppressLogging() func() {
-	restoreQPool := defaultLogController.Suppress()
-	restoreErrnie := errnie.SuppressLogging()
-
-	var once sync.Once
-
-	return func() {
-		once.Do(func() {
-			restoreQPool()
-			restoreErrnie()
-		})
-	}
+	return defaultLogController.Suppress()
 }
 
 /*
-Suppress disables standard logging for this controller.
+Suppress disables logging for this controller.
 */
 func (controller *LogController) Suppress() func() {
 	if controller == nil {
@@ -63,7 +49,7 @@ func (controller *LogController) Suppress() func() {
 }
 
 /*
-Suppressed reports whether standard logging is currently disabled.
+Suppressed reports whether logging is currently disabled.
 */
 func (controller *LogController) Suppressed() bool {
 	if controller == nil {
@@ -74,4 +60,8 @@ func (controller *LogController) Suppressed() bool {
 	defer controller.lock.Unlock()
 
 	return controller.suppressed > 0
+}
+
+func loggingSuppressed() bool {
+	return defaultLogController.Suppressed()
 }

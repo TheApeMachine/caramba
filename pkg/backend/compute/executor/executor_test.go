@@ -126,6 +126,36 @@ func TestExecutor(t *testing.T) {
 	})
 }
 
+func TestWithDerivedMetadata(t *testing.T) {
+	Convey("Given an affine-free RMSNorm node", t, func() {
+		shape, err := tensor.NewShape([]int{1, 3})
+		So(err, ShouldBeNil)
+
+		input := newRecordingTensor(
+			"input",
+			shape,
+			[]float64{1, 2, 3},
+			make(map[string]int),
+		)
+		node := executor.NodeSpec{
+			ID:       "norm",
+			Op:       ir.OpType("math.rmsnorm"),
+			Metadata: map[string]any{"affine": false},
+		}
+
+		Convey("It should materialize the unit affine vector from input shape", func() {
+			derived := executor.WithDerivedMetadata(
+				node,
+				[]tensor.Float64Tensor{input},
+			)
+
+			So(derived.Metadata["weight"], ShouldResemble, []float64{1, 1, 1})
+			_, originalBound := node.Metadata["weight"]
+			So(originalBound, ShouldBeFalse)
+		})
+	})
+}
+
 type recordingBackend struct {
 	uploads int
 	closed  map[string]int
@@ -300,5 +330,30 @@ func BenchmarkExecutor_Execute(benchmark *testing.B) {
 				benchmark.Fatalf("Close failed: %v", err)
 			}
 		}
+	}
+}
+
+func BenchmarkWithDerivedMetadata(benchmark *testing.B) {
+	shape, err := tensor.NewShape([]int{1, 3})
+	if err != nil {
+		benchmark.Fatalf("NewShape failed: %v", err)
+	}
+
+	input := newRecordingTensor(
+		"input",
+		shape,
+		[]float64{1, 2, 3},
+		make(map[string]int),
+	)
+	node := executor.NodeSpec{
+		ID:       "norm",
+		Op:       ir.OpType("math.rmsnorm"),
+		Metadata: map[string]any{"affine": false},
+	}
+
+	benchmark.ResetTimer()
+
+	for benchmark.Loop() {
+		_ = executor.WithDerivedMetadata(node, []tensor.Float64Tensor{input})
 	}
 }
