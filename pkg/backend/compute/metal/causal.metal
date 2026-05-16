@@ -355,6 +355,46 @@ kernel void counterfactual_kernel(
     out[gid] = beta[obsIndex] * xCF[cfIndex] + epsilon;
 }
 
+kernel void frontdoor_sort_pad_kernel(
+    device const float* values [[buffer(0)]],
+    device float* sorted [[buffer(1)]],
+    constant int& samples [[buffer(2)]],
+    constant int& paddedSamples [[buffer(3)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid >= (uint)paddedSamples) return;
+
+    sorted[gid] = gid < (uint)samples ? values[gid] : INFINITY;
+}
+
+kernel void frontdoor_sort_step_kernel(
+    device float* values [[buffer(0)]],
+    constant uint& compareDistance [[buffer(1)]],
+    constant uint& mergeWidth [[buffer(2)]],
+    constant uint& paddedSamples [[buffer(3)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid >= paddedSamples) return;
+
+    uint pairIndex = gid ^ compareDistance;
+
+    if (pairIndex <= gid || pairIndex >= paddedSamples) {
+        return;
+    }
+
+    bool ascending = (gid & mergeWidth) == 0;
+    float left = values[gid];
+    float right = values[pairIndex];
+    bool shouldSwap = ascending ? left > right : left < right;
+
+    if (!shouldSwap) {
+        return;
+    }
+
+    values[gid] = right;
+    values[pairIndex] = left;
+}
+
 kernel void frontdoor_boundaries_kernel(
     device const float* sorted_values [[buffer(0)]],
     device float* boundaries [[buffer(1)]],
@@ -494,17 +534,60 @@ kernel void dag_markov_prep_kernel(
     int np = 0;
     for (int j = 0; j < N; j++) {
         if (adj[nodeIdx * N + j] != 0.f) {
-            for (int o = 0; o < T; o++) {
-                pMat[o * (N + 1) + 1 + np] = X[o * N + j];
-            }
             np++;
         }
     }
+
+    int p = np + 1;
+
     for (int o = 0; o < T; o++) {
-        pMat[o * (N + 1)] = 1.f;
+        pMat[o * p] = 1.f;
         nodeVals[o] = X[o * N + nodeIdx];
     }
+
+    int parentIndex = 0;
+    for (int j = 0; j < N; j++) {
+        if (adj[nodeIdx * N + j] == 0.f) {
+            continue;
+        }
+
+        for (int o = 0; o < T; o++) {
+            pMat[o * p + 1 + parentIndex] = X[o * N + j];
+        }
+
+        parentIndex++;
+    }
+
     counts[0] = np;
+}
+
+kernel void dag_markov_sigma2_kernel(
+    device const float* pMat [[buffer(0)]],
+    device const float* nodeVals [[buffer(1)]],
+    device const float* beta [[buffer(2)]],
+    device float* sigma2 [[buffer(3)]],
+    constant int& T [[buffer(4)]],
+    constant int& p [[buffer(5)]],
+    constant int& nodeIdx [[buffer(6)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid != 0) return;
+
+    float rss = 0.f;
+
+    for (int o = 0; o < T; o++) {
+        float pred = beta[0];
+
+        for (int feature = 1; feature < p; feature++) {
+            pred += beta[feature] * pMat[o * p + feature];
+        }
+
+        float residual = nodeVals[o] - pred;
+        rss += residual * residual;
+    }
+
+    float value = rss / (float)T;
+    sigma2[nodeIdx] = max(value, 1e-10f);
 }
 
 kernel void dag_markov_score_kernel(

@@ -94,7 +94,7 @@ kernel void ai_expected_free_energy_kernel(
     uint k = gid;
     float acc = 0.f;
     for (uint i = 0; i < n; i++) {
-        float qq = q[i * K + k];
+        float qq = clamp(q[i * K + k], 0.f, 1.f);
         acc -= qq * log(qq + eps);
     }
     out[k] = acc;

@@ -927,10 +927,7 @@ int xla_add_scalar(double* dst, double scalar, int n) {
     PJRT_LoadedExecutable* exec = xla_math_compile_module(key, add_scalar_broadcast_module(n, scalar));
     if (!exec) return -1;
 
-    std::vector<double> tmp((size_t)n);
-    std::memcpy(tmp.data(), dst, (size_t)n * sizeof(double));
-
-    const double* ins[1] = {tmp.data()};
+    const double* ins[1] = {dst};
     size_t sizes[1] = {(size_t)n * sizeof(double)};
 
     return xla_math_run_exec(exec, ins, 1, sizes, dst, (size_t)n * sizeof(double));

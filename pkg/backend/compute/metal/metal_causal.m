@@ -1,6 +1,5 @@
 #include <math.h>
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
@@ -27,6 +26,8 @@ static id<MTLComputePipelineState> gPSO_cate_split = nil;
 static id<MTLComputePipelineState> gPSO_cate_effect = nil;
 
 static id<MTLComputePipelineState> gPSO_counterfactual = nil;
+static id<MTLComputePipelineState> gPSO_frontdoor_sort_pad = nil;
+static id<MTLComputePipelineState> gPSO_frontdoor_sort_step = nil;
 static id<MTLComputePipelineState> gPSO_frontdoor_boundaries = nil;
 static id<MTLComputePipelineState> gPSO_frontdoor_assign = nil;
 static id<MTLComputePipelineState> gPSO_frontdoor_accumulate = nil;
@@ -34,17 +35,11 @@ static id<MTLComputePipelineState> gPSO_frontdoor_normalize = nil;
 static id<MTLComputePipelineState> gPSO_frontdoor_effect = nil;
 
 static id<MTLComputePipelineState> gPSO_dag_prep = nil;
+static id<MTLComputePipelineState> gPSO_dag_sigma2 = nil;
 static id<MTLComputePipelineState> gPSO_dag_score = nil;
 
 static int gCInited = 0;
 static dispatch_queue_t gCSerial = NULL;
-
-static int compare_float_values(const void *left, const void *right) {
-	float a = *(const float *)left;
-	float b = *(const float *)right;
-
-	return (a > b) - (a < b);
-}
 
 static void c_ensure_serial(void) {
 	static dispatch_once_t onceToken;
@@ -70,6 +65,49 @@ static int c_wait(id<MTLCommandBuffer> cb) {
 	dispatch_semaphore_wait(done, DISPATCH_TIME_FOREVER);
 	if (cb.error != nil) return -3;
 	return 0;
+}
+
+static int next_power_of_two_int(int value) {
+	int capacity = 1;
+
+	while (capacity < value) {
+		capacity <<= 1;
+	}
+
+	return capacity;
+}
+
+static void encode_frontdoor_sort(
+	id<MTLCommandBuffer> commandBuffer,
+	id<MTLBuffer> values,
+	id<MTLBuffer> sorted,
+	int samples,
+	int paddedSamples)
+{
+	id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+	[encoder setComputePipelineState:gPSO_frontdoor_sort_pad];
+	[encoder setBuffer:values offset:0 atIndex:0];
+	[encoder setBuffer:sorted offset:0 atIndex:1];
+	[encoder setBytes:&samples length:sizeof(samples) atIndex:2];
+	[encoder setBytes:&paddedSamples length:sizeof(paddedSamples) atIndex:3];
+	[encoder dispatchThreads:MTLSizeMake((NSUInteger)paddedSamples, 1, 1)
+	 threadsPerThreadgroup:MTLSizeMake(gPSO_frontdoor_sort_pad.threadExecutionWidth, 1, 1)];
+	[encoder endEncoding];
+
+	for (uint mergeWidth = 2; mergeWidth <= (uint)paddedSamples; mergeWidth <<= 1) {
+		for (uint compareDistance = mergeWidth >> 1; compareDistance > 0; compareDistance >>= 1) {
+			encoder = [commandBuffer computeCommandEncoder];
+			[encoder setComputePipelineState:gPSO_frontdoor_sort_step];
+			[encoder setBuffer:sorted offset:0 atIndex:0];
+			[encoder setBytes:&compareDistance length:sizeof(compareDistance) atIndex:1];
+			[encoder setBytes:&mergeWidth length:sizeof(mergeWidth) atIndex:2];
+			uint padded = (uint)paddedSamples;
+			[encoder setBytes:&padded length:sizeof(padded) atIndex:3];
+			[encoder dispatchThreads:MTLSizeMake((NSUInteger)paddedSamples, 1, 1)
+			 threadsPerThreadgroup:MTLSizeMake(gPSO_frontdoor_sort_step.threadExecutionWidth, 1, 1)];
+			[encoder endEncoding];
+		}
+	}
 }
 
 int metal_causal_init(const char *metallib_path) {
@@ -106,6 +144,8 @@ int metal_causal_init(const char *metallib_path) {
 		gPSO_cate_effect = c_make_pso(gCDevice, lib, @"cate_effect_kernel");
 
 		gPSO_counterfactual = c_make_pso(gCDevice, lib, @"counterfactual_kernel");
+		gPSO_frontdoor_sort_pad = c_make_pso(gCDevice, lib, @"frontdoor_sort_pad_kernel");
+		gPSO_frontdoor_sort_step = c_make_pso(gCDevice, lib, @"frontdoor_sort_step_kernel");
 		gPSO_frontdoor_boundaries = c_make_pso(gCDevice, lib, @"frontdoor_boundaries_kernel");
 		gPSO_frontdoor_assign = c_make_pso(gCDevice, lib, @"frontdoor_assign_bins_kernel");
 		gPSO_frontdoor_accumulate = c_make_pso(gCDevice, lib, @"frontdoor_accumulate_kernel");
@@ -113,13 +153,15 @@ int metal_causal_init(const char *metallib_path) {
 		gPSO_frontdoor_effect = c_make_pso(gCDevice, lib, @"frontdoor_effect_kernel");
 
 		gPSO_dag_prep = c_make_pso(gCDevice, lib, @"dag_markov_prep_kernel");
+		gPSO_dag_sigma2 = c_make_pso(gCDevice, lib, @"dag_markov_sigma2_kernel");
 		gPSO_dag_score = c_make_pso(gCDevice, lib, @"dag_markov_score_kernel");
 
 		if (!gPSO_axpy || !gPSO_sub || !gPSO_matvec || !gPSO_dotatom || !gPSO_ata || !gPSO_atb || !gPSO_matmul || !gPSO_chol_inv ||
 		    !gPSO_docalc_extract || !gPSO_docalc_assemble || !gPSO_backdoor_design || !gPSO_backdoor_effect ||
-		    !gPSO_cate_split || !gPSO_cate_effect || !gPSO_counterfactual || !gPSO_frontdoor_boundaries ||
+		    !gPSO_cate_split || !gPSO_cate_effect || !gPSO_counterfactual ||
+		    !gPSO_frontdoor_sort_pad || !gPSO_frontdoor_sort_step || !gPSO_frontdoor_boundaries ||
 		    !gPSO_frontdoor_assign || !gPSO_frontdoor_accumulate || !gPSO_frontdoor_normalize ||
-		    !gPSO_frontdoor_effect || !gPSO_dag_prep || !gPSO_dag_score) {
+		    !gPSO_frontdoor_effect || !gPSO_dag_prep || !gPSO_dag_sigma2 || !gPSO_dag_score) {
 			result = -1;
 			return;
 		}
@@ -137,8 +179,9 @@ int metal_causal_shutdown(void) {
 		gPSO_backdoor_design = nil; gPSO_backdoor_effect = nil;
 		gPSO_cate_split = nil; gPSO_cate_effect = nil;
 		gPSO_counterfactual = nil; gPSO_frontdoor_boundaries = nil; gPSO_frontdoor_assign = nil;
+		gPSO_frontdoor_sort_pad = nil; gPSO_frontdoor_sort_step = nil;
 		gPSO_frontdoor_accumulate = nil; gPSO_frontdoor_normalize = nil; gPSO_frontdoor_effect = nil;
-		gPSO_dag_prep = nil; gPSO_dag_score = nil;
+		gPSO_dag_prep = nil; gPSO_dag_sigma2 = nil; gPSO_dag_score = nil;
 		gCQueue = nil; gCDevice = nil; gCInited = 0;
 	});
 	return 0;
@@ -603,40 +646,14 @@ int metal_causal_frontdoor(
 		size_t xBytes = (size_t)nx * sizeof(float);
 		size_t matrixBytes = (size_t)nx * (size_t)nm * sizeof(float);
 		size_t binBytes = (size_t)T * sizeof(int);
-		float *sortedX = NULL;
-		float *sortedM = NULL;
-
-		if (nx > 1) {
-			sortedX = malloc(sampleBytes);
-			if (!sortedX) { rc = -4; return; }
-			memcpy(sortedX, X, sampleBytes);
-			qsort(sortedX, (size_t)T, sizeof(float), compare_float_values);
-		}
-
-		if (nm > 1) {
-			sortedM = malloc(sampleBytes);
-			if (!sortedM) {
-				free(sortedX);
-				rc = -4;
-				return;
-			}
-			memcpy(sortedM, M, sampleBytes);
-			qsort(sortedM, (size_t)T, sizeof(float), compare_float_values);
-		}
+		int paddedSamples = next_power_of_two_int(T);
+		size_t sortedBytes = (size_t)paddedSamples * sizeof(float);
 
 		id<MTLBuffer> bX = [gCDevice newBufferWithBytes:X length:sampleBytes options:MTLResourceStorageModeShared];
 		id<MTLBuffer> bM = [gCDevice newBufferWithBytes:M length:sampleBytes options:MTLResourceStorageModeShared];
 		id<MTLBuffer> bY = [gCDevice newBufferWithBytes:Y length:sampleBytes options:MTLResourceStorageModeShared];
-		id<MTLBuffer> bXSorted = nil;
-		id<MTLBuffer> bMSorted = nil;
-		if (sortedX) {
-			bXSorted = [gCDevice newBufferWithBytes:sortedX length:sampleBytes options:MTLResourceStorageModeShared];
-		}
-		if (sortedM) {
-			bMSorted = [gCDevice newBufferWithBytes:sortedM length:sampleBytes options:MTLResourceStorageModeShared];
-		}
-		free(sortedX);
-		free(sortedM);
+		id<MTLBuffer> bXSorted = nx > 1 ? [gCDevice newBufferWithLength:sortedBytes options:MTLResourceStorageModeShared] : nil;
+		id<MTLBuffer> bMSorted = nm > 1 ? [gCDevice newBufferWithLength:sortedBytes options:MTLResourceStorageModeShared] : nil;
 		id<MTLBuffer> bXBoundaries = [gCDevice newBufferWithLength:xBoundaryBytes options:MTLResourceStorageModeShared];
 		id<MTLBuffer> bMBoundaries = [gCDevice newBufferWithLength:mBoundaryBytes options:MTLResourceStorageModeShared];
 		id<MTLBuffer> bXBins = [gCDevice newBufferWithLength:binBytes options:MTLResourceStorageModeShared];
@@ -666,6 +683,14 @@ int metal_causal_frontdoor(
 		[blit fillBuffer:bEYGivenXM range:NSMakeRange(0, matrixBytes) value:0];
 		[blit fillBuffer:bCountXM range:NSMakeRange(0, matrixBytes) value:0];
 		[blit endEncoding];
+
+		if (nx > 1) {
+			encode_frontdoor_sort(cb, bX, bXSorted, T, paddedSamples);
+		}
+
+		if (nm > 1) {
+			encode_frontdoor_sort(cb, bM, bMSorted, T, paddedSamples);
+		}
 
 		if (nx > 1) {
 			id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
@@ -806,21 +831,21 @@ int metal_causal_dag_markov(const float *X, const float *adj, float *log_prob, i
 			rc = c_wait(cb);
 			if (rc != 0) return;
 			if (((int*)[errBuf contents])[0] != 0) { rc = -5; return; }
-			
-			// Compute sigma2 on CPU for simplicity since it's just one reduction per node
-			float *b = [bDest contents];
-			float *pm = [pMat contents];
-			float *nv = [nodeVals contents];
-			float rss = 0.f;
-			for (int o=0; o<T; o++) {
-				float pred = b[0];
-				for (int j=0; j<np; j++) pred += b[1+j] * pm[o*nFeat + 1+j];
-				float res = nv[o] - pred;
-				rss += res * res;
-			}
-			float s2 = rss / (float)T;
-			if (s2 < 1e-10f) s2 = 1e-10f;
-			((float*)[sigma2 contents])[nodeIdx] = s2;
+
+			cb = [gCQueue commandBuffer];
+			enc = [cb computeCommandEncoder];
+			[enc setComputePipelineState:gPSO_dag_sigma2];
+			[enc setBuffer:pMat offset:0 atIndex:0];
+			[enc setBuffer:nodeVals offset:0 atIndex:1];
+			[enc setBuffer:bDest offset:0 atIndex:2];
+			[enc setBuffer:sigma2 offset:0 atIndex:3];
+			[enc setBytes:&T length:sizeof(T) atIndex:4];
+			[enc setBytes:&nFeat length:sizeof(nFeat) atIndex:5];
+			[enc setBytes:&nodeIdx length:sizeof(nodeIdx) atIndex:6];
+			[enc dispatchThreads:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+			[enc endEncoding];
+			rc = c_wait(cb);
+			if (rc != 0) return;
 		}
 
 		id<MTLCommandBuffer> cb = [gCQueue commandBuffer];

@@ -15,7 +15,7 @@ import (
 
 /*
 MetalHawkes dispatches Hawkes process operations via Metal compute kernels (intensity,
-kernel matrix, log-likelihood terms) with Ogata simulation on the host reference path.
+kernel matrix, log-likelihood terms, and Ogata simulation).
 
 All API methods convert float64 slices to float32 before the C layer; results are
 float64 again. Values with magnitude beyond float32 precision may be rounded — use

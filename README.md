@@ -231,7 +231,18 @@ Optimizer execution follows the same rule. CPU optimizers own AVX2, SSE2, and
 NEON assembly paths; Metal and CUDA own native kernels; XLA optimizers compile
 their update math to StableHLO and execute through the configured PJRT plugin.
 Backend parity tests compare optimizer `state.Dict` mutations against the CPU
-contract instead of accepting backend-specific drift.
+contract instead of accepting backend-specific drift. Reduction-heavy optimizer
+steps such as LARS, LAMB, and L-BFGS execute as native reduction/apply stages on
+Metal, CUDA, and XLA.
+XLA VSA bundle/similarity and masking apply operations compile as complete
+StableHLO modules with PJRT-managed inputs, so intermediate tensors stay inside
+the selected XLA runtime.
+Metal parity now covers the same contract sizes for repaired causal and
+probabilistic kernels. Transposed convolution initializes bias on-device before
+scatter-add, Active Inference expected free energy clamps probabilities in the
+Metal kernel, DAG Markov factorization computes residual variance in Metal, and
+frontdoor adjustment performs equal-frequency sorting through Metal kernels
+instead of CPU-side preprocessing.
 
 ### Building Backends
 

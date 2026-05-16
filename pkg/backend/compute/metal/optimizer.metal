@@ -411,114 +411,259 @@ kernel void adadelta(
 	delta_average[index] = rho * delta_average[index] + (1.0f - rho) * update * update;
 }
 
-kernel void lbfgs(
-	device float *out [[buffer(0)]],
-	device float *state_history [[buffer(1)]],
-	device float *grad_history [[buffer(2)]],
-	device float *rho_history [[buffer(3)]],
-	device float *direction [[buffer(4)]],
-	device float *alphas [[buffer(5)]],
-	device uint *head [[buffer(6)]],
-	device uint *history_count [[buffer(7)]],
-	device const float *params [[buffer(8)]],
-	device const float *grads [[buffer(9)]],
-	device const float *previous_params [[buffer(10)]],
-	device const float *previous_grads [[buffer(11)]],
-	constant uint &has_previous [[buffer(12)]],
-	constant uint &count [[buffer(13)]],
-	constant uint &history_size [[buffer(14)]],
-	constant float &learning_rate [[buffer(15)]],
-	constant uint &line_search [[buffer(16)]],
-	constant float &c1 [[buffer(17)]],
+kernel void lbfgs_history_delta(
+	device float *state_history [[buffer(0)]],
+	device float *grad_history [[buffer(1)]],
+	device float2 *partials [[buffer(2)]],
+	device const float *params [[buffer(3)]],
+	device const float *grads [[buffer(4)]],
+	device const float *previous_params [[buffer(5)]],
+	device const float *previous_grads [[buffer(6)]],
+	device const uint *head [[buffer(7)]],
+	constant uint &count [[buffer(8)]],
+	constant uint &history_size [[buffer(9)]],
+	uint grid_index [[thread_position_in_grid]],
+	uint local_index [[thread_index_in_threadgroup]],
+	uint group_position [[threadgroup_position_in_grid]])
+{
+	threadgroup float curvature_sums[256];
+
+	uint slot = head[0] % history_size;
+	float curvature = 0.0f;
+
+	if (grid_index < count) {
+		float state_delta = params[grid_index] - previous_params[grid_index];
+		float grad_delta = grads[grid_index] - previous_grads[grid_index];
+		state_history[slot * count + grid_index] = state_delta;
+		grad_history[slot * count + grid_index] = grad_delta;
+		curvature = grad_delta * state_delta;
+	}
+
+	curvature_sums[local_index] = curvature;
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+
+	for (uint stride = 128; stride > 0; stride >>= 1) {
+		if (local_index < stride) {
+			curvature_sums[local_index] += curvature_sums[local_index + stride];
+		}
+
+		threadgroup_barrier(mem_flags::mem_threadgroup);
+	}
+
+	if (local_index == 0) {
+		partials[group_position] = float2(curvature_sums[0], 0.0f);
+	}
+}
+
+kernel void lbfgs_accept_history(
+	device float *rho_history [[buffer(0)]],
+	device uint *head [[buffer(1)]],
+	device uint *history_count [[buffer(2)]],
+	device const float2 *curvature [[buffer(3)]],
+	constant uint &history_size [[buffer(4)]],
 	uint index [[thread_position_in_grid]])
 {
 	if (index != 0) return;
 
-	if (has_previous != 0 && history_size > 0) {
-		uint slot = head[0] % history_size;
-		float curvature = 0.0f;
+	float value = curvature[0].x;
 
-		for (uint value_index = 0; value_index < count; value_index++) {
-			float state_delta = params[value_index] - previous_params[value_index];
-			float grad_delta = grads[value_index] - previous_grads[value_index];
-			state_history[slot * count + value_index] = state_delta;
-			grad_history[slot * count + value_index] = grad_delta;
-			curvature += grad_delta * state_delta;
+	if (value <= 1e-10f) return;
+
+	uint slot = head[0] % history_size;
+	rho_history[slot] = 1.0f / value;
+	head[0]++;
+
+	if (history_count[0] < history_size) {
+		history_count[0]++;
+	}
+}
+
+kernel void lbfgs_direction_init(
+	device float *direction [[buffer(0)]],
+	device const float *grads [[buffer(1)]],
+	constant uint &count [[buffer(2)]],
+	uint index [[thread_position_in_grid]])
+{
+	if (index < count) direction[index] = grads[index];
+}
+
+kernel void lbfgs_dot(
+	device const float *left [[buffer(0)]],
+	device const float *right [[buffer(1)]],
+	device float2 *partials [[buffer(2)]],
+	constant uint &count [[buffer(3)]],
+	uint grid_index [[thread_position_in_grid]],
+	uint local_index [[thread_index_in_threadgroup]],
+	uint group_position [[threadgroup_position_in_grid]])
+{
+	threadgroup float dot_sums[256];
+
+	dot_sums[local_index] = grid_index < count ? left[grid_index] * right[grid_index] : 0.0f;
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+
+	for (uint stride = 128; stride > 0; stride >>= 1) {
+		if (local_index < stride) {
+			dot_sums[local_index] += dot_sums[local_index + stride];
 		}
 
-		if (curvature > 1e-10f) {
-			rho_history[slot] = 1.0f / curvature;
-			head[0]++;
-			if (history_count[0] < history_size) history_count[0]++;
-		}
+		threadgroup_barrier(mem_flags::mem_threadgroup);
 	}
 
-	for (uint value_index = 0; value_index < count; value_index++) {
-		direction[value_index] = grads[value_index];
+	if (local_index == 0) {
+		partials[group_position] = float2(dot_sums[0], 0.0f);
+	}
+}
+
+kernel void lbfgs_gamma(
+	device const float *y_slot [[buffer(0)]],
+	device const float *state_slot [[buffer(1)]],
+	device float2 *partials [[buffer(2)]],
+	constant uint &count [[buffer(3)]],
+	uint grid_index [[thread_position_in_grid]],
+	uint local_index [[thread_index_in_threadgroup]],
+	uint group_position [[threadgroup_position_in_grid]])
+{
+	threadgroup float yy_sums[256];
+	threadgroup float ys_sums[256];
+
+	float yy = 0.0f;
+	float ys = 0.0f;
+
+	if (grid_index < count) {
+		float y_value = y_slot[grid_index];
+		yy = y_value * y_value;
+		ys = y_value * state_slot[grid_index];
 	}
 
-	for (int history_index = int(history_count[0]) - 1; history_index >= 0; history_index--) {
-		uint slot = (head[0] - 1 - uint(history_index) + history_size * 2) % history_size;
-		float dot = 0.0f;
+	yy_sums[local_index] = yy;
+	ys_sums[local_index] = ys;
+	threadgroup_barrier(mem_flags::mem_threadgroup);
 
-		for (uint value_index = 0; value_index < count; value_index++) {
-			dot += state_history[slot * count + value_index] * direction[value_index];
+	for (uint stride = 128; stride > 0; stride >>= 1) {
+		if (local_index < stride) {
+			yy_sums[local_index] += yy_sums[local_index + stride];
+			ys_sums[local_index] += ys_sums[local_index + stride];
 		}
 
-		alphas[history_index] = rho_history[slot] * dot;
-
-		for (uint value_index = 0; value_index < count; value_index++) {
-			direction[value_index] -= alphas[history_index] *
-				grad_history[slot * count + value_index];
-		}
+		threadgroup_barrier(mem_flags::mem_threadgroup);
 	}
 
-	if (history_count[0] > 0) {
-		uint slot = (head[0] - 1 + history_size * 2) % history_size;
-		float yy = 0.0f;
-		float ys = 0.0f;
+	if (local_index == 0) {
+		partials[group_position] = float2(yy_sums[0], ys_sums[0]);
+	}
+}
 
-		for (uint value_index = 0; value_index < count; value_index++) {
-			float y_value = grad_history[slot * count + value_index];
-			yy += y_value * y_value;
-			ys += y_value * state_history[slot * count + value_index];
-		}
+kernel void lbfgs_store_alpha(
+	device float *alphas [[buffer(0)]],
+	device const float *rho_history [[buffer(1)]],
+	device const float2 *dot [[buffer(2)]],
+	constant uint &history_index [[buffer(3)]],
+	constant uint &slot [[buffer(4)]],
+	uint index [[thread_position_in_grid]])
+{
+	if (index == 0) alphas[history_index] = rho_history[slot] * dot[0].x;
+}
 
-		float gamma = ys / yy;
+kernel void lbfgs_reverse_apply(
+	device float *direction [[buffer(0)]],
+	device const float *y_slot [[buffer(1)]],
+	device const float *alphas [[buffer(2)]],
+	constant uint &history_index [[buffer(3)]],
+	constant uint &count [[buffer(4)]],
+	uint index [[thread_position_in_grid]])
+{
+	if (index >= count) return;
 
-		for (uint value_index = 0; value_index < count; value_index++) {
-			direction[value_index] *= gamma;
-		}
+	direction[index] -= alphas[history_index] * y_slot[index];
+}
+
+kernel void lbfgs_gamma_apply(
+	device float *direction [[buffer(0)]],
+	device const float2 *gamma_pair [[buffer(1)]],
+	constant uint &count [[buffer(2)]],
+	uint index [[thread_position_in_grid]])
+{
+	if (index >= count) return;
+
+	float gamma = gamma_pair[0].x == 0.0f ? 1.0f : gamma_pair[0].y / gamma_pair[0].x;
+	direction[index] *= gamma;
+}
+
+kernel void lbfgs_forward_apply(
+	device float *direction [[buffer(0)]],
+	device const float *state_slot [[buffer(1)]],
+	device const float *rho_history [[buffer(2)]],
+	device const float *alphas [[buffer(3)]],
+	device const float2 *dot [[buffer(4)]],
+	constant uint &history_index [[buffer(5)]],
+	constant uint &slot [[buffer(6)]],
+	constant uint &count [[buffer(7)]],
+	uint index [[thread_position_in_grid]])
+{
+	if (index >= count) return;
+
+	float beta = rho_history[slot] * dot[0].x;
+	direction[index] += (alphas[history_index] - beta) * state_slot[index];
+}
+
+kernel void lbfgs_line_search(
+	device const float *grads [[buffer(0)]],
+	device const float *direction [[buffer(1)]],
+	device float2 *partials [[buffer(2)]],
+	constant uint &count [[buffer(3)]],
+	uint grid_index [[thread_position_in_grid]],
+	uint local_index [[thread_index_in_threadgroup]],
+	uint group_position [[threadgroup_position_in_grid]])
+{
+	threadgroup float f_sums[256];
+	threadgroup float slope_sums[256];
+
+	float f_value = 0.0f;
+	float slope_value = 0.0f;
+
+	if (grid_index < count) {
+		float grad = grads[grid_index];
+		f_value = grad * grad;
+		slope_value = grad * direction[grid_index];
 	}
 
-	for (uint history_index = 0; history_index < history_count[0]; history_index++) {
-		uint slot = (head[0] - history_count[0] + history_index + history_size * 2) %
-			history_size;
-		float dot = 0.0f;
+	f_sums[local_index] = f_value;
+	slope_sums[local_index] = slope_value;
+	threadgroup_barrier(mem_flags::mem_threadgroup);
 
-		for (uint value_index = 0; value_index < count; value_index++) {
-			dot += grad_history[slot * count + value_index] * direction[value_index];
+	for (uint stride = 128; stride > 0; stride >>= 1) {
+		if (local_index < stride) {
+			f_sums[local_index] += f_sums[local_index + stride];
+			slope_sums[local_index] += slope_sums[local_index + stride];
 		}
 
-		float beta = rho_history[slot] * dot;
-
-		for (uint value_index = 0; value_index < count; value_index++) {
-			direction[value_index] += (alphas[history_index] - beta) *
-				state_history[slot * count + value_index];
-		}
+		threadgroup_barrier(mem_flags::mem_threadgroup);
 	}
+
+	if (local_index == 0) {
+		partials[group_position] = float2(f_sums[0], slope_sums[0]);
+	}
+}
+
+kernel void lbfgs_finalize(
+	device float *out [[buffer(0)]],
+	device const float *params [[buffer(1)]],
+	device const float *direction [[buffer(2)]],
+	device const float2 *line_metrics [[buffer(3)]],
+	constant uint &count [[buffer(4)]],
+	constant float &learning_rate [[buffer(5)]],
+	constant uint &line_search [[buffer(6)]],
+	constant float &c1 [[buffer(7)]],
+	uint index [[thread_position_in_grid]])
+{
+	if (index >= count) return;
 
 	float effective_learning_rate = learning_rate;
 
 	if (line_search != 0) {
-		float f0 = 0.0f;
-		float slope = 0.0f;
+		float f0 = line_metrics[0].x;
+		float slope = -line_metrics[0].y;
 		float c1_value = c1 == 0.0f ? 1e-4f : c1;
-
-		for (uint value_index = 0; value_index < count; value_index++) {
-			f0 += grads[value_index] * grads[value_index];
-			slope -= grads[value_index] * direction[value_index];
-		}
 
 		for (uint search_index = 0; search_index < 50; search_index++) {
 			float decrease = f0 - c1_value * effective_learning_rate * slope;
@@ -535,8 +680,5 @@ kernel void lbfgs(
 		}
 	}
 
-	for (uint value_index = 0; value_index < count; value_index++) {
-		out[value_index] = params[value_index] -
-			effective_learning_rate * direction[value_index];
-	}
+	out[index] = params[index] - effective_learning_rate * direction[index];
 }

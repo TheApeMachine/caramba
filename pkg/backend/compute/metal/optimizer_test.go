@@ -69,36 +69,43 @@ func TestLBFGS_Step(test *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("It should match the CPU two-loop update after history is populated", func() {
-			cpuState := lbfgsState(
-				[]float64{1.0, -0.5, 0.25, 1.5},
-				[]float64{0.30, -0.10, 0.20, -0.40},
-			)
-			metalState := lbfgsState(
-				[]float64{1.0, -0.5, 0.25, 1.5},
-				[]float64{0.30, -0.10, 0.20, -0.40},
-			)
+			for _, length := range []int{1, 7, 64, 1024, 8192} {
+				initialParams := pattern(length, 0.41, 0.017)
+				initialGrads := pattern(length, -0.23, 0.011)
+				nextParams := lbfgsShift(initialParams, initialGrads, -0.08)
+				nextGrads := lbfgsShift(initialGrads, initialGrads, -0.25)
+				cpuState := lbfgsState(initialParams, initialGrads)
+				metalState := lbfgsState(
+					append([]float64(nil), initialParams...),
+					append([]float64(nil), initialGrads...),
+				)
 
-			_, err = cpuOptimizer.Step(cpuState)
-			So(err, ShouldBeNil)
-			_, err = metalOptimizer.Step(metalState)
-			So(err, ShouldBeNil)
+				_, err = cpuOptimizer.Step(cpuState)
+				So(err, ShouldBeNil)
+				_, err = metalOptimizer.Step(metalState)
+				So(err, ShouldBeNil)
 
-			cpuState.WithParams([]float64{0.92, -0.42, 0.18, 1.36}).
-				WithGrads([]float64{0.18, -0.04, 0.12, -0.22})
-			metalState.WithParams([]float64{0.92, -0.42, 0.18, 1.36}).
-				WithGrads([]float64{0.18, -0.04, 0.12, -0.22})
+				cpuState.WithParams(nextParams).WithGrads(nextGrads)
+				metalState.WithParams(
+					append([]float64(nil), nextParams...),
+				).WithGrads(
+					append([]float64(nil), nextGrads...),
+				)
 
-			cpuUpdated, err := cpuOptimizer.Step(cpuState)
-			So(err, ShouldBeNil)
-			metalUpdated, err := metalOptimizer.Step(metalState)
-			So(err, ShouldBeNil)
+				cpuUpdated, err := cpuOptimizer.Step(cpuState)
+				So(err, ShouldBeNil)
+				metalUpdated, err := metalOptimizer.Step(metalState)
+				So(err, ShouldBeNil)
 
-			So(metalUpdated.Out, ShouldHaveLength, len(cpuUpdated.Out))
-			for index := range cpuUpdated.Out {
-				So(metalUpdated.Out[index], ShouldAlmostEqual, cpuUpdated.Out[index], 1e-4)
+				assertMetalSlice(
+					fmt.Sprintf("lbfgs/out/%d", length),
+					metalUpdated.Out,
+					cpuUpdated.Out,
+					1e-4,
+				)
+				So(metalState.Head, ShouldEqual, cpuState.Head)
+				So(metalState.Count, ShouldEqual, cpuState.Count)
 			}
-			So(metalState.Head, ShouldEqual, cpuState.Head)
-			So(metalState.Count, ShouldEqual, cpuState.Count)
 		})
 	})
 }
@@ -110,14 +117,16 @@ func BenchmarkLBFGS_Step(benchmark *testing.B) {
 	}
 
 	stateDict := lbfgsState(
-		[]float64{1.0, -0.5, 0.25, 1.5, -1.25, 0.75, -0.2, 0.6},
-		[]float64{0.30, -0.10, 0.20, -0.40, 0.14, -0.08, 0.05, -0.12},
+		pattern(8192, 0.41, 0.017),
+		pattern(8192, -0.23, 0.011),
 	)
+	nextGrads := pattern(8192, -0.18, 0.008)
+
+	benchmark.ResetTimer()
 
 	for benchmark.Loop() {
 		_, _ = optimizer.Step(stateDict)
-		stateDict.WithParams(stateDict.Out).
-			WithGrads([]float64{0.18, -0.04, 0.12, -0.22, 0.11, -0.05, 0.03, -0.09})
+		stateDict.WithParams(stateDict.Out).WithGrads(nextGrads)
 	}
 }
 
@@ -300,6 +309,16 @@ func positivePattern(length int, offset float64, step float64) []float64 {
 	}
 
 	return values
+}
+
+func lbfgsShift(values []float64, direction []float64, scale float64) []float64 {
+	shifted := make([]float64, len(values))
+
+	for index := range values {
+		shifted[index] = values[index] + scale*direction[index]
+	}
+
+	return shifted
 }
 
 func stateField(stateDict *state.Dict, field string) []float64 {

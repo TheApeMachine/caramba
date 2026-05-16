@@ -213,7 +213,7 @@ func (metalOps *ActiveInferenceOps) PrecisionWeight(shape []int, data ...[]float
 }
 
 /*
-ExpectedFreeEnergy computes G[k] = -sum_i q[i,k]*ln(q[i,k]+eps) for each outcome k.
+ExpectedFreeEnergy computes G[k] = -sum_i clamp(q[i,k],0,1)*ln(clamp(q[i,k],0,1)+eps).
 shape=[N,K], data[0]=q_outcomes [N*K] row-major. Returns G [K].
 eps is DefaultExpectedFreeEnergyEps (1e-12).
 */

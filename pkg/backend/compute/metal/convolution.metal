@@ -186,6 +186,20 @@ struct ConvTranspose2dParams {
     int Hout, Wout;
 };
 
+kernel void conv_transpose2d_init_kernel(
+    device float* dst [[buffer(0)]],
+    constant ConvTranspose2dParams& p [[buffer(1)]],
+    device const float* bias [[buffer(2)]],
+    uint gid [[thread_position_in_grid]])
+{
+    int total = p.N * p.OutC * p.Hout * p.Wout;
+    if ((int)gid >= total) return;
+
+    int plane = p.Hout * p.Wout;
+    int oc = ((int)gid / plane) % p.OutC;
+    dst[gid] = bias[oc];
+}
+
 kernel void conv_transpose2d_kernel(
     device const float* x       [[buffer(0)]],
     device atomic_float* dst    [[buffer(1)]],
@@ -231,7 +245,6 @@ kernel void conv_transpose2d_kernel(
             }
         }
     }
-    // Add bias contribution — only thread responsible for (ni, absOC, 0, 0) does it,
-    // but for simplicity bias is pre-filled by the host before kernel launch.
     (void)icLocal;
+    (void)bias;
 }

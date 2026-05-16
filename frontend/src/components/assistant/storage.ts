@@ -14,15 +14,27 @@ export function loadSessions(): Session[] {
 }
 
 export function saveSessions(sessions: Session[]): void {
-	localStorage.setItem(KEY, JSON.stringify(sessions));
+	try {
+		localStorage.setItem(KEY, JSON.stringify(sessions));
+	} catch {
+		/* SSR or storage unavailable */
+	}
 }
 
 export function loadActiveId(): string | null {
-	return localStorage.getItem(ACTIVE_KEY);
+	try {
+		return localStorage.getItem(ACTIVE_KEY);
+	} catch {
+		return null;
+	}
 }
 
 export function saveActiveId(id: string): void {
-	localStorage.setItem(ACTIVE_KEY, id);
+	try {
+		localStorage.setItem(ACTIVE_KEY, id);
+	} catch {
+		/* SSR or storage unavailable */
+	}
 }
 
 export function newSession(): Session {

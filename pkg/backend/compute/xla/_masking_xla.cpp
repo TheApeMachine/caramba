@@ -81,6 +81,86 @@ static PJRT_LoadedExecutable* gm_compile(const std::string& mlir_text) {
     return ca.executable;
 }
 
+static void gm_destroy_buffer(PJRT_Buffer* buffer) {
+    if (!buffer) return;
+
+    PJRT_Buffer_Destroy_Args args{};
+    args.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
+    args.buffer = buffer;
+    g_mask_api->PJRT_Buffer_Destroy(&args);
+}
+
+static PJRT_Buffer* gm_upload_vector(const double* src, int src_n, const char* ctx) {
+    if (src_n < 0) return nullptr;
+    if (src_n > 0 && !src) return nullptr;
+
+    PJRT_Client_BufferFromHostBuffer_Args args{};
+    args.struct_size = PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE;
+    args.client = g_mask_client;
+    args.data = src_n == 0 ? nullptr : const_cast<double*>(src);
+    args.type = PJRT_Buffer_Type_F64;
+    int64_t dims[1] = { (int64_t)src_n };
+    args.dims = dims;
+    args.num_dims = 1;
+    args.host_buffer_semantics = PJRT_HostBufferSemantics_kImmutableOnlyDuringCall;
+
+    PJRT_Error* err = g_mask_api->PJRT_Client_BufferFromHostBuffer(&args);
+    if (!gm_check(g_mask_api, err, ctx)) return nullptr;
+
+    PJRT_Buffer_ReadyEvent_Args ready{};
+    ready.struct_size = PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE;
+    ready.buffer = args.buffer;
+    err = g_mask_api->PJRT_Buffer_ReadyEvent(&ready);
+
+    if (!gm_check(g_mask_api, err, ctx)) {
+        gm_destroy_buffer(args.buffer);
+        return nullptr;
+    }
+
+    PJRT_Event_Await_Args await{};
+    await.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
+    await.event = ready.event;
+    err = g_mask_api->PJRT_Event_Await(&await);
+    bool ok = gm_check(g_mask_api, err, ctx);
+
+    PJRT_Event_Destroy_Args destroy{};
+    destroy.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+    destroy.event = ready.event;
+    g_mask_api->PJRT_Event_Destroy(&destroy);
+
+    if (ok) return args.buffer;
+
+    gm_destroy_buffer(args.buffer);
+    return nullptr;
+}
+
+static int gm_download_vector(PJRT_Buffer* buffer, double* dst, int dst_n, const char* ctx) {
+    if (!buffer || dst_n < 0) return -1;
+    if (dst_n > 0 && !dst) return -1;
+
+    PJRT_Buffer_ToHostBuffer_Args args{};
+    args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
+    args.src = buffer;
+    args.dst = dst_n == 0 ? nullptr : dst;
+    args.dst_size = (size_t)dst_n * sizeof(double);
+
+    PJRT_Error* err = g_mask_api->PJRT_Buffer_ToHostBuffer(&args);
+    if (!gm_check(g_mask_api, err, ctx)) return -1;
+
+    PJRT_Event_Await_Args await{};
+    await.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
+    await.event = args.event;
+    err = g_mask_api->PJRT_Event_Await(&await);
+    bool ok = gm_check(g_mask_api, err, ctx);
+
+    PJRT_Event_Destroy_Args destroy{};
+    destroy.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+    destroy.event = args.event;
+    g_mask_api->PJRT_Event_Destroy(&destroy);
+
+    return ok ? 0 : -1;
+}
+
 static int gm_run(
     PJRT_LoadedExecutable* exec,
     const double* src, int src_n,
@@ -167,6 +247,49 @@ static int gm_run(
     return 0;
 }
 
+static int gm_run_binary(
+    PJRT_LoadedExecutable* exec,
+    const double* left,
+    const double* right,
+    int n,
+    double* dst)
+{
+    PJRT_Buffer* left_buffer = gm_upload_vector(left, n, "BufferFromHostBuffer(left)");
+    if (!left_buffer) return -1;
+
+    PJRT_Buffer* right_buffer = gm_upload_vector(right, n, "BufferFromHostBuffer(right)");
+
+    if (!right_buffer) {
+        gm_destroy_buffer(left_buffer);
+        return -1;
+    }
+
+    PJRT_Buffer* args[2] = { left_buffer, right_buffer };
+    PJRT_Buffer** arg_lists[1] = { args };
+    PJRT_Buffer* out_buffer = nullptr;
+    PJRT_Buffer** out_lists[1] = { &out_buffer };
+
+    PJRT_LoadedExecutable_Execute_Args exec_args{};
+    exec_args.struct_size = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
+    exec_args.executable = exec;
+    exec_args.argument_lists = arg_lists;
+    exec_args.num_devices = 1;
+    exec_args.num_args = 2;
+    exec_args.output_lists = out_lists;
+    PJRT_ExecuteOptions options = single_device_execute_options();
+    exec_args.options = &options;
+
+    PJRT_Error* err = g_mask_api->PJRT_LoadedExecutable_Execute(&exec_args);
+    gm_destroy_buffer(left_buffer);
+    gm_destroy_buffer(right_buffer);
+
+    if (!gm_check(g_mask_api, err, "Execute(binary)")) return -1;
+
+    int rc = gm_download_vector(out_buffer, dst, n, "ToHostBuffer(binary)");
+    gm_destroy_buffer(out_buffer);
+    return rc;
+}
+
 // ---------------------------------------------------------------------------
 // StableHLO module builders
 // ---------------------------------------------------------------------------
@@ -215,13 +338,9 @@ static std::string build_causal_mask(int n) {
 
 static std::string build_apply_mask(int n) {
     std::string t = "tensor<" + std::to_string(n) + "xf64>";
-    // Input is a flattened [2*n] tensor: first n = scores, next n = mask.
-    std::string t2 = "tensor<" + std::to_string(2 * n) + "xf64>";
     return
         "module @apply_mask {\n"
-        "  func.func @main(%arg0: " + t2 + ") -> " + t + " {\n"
-        "    %scores = stablehlo.slice %arg0 [0:" + std::to_string(n) + "] : (" + t2 + ") -> " + t + "\n"
-        "    %mask   = stablehlo.slice %arg0 [" + std::to_string(n) + ":" + std::to_string(2 * n) + "] : (" + t2 + ") -> " + t + "\n"
+        "  func.func @main(%scores: " + t + ", %mask: " + t + ") -> " + t + " {\n"
         "    %out    = stablehlo.add %scores, %mask : " + t + "\n"
         "    return %out : " + t + "\n"
         "  }\n"
@@ -314,7 +433,7 @@ int xla_causal_mask(double* out, int seq_len) {
 
 int xla_apply_mask(const double* scores, const double* mask, double* out, int n) {
     if (!g_mask_client) return -1;
-    if (!scores || !mask || !out) return -1;
+    if (!scores || !mask || !out || n <= 0) return -1;
 
     std::string key = "apply_mask_" + std::to_string(n);
     if (!g_mask_execs.count(key)) {
@@ -323,12 +442,7 @@ int xla_apply_mask(const double* scores, const double* mask, double* out, int n)
         g_mask_execs[key] = exec;
     }
 
-    // Pack scores and mask into a single [2*n] buffer for the module.
-    std::vector<double> combined(2 * n);
-    memcpy(combined.data(),     scores, (size_t)n * sizeof(double));
-    memcpy(combined.data() + n, mask,   (size_t)n * sizeof(double));
-
-    return gm_run(g_mask_execs[key], combined.data(), 2 * n, out, n);
+    return gm_run_binary(g_mask_execs[key], scores, mask, n, out);
 }
 
 void xla_masking_shutdown(void) {

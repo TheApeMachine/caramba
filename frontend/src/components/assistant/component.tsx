@@ -1,5 +1,16 @@
 import type { UIMessage } from "@tanstack/ai-client";
-import { Bot, CircleAlertIcon, Maximize2, Minimize2, Plus, Send, Settings, Square, Trash2, X } from "lucide-react";
+import {
+	Bot,
+	CircleAlertIcon,
+	Maximize2,
+	Minimize2,
+	Plus,
+	Send,
+	Settings,
+	Square,
+	Trash2,
+	X,
+} from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "#/components/ui/button";
 import {
@@ -23,6 +34,7 @@ import { SettingsPanel } from "./panels/settings";
 import { usePageContext } from "./use-page-context";
 import { useSession } from "./use-session";
 import { useTeamChat } from "./use-team-chat";
+import { Header } from "./header";
 
 type Mode = "closed" | "mini" | "full";
 
@@ -62,7 +74,10 @@ export function Assistant() {
 	const { capture } = usePageContext();
 	const [tab, setTab] = useState<string>("chat");
 
-	const { send, stop, status, streamingPersonaId } = useTeamChat(session, appendMessages);
+	const { send, stop, status, streamingPersonaId } = useTeamChat(
+		session,
+		appendMessages,
+	);
 	const busy = status === "running";
 
 	const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -76,7 +91,6 @@ export function Assistant() {
 	const isClosed = mode === "closed";
 	const isMini = mode === "mini";
 	const isFull = mode === "full";
-	const isOpen = !isClosed;
 
 	const teamName = isMini
 		? "Assistant"
@@ -101,65 +115,27 @@ export function Assistant() {
 					isClosed && "bg-primary text-primary-foreground",
 				)}
 			>
-				<CardFrameHeader
-					className={cn(isClosed && "p-0")}
-					onClick={isClosed ? () => setMode("mini") : undefined}
-				>
-					<Flex.Row align="center" gap={2}>
-						<Flex
-							align="center"
-							justify="center"
-							className={cn(
-								"shrink-0",
-								isClosed
-									? "size-14 cursor-pointer"
-									: "size-7 rounded-md bg-primary text-primary-foreground",
-							)}
-						>
-							<Bot className={isClosed ? "size-6" : "size-4"} />
-						</Flex>
-						{isOpen && <CardFrameTitle>{teamName}</CardFrameTitle>}
-					</Flex.Row>
-					{isFull && (
-						<CardFrameDescription>
-							Manage sessions, personas, and chat with your team.
-						</CardFrameDescription>
-					)}
-					{isOpen && (
-						<CardFrameAction>
-							<Flex.Row align="center" gap={1}>
-								<Button
-									size="icon-xs"
-									variant="ghost"
-									onClick={() => setMode(isMini ? "full" : "mini")}
-									aria-label={isMini ? "Expand" : "Collapse"}
-								>
-									{isMini ? <Maximize2 /> : <Minimize2 />}
-								</Button>
-								<Button
-									size="icon-xs"
-									variant="ghost"
-									onClick={() => setMode("closed")}
-									aria-label="Close"
-								>
-									<X />
-								</Button>
-							</Flex.Row>
-						</CardFrameAction>
-					)}
-				</CardFrameHeader>
-
-				{isOpen && (
+				<Header />
+				{!isClosed && (
 					<Card>
 						<CardPanel>
 							<Flex className="h-full min-h-0">
 								{isFull && (
 									<Flex.Column className="w-52 shrink-0 border-r">
-										<Flex.Row align="center" justify="between" className="px-3 py-2">
+										<Flex.Row
+											align="center"
+											justify="between"
+											className="px-3 py-2"
+										>
 											<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
 												Sessions
 											</span>
-											<Button size="icon-xs" variant="ghost" onClick={createSession} aria-label="New session">
+											<Button
+												size="icon-xs"
+												variant="ghost"
+												onClick={createSession}
+												aria-label="New session"
+											>
 												<Plus />
 											</Button>
 										</Flex.Row>
@@ -175,7 +151,9 @@ export function Assistant() {
 														layout
 													>
 														<Button
-															variant={s.id === session.id ? "secondary" : "ghost"}
+															variant={
+																s.id === session.id ? "secondary" : "ghost"
+															}
 															className="flex-1 justify-start truncate"
 															onClick={() => setActive(s.id)}
 														>
@@ -200,7 +178,11 @@ export function Assistant() {
 
 								<Flex.Column className="flex-1 min-w-0">
 									{isFull && (
-										<Flex.Row align="center" justify="between" className="px-4 py-2 border-b">
+										<Flex.Row
+											align="center"
+											justify="between"
+											className="px-4 py-2 border-b"
+										>
 											<Tabs value={tab} onValueChange={setTab}>
 												<Tabs.List>
 													<Tabs.Tab value="chat">Chat</Tabs.Tab>
@@ -215,7 +197,11 @@ export function Assistant() {
 
 									<AnimatePresence mode="wait" initial={false}>
 										{(isMini || tab === "chat") && (
-											<Flex.Column key="chat" appear="fadeUp" className="flex-1 min-h-0">
+											<Flex.Column
+												key="chat"
+												appear="fadeUp"
+												className="flex-1 min-h-0"
+											>
 												<MessageFeed
 													messages={session.messages}
 													streamingPersonaId={streamingPersonaId}
@@ -223,9 +209,14 @@ export function Assistant() {
 													compact={isMini}
 												/>
 
-												<Form onSubmit={handleSubmit} className="flex gap-2 border-t p-3">
+												<Form
+													onSubmit={handleSubmit}
+													className="flex gap-2 border-t p-3"
+												>
 													<Field className="flex-1">
-														<Field.Label className="sr-only">Message</Field.Label>
+														<Field.Label className="sr-only">
+															Message
+														</Field.Label>
 														<Input
 															value={input.value}
 															onChange={(e) => input.setValue(e.target.value)}
@@ -240,13 +231,20 @@ export function Assistant() {
 													<AnimatePresence mode="wait" initial={false}>
 														{busy ? (
 															<Flex key="stop" appear="scaleIn">
-																<Button type="button" variant="outline" onClick={stop}>
+																<Button
+																	type="button"
+																	variant="outline"
+																	onClick={stop}
+																>
 																	<Square />
 																</Button>
 															</Flex>
 														) : (
 															<Flex key="send" appear="scaleIn">
-																<Button type="submit" disabled={!input.value.trim()}>
+																<Button
+																	type="submit"
+																	disabled={!input.value.trim()}
+																>
 																	<Send />
 																</Button>
 															</Flex>
@@ -257,7 +255,11 @@ export function Assistant() {
 										)}
 
 										{isFull && tab === "settings" && (
-											<Flex key="settings" appear="fadeUp" className="flex-1 min-h-0 overflow-y-auto">
+											<Flex
+												key="settings"
+												appear="fadeUp"
+												className="flex-1 min-h-0 overflow-y-auto"
+											>
 												<SettingsPanel
 													session={session}
 													onUpdatePersona={updatePersona}

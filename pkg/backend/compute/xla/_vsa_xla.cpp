@@ -8,11 +8,9 @@
 
 #include "xla_vsa.h"
 
-#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <iomanip>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -28,9 +26,6 @@
 namespace {
 
 constexpr double kVsaNormEps = 1e-12;
-
-// Quantise inverse norm so scale executables cache on buckets rather than raw floats.
-constexpr double kVsaInvNormQuant = 1e9;
 
 } // namespace
 
@@ -265,33 +260,76 @@ static std::string elementwise_module(const std::string& op, int n) {
         "}";
 }
 
-static std::string reduce_sum_module(int n) {
-    // Reduces a 1-D tensor of length n to a scalar via stablehlo.reduce.
-    std::string tv = "tensor<" + std::to_string(n) + "xf64>";
-    std::string ts = "tensor<f64>";
+static std::string scalar_literal(double value) {
+    char buffer[96];
+    std::snprintf(buffer, sizeof(buffer), "%.17g", value);
+
+    return std::string(buffer);
+}
+
+static std::string similarity_module(int n) {
+    std::string vector_type = "tensor<" + std::to_string(n) + "xf64>";
+    std::string scalar_type = "tensor<f64>";
+
     return
         "module @m {"
-        "  func.func @main(%x: " + tv + ") -> " + ts + " {"
-        "    %zero = stablehlo.constant dense<0.0> : " + ts +
-        "    %r = stablehlo.reduce(%x init: %zero)"
-        "      applies stablehlo.add across dimensions = [0] : (" + tv + ", " + ts + ") -> " + ts +
-        "    return %r : " + ts +
+        "  func.func @main(%a: " + vector_type + ", %b: " + vector_type + ") -> " + scalar_type + " {"
+        "    %product = stablehlo.multiply %a, %b : " + vector_type +
+        "    %zero = stablehlo.constant dense<0.0> : " + scalar_type +
+        "    %sum = stablehlo.reduce(%product init: %zero)"
+        "      applies stablehlo.add across dimensions = [0] : (" + vector_type + ", " + scalar_type + ") -> " + scalar_type +
+        "    return %sum : " + scalar_type +
         "  }"
         "}";
 }
 
-static std::string scale_module(int n, double scale) {
-    std::string t = "tensor<" + std::to_string(n) + "xf64>";
-    std::ostringstream oss;
-    oss << std::setprecision(17) << scale;
-    std::string sv = oss.str();
+static std::string bundle_module(int n, int num_vecs) {
+    std::string vector_type = "tensor<" + std::to_string(n) + "xf64>";
+    std::string scalar_type = "tensor<f64>";
+    std::ostringstream args;
+    std::ostringstream body;
+
+    for (int input_index = 0; input_index < num_vecs; input_index++) {
+        if (input_index > 0) args << ", ";
+        args << "%v" << input_index << ": " << vector_type;
+    }
+
+    std::string sum_name = "%v0";
+
+    for (int input_index = 1; input_index < num_vecs; input_index++) {
+        std::string next_sum = "%sum" + std::to_string(input_index);
+        body
+            << "    " << next_sum << " = stablehlo.add " << sum_name
+            << ", %v" << input_index << " : " << vector_type << "\n";
+        sum_name = next_sum;
+    }
+
+    body
+        << "    %squares = stablehlo.multiply " << sum_name << ", " << sum_name
+        << " : " << vector_type << "\n"
+        << "    %zero = stablehlo.constant dense<0.0> : " << scalar_type << "\n"
+        << "    %sumsq = stablehlo.reduce(%squares init: %zero)"
+        << " applies stablehlo.add across dimensions = [0] : ("
+        << vector_type << ", " << scalar_type << ") -> " << scalar_type << "\n"
+        << "    %norm = stablehlo.sqrt %sumsq : " << scalar_type << "\n"
+        << "    %eps = stablehlo.constant dense<" << scalar_literal(kVsaNormEps)
+        << "> : " << scalar_type << "\n"
+        << "    %one = stablehlo.constant dense<1.0> : " << scalar_type << "\n"
+        << "    %norm_ok = stablehlo.compare GT, %norm, %eps, TOTALORDER : ("
+        << scalar_type << ", " << scalar_type << ") -> tensor<i1>\n"
+        << "    %inv_norm = stablehlo.divide %one, %norm : " << scalar_type << "\n"
+        << "    %scale = stablehlo.select %norm_ok, %inv_norm, %one : (tensor<i1>, "
+        << scalar_type << ", " << scalar_type << ") -> " << scalar_type << "\n"
+        << "    %scale_v = stablehlo.broadcast_in_dim %scale, dims = [] : ("
+        << scalar_type << ") -> " << vector_type << "\n"
+        << "    %out_scaled = stablehlo.multiply " << sum_name << ", %scale_v : "
+        << vector_type << "\n"
+        << "    return %out_scaled : " << vector_type << "\n";
+
     return
         "module @m {"
-        "  func.func @main(%x: " + t + ") -> " + t + " {"
-        "    %s = stablehlo.constant dense<" + sv + "> : tensor<f64>"
-        "    %b = stablehlo.broadcast_in_dim %s, dims=[] : (tensor<f64>) -> " + t +
-        "    %r = stablehlo.multiply %x, %b : " + t +
-        "    return %r : " + t +
+        "  func.func @main(" + args.str() + ") -> " + vector_type + " {\n" +
+        body.str() +
         "  }"
         "}";
 }
@@ -358,6 +396,54 @@ static int run_binary(
     destroy_buf(ba);
     destroy_buf(bb);
     if (!vcheck(gv_api, xerr, "PJRT_LoadedExecutable_Execute(binary)")) return -1;
+
+    int rc = device_to_host(out_buf, out_ptr, out_bytes);
+    destroy_buf(out_buf);
+    return rc;
+}
+
+// ---------------------------------------------------------------------------
+// run_variadic: execute an N-input → 1-output compiled executable
+// ---------------------------------------------------------------------------
+
+static int run_variadic(
+    PJRT_LoadedExecutable* exec,
+    const double** input_ptrs, int num_inputs, size_t input_n,
+    double* out_ptr, size_t out_bytes)
+{
+    if (!exec || !input_ptrs || num_inputs <= 0) return -1;
+
+    std::vector<PJRT_Buffer*> args((size_t)num_inputs, nullptr);
+
+    for (int input_index = 0; input_index < num_inputs; input_index++) {
+        args[(size_t)input_index] = host_to_device(input_ptrs[input_index], input_n);
+
+        if (args[(size_t)input_index]) continue;
+
+        for (PJRT_Buffer* buffer : args) destroy_buf(buffer);
+        return -1;
+    }
+
+    PJRT_Buffer** arg_lists[1] = { args.data() };
+    PJRT_Buffer* out_buf = nullptr;
+    PJRT_Buffer** out_lists[1] = { &out_buf };
+
+    PJRT_LoadedExecutable_Execute_Args xa{};
+    xa.struct_size    = PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE;
+    xa.executable     = exec;
+    PJRT_ExecuteOptions opts = single_device_execute_options();
+    xa.options        = &opts;
+    xa.argument_lists = arg_lists;
+    xa.num_devices    = 1;
+    xa.num_args       = (size_t)num_inputs;
+    xa.output_lists   = out_lists;
+    xa.device_complete_events = nullptr;
+
+    auto* xerr = gv_api->PJRT_LoadedExecutable_Execute(&xa);
+
+    for (PJRT_Buffer* buffer : args) destroy_buf(buffer);
+
+    if (!vcheck(gv_api, xerr, "PJRT_LoadedExecutable_Execute(variadic)")) return -1;
 
     int rc = device_to_host(out_buf, out_ptr, out_bytes);
     destroy_buf(out_buf);
@@ -520,56 +606,11 @@ int xla_vsa_bundle(const double** vecs, int num_vecs, double* out, int n) {
         if (!vecs[i]) return -1;
     }
 
-    // Sum all vectors using repeated elementwise add
-    std::vector<double> acc(n, 0.0);
-    std::string add_key = "vsa_add_" + std::to_string(n);
-    std::string add_mlir = elementwise_module("stablehlo.add", n);
-    auto* add_exec = compile_module(add_key, add_mlir);
-    if (!add_exec) return -1;
-
-    // First vector
-    std::copy(vecs[0], vecs[0] + n, acc.data());
-
-    std::vector<double> tmp(n);
-    // Accumulate remaining
-    for (int v = 1; v < num_vecs; v++) {
-        if (run_binary(add_exec, acc.data(), (size_t)n, vecs[v], (size_t)n,
-                       tmp.data(), (size_t)n * sizeof(double)) != 0) return -1;
-        acc.swap(tmp);
-    }
-
-    // Compute norm: dot(acc, acc) via multiply then reduce
-    std::vector<double> sq(n);
-    std::string mul_key = "vsa_mul_" + std::to_string(n);
-    std::string mul_mlir = elementwise_module("stablehlo.multiply", n);
-    auto* mul_exec = compile_module(mul_key, mul_mlir);
-    if (!mul_exec) return -1;
-    if (run_binary(mul_exec, acc.data(), (size_t)n, acc.data(), (size_t)n,
-                   sq.data(), (size_t)n * sizeof(double)) != 0) return -1;
-
-    std::string red_key = "vsa_reduce_sum_" + std::to_string(n);
-    auto* red_exec = compile_module(red_key, reduce_sum_module(n));
+    std::string key = "vsa_bundle_" + std::to_string(n) + "_" + std::to_string(num_vecs);
+    auto* red_exec = compile_module(key, bundle_module(n, num_vecs));
     if (!red_exec) return -1;
 
-    double sumsq = 0.0;
-    if (run_unary(red_exec, sq.data(), (size_t)n, &sumsq, sizeof(double)) != 0) return -1;
-
-    double norm = std::sqrt(sumsq);
-
-    if (norm > kVsaNormEps) {
-        double inv_norm = 1.0 / norm;
-        long long inv_bucket = std::llround(inv_norm * kVsaInvNormQuant);
-        double inv_quant = static_cast<double>(inv_bucket) / kVsaInvNormQuant;
-        std::string sc_key =
-            "vsa_scale_" + std::to_string(n) + "_q" + std::to_string(inv_bucket);
-        auto* sc_exec = compile_module(sc_key, scale_module(n, inv_quant));
-        if (!sc_exec) return -1;
-        if (run_unary(sc_exec, acc.data(), (size_t)n, out, (size_t)n * sizeof(double)) != 0) return -1;
-    } else {
-        std::copy(acc.begin(), acc.end(), out);
-    }
-
-    return 0;
+    return run_variadic(red_exec, vecs, num_vecs, (size_t)n, out, (size_t)n * sizeof(double));
 }
 
 int xla_vsa_similarity(const double* a, const double* b, double* out, int n) {
@@ -577,21 +618,11 @@ int xla_vsa_similarity(const double* a, const double* b, double* out, int n) {
 
     if (!a || !b || !out || n <= 0 || !gv_client) return -1;
 
-    // Elementwise multiply then reduce-sum
-    std::string mul_key = "vsa_mul_" + std::to_string(n);
-    std::string mul_mlir = elementwise_module("stablehlo.multiply", n);
-    auto* mul_exec = compile_module(mul_key, mul_mlir);
-    if (!mul_exec) return -1;
-
-    std::vector<double> prod(n);
-    if (run_binary(mul_exec, a, (size_t)n, b, (size_t)n,
-                   prod.data(), (size_t)n * sizeof(double)) != 0) return -1;
-
-    std::string red_key = "vsa_reduce_sum_" + std::to_string(n);
-    auto* red_exec = compile_module(red_key, reduce_sum_module(n));
+    std::string red_key = "vsa_similarity_" + std::to_string(n);
+    auto* red_exec = compile_module(red_key, similarity_module(n));
     if (!red_exec) return -1;
 
-    return run_unary(red_exec, prod.data(), (size_t)n, out, sizeof(double));
+    return run_binary(red_exec, a, (size_t)n, b, (size_t)n, out, sizeof(double));
 }
 
 int xla_vsa_permute(const double* src, double* out, int n, int shift) {

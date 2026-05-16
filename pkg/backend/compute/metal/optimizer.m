@@ -322,15 +322,177 @@ int metal_optimizer_adadelta(double *out, double *grad_average, double *delta_av
 }
 
 int metal_optimizer_lbfgs(double *out, double *s_history, double *y_history, double *rho_history, int *head, int *history_count, const double *params, const double *grads, const double *previous_params, const double *previous_grads, int has_previous, int count, int history_size, double learning_rate, int line_search, double c1) {
+	if (count <= 0) return 0;
+	if (history_size <= 0) return optimizer_error(-1, @"invalid L-BFGS history size");
+
 	int history_elements = count * history_size;
-	float *sh = to_float(s_history, history_elements), *yh = to_float(y_history, history_elements), *rh = to_float(rho_history, history_size), *p = to_float(params, count), *g = to_float(grads, count), *pp = to_float(previous_params, count), *pg = to_float(previous_grads, count);
-	START_ENCODER("lbfgs");
-	id<MTLBuffer> bo = rw(NULL, count), bsh = rw(sh, history_elements), byh = rw(yh, history_elements), brh = rw(rh, history_size), bd = rw(NULL, count), ba = rw(NULL, history_size), bp = ro(p, count), bg = ro(g, count), bpp = ro(pp, count), bpg = ro(pg, count);
-	uint h = (uint)*head, hc = (uint)*history_count;
-	id<MTLBuffer> bh = rw_uint(&h, 1), bhc = rw_uint(&hc, 1);
-	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bsh offset:0 atIndex:1]; [encoder setBuffer:byh offset:0 atIndex:2]; [encoder setBuffer:brh offset:0 atIndex:3]; [encoder setBuffer:bd offset:0 atIndex:4]; [encoder setBuffer:ba offset:0 atIndex:5]; [encoder setBuffer:bh offset:0 atIndex:6]; [encoder setBuffer:bhc offset:0 atIndex:7]; [encoder setBuffer:bp offset:0 atIndex:8]; [encoder setBuffer:bg offset:0 atIndex:9]; [encoder setBuffer:bpp offset:0 atIndex:10]; [encoder setBuffer:bpg offset:0 atIndex:11];
-	SET_SCALAR(has_previous, uint, 12); SET_SCALAR(count, uint, 13); SET_SCALAR(history_size, uint, 14); SET_SCALAR(learning_rate, float, 15); SET_SCALAR(line_search, uint, 16); SET_SCALAR(c1, float, 17);
-	int rc = run_threads(pipeline, command_buffer, encoder, 1);
-	if (rc == 0) { to_double(out, [bo contents], count); to_double(s_history, [bsh contents], history_elements); to_double(y_history, [byh contents], history_elements); to_double(rho_history, [brh contents], history_size); *head = (int)(*((uint *)[bh contents])); *history_count = (int)(*((uint *)[bhc contents])); }
-	free(sh); free(yh); free(rh); free(p); free(g); free(pp); free(pg); return rc;
+	float *state_history = to_float(s_history, history_elements), *grad_history = to_float(y_history, history_elements), *rho_values = to_float(rho_history, history_size);
+	float *param_values = to_float(params, count), *grad_values = to_float(grads, count), *previous_param_values = to_float(previous_params, count), *previous_grad_values = to_float(previous_grads, count);
+	id<MTLBuffer> out_buffer = rw(NULL, count), state_buffer = rw(state_history, history_elements), grad_buffer = rw(grad_history, history_elements), rho_buffer = rw(rho_values, history_size);
+	id<MTLBuffer> direction_buffer = rw(NULL, count), alpha_buffer = rw(NULL, history_size), param_buffer = ro(param_values, count), grad_input_buffer = ro(grad_values, count);
+	id<MTLBuffer> previous_param_buffer = ro(previous_param_values, count), previous_grad_buffer = ro(previous_grad_values, count);
+	uint head_value = (uint)*head, count_value = (uint)*history_count;
+	id<MTLBuffer> head_buffer = rw_uint(&head_value, 1), count_buffer = rw_uint(&count_value, 1);
+	int group_count = optimizer_groups(count);
+	id<MTLBuffer> partials = rw(NULL, group_count * 2);
+	int rc = 0;
+
+	if (has_previous != 0) {
+		id<MTLBuffer> curvature = nil;
+
+		{
+			START_ENCODER("lbfgs_history_delta");
+			[encoder setBuffer:state_buffer offset:0 atIndex:0]; [encoder setBuffer:grad_buffer offset:0 atIndex:1]; [encoder setBuffer:partials offset:0 atIndex:2]; [encoder setBuffer:param_buffer offset:0 atIndex:3]; [encoder setBuffer:grad_input_buffer offset:0 atIndex:4]; [encoder setBuffer:previous_param_buffer offset:0 atIndex:5]; [encoder setBuffer:previous_grad_buffer offset:0 atIndex:6]; [encoder setBuffer:head_buffer offset:0 atIndex:7];
+			SET_SCALAR(count, uint, 8); SET_SCALAR(history_size, uint, 9);
+			rc = run_threads(pipeline, command_buffer, encoder, group_count * 256);
+		}
+
+		if (rc != 0) goto done;
+		rc = reduce_pair_partials(partials, group_count, &curvature);
+		if (rc != 0) goto done;
+
+		{
+			START_ENCODER("lbfgs_accept_history");
+			[encoder setBuffer:rho_buffer offset:0 atIndex:0]; [encoder setBuffer:head_buffer offset:0 atIndex:1]; [encoder setBuffer:count_buffer offset:0 atIndex:2]; [encoder setBuffer:curvature offset:0 atIndex:3];
+			SET_SCALAR(history_size, uint, 4);
+			rc = run_threads(pipeline, command_buffer, encoder, 1);
+		}
+
+		if (rc != 0) goto done;
+	}
+
+	head_value = *((uint *)[head_buffer contents]);
+	count_value = *((uint *)[count_buffer contents]);
+
+	{
+		START_ENCODER("lbfgs_direction_init");
+		[encoder setBuffer:direction_buffer offset:0 atIndex:0]; [encoder setBuffer:grad_input_buffer offset:0 atIndex:1];
+		SET_SCALAR(count, uint, 2);
+		rc = run_threads(pipeline, command_buffer, encoder, count);
+	}
+
+	if (rc != 0) goto done;
+
+	for (int history_index = (int)count_value - 1; history_index >= 0; history_index--) {
+		uint slot = (head_value - 1 - (uint)history_index + (uint)history_size * 2) % (uint)history_size;
+		NSUInteger slot_offset = (NSUInteger)slot * (NSUInteger)count * sizeof(float);
+		id<MTLBuffer> dot = nil;
+
+		{
+			START_ENCODER("lbfgs_dot");
+			[encoder setBuffer:state_buffer offset:slot_offset atIndex:0]; [encoder setBuffer:direction_buffer offset:0 atIndex:1]; [encoder setBuffer:partials offset:0 atIndex:2];
+			SET_SCALAR(count, uint, 3);
+			rc = run_threads(pipeline, command_buffer, encoder, group_count * 256);
+		}
+
+		if (rc != 0) goto done;
+		rc = reduce_pair_partials(partials, group_count, &dot);
+		if (rc != 0) goto done;
+
+		{
+			START_ENCODER("lbfgs_store_alpha");
+			[encoder setBuffer:alpha_buffer offset:0 atIndex:0]; [encoder setBuffer:rho_buffer offset:0 atIndex:1]; [encoder setBuffer:dot offset:0 atIndex:2];
+			SET_SCALAR(history_index, uint, 3); SET_SCALAR(slot, uint, 4);
+			rc = run_threads(pipeline, command_buffer, encoder, 1);
+		}
+
+		if (rc != 0) goto done;
+
+		{
+			START_ENCODER("lbfgs_reverse_apply");
+			[encoder setBuffer:direction_buffer offset:0 atIndex:0]; [encoder setBuffer:grad_buffer offset:slot_offset atIndex:1]; [encoder setBuffer:alpha_buffer offset:0 atIndex:2];
+			SET_SCALAR(history_index, uint, 3); SET_SCALAR(count, uint, 4);
+			rc = run_threads(pipeline, command_buffer, encoder, count);
+		}
+
+		if (rc != 0) goto done;
+	}
+
+	if (count_value > 0) {
+		uint slot = (head_value - 1 + (uint)history_size * 2) % (uint)history_size;
+		NSUInteger slot_offset = (NSUInteger)slot * (NSUInteger)count * sizeof(float);
+		id<MTLBuffer> gamma_pair = nil;
+
+		{
+			START_ENCODER("lbfgs_gamma");
+			[encoder setBuffer:grad_buffer offset:slot_offset atIndex:0]; [encoder setBuffer:state_buffer offset:slot_offset atIndex:1]; [encoder setBuffer:partials offset:0 atIndex:2];
+			SET_SCALAR(count, uint, 3);
+			rc = run_threads(pipeline, command_buffer, encoder, group_count * 256);
+		}
+
+		if (rc != 0) goto done;
+		rc = reduce_pair_partials(partials, group_count, &gamma_pair);
+		if (rc != 0) goto done;
+
+		{
+			START_ENCODER("lbfgs_gamma_apply");
+			[encoder setBuffer:direction_buffer offset:0 atIndex:0]; [encoder setBuffer:gamma_pair offset:0 atIndex:1];
+			SET_SCALAR(count, uint, 2);
+			rc = run_threads(pipeline, command_buffer, encoder, count);
+		}
+
+		if (rc != 0) goto done;
+	}
+
+	for (uint history_index = 0; history_index < count_value; history_index++) {
+		uint slot = (head_value - count_value + history_index + (uint)history_size * 2) % (uint)history_size;
+		NSUInteger slot_offset = (NSUInteger)slot * (NSUInteger)count * sizeof(float);
+		id<MTLBuffer> dot = nil;
+
+		{
+			START_ENCODER("lbfgs_dot");
+			[encoder setBuffer:grad_buffer offset:slot_offset atIndex:0]; [encoder setBuffer:direction_buffer offset:0 atIndex:1]; [encoder setBuffer:partials offset:0 atIndex:2];
+			SET_SCALAR(count, uint, 3);
+			rc = run_threads(pipeline, command_buffer, encoder, group_count * 256);
+		}
+
+		if (rc != 0) goto done;
+		rc = reduce_pair_partials(partials, group_count, &dot);
+		if (rc != 0) goto done;
+
+		{
+			START_ENCODER("lbfgs_forward_apply");
+			[encoder setBuffer:direction_buffer offset:0 atIndex:0]; [encoder setBuffer:state_buffer offset:slot_offset atIndex:1]; [encoder setBuffer:rho_buffer offset:0 atIndex:2]; [encoder setBuffer:alpha_buffer offset:0 atIndex:3]; [encoder setBuffer:dot offset:0 atIndex:4];
+			SET_SCALAR(history_index, uint, 5); SET_SCALAR(slot, uint, 6); SET_SCALAR(count, uint, 7);
+			rc = run_threads(pipeline, command_buffer, encoder, count);
+		}
+
+		if (rc != 0) goto done;
+	}
+
+	id<MTLBuffer> line_metrics = partials;
+
+	if (line_search != 0) {
+		{
+			START_ENCODER("lbfgs_line_search");
+			[encoder setBuffer:grad_input_buffer offset:0 atIndex:0]; [encoder setBuffer:direction_buffer offset:0 atIndex:1]; [encoder setBuffer:partials offset:0 atIndex:2];
+			SET_SCALAR(count, uint, 3);
+			rc = run_threads(pipeline, command_buffer, encoder, group_count * 256);
+		}
+
+		if (rc != 0) goto done;
+		rc = reduce_pair_partials(partials, group_count, &line_metrics);
+		if (rc != 0) goto done;
+	}
+
+	{
+		START_ENCODER("lbfgs_finalize");
+		[encoder setBuffer:out_buffer offset:0 atIndex:0]; [encoder setBuffer:param_buffer offset:0 atIndex:1]; [encoder setBuffer:direction_buffer offset:0 atIndex:2]; [encoder setBuffer:line_metrics offset:0 atIndex:3];
+		SET_SCALAR(count, uint, 4); SET_SCALAR(learning_rate, float, 5); SET_SCALAR(line_search, uint, 6); SET_SCALAR(c1, float, 7);
+		rc = run_threads(pipeline, command_buffer, encoder, count);
+	}
+
+done:
+	if (rc == 0) {
+		to_double(out, [out_buffer contents], count);
+		to_double(s_history, [state_buffer contents], history_elements);
+		to_double(y_history, [grad_buffer contents], history_elements);
+		to_double(rho_history, [rho_buffer contents], history_size);
+		*head = (int)(*((uint *)[head_buffer contents]));
+		*history_count = (int)(*((uint *)[count_buffer contents]));
+	}
+
+	free(state_history); free(grad_history); free(rho_values);
+	free(param_values); free(grad_values); free(previous_param_values); free(previous_grad_values);
+	return rc;
 }

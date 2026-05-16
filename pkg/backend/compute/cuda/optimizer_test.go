@@ -68,36 +68,67 @@ func TestLBFGS_Step(test *testing.T) {
 
 		So(err, ShouldBeNil)
 
-		Convey("It should match the CPU two-loop update after history is populated", func() {
-			cpuState := cudaLBFGSState(
-				[]float64{1.0, -0.5, 0.25, 1.5},
-				[]float64{0.30, -0.10, 0.20, -0.40},
-			)
-			cudaState := cudaLBFGSState(
-				[]float64{1.0, -0.5, 0.25, 1.5},
-				[]float64{0.30, -0.10, 0.20, -0.40},
-			)
+		Convey("It should match the CPU two-loop update across backend kernel lengths", func() {
+			for _, length := range []int{1, 7, 64, 1024, 8192} {
+				cpuState := cudaLBFGSState(
+					cudaPattern(length, 0.19, 0.027),
+					cudaPattern(length, -0.07, 0.019),
+				)
+				cudaState := cudaLBFGSState(
+					cudaPattern(length, 0.19, 0.027),
+					cudaPattern(length, -0.07, 0.019),
+				)
 
-			_, err = cpuOptimizer.Step(cpuState)
-			So(err, ShouldBeNil)
-			_, err = cudaOptimizer.Step(cudaState)
-			So(err, ShouldBeNil)
+				_, err = cpuOptimizer.Step(cpuState)
+				So(err, ShouldBeNil)
+				_, err = cudaOptimizer.Step(cudaState)
+				So(err, ShouldBeNil)
 
-			cpuState.WithParams([]float64{0.92, -0.42, 0.18, 1.36}).
-				WithGrads([]float64{0.18, -0.04, 0.12, -0.22})
-			cudaState.WithParams([]float64{0.92, -0.42, 0.18, 1.36}).
-				WithGrads([]float64{0.18, -0.04, 0.12, -0.22})
+				cpuState.WithParams(cudaPattern(length, 0.13, 0.021)).
+					WithGrads(cudaPattern(length, -0.05, 0.017))
+				cudaState.WithParams(cudaPattern(length, 0.13, 0.021)).
+					WithGrads(cudaPattern(length, -0.05, 0.017))
 
-			cpuUpdated, err := cpuOptimizer.Step(cpuState)
-			So(err, ShouldBeNil)
-			cudaUpdated, err := cudaOptimizer.Step(cudaState)
-			So(err, ShouldBeNil)
+				cpuUpdated, err := cpuOptimizer.Step(cpuState)
+				So(err, ShouldBeNil)
+				cudaUpdated, err := cudaOptimizer.Step(cudaState)
+				So(err, ShouldBeNil)
 
-			assertCUDASlice("lbfgs/out", cudaUpdated.Out, cpuUpdated.Out, 1e-9)
-			So(cudaState.Head, ShouldEqual, cpuState.Head)
-			So(cudaState.Count, ShouldEqual, cpuState.Count)
+				assertCUDASlice(fmt.Sprintf("lbfgs/out/%d", length), cudaUpdated.Out, cpuUpdated.Out, 1e-9)
+				So(cudaState.Head, ShouldEqual, cpuState.Head)
+				So(cudaState.Count, ShouldEqual, cpuState.Count)
+			}
 		})
 	})
+}
+
+func BenchmarkLBFGS_Step(benchmark *testing.B) {
+	optimizer, err := NewOptimizerRegistry().LBFGS(state.NewDict())
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	stateDict := cudaLBFGSState(
+		cudaPattern(1<<16, 0.19, 0.027),
+		cudaPattern(1<<16, -0.07, 0.019),
+	)
+	_, err = optimizer.Step(stateDict)
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	stateDict.WithParams(cudaPattern(1<<16, 0.13, 0.021)).
+		WithGrads(cudaPattern(1<<16, -0.05, 0.017))
+	benchmark.ResetTimer()
+
+	for benchmark.Loop() {
+		updated, err := optimizer.Step(stateDict)
+		if err != nil {
+			benchmark.Fatal(err)
+		}
+
+		stateDict.WithParams(updated.Out)
+	}
 }
 
 func BenchmarkOptimizerReduction_Step(benchmark *testing.B) {

@@ -1,5 +1,7 @@
 import type { UIMessage } from "@tanstack/ai-client";
 
+export type Mode = "closed" | "mini" | "full";
+
 export type Persona = {
 	id: string;
 	name: string;

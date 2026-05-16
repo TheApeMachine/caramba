@@ -54,7 +54,7 @@ int metal_ai_precision_weight(
     const float *err, const float *log_prec, float *out, int n);
 
 /*
-Expected free energy: G[k] = -sum_i q[i,k]*ln(q[i,k]+eps).
+Expected free energy: G[k] = -sum_i clamp(q[i,k],0,1)*ln(clamp(q[i,k],0,1)+eps).
 q_outcomes: row-major n×K (index i*K+k). out: length K. eps must be finite and >0.
 */
 int metal_ai_expected_free_energy(

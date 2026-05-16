@@ -346,98 +346,213 @@ __global__ void optimizer_adadelta_kernel(
     delta_average[index] = rho * delta_average[index] + (1.0 - rho) * update * update;
 }
 
-__global__ void optimizer_lbfgs_kernel(
-    double* out, double* s_history, double* y_history, double* rho_history,
-    double* direction, double* alphas,
-    int* head, int* history_count, const double* params,
-    const double* grads, const double* previous_params,
-    const double* previous_grads, int has_previous, int count,
-    int history_size, double learning_rate, int line_search, double c1
+__global__ void optimizer_lbfgs_history_delta_kernel(
+    double* s_history, double* y_history, double2* partials,
+    const double* params, const double* grads,
+    const double* previous_params, const double* previous_grads,
+    const int* head, int count, int history_size
 ) {
-    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int local = threadIdx.x;
+    int slot = head[0] % history_size;
+    __shared__ double curvature_values[BLOCK_SIZE];
 
-    if (has_previous && history_size > 0) {
-        int slot = (*head) % history_size;
-        double curvature = 0.0;
+    double curvature = 0.0;
 
-        for (int index = 0; index < count; index++) {
-            double s = params[index] - previous_params[index];
-            double y = grads[index] - previous_grads[index];
-            s_history[slot * count + index] = s;
-            y_history[slot * count + index] = y;
-            curvature += y * s;
-        }
-
-        if (curvature > 1e-10) {
-            rho_history[slot] = 1.0 / curvature;
-            *head += 1;
-            if (*history_count < history_size) *history_count += 1;
-        }
+    if (index < count) {
+        double state_delta = params[index] - previous_params[index];
+        double grad_delta = grads[index] - previous_grads[index];
+        s_history[slot * count + index] = state_delta;
+        y_history[slot * count + index] = grad_delta;
+        curvature = grad_delta * state_delta;
     }
 
-    for (int index = 0; index < count; index++) {
-        direction[index] = grads[index];
+    curvature_values[local] = curvature;
+    __syncthreads();
+
+    for (int stride = BLOCK_SIZE / 2; stride > 0; stride >>= 1) {
+        if (local < stride) {
+            curvature_values[local] += curvature_values[local + stride];
+        }
+
+        __syncthreads();
     }
 
-    for (int history_index = *history_count - 1; history_index >= 0; history_index--) {
-        int slot = (*head - 1 - history_index + history_size * 2) % history_size;
-        double dot = 0.0;
+    if (local == 0) {
+        partials[blockIdx.x] = make_double2(curvature_values[0], 0.0);
+    }
+}
 
-        for (int index = 0; index < count; index++) {
-            dot += s_history[slot * count + index] * direction[index];
+__global__ void optimizer_lbfgs_accept_history_kernel(
+    double* rho_history, int* head, int* history_count,
+    const double2* curvature, int history_size
+) {
+    double value = curvature[0].x;
+
+    if (value <= 1e-10) return;
+
+    int slot = head[0] % history_size;
+    rho_history[slot] = 1.0 / value;
+    head[0] += 1;
+
+    if (history_count[0] < history_size) {
+        history_count[0] += 1;
+    }
+}
+
+__global__ void optimizer_lbfgs_direction_init_kernel(
+    double* direction, const double* grads, int count
+) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < count) direction[index] = grads[index];
+}
+
+__global__ void optimizer_lbfgs_dot_kernel(
+    const double* left, const double* right, double2* partials, int count
+) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int local = threadIdx.x;
+    __shared__ double values[BLOCK_SIZE];
+
+    values[local] = index < count ? left[index] * right[index] : 0.0;
+    __syncthreads();
+
+    for (int stride = BLOCK_SIZE / 2; stride > 0; stride >>= 1) {
+        if (local < stride) {
+            values[local] += values[local + stride];
         }
 
-        alphas[history_index] = rho_history[slot] * dot;
-
-        for (int index = 0; index < count; index++) {
-            direction[index] -= alphas[history_index] * y_history[slot * count + index];
-        }
+        __syncthreads();
     }
 
-    if (*history_count > 0) {
-        int slot = (*head - 1 + history_size * 2) % history_size;
-        double yy = 0.0;
-        double ys = 0.0;
+    if (local == 0) {
+        partials[blockIdx.x] = make_double2(values[0], 0.0);
+    }
+}
 
-        for (int index = 0; index < count; index++) {
-            yy += y_history[slot * count + index] * y_history[slot * count + index];
-            ys += y_history[slot * count + index] * s_history[slot * count + index];
-        }
+__global__ void optimizer_lbfgs_gamma_kernel(
+    const double* y_slot, const double* s_slot, double2* partials, int count
+) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int local = threadIdx.x;
+    __shared__ double yy_values[BLOCK_SIZE];
+    __shared__ double ys_values[BLOCK_SIZE];
 
-        double gamma = ys / yy;
+    double yy = 0.0;
+    double ys = 0.0;
 
-        for (int index = 0; index < count; index++) {
-            direction[index] *= gamma;
-        }
+    if (index < count) {
+        double y_value = y_slot[index];
+        yy = y_value * y_value;
+        ys = y_value * s_slot[index];
     }
 
-    for (int history_index = 0; history_index < *history_count; history_index++) {
-        int slot = (*head - *history_count + history_index + history_size * 2) % history_size;
-        double dot = 0.0;
+    yy_values[local] = yy;
+    ys_values[local] = ys;
+    __syncthreads();
 
-        for (int index = 0; index < count; index++) {
-            dot += y_history[slot * count + index] * direction[index];
+    for (int stride = BLOCK_SIZE / 2; stride > 0; stride >>= 1) {
+        if (local < stride) {
+            yy_values[local] += yy_values[local + stride];
+            ys_values[local] += ys_values[local + stride];
         }
 
-        double beta = rho_history[slot] * dot;
-
-        for (int index = 0; index < count; index++) {
-            direction[index] += (alphas[history_index] - beta) *
-                s_history[slot * count + index];
-        }
+        __syncthreads();
     }
+
+    if (local == 0) {
+        partials[blockIdx.x] = make_double2(yy_values[0], ys_values[0]);
+    }
+}
+
+__global__ void optimizer_lbfgs_store_alpha_kernel(
+    double* alphas, const double* rho_history, const double2* dot,
+    int history_index, int slot
+) {
+    alphas[history_index] = rho_history[slot] * dot[0].x;
+}
+
+__global__ void optimizer_lbfgs_reverse_apply_kernel(
+    double* direction, const double* y_slot, const double* alphas,
+    int history_index, int count
+) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= count) return;
+
+    direction[index] -= alphas[history_index] * y_slot[index];
+}
+
+__global__ void optimizer_lbfgs_gamma_apply_kernel(
+    double* direction, const double2* gamma_pair, int count
+) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= count) return;
+
+    double gamma = gamma_pair[0].x == 0.0 ? 1.0 : gamma_pair[0].y / gamma_pair[0].x;
+    direction[index] *= gamma;
+}
+
+__global__ void optimizer_lbfgs_forward_apply_kernel(
+    double* direction, const double* s_slot, const double* rho_history,
+    const double* alphas, const double2* dot,
+    int history_index, int slot, int count
+) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= count) return;
+
+    double beta = rho_history[slot] * dot[0].x;
+    direction[index] += (alphas[history_index] - beta) * s_slot[index];
+}
+
+__global__ void optimizer_lbfgs_line_search_kernel(
+    const double* grads, const double* direction, double2* partials, int count
+) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int local = threadIdx.x;
+    __shared__ double f_values[BLOCK_SIZE];
+    __shared__ double slope_values[BLOCK_SIZE];
+
+    double f_value = 0.0;
+    double slope_value = 0.0;
+
+    if (index < count) {
+        double grad = grads[index];
+        f_value = grad * grad;
+        slope_value = grad * direction[index];
+    }
+
+    f_values[local] = f_value;
+    slope_values[local] = slope_value;
+    __syncthreads();
+
+    for (int stride = BLOCK_SIZE / 2; stride > 0; stride >>= 1) {
+        if (local < stride) {
+            f_values[local] += f_values[local + stride];
+            slope_values[local] += slope_values[local + stride];
+        }
+
+        __syncthreads();
+    }
+
+    if (local == 0) {
+        partials[blockIdx.x] = make_double2(f_values[0], slope_values[0]);
+    }
+}
+
+__global__ void optimizer_lbfgs_finalize_kernel(
+    double* out, const double* params, const double* direction,
+    const double2* line_metrics, int count,
+    double learning_rate, int line_search, double c1
+) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= count) return;
 
     double effective_learning_rate = learning_rate;
 
     if (line_search) {
-        double f0 = 0.0;
-        double slope = 0.0;
-        double c1_value = (c1 == 0.0) ? 1e-4 : c1;
-
-        for (int index = 0; index < count; index++) {
-            f0 += grads[index] * grads[index];
-            slope -= grads[index] * direction[index];
-        }
+        double f0 = line_metrics[0].x;
+        double slope = -line_metrics[0].y;
+        double c1_value = c1 == 0.0 ? 1e-4 : c1;
 
         for (int search_index = 0; search_index < 50; search_index++) {
             double decrease = f0 - c1_value * effective_learning_rate * slope;
@@ -454,9 +569,7 @@ __global__ void optimizer_lbfgs_kernel(
         }
     }
 
-    for (int index = 0; index < count; index++) {
-        out[index] = params[index] - effective_learning_rate * direction[index];
-    }
+    out[index] = params[index] - effective_learning_rate * direction[index];
 }
 
 static int optimizer_reduce_pair(double2* partials, int partial_count, double2** reduced) {
@@ -782,14 +895,20 @@ int cuda_optimizer_lbfgs(
     const double* previous_grads, int has_previous, int count,
     int history_size, double learning_rate, int line_search, double c1
 ) {
+    if (count <= 0) return 0;
+    if (history_size <= 0) return -1;
+
     double *dOut, *dS, *dY, *dRho, *dDirection, *dAlphas;
     double *dParams, *dGrads, *dPrevParams, *dPrevGrads;
+    double2 *dPartials;
     int *dHead, *dCount;
     int history_elements = count * history_size;
+    int group_count = optimizer_groups(count);
     size_t bytes = (size_t)count * sizeof(double);
     CUDA_OPT_CHECK(cudaMalloc((void**)&dOut, bytes));
     CUDA_OPT_CHECK(cudaMalloc((void**)&dDirection, bytes));
     CUDA_OPT_CHECK(cudaMalloc((void**)&dAlphas, (size_t)history_size * sizeof(double)));
+    CUDA_OPT_CHECK(cudaMalloc((void**)&dPartials, (size_t)group_count * sizeof(double2)));
     if (optimizer_alloc_copy(s_history, &dS, history_elements)) return -1;
     if (optimizer_alloc_copy(y_history, &dY, history_elements)) return -1;
     if (optimizer_alloc_copy(rho_history, &dRho, history_size)) return -1;
@@ -801,12 +920,96 @@ int cuda_optimizer_lbfgs(
     CUDA_OPT_CHECK(cudaMalloc((void**)&dCount, sizeof(int)));
     CUDA_OPT_CHECK(cudaMemcpy(dHead, head, sizeof(int), cudaMemcpyHostToDevice));
     CUDA_OPT_CHECK(cudaMemcpy(dCount, history_count, sizeof(int), cudaMemcpyHostToDevice));
-    optimizer_lbfgs_kernel<<<1, 1>>>(
-        dOut, dS, dY, dRho, dDirection, dAlphas, dHead, dCount, dParams, dGrads,
-        dPrevParams, dPrevGrads, has_previous, count, history_size, learning_rate,
-        line_search, c1
+
+    if (has_previous) {
+        double2* dCurvature = nullptr;
+        optimizer_lbfgs_history_delta_kernel<<<group_count, BLOCK_SIZE>>>(
+            dS, dY, dPartials, dParams, dGrads, dPrevParams, dPrevGrads,
+            dHead, count, history_size
+        );
+        CUDA_OPT_CHECK(cudaGetLastError());
+        if (optimizer_reduce_pair(dPartials, group_count, &dCurvature)) return -1;
+        optimizer_lbfgs_accept_history_kernel<<<1, 1>>>(dRho, dHead, dCount, dCurvature, history_size);
+        CUDA_OPT_CHECK(cudaGetLastError());
+        if (dCurvature != dPartials) cudaFree(dCurvature);
+        CUDA_OPT_CHECK(cudaMemcpy(head, dHead, sizeof(int), cudaMemcpyDeviceToHost));
+        CUDA_OPT_CHECK(cudaMemcpy(history_count, dCount, sizeof(int), cudaMemcpyDeviceToHost));
+    }
+
+    optimizer_lbfgs_direction_init_kernel<<<group_count, BLOCK_SIZE>>>(dDirection, dGrads, count);
+    CUDA_OPT_CHECK(cudaGetLastError());
+
+    for (int history_index = *history_count - 1; history_index >= 0; history_index--) {
+        int slot = (*head - 1 - history_index + history_size * 2) % history_size;
+        double2* dDot = nullptr;
+
+        optimizer_lbfgs_dot_kernel<<<group_count, BLOCK_SIZE>>>(
+            dS + slot * count, dDirection, dPartials, count
+        );
+        CUDA_OPT_CHECK(cudaGetLastError());
+        if (optimizer_reduce_pair(dPartials, group_count, &dDot)) return -1;
+
+        optimizer_lbfgs_store_alpha_kernel<<<1, 1>>>(dAlphas, dRho, dDot, history_index, slot);
+        CUDA_OPT_CHECK(cudaGetLastError());
+        optimizer_lbfgs_reverse_apply_kernel<<<group_count, BLOCK_SIZE>>>(
+            dDirection, dY + slot * count, dAlphas, history_index, count
+        );
+        CUDA_OPT_CHECK(cudaGetLastError());
+
+        if (dDot != dPartials) cudaFree(dDot);
+    }
+
+    if (*history_count > 0) {
+        int slot = (*head - 1 + history_size * 2) % history_size;
+        double2* dGamma = nullptr;
+
+        optimizer_lbfgs_gamma_kernel<<<group_count, BLOCK_SIZE>>>(
+            dY + slot * count, dS + slot * count, dPartials, count
+        );
+        CUDA_OPT_CHECK(cudaGetLastError());
+        if (optimizer_reduce_pair(dPartials, group_count, &dGamma)) return -1;
+
+        optimizer_lbfgs_gamma_apply_kernel<<<group_count, BLOCK_SIZE>>>(dDirection, dGamma, count);
+        CUDA_OPT_CHECK(cudaGetLastError());
+
+        if (dGamma != dPartials) cudaFree(dGamma);
+    }
+
+    for (int history_index = 0; history_index < *history_count; history_index++) {
+        int slot = (*head - *history_count + history_index + history_size * 2) % history_size;
+        double2* dDot = nullptr;
+
+        optimizer_lbfgs_dot_kernel<<<group_count, BLOCK_SIZE>>>(
+            dY + slot * count, dDirection, dPartials, count
+        );
+        CUDA_OPT_CHECK(cudaGetLastError());
+        if (optimizer_reduce_pair(dPartials, group_count, &dDot)) return -1;
+
+        optimizer_lbfgs_forward_apply_kernel<<<group_count, BLOCK_SIZE>>>(
+            dDirection, dS + slot * count, dRho, dAlphas, dDot,
+            history_index, slot, count
+        );
+        CUDA_OPT_CHECK(cudaGetLastError());
+
+        if (dDot != dPartials) cudaFree(dDot);
+    }
+
+    double2* dLineMetrics = dPartials;
+
+    if (line_search) {
+        optimizer_lbfgs_line_search_kernel<<<group_count, BLOCK_SIZE>>>(
+            dGrads, dDirection, dPartials, count
+        );
+        CUDA_OPT_CHECK(cudaGetLastError());
+        if (optimizer_reduce_pair(dPartials, group_count, &dLineMetrics)) return -1;
+    }
+
+    optimizer_lbfgs_finalize_kernel<<<group_count, BLOCK_SIZE>>>(
+        dOut, dParams, dDirection, dLineMetrics, count, learning_rate, line_search, c1
     );
     CUDA_OPT_CHECK(cudaGetLastError());
+
+    if (line_search && dLineMetrics != dPartials) cudaFree(dLineMetrics);
     optimizer_copy_free(out, dOut, count);
     optimizer_copy_free(s_history, dS, history_elements);
     optimizer_copy_free(y_history, dY, history_elements);
@@ -814,7 +1017,7 @@ int cuda_optimizer_lbfgs(
     CUDA_OPT_CHECK(cudaMemcpy(head, dHead, sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_OPT_CHECK(cudaMemcpy(history_count, dCount, sizeof(int), cudaMemcpyDeviceToHost));
     cudaFree(dParams); cudaFree(dGrads); cudaFree(dPrevParams); cudaFree(dPrevGrads);
-    cudaFree(dHead); cudaFree(dCount); cudaFree(dDirection); cudaFree(dAlphas);
+    cudaFree(dHead); cudaFree(dCount); cudaFree(dDirection); cudaFree(dAlphas); cudaFree(dPartials);
     return 0;
 }
 

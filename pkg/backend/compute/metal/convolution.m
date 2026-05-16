@@ -12,6 +12,7 @@ static id<MTLCommandQueue>         gConvQueue        = nil;
 static id<MTLComputePipelineState> gPSO_conv1d       = nil;
 static id<MTLComputePipelineState> gPSO_conv2d       = nil;
 static id<MTLComputePipelineState> gPSO_conv3d       = nil;
+static id<MTLComputePipelineState> gPSO_convt2d_init = nil;
 static id<MTLComputePipelineState> gPSO_convt2d      = nil;
 
 // ---------------------------------------------------------------------------
@@ -40,9 +41,10 @@ int metal_conv_init(const char* metallib_path) {
         gPSO_conv1d  = conv_make_pso(lib, @"conv1d_kernel");
         gPSO_conv2d  = conv_make_pso(lib, @"conv2d_kernel");
         gPSO_conv3d  = conv_make_pso(lib, @"conv3d_kernel");
+        gPSO_convt2d_init = conv_make_pso(lib, @"conv_transpose2d_init_kernel");
         gPSO_convt2d = conv_make_pso(lib, @"conv_transpose2d_kernel");
 
-        if (!gPSO_conv1d || !gPSO_conv2d || !gPSO_conv3d || !gPSO_convt2d) return -1;
+        if (!gPSO_conv1d || !gPSO_conv2d || !gPSO_conv3d || !gPSO_convt2d_init || !gPSO_convt2d) return -1;
         return 0;
     }
 }
@@ -113,6 +115,7 @@ static int conv_dispatch(id<MTLComputePipelineState> pso, const ConvDispatchArgs
         [enc endEncoding];
         [cb commit];
         [cb waitUntilCompleted];
+        if (cb.error) return -1;
 
         if (((uintptr_t)a->dst % page) != 0) {
             memcpy(a->dst, [bufDst contents], a->dst_bytes);
@@ -208,6 +211,75 @@ int metal_conv3d(
     return conv_dispatch(gPSO_conv3d, &a);
 }
 
+static int conv_transpose2d_dispatch(const ConvDispatchArgs* a, int out_total)
+{
+    @autoreleasepool {
+        vm_size_t page = getpagesize();
+
+        #define MAKE_BUF_RO(ptr, nbytes) \
+            (((uintptr_t)(ptr) % page) == 0 \
+                ? [gConvDevice newBufferWithBytesNoCopy:(void*)(ptr) length:(nbytes) \
+                               options:MTLResourceStorageModeShared deallocator:nil] \
+                : [gConvDevice newBufferWithBytes:(ptr) length:(nbytes) \
+                               options:MTLResourceStorageModeShared])
+
+        id<MTLBuffer> bufSrc    = MAKE_BUF_RO(a->src,    a->src_bytes);
+        id<MTLBuffer> bufWeight = MAKE_BUF_RO(a->weight, a->weight_bytes);
+        id<MTLBuffer> bufBias   = MAKE_BUF_RO(a->bias,   a->bias_bytes);
+        #undef MAKE_BUF_RO
+
+        id<MTLBuffer> bufDst = nil;
+        if (((uintptr_t)a->dst % page) == 0) {
+            bufDst = [gConvDevice newBufferWithBytesNoCopy:a->dst
+                                                   length:a->dst_bytes
+                                                  options:MTLResourceStorageModeShared
+                                              deallocator:nil];
+        } else {
+            bufDst = [gConvDevice newBufferWithLength:a->dst_bytes
+                                             options:MTLResourceStorageModeShared];
+        }
+
+        if (!bufSrc || !bufDst || !bufWeight || !bufBias) return -1;
+
+        id<MTLCommandBuffer> commandBuffer = [gConvQueue commandBuffer];
+        if (!commandBuffer) return -1;
+
+        NSUInteger initWidth = gPSO_convt2d_init.threadExecutionWidth;
+        MTLSize initThreads = MTLSizeMake((NSUInteger)out_total, 1, 1);
+        MTLSize initGroup = MTLSizeMake(initWidth, 1, 1);
+        id<MTLComputeCommandEncoder> initEncoder = [commandBuffer computeCommandEncoder];
+        [initEncoder setComputePipelineState:gPSO_convt2d_init];
+        [initEncoder setBuffer:bufDst offset:0 atIndex:0];
+        [initEncoder setBytes:a->params length:a->params_bytes atIndex:1];
+        [initEncoder setBuffer:bufBias offset:0 atIndex:2];
+        [initEncoder dispatchThreads:initThreads threadsPerThreadgroup:initGroup];
+        [initEncoder endEncoding];
+
+        NSUInteger scatterWidth = gPSO_convt2d.threadExecutionWidth;
+        MTLSize scatterThreads = MTLSizeMake((NSUInteger)a->grid_n, 1, 1);
+        MTLSize scatterGroup = MTLSizeMake(scatterWidth, 1, 1);
+        id<MTLComputeCommandEncoder> scatterEncoder = [commandBuffer computeCommandEncoder];
+        [scatterEncoder setComputePipelineState:gPSO_convt2d];
+        [scatterEncoder setBuffer:bufSrc offset:0 atIndex:0];
+        [scatterEncoder setBuffer:bufDst offset:0 atIndex:1];
+        [scatterEncoder setBytes:a->params length:a->params_bytes atIndex:2];
+        [scatterEncoder setBuffer:bufWeight offset:0 atIndex:3];
+        [scatterEncoder setBuffer:bufBias offset:0 atIndex:4];
+        [scatterEncoder dispatchThreads:scatterThreads threadsPerThreadgroup:scatterGroup];
+        [scatterEncoder endEncoding];
+
+        [commandBuffer commit];
+        [commandBuffer waitUntilCompleted];
+        if (commandBuffer.error) return -1;
+
+        if (((uintptr_t)a->dst % page) != 0) {
+            memcpy(a->dst, [bufDst contents], a->dst_bytes);
+        }
+
+        return 0;
+    }
+}
+
 int metal_conv_transpose2d(
     const float* x, float* dst,
     int N, int InC, int H, int W,
@@ -216,17 +288,7 @@ int metal_conv_transpose2d(
     int Hout, int Wout,
     const float* weight, const float* bias)
 {
-    // Pre-fill dst with bias values before launching the scatter kernel.
     int outTotal = N * OutC * Hout * Wout;
-    for (int ni = 0; ni < N; ni++) {
-        for (int oc = 0; oc < OutC; oc++) {
-            float b = bias[oc];
-            int base = ni * OutC * Hout * Wout + oc * Hout * Wout;
-            for (int i = 0; i < Hout * Wout; i++) {
-                dst[base + i] = b;
-            }
-        }
-    }
 
     MetalConvT2dP p = { N,InC,H,W,OutC,KH,KW,sH,sW,pH,pW,dH,dW,groups,Hout,Wout };
     ConvDispatchArgs a = {
@@ -242,5 +304,5 @@ int metal_conv_transpose2d(
         .bias_bytes  = (NSUInteger)OutC * sizeof(float),
         .grid_n      = N * InC * H * W,
     };
-    return conv_dispatch(gPSO_convt2d, &a);
+    return conv_transpose2d_dispatch(&a, outTotal);
 }
