@@ -222,6 +222,18 @@ static id<MTLBuffer> vsa_buf_rw(NSUInteger bytes) {
 	return [gVDevice newBufferWithLength:bytes options:MTLResourceStorageModeShared];
 }
 
+static id<MTLBuffer> vsa_const_uint(uint value) {
+	return [gVDevice newBufferWithBytes:&value
+	                              length:sizeof(uint)
+	                             options:MTLResourceStorageModeShared];
+}
+
+static id<MTLBuffer> vsa_const_int(int value) {
+	return [gVDevice newBufferWithBytes:&value
+	                              length:sizeof(int)
+	                             options:MTLResourceStorageModeShared];
+}
+
 int metal_vsa_bind(const float *a, const float *b, float *out, int n) {
 	vsa_clear_tls();
 	vsa_ensure_serial();
@@ -278,6 +290,62 @@ int metal_vsa_bind(const float *a, const float *b, float *out, int n) {
 		}
 
 		memcpy(out, [bufOut contents], nb);
+	});
+
+	return rc;
+}
+
+int metal_vsa_bind_tensor(const void *a, const void *b, void *out, int n) {
+	vsa_clear_tls();
+	vsa_ensure_serial();
+	__block int rc = 0;
+
+	dispatch_sync(gVSerial, ^{
+		if (!gVQueue || !gPSO_bind) {
+			vsa_fail(-1, "VSA not initialised");
+			rc = -1;
+			return;
+		}
+
+		if (!a || !b || !out || n <= 0) {
+			vsa_fail(-1, "invalid bind tensor arguments");
+			rc = -1;
+			return;
+		}
+
+		id<MTLBuffer> bufA = (__bridge id)((void*)a);
+		id<MTLBuffer> bufB = (__bridge id)((void*)b);
+		id<MTLBuffer> bufOut = (__bridge id)out;
+		id<MTLBuffer> bufN = vsa_const_uint((uint)n);
+
+		if (!bufA || !bufB || !bufOut || !bufN) {
+			vsa_fail(-1, "buffer allocation failed");
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gVQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+		if (!cb || !enc) {
+			vsa_fail(-1, "command encoder failed (bind tensor)");
+			rc = -1;
+			return;
+		}
+
+		[enc setComputePipelineState:gPSO_bind];
+		[enc setBuffer:bufA offset:0 atIndex:0];
+		[enc setBuffer:bufB offset:0 atIndex:1];
+		[enc setBuffer:bufOut offset:0 atIndex:2];
+		[enc setBuffer:bufN offset:0 atIndex:3];
+		[enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_bind.threadExecutionWidth, 1, 1)];
+		[enc endEncoding];
+
+		rc = vsa_wait_command_buffer(cb);
+
+		if (rc != 0) {
+			vsa_fail(-1, "command buffer failed (bind tensor)");
+		}
 	});
 
 	return rc;
@@ -494,6 +562,103 @@ int metal_vsa_bundle(const float *vectors, float *out, int count, int n) {
 	return rc;
 }
 
+int metal_vsa_bundle_tensor(const void *vectors, void *out, int count, int n) {
+	vsa_clear_tls();
+	vsa_ensure_serial();
+	__block int rc = 0;
+
+	dispatch_sync(gVSerial, ^{
+		if (!gVQueue || !gPSO_bundle || !gPSO_sqr || !gPSO_red || !gPSO_finv || !gPSO_scale) {
+			vsa_fail(-1, "VSA not initialised");
+			rc = -1;
+			return;
+		}
+
+		if (!vectors || !out || count <= 0 || n <= 0) {
+			vsa_fail(-1, "invalid bundle tensor arguments");
+			rc = -1;
+			return;
+		}
+
+		NSUInteger nb = (NSUInteger)n * sizeof(float);
+		id<MTLBuffer> bufVectors = (__bridge id)((void*)vectors);
+		id<MTLBuffer> bufSum = vsa_buf_rw(nb);
+		id<MTLBuffer> bufSq = vsa_buf_rw(nb);
+		id<MTLBuffer> bufAt = [gVDevice newBufferWithLength:sizeof(float)
+		                                             options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bufInv = [gVDevice newBufferWithLength:sizeof(float)
+		                                              options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bufOut = (__bridge id)out;
+		id<MTLBuffer> bufCount = vsa_const_uint((uint)count);
+		id<MTLBuffer> bufN = vsa_const_uint((uint)n);
+
+		if (!bufVectors || !bufSum || !bufSq || !bufAt || !bufInv || !bufOut || !bufCount || !bufN) {
+			vsa_fail(-1, "buffer allocation failed");
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gVQueue commandBuffer];
+		id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+		[blit fillBuffer:bufAt range:NSMakeRange(0, sizeof(float)) value:0];
+		[blit endEncoding];
+
+		id<MTLComputeCommandEncoder> encB = [cb computeCommandEncoder];
+		[encB setComputePipelineState:gPSO_bundle];
+		[encB setBuffer:bufVectors offset:0 atIndex:0];
+		[encB setBuffer:bufSum offset:0 atIndex:1];
+		[encB setBuffer:bufCount offset:0 atIndex:2];
+		[encB setBuffer:bufN offset:0 atIndex:3];
+		[encB dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_bundle.threadExecutionWidth, 1, 1)];
+		[encB endEncoding];
+
+		id<MTLComputeCommandEncoder> encSqr = [cb computeCommandEncoder];
+		[encSqr setComputePipelineState:gPSO_sqr];
+		[encSqr setBuffer:bufSum offset:0 atIndex:0];
+		[encSqr setBuffer:bufSq offset:0 atIndex:1];
+		[encSqr setBuffer:bufN offset:0 atIndex:2];
+		[encSqr dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_sqr.threadExecutionWidth, 1, 1)];
+		[encSqr endEncoding];
+
+		id<MTLComputeCommandEncoder> encR = [cb computeCommandEncoder];
+		[encR setComputePipelineState:gPSO_red];
+		[encR setBuffer:bufSq offset:0 atIndex:0];
+		[encR setBuffer:bufAt offset:0 atIndex:1];
+		[encR setBuffer:bufN offset:0 atIndex:2];
+		[encR dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_red.threadExecutionWidth, 1, 1)];
+		[encR endEncoding];
+
+		id<MTLComputeCommandEncoder> encF = [cb computeCommandEncoder];
+		[encF setComputePipelineState:gPSO_finv];
+		[encF setBuffer:bufAt offset:0 atIndex:0];
+		[encF setBuffer:bufInv offset:0 atIndex:1];
+		[encF dispatchThreads:MTLSizeMake(1, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+		[encF endEncoding];
+
+		id<MTLComputeCommandEncoder> encScale = [cb computeCommandEncoder];
+		[encScale setComputePipelineState:gPSO_scale];
+		[encScale setBuffer:bufSum offset:0 atIndex:0];
+		[encScale setBuffer:bufOut offset:0 atIndex:1];
+		[encScale setBuffer:bufInv offset:0 atIndex:2];
+		[encScale setBuffer:bufN offset:0 atIndex:3];
+		[encScale dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_scale.threadExecutionWidth, 1, 1)];
+		[encScale endEncoding];
+
+		rc = vsa_wait_command_buffer(cb);
+
+		if (rc != 0) {
+			vsa_fail(-1, "command buffer failed (bundle tensor)");
+		}
+	});
+
+	return rc;
+}
+
 int metal_vsa_dot(const float *a, const float *b, float *out, int n) {
 	vsa_clear_tls();
 	vsa_ensure_serial();
@@ -581,6 +746,81 @@ int metal_vsa_dot(const float *a, const float *b, float *out, int n) {
 	return rc;
 }
 
+int metal_vsa_dot_tensor(const void *a, const void *b, void *out, int n) {
+	vsa_clear_tls();
+	vsa_ensure_serial();
+	__block int rc = 0;
+
+	dispatch_sync(gVSerial, ^{
+		if (!gVQueue || !gPSO_mul || !gPSO_red || !gPSO_fdot) {
+			vsa_fail(-1, "VSA not initialised");
+			rc = -1;
+			return;
+		}
+
+		if (!a || !b || !out || n <= 0) {
+			vsa_fail(-1, "invalid dot tensor arguments");
+			rc = -1;
+			return;
+		}
+
+		NSUInteger nb = (NSUInteger)n * sizeof(float);
+		id<MTLBuffer> bufA = (__bridge id)((void*)a);
+		id<MTLBuffer> bufB = (__bridge id)((void*)b);
+		id<MTLBuffer> bufProd = vsa_buf_rw(nb);
+		id<MTLBuffer> bufAt = [gVDevice newBufferWithLength:sizeof(float)
+		                                             options:MTLResourceStorageModeShared];
+		id<MTLBuffer> bufOut = (__bridge id)out;
+		id<MTLBuffer> bufN = vsa_const_uint((uint)n);
+
+		if (!bufA || !bufB || !bufProd || !bufAt || !bufOut || !bufN) {
+			vsa_fail(-1, "buffer allocation failed");
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gVQueue commandBuffer];
+		id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+		[blit fillBuffer:bufAt range:NSMakeRange(0, sizeof(float)) value:0];
+		[blit endEncoding];
+
+		id<MTLComputeCommandEncoder> encM = [cb computeCommandEncoder];
+		[encM setComputePipelineState:gPSO_mul];
+		[encM setBuffer:bufA offset:0 atIndex:0];
+		[encM setBuffer:bufB offset:0 atIndex:1];
+		[encM setBuffer:bufProd offset:0 atIndex:2];
+		[encM setBuffer:bufN offset:0 atIndex:3];
+		[encM dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_mul.threadExecutionWidth, 1, 1)];
+		[encM endEncoding];
+
+		id<MTLComputeCommandEncoder> encR = [cb computeCommandEncoder];
+		[encR setComputePipelineState:gPSO_red];
+		[encR setBuffer:bufProd offset:0 atIndex:0];
+		[encR setBuffer:bufAt offset:0 atIndex:1];
+		[encR setBuffer:bufN offset:0 atIndex:2];
+		[encR dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_red.threadExecutionWidth, 1, 1)];
+		[encR endEncoding];
+
+		id<MTLComputeCommandEncoder> encF = [cb computeCommandEncoder];
+		[encF setComputePipelineState:gPSO_fdot];
+		[encF setBuffer:bufAt offset:0 atIndex:0];
+		[encF setBuffer:bufOut offset:0 atIndex:1];
+		[encF dispatchThreads:MTLSizeMake(1, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+		[encF endEncoding];
+
+		rc = vsa_wait_command_buffer(cb);
+
+		if (rc != 0) {
+			vsa_fail(-1, "command buffer failed (dot tensor)");
+		}
+	});
+
+	return rc;
+}
+
 static int metal_vsa_permute_common(const float *src, float *out, int n, int shift) {
 	vsa_clear_tls();
 	vsa_ensure_serial();
@@ -640,10 +880,74 @@ static int metal_vsa_permute_common(const float *src, float *out, int n, int shi
 	return rc;
 }
 
+static int metal_vsa_permute_tensor_common(const void *src, void *out, int n, int shift) {
+	vsa_clear_tls();
+	vsa_ensure_serial();
+	__block int rc = 0;
+
+	dispatch_sync(gVSerial, ^{
+		if (!gVQueue || !gPSO_perm) {
+			vsa_fail(-1, "VSA not initialised");
+			rc = -1;
+			return;
+		}
+
+		if (!src || !out || n <= 0) {
+			vsa_fail(-1, "invalid permute tensor arguments");
+			rc = -1;
+			return;
+		}
+
+		id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+		id<MTLBuffer> bufOut = (__bridge id)out;
+		id<MTLBuffer> bufN = vsa_const_uint((uint)n);
+		id<MTLBuffer> bufShift = vsa_const_int(shift);
+
+		if (!bufSrc || !bufOut || !bufN || !bufShift) {
+			vsa_fail(-1, "buffer allocation failed");
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gVQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+		if (!cb || !enc) {
+			vsa_fail(-1, "command encoder failed (permute tensor)");
+			rc = -1;
+			return;
+		}
+
+		[enc setComputePipelineState:gPSO_perm];
+		[enc setBuffer:bufSrc offset:0 atIndex:0];
+		[enc setBuffer:bufOut offset:0 atIndex:1];
+		[enc setBuffer:bufShift offset:0 atIndex:2];
+		[enc setBuffer:bufN offset:0 atIndex:3];
+		[enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_perm.threadExecutionWidth, 1, 1)];
+		[enc endEncoding];
+
+		rc = vsa_wait_command_buffer(cb);
+
+		if (rc != 0) {
+			vsa_fail(-1, "command buffer failed (permute tensor)");
+		}
+	});
+
+	return rc;
+}
+
 int metal_vsa_permute(const float *src, float *out, int n, int shift) {
 	return metal_vsa_permute_common(src, out, n, shift);
 }
 
 int metal_vsa_inverse_permute(const float *src, float *out, int n, int shift) {
 	return metal_vsa_permute_common(src, out, n, -shift);
+}
+
+int metal_vsa_permute_tensor(const void *src, void *out, int n, int shift) {
+	return metal_vsa_permute_tensor_common(src, out, n, shift);
+}
+
+int metal_vsa_inverse_permute_tensor(const void *src, void *out, int n, int shift) {
+	return metal_vsa_permute_tensor_common(src, out, n, -shift);
 }

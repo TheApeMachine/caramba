@@ -69,6 +69,8 @@ Out of the box, caramba provides you with the tools to quickly iterate on ideas,
 
 Architectures are declared, not coded. Here is a slice of Llama 3.2 1B Instruct as caramba sees it:
 
+The complete research-platform contract lives in [`docs/research-platform-requirements.md`](docs/research-platform-requirements.md). It defines the manifest-driven runtime, state, KV cache, rotary, chat, diffusion, training, inspection, backend, and verification requirements needed for Caramba to serve as a machine learning architecture laboratory. The voluntary compute grid contract lives in [`docs/voluntary-distributed-compute.md`](docs/voluntary-distributed-compute.md).
+
 ```yaml
 name: Llama 3.2 1B Instruct
 
@@ -291,7 +293,7 @@ Backend kernels upload values once into a resident tensor store and only downloa
 | VSA               | Hyperdimensional binding, bundling, cleanup memory  |
 | Optimizers        | SGD, Adam(W), Lion, LARS, LAMB, L-BFGS              |
 
-If a kernel is missing for a backend, lowering or execution fails loudly at that backend boundary. There is no silent fallback.
+If a kernel is missing for a backend, lowering or execution fails loudly at that backend boundary. There is no silent alternate execution path.
 
 → [Operations](./docs/operations.md)
 

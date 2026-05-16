@@ -483,6 +483,58 @@ func (m *MetalAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim
 	return toFloat64(outf), nil
 }
 
+/*
+MQATensor computes multi-query attention without leaving Metal storage.
+*/
+func (m *MetalAttention) MQATensor(
+	q, k, v computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch, numHeads, seqLen, headDim int,
+) (computetensor.Float64Tensor, error) {
+	metalQ, metalK, metalV, err := requireAttentionQKV(q, k, v)
+	if err != nil {
+		return nil, err
+	}
+
+	queryLength := batch * numHeads * seqLen * headDim
+	keyValueLength := batch * seqLen * headDim
+
+	if queryLength <= 0 || keyValueLength <= 0 {
+		return nil, fmt.Errorf("metal_mqa_tensor: dimensions must be positive")
+	}
+
+	if metalQ.Len() != queryLength ||
+		metalK.Len() != keyValueLength ||
+		metalV.Len() != keyValueLength ||
+		outputShape.Len() != queryLength {
+		return nil, fmt.Errorf("metal_mqa_tensor: Q/K/V/output length mismatch")
+	}
+
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_mqa_tensor(
+		metalQ.buffer,
+		metalK.buffer,
+		metalV.buffer,
+		output.buffer,
+		C.int(batch),
+		C.int(numHeads),
+		C.int(seqLen),
+		C.int(headDim),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_mqa_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
 // GQA computes grouped query attention.
 func (m *MetalAttention) GQA(
 	q, k, v []float64,
@@ -636,4 +688,79 @@ func (m *MetalAttention) SlidingWindow(q, k, v []float64, batch, numHeads, seqLe
 		return nil, fmt.Errorf("metal_sliding_window failed (rc=%d)", rc)
 	}
 	return toFloat64(outf), nil
+}
+
+/*
+SlidingWindowTensor computes resident sliding-window attention.
+*/
+func (m *MetalAttention) SlidingWindowTensor(
+	q, k, v computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch, numHeads, seqLen, headDim, window int,
+) (computetensor.Float64Tensor, error) {
+	metalQ, metalK, metalV, err := requireAttentionQKV(q, k, v)
+	if err != nil {
+		return nil, err
+	}
+
+	totalLength := batch * numHeads * seqLen * headDim
+
+	if totalLength <= 0 || window < 0 {
+		return nil, fmt.Errorf("metal_sliding_window_tensor: dimensions must be positive")
+	}
+
+	if metalQ.Len() != totalLength ||
+		metalK.Len() != totalLength ||
+		metalV.Len() != totalLength ||
+		outputShape.Len() != totalLength {
+		return nil, fmt.Errorf("metal_sliding_window_tensor: Q/K/V/output length mismatch")
+	}
+
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_sliding_window_tensor(
+		metalQ.buffer,
+		metalK.buffer,
+		metalV.buffer,
+		output.buffer,
+		C.int(batch),
+		C.int(numHeads),
+		C.int(seqLen),
+		C.int(headDim),
+		C.int(window),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_sliding_window_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func requireAttentionQKV(
+	q computetensor.Float64Tensor,
+	k computetensor.Float64Tensor,
+	v computetensor.Float64Tensor,
+) (*Tensor, *Tensor, *Tensor, error) {
+	metalQ, err := requireMetalTensor(q)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	metalK, err := requireMetalTensor(k)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	metalV, err := requireMetalTensor(v)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return metalQ, metalK, metalV, nil
 }

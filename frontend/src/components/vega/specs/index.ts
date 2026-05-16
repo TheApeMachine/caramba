@@ -1,14 +1,18 @@
+export { annotatedLineSpec } from "./annotated-line";
 export { areaSpec } from "./area";
 export { type BarDatum, barSpec, stackedBarSpec } from "./bar";
 export { boxPlotSpec } from "./boxplot";
 export { calendarHeatmapSpec } from "./calendar-heatmap";
+export { denseHeatmapSpec } from "./dense-heatmap";
 export { donutSpec } from "./donut";
+export { dualAxisLineSpec } from "./dual-axis-line";
 export { gaugeSpec } from "./gauge";
 export { heatmapSpec } from "./heatmap";
 export { histogramSpec } from "./histogram";
 export { labeledBarSpec } from "./labeled-bar";
 export { lineSpec } from "./line";
 export { metricSpec } from "./metric";
+export { phasePlotSpec } from "./phase-plot";
 export { scatterSpec } from "./scatter";
 export { sparklineSpec } from "./sparkline";
 export { spiderSpec } from "./spider";

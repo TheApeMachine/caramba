@@ -11,6 +11,8 @@ interface DualAxisLineOptions {
 	rightColor?: string;
 	leftFormat?: string;
 	rightFormat?: string;
+	leftScale?: "linear" | "log" | "symlog" | "sqrt";
+	rightScale?: "linear" | "log" | "symlog" | "sqrt";
 	xTitle?: string;
 	xType?: "quantitative" | "temporal";
 	rightDashed?: boolean;
@@ -35,10 +37,23 @@ export const dualAxisLineSpec = ({
 	rightColor = "var(--color-chart-3)",
 	leftFormat,
 	rightFormat,
+	leftScale = "linear",
+	rightScale = "linear",
 	xTitle,
 	xType = "quantitative",
 	rightDashed = true,
 }: DualAxisLineOptions): Spec => {
+	const leftScaleSpec: Record<string, unknown> = {
+		nice: leftScale === "linear",
+		type: leftScale,
+		zero: leftScale === "linear" ? false : undefined,
+	};
+
+	const rightScaleSpec: Record<string, unknown> = {
+		nice: rightScale === "linear",
+		type: rightScale,
+		zero: rightScale === "linear" ? false : undefined,
+	};
 	const xEnc = {
 		axis: {
 			domain: false,
@@ -87,7 +102,7 @@ export const dualAxisLineSpec = ({
 							titleColor: leftColor,
 						},
 						field: leftField,
-						scale: { nice: true, zero: false },
+						scale: leftScaleSpec,
 						type: "quantitative",
 					},
 				},
@@ -127,7 +142,7 @@ export const dualAxisLineSpec = ({
 							titleColor: rightColor,
 						},
 						field: rightField,
-						scale: { nice: true, zero: false },
+						scale: rightScaleSpec,
 						type: "quantitative",
 					},
 				},

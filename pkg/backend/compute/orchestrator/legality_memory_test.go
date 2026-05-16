@@ -70,7 +70,11 @@ func TestBackendCapabilities(t *testing.T) {
 
 			So(metal.Supports("attention.sdpa"), ShouldBeTrue)
 			So(metal.Supports("projection.linear"), ShouldBeTrue)
-			So(metal.Supports("vsa.bind"), ShouldBeFalse)
+			So(metal.Supports("vsa.bind"), ShouldBeTrue)
+			So(metal.Supports("vsa.bundle"), ShouldBeTrue)
+			So(metal.Supports("vsa.similarity"), ShouldBeTrue)
+			So(metal.Supports("vsa.permute"), ShouldBeTrue)
+			So(metal.Supports("vsa.inverse_permute"), ShouldBeTrue)
 			So(metal.Supports("train.optimizer.adam"), ShouldBeFalse)
 			So(metal.Precision("attention.sdpa"), ShouldEqual, tensor.Float32)
 		})

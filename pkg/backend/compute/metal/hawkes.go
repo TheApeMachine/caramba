@@ -28,6 +28,7 @@ metallib must be hawkes.metallib from the repo Makefile.
 type MetalHawkes struct {
 	mu       sync.Mutex
 	metallib string
+	runtime  *MetalRuntime
 }
 
 func NewHawkes(metallib string) (*MetalHawkes, error) {
@@ -42,7 +43,12 @@ func NewHawkes(metallib string) (*MetalHawkes, error) {
 		return nil, fmt.Errorf("metal_hawkes_init failed (rc=%d): check %q exists", rc, metallib)
 	}
 
-	return &MetalHawkes{metallib: metallib}, nil
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MetalHawkes{metallib: metallib, runtime: runtime}, nil
 }
 
 /*

@@ -11,12 +11,15 @@ import (
 	"math"
 	"math/rand"
 	"unsafe"
+
+	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
 // ProjectionOps dispatches projection kernels (Linear, FusedQKV, TiedEmbedding)
 // to the GPU via Metal.
 type ProjectionOps struct {
 	metallib string
+	runtime  *MetalRuntime
 }
 
 // NewProjectionOps initialises Metal and loads projection.metallib.
@@ -27,7 +30,12 @@ func NewProjectionOps(metallib string) (*ProjectionOps, error) {
 	if rc := C.metal_projection_init(cpath); rc != 0 {
 		return nil, fmt.Errorf("metal_projection_init failed (rc=%d): check that %q exists", rc, metallib)
 	}
-	return &ProjectionOps{metallib: metallib}, nil
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &ProjectionOps{metallib: metallib, runtime: runtime}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -54,8 +62,8 @@ func InitLinearWeights(inFeatures, outFeatures int) ([]float64, []float64) {
 // Linear
 // ---------------------------------------------------------------------------
 
-// Linear computes output = x @ weight^T + bias.
-// weight [outFeatures*inFeatures] (row-major, each row = one output neuron).
+// Linear computes output = x @ weight + bias.
+// weight [inFeatures*outFeatures] row-major.
 // bias   [outFeatures] or nil.
 // shape  = [M, inFeatures].
 // data[0] = x.
@@ -114,8 +122,8 @@ func (p *ProjectionOps) Forward(shape []int, data ...[]float64) ([]float64, erro
 // FusedQKV
 // ---------------------------------------------------------------------------
 
-// FusedQKV computes x @ weight^T [+bias] where weight is the combined QKV weight.
-// weight [outDim*dIn] where outDim = DQ+DK+DV.
+// FusedQKV computes x @ weight [+bias] where weight is the combined QKV weight.
+// weight [dIn*outDim] where outDim = DQ+DK+DV.
 // Returns [M * outDim].
 func (p *ProjectionOps) FusedQKV(shape []int, weight, bias []float64, data ...[]float64) ([]float64, error) {
 	M := shape[0]
@@ -149,12 +157,80 @@ func (p *ProjectionOps) FusedQKV(shape []int, weight, bias []float64, data ...[]
 	return toFloat64(dst32), nil
 }
 
+/*
+FusedQKVTensor computes resident fused QKV projection.
+*/
+func (projectionOps *ProjectionOps) FusedQKVTensor(
+	input, weight, bias computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	rows, inFeatures, outFeatures int,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+	if err != nil {
+		return nil, err
+	}
+
+	metalWeight, err := requireMetalTensor(weight)
+	if err != nil {
+		return nil, err
+	}
+
+	var metalBias *Tensor
+	if bias != nil {
+		metalBias, err = requireMetalTensor(bias)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if rows <= 0 || inFeatures <= 0 || outFeatures <= 0 {
+		return nil, fmt.Errorf("metal tensor: fused_qkv dimensions must be positive")
+	}
+
+	if metalInput.Len() != rows*inFeatures ||
+		metalWeight.Len() != inFeatures*outFeatures ||
+		outputShape.Len() != rows*outFeatures {
+		return nil, fmt.Errorf("metal tensor: fused_qkv shape mismatch")
+	}
+
+	var biasBuffer unsafe.Pointer
+	if metalBias != nil {
+		if metalBias.Len() != outFeatures {
+			return nil, fmt.Errorf("metal tensor: fused_qkv bias length mismatch")
+		}
+
+		biasBuffer = metalBias.buffer
+	}
+
+	output, err := projectionOps.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_fused_qkv_tensor(
+		metalInput.buffer,
+		metalWeight.buffer,
+		biasBuffer,
+		output.buffer,
+		C.int(rows),
+		C.int(inFeatures),
+		C.int(outFeatures),
+	)
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal tensor: fused_qkv launch failed")
+	}
+
+	return output, nil
+}
+
 // ---------------------------------------------------------------------------
 // TiedEmbedding
 // ---------------------------------------------------------------------------
 
-// TiedEmbedding computes logits = hidden @ weight^T.
-// weight [vocabSize*dModel].
+// TiedEmbedding computes logits = hidden @ weight.
+// weight [dModel*vocabSize].
 // shape  = [batch, seq, dModel] or [M, dModel].
 // Returns [M * vocabSize].
 func (p *ProjectionOps) TiedEmbedding(shape []int, weight []float64, data ...[]float64) ([]float64, error) {

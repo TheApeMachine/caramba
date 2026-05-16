@@ -45,6 +45,9 @@ int metal_kv_write_tensor(void* cache_key, void* cache_value,
 int metal_mqa(const float* q, const float* k, const float* v, float* out,
               int batch, int num_heads, int seq_len, int head_dim);
 
+int metal_mqa_tensor(const void* q, const void* k, const void* v, void* out,
+                     int batch, int num_heads, int seq_len, int head_dim);
+
 // Grouped Query Attention.
 // q:  [batch*num_heads,    seq_len, head_dim]
 // k,v:[batch*num_kv_heads, seq_len, head_dim]
@@ -60,6 +63,9 @@ int metal_gqa_tensor(const void* q, const void* k, const void* v, void* out,
 // Sliding Window Attention. window is the one-sided context radius.
 int metal_sliding_window(const float* q, const float* k, const float* v, float* out,
                          int batch, int num_heads, int seq_len, int head_dim, int window);
+
+int metal_sliding_window_tensor(const void* q, const void* k, const void* v, void* out,
+                                int batch, int num_heads, int seq_len, int head_dim, int window);
 
 #ifdef __cplusplus
 }

@@ -7,17 +7,21 @@ import { Panel } from "#/components/benchmarks/panel";
 import { Button } from "#/components/ui/button";
 import { ChartWidget, VegaProvider } from "#/components/vega";
 import {
+	annotatedLineSpec,
 	areaSpec,
 	barSpec,
 	boxPlotSpec,
 	calendarHeatmapSpec,
+	denseHeatmapSpec,
 	donutSpec,
+	dualAxisLineSpec,
 	gaugeSpec,
 	heatmapSpec,
 	histogramSpec,
 	labeledBarSpec,
 	lineSpec,
 	metricSpec,
+	phasePlotSpec,
 	scatterSpec,
 	sparklineSpec,
 	spiderSpec,
@@ -163,6 +167,143 @@ const sampleBoxplot = () => {
 	);
 };
 
+const sampleSimilarity = () => {
+	const rand = seedRandom(67);
+	const n = 64;
+	const matrix: number[][] = [];
+	for (let row = 0; row < n; row++) {
+		const r: number[] = [];
+		for (let col = 0; col < n; col++) {
+			const diag = 1 / (1 + Math.abs(row - col) * 0.12);
+			const block = row < n / 2 === col < n / 2 ? 0.25 : 0;
+			r.push(Math.min(1, diag + block + rand() * 0.08));
+		}
+		matrix.push(r);
+	}
+	return matrix;
+};
+
+const sampleDualAxis = () => {
+	const rand = seedRandom(89);
+	return Array.from({ length: 36 }, (_, idx) => {
+		const phase = (idx / 36) * 360;
+		const rad = (phase * Math.PI) / 180;
+		return {
+			phase,
+			psnr: 12 + Math.cos(rad) * 6 + (rand() - 0.5) * 0.6,
+			top1: Math.max(
+				0.18,
+				Math.min(0.72, 0.5 + Math.sin(rad) * 0.18 + (rand() - 0.5) * 0.04),
+			),
+		};
+	});
+};
+
+const sampleAnnotated = () => {
+	const reps = 22;
+	const data = Array.from({ length: reps }, (_, idx) => {
+		const inShift1 = idx >= 6 && idx < 13;
+		const inShift2 = idx >= 13;
+		const noise = ((idx * 17) % 11) / 80;
+		const paris = inShift1
+			? Math.max(0.15, 0.6 - (idx - 6) * 0.08 + noise)
+			: inShift2
+				? Math.min(1, 0.7 + (idx - 13) * 0.04 - noise)
+				: 1 - noise;
+		const rome = inShift1
+			? Math.min(1, 0.4 + (idx - 6) * 0.08 - noise)
+			: inShift2
+				? Math.max(0.05, 0.35 - (idx - 13) * 0.03 + noise)
+				: 0 + noise;
+		return { paris, rep: idx + 1, rome };
+	});
+	return data;
+};
+
+const samplePhase = () => {
+	const rand = seedRandom(101);
+	const points: Array<{ re: number; im: number; category: string }> = [];
+
+	// Neutral cloud — diffuse around the origin.
+	for (let i = 0; i < 240; i++) {
+		const r = rand() * 32000;
+		const theta = rand() * 2 * Math.PI;
+		points.push({
+			category: "neutral",
+			im: Math.sin(theta) * r,
+			re: Math.cos(theta) * r,
+		});
+	}
+
+	// Stable shell — narrow annulus near R≈9000.
+	for (let i = 0; i < 60; i++) {
+		const r = 9000 + (rand() - 0.5) * 3000;
+		const theta = rand() * 2 * Math.PI;
+		points.push({
+			category: "stable",
+			im: Math.sin(theta) * r,
+			re: Math.cos(theta) * r,
+		});
+	}
+
+	// Crystal — tight cluster on the +Re axis.
+	for (let i = 0; i < 24; i++) {
+		const r = 26000 + rand() * 6000;
+		const theta = (rand() - 0.5) * 0.6;
+		points.push({
+			category: "crystal",
+			im: Math.sin(theta) * r,
+			re: Math.cos(theta) * r,
+		});
+	}
+
+	return points;
+};
+
+const sampleSettling = () => {
+	const rand = seedRandom(131);
+	return Array.from({ length: 72 }, (_, idx) => {
+		// ||ΔΨ|| starts tiny, climbs fast, plateaus high.
+		const deltaPsi = 1e-11 * Math.exp(idx * 0.45) + (idx > 20 ? 4.5e4 : 0);
+		// dt·rate plateaus then drops at the end.
+		const dtRate = idx < 65 ? 0.04 : 0.04 * Math.exp(-(idx - 65) * 1.2);
+		// R fluctuates around 0.2 with a late spike.
+		const r = 0.18 + (rand() - 0.5) * 0.18 + (idx > 65 ? (idx - 65) * 0.1 : 0);
+		return {
+			deltaPsi: Math.max(1e-12, deltaPsi),
+			dtRate: Math.max(1e-12, dtRate),
+			r: Math.max(0, Math.min(1, r)),
+			step: idx,
+		};
+	});
+};
+
+const sampleSpectrogram = () => {
+	const rand = seedRandom(149);
+	const rows = 48;
+	const cols = 120;
+	const matrix: number[][] = [];
+	const ridge: Array<{ x: number; y: number }> = [];
+
+	for (let yi = 0; yi < rows; yi++) {
+		const r: number[] = [];
+		const omega = -3 + (yi / (rows - 1)) * 6;
+		for (let xi = 0; xi < cols; xi++) {
+			const t = xi;
+			const ridgeOmega = 1.6 * Math.sin(t / 14) - 0.4;
+			const proximity = Math.exp(-((omega - ridgeOmega) ** 2) * 2.2);
+			r.push(proximity * (0.6 + rand() * 0.4) + rand() * 0.08);
+		}
+		matrix.push(r);
+	}
+
+	for (let xi = 0; xi < cols; xi++) {
+		ridge.push({ x: xi, y: 1.6 * Math.sin(xi / 14) - 0.4 });
+	}
+
+	return { matrix, ridge };
+};
+
 const sampleCalendar = () => {
 	const rand = seedRandom(53);
 	const today = Date.now();
@@ -219,6 +360,12 @@ const Gallery = () => {
 	const scatter = useMemo(sampleScatter, []);
 	const boxplotData = useMemo(sampleBoxplot, []);
 	const calendar = useMemo(sampleCalendar, []);
+	const similarity = useMemo(sampleSimilarity, []);
+	const dualAxis = useMemo(sampleDualAxis, []);
+	const phasePoints = useMemo(samplePhase, []);
+	const settling = useMemo(sampleSettling, []);
+	const spectrogram = useMemo(sampleSpectrogram, []);
+	const annotated = useMemo(sampleAnnotated, []);
 
 	const lineMulti = useMemo(
 		() =>
@@ -379,6 +526,170 @@ const Gallery = () => {
 		[calendar],
 	);
 
+	const similarityChart = useMemo(
+		() =>
+			denseHeatmapSpec({
+				matrix: similarity,
+				valueTitle: "similarity",
+				xTitle: "sequence position",
+				yTitle: "sequence position",
+			}),
+		[similarity],
+	);
+
+	const spectrogramChart = useMemo(
+		() =>
+			denseHeatmapSpec({
+				matrix: spectrogram.matrix,
+				scheme: "magma",
+				traces: [
+					{
+						color: "var(--color-chart-1)",
+						label: "tracked mode",
+						points: spectrogram.ridge,
+						strokeWidth: 1.5,
+					},
+				],
+				valueTitle: "power",
+				xExtent: [0, spectrogram.matrix[0].length],
+				xTitle: "time (steps)",
+				yExtent: [-3, 3],
+				yTitle: "omega",
+			}),
+		[spectrogram],
+	);
+
+	const phaseChart = useMemo(
+		() =>
+			phasePlotSpec({
+				arcSegments: [
+					{
+						color: "var(--color-chart-1)",
+						radius: 36000,
+						strokeWidth: 4,
+						thetaEnd: -Math.PI / 2 + 0.5,
+						thetaStart: -Math.PI / 2 - 0.5,
+					},
+					{
+						color: "var(--color-chart-2)",
+						radius: 36000,
+						strokeWidth: 4,
+						thetaEnd: 0.4,
+						thetaStart: -0.4,
+					},
+				],
+				categoryColors: {
+					crystal: "var(--color-chart-2)",
+					neutral: "var(--muted-foreground)",
+					stable: "var(--color-chart-4)",
+				},
+				categoryOrder: ["neutral", "stable", "crystal"],
+				data: phasePoints,
+				rings: [
+					{ color: "var(--muted-foreground)", dash: true, radius: 12000 },
+					{ color: "var(--color-chart-3)", radius: 9000, strokeWidth: 2 },
+					{ color: "var(--muted-foreground)", dash: true, radius: 24000 },
+					{ color: "var(--muted-foreground)", radius: 36000 },
+				],
+				valueFormat: ".0f",
+				vectors: [
+					{ color: "var(--color-chart-2)", im: 1500, re: 9500 },
+				],
+				xTitle: "Re(Ψ)",
+				yTitle: "Im(Ψ)",
+			}),
+		[phasePoints],
+	);
+
+	const settlingChart = useMemo(
+		() =>
+			dualAxisLineSpec({
+				data: settling,
+				leftColor: "var(--color-chart-2)",
+				leftField: "deltaPsi",
+				leftFormat: ".0e",
+				leftLabel: "||ΔΨ||",
+				leftScale: "log",
+				rightColor: "var(--color-chart-4)",
+				rightField: "r",
+				rightFormat: ".1f",
+				rightLabel: "R",
+				xField: "step",
+				xTitle: "step",
+			}),
+		[settling],
+	);
+
+	const dualAxisChart = useMemo(
+		() =>
+			dualAxisLineSpec({
+				data: dualAxis,
+				leftField: "psnr",
+				leftFormat: ".1f",
+				leftLabel: "PSNR (dB)",
+				rightField: "top1",
+				rightFormat: ".0%",
+				rightLabel: "Top-1",
+				xField: "phase",
+				xTitle: "phase angle (°)",
+			}),
+		[dualAxis],
+	);
+
+	const annotatedChart = useMemo(
+		() =>
+			annotatedLineSpec({
+				bands: [
+					{
+						color: "var(--color-chart-3)",
+						label: "Paris → Rome",
+						opacity: 0.08,
+						x0: 5.5,
+						x1: 12.5,
+					},
+					{
+						color: "var(--color-chart-1)",
+						label: "Rome → Paris",
+						opacity: 0.08,
+						x0: 12.5,
+						x1: 22,
+					},
+				],
+				callouts: [
+					{ color: "var(--color-chart-3)", text: "dip: 40%", x: 8, y: 0.4 },
+					{
+						color: "var(--color-chart-3)",
+						text: "recover: 100%",
+						x: 11,
+						y: 1,
+					},
+					{ color: "var(--color-chart-1)", text: "dip: 50%", x: 15, y: 0.5 },
+					{
+						color: "var(--color-chart-1)",
+						text: "recover: 83%",
+						x: 18,
+						y: 0.83,
+					},
+				],
+				data: annotated,
+				phases: [
+					{ label: "SHIFT 1", x: 5.5 },
+					{ label: "SHIFT 2", x: 12.5 },
+				],
+				seriesColors: {
+					paris: "var(--color-chart-1)",
+					rome: "var(--color-chart-3)",
+				},
+				seriesKeys: ["paris", "rome"],
+				seriesLabels: { paris: "Pilot → Paris", rome: "Pilot → Rome" },
+				xField: "rep",
+				xTitle: "repetition",
+				yFormat: ".0%",
+				yTitle: "recall accuracy",
+			}),
+		[annotated],
+	);
+
 	const sparkUp = useMemo(
 		() => sparklineSpec({ values: steps.map((step) => step.accuracy) }),
 		[steps],
@@ -492,6 +803,48 @@ const Gallery = () => {
 						hint="GitHub-style daily activity grid"
 					>
 						<ChartWidget spec={calendarChart} />
+					</ChartTile>
+					<ChartTile
+						title="denseHeatmapSpec"
+						hint="self-similarity matrix, image-style rendering"
+					>
+						<ChartWidget spec={similarityChart} />
+					</ChartTile>
+					<ChartTile
+						title="denseHeatmapSpec — spectrogram"
+						hint="dense matrix with tracked-mode overlay"
+					>
+						<ChartWidget spec={spectrogramChart} />
+					</ChartTile>
+				</Section>
+
+				<Section title="Composite / advanced">
+					<ChartTile
+						title="phasePlotSpec"
+						hint="complex plane — rings, arc segments, vector"
+					>
+						<ChartWidget spec={phaseChart} />
+					</ChartTile>
+					<ChartTile
+						title="dualAxisLineSpec — log scale"
+						hint="settling dynamics, log y on the left"
+					>
+						<ChartWidget spec={settlingChart} />
+					</ChartTile>
+				</Section>
+
+				<Section title="Annotated time series">
+					<ChartTile
+						title="dualAxisLineSpec"
+						hint="independent y-scales for incompatible units"
+					>
+						<ChartWidget spec={dualAxisChart} />
+					</ChartTile>
+					<ChartTile
+						title="annotatedLineSpec"
+						hint="phase markers, shaded regimes, value callouts"
+					>
+						<ChartWidget spec={annotatedChart} />
 					</ChartTile>
 				</Section>
 

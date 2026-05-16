@@ -28,6 +28,9 @@ type TensorBackend struct {
 	convolutionOps *ConvolutionOps
 	poolingOps     *PoolingOps
 	maskingOps     *MetalMasking
+	projectionOps  *ProjectionOps
+	vsaOps         *MetalVSAOps
+	hawkesOps      *MetalHawkes
 	embeddingOps   map[string]*EmbeddingOps
 	kvEntries      map[string]*residentKVEntry
 	resident       map[string]computetensor.Float64Tensor

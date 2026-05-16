@@ -33,13 +33,13 @@ kernel void matmul_kernel(
 }
 
 // ---------------------------------------------------------------------------
-// linear_kernel: C = A @ W^T + bias
-//   A[M,K], W[N,K] (each row of W is one output neuron's weight vector)
+// linear_kernel: C = A @ W + bias
+//   A[M,K], W[K,N]
 //   bias[N] (optional; pass NULL / skip via sentinel)
 // ---------------------------------------------------------------------------
 kernel void linear_kernel(
     device const float* A     [[buffer(0)]],  // [M*K]
-    device const float* W     [[buffer(1)]],  // [N*K]  (W^T implied)
+    device const float* W     [[buffer(1)]],  // [K*N]
     device const float* bias  [[buffer(2)]],  // [N] or zero-length
     device       float* C     [[buffer(3)]],  // [M*N]
     constant     uint&  M_dim [[buffer(4)]],
@@ -54,7 +54,7 @@ kernel void linear_kernel(
 
     float acc = 0.0f;
     for (uint k = 0; k < K_dim; k++) {
-        acc += A[row * K_dim + k] * W[col * K_dim + k];  // W^T
+        acc += A[row * K_dim + k] * W[k * N_dim + col];
     }
     if (has_bias) {
         acc += bias[col];
@@ -82,7 +82,7 @@ kernel void fused_qkv_kernel(
 
     float acc = 0.0f;
     for (uint k = 0; k < K_dim; k++) {
-        acc += A[row * K_dim + k] * W[col * K_dim + k];
+        acc += A[row * K_dim + k] * W[k * N_dim + col];
     }
     if (has_bias) {
         acc += bias[col];
@@ -91,8 +91,8 @@ kernel void fused_qkv_kernel(
 }
 
 // ---------------------------------------------------------------------------
-// tied_embedding_kernel: logits = hidden @ embed_weight^T
-//   hidden[M,D], embed_weight[V,D] → logits[M,V]
+// tied_embedding_kernel: logits = hidden @ embed_weight
+//   hidden[M,D], embed_weight[D,V] -> logits[M,V]
 // ---------------------------------------------------------------------------
 kernel void tied_embedding_kernel(
     device const float* hidden  [[buffer(0)]],  // [M*D]
@@ -109,7 +109,7 @@ kernel void tied_embedding_kernel(
 
     float acc = 0.0f;
     for (uint d = 0; d < D_dim; d++) {
-        acc += hidden[row * D_dim + d] * weight[col * D_dim + d];
+        acc += hidden[row * D_dim + d] * weight[d * V_dim + col];
     }
     logits[row * V_dim + col] = acc;
 }

@@ -212,6 +212,66 @@ int metal_hawkes_intensity(
 	return rc;
 }
 
+int metal_hawkes_intensity_tensor(
+	const void *times, const void *alpha,
+	const void *beta, const void *mu,
+	const void *t,
+	void *out,
+	int K, int T) {
+	if (!gHInited) {
+		return -3;
+	}
+
+	if (!times || !alpha || !beta || !mu || !t || !out || K <= 0 || T < 0) {
+		return -1;
+	}
+
+	__block int rc = 0;
+
+	hawkes_ensure_serial();
+	dispatch_sync(gHSerial, ^{
+		id<MTLBuffer> buf_times = (__bridge id)((void*)times);
+		id<MTLBuffer> buf_alpha = (__bridge id)((void*)alpha);
+		id<MTLBuffer> buf_beta = (__bridge id)((void*)beta);
+		id<MTLBuffer> buf_mu = (__bridge id)((void*)mu);
+		id<MTLBuffer> buf_t = (__bridge id)((void*)t);
+		id<MTLBuffer> buf_out = (__bridge id)out;
+
+		if (!buf_times || !buf_alpha || !buf_beta || !buf_mu || !buf_t || !buf_out) {
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gHQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+
+		if (!cb || !enc) {
+			rc = -1;
+			return;
+		}
+
+		[enc setComputePipelineState:gPSO_int];
+		[enc setBuffer:buf_times offset:0 atIndex:0];
+		[enc setBuffer:buf_alpha offset:0 atIndex:1];
+		[enc setBuffer:buf_beta offset:0 atIndex:2];
+		[enc setBuffer:buf_mu offset:0 atIndex:3];
+		[enc setBuffer:buf_out offset:0 atIndex:4];
+		[enc setBuffer:buf_t offset:0 atIndex:5];
+		uint ku = (uint)K;
+		uint tu = (uint)T;
+		[enc setBytes:&ku length:sizeof(ku) atIndex:6];
+		[enc setBytes:&tu length:sizeof(tu) atIndex:7];
+
+		[enc dispatchThreads:MTLSizeMake((NSUInteger)K, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_int.threadExecutionWidth, 1, 1)];
+		[enc endEncoding];
+
+		rc = hawkes_wait(cb);
+	});
+
+	return rc;
+}
+
 int metal_hawkes_kernel_matrix(
 	const float *times,
 	float alpha, float beta,
@@ -283,6 +343,71 @@ int metal_hawkes_kernel_matrix(
 		}
 
 		memcpy(out, [buf_o contents], ob);
+	});
+
+	return rc;
+}
+
+int metal_hawkes_kernel_matrix_tensor(
+	const void *times,
+	const void *alpha,
+	const void *beta,
+	void *out,
+	int T) {
+	if (!gHInited) {
+		return -3;
+	}
+
+	if (!times || !alpha || !beta || !out || T <= 0) {
+		return -1;
+	}
+
+	__block int rc = 0;
+
+	hawkes_ensure_serial();
+	dispatch_sync(gHSerial, ^{
+		id<MTLBuffer> buf_t = (__bridge id)((void*)times);
+		id<MTLBuffer> buf_alpha = (__bridge id)((void*)alpha);
+		id<MTLBuffer> buf_beta = (__bridge id)((void*)beta);
+		id<MTLBuffer> buf_o = (__bridge id)out;
+
+		if (!buf_t || !buf_alpha || !buf_beta || !buf_o) {
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gHQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+
+		if (!cb || !enc) {
+			rc = -1;
+			return;
+		}
+
+		[enc setComputePipelineState:gPSO_kmat];
+		[enc setBuffer:buf_t offset:0 atIndex:0];
+		[enc setBuffer:buf_o offset:0 atIndex:1];
+		uint tu = (uint)T;
+		[enc setBytes:&tu length:sizeof(tu) atIndex:2];
+		[enc setBuffer:buf_alpha offset:0 atIndex:3];
+		[enc setBuffer:buf_beta offset:0 atIndex:4];
+
+		NSUInteger tx = T < 16 ? (NSUInteger)T : 16;
+		NSUInteger ty = T < 16 ? (NSUInteger)T : 16;
+
+		if (tx < 1) {
+			tx = 1;
+		}
+
+		if (ty < 1) {
+			ty = 1;
+		}
+
+		[enc dispatchThreads:MTLSizeMake((NSUInteger)T, (NSUInteger)T, 1)
+		 threadsPerThreadgroup:MTLSizeMake(tx, ty, 1)];
+		[enc endEncoding];
+
+		rc = hawkes_wait(cb);
 	});
 
 	return rc;
@@ -374,6 +499,80 @@ int metal_hawkes_log_likelihood(
 	return rc;
 }
 
+int metal_hawkes_log_likelihood_tensor(
+	const void *intensities,
+	const void *integral,
+	void *out,
+	int T) {
+	if (!gHInited) {
+		return -3;
+	}
+
+	if (!intensities || !integral || !out || T <= 0) {
+		return -1;
+	}
+
+	__block int rc = 0;
+
+	hawkes_ensure_serial();
+	dispatch_sync(gHSerial, ^{
+		size_t bytes = (size_t)T * sizeof(float);
+		id<MTLBuffer> buf_i = (__bridge id)((void*)intensities);
+		id<MTLBuffer> buf_p = [gHDevice newBufferWithLength:bytes
+		                                            options:MTLResourceStorageModeShared];
+		float sum_zero = 0.f;
+		id<MTLBuffer> buf_sum = [gHDevice newBufferWithBytes:&sum_zero
+		                                               length:sizeof(float)
+		                                              options:MTLResourceStorageModeShared];
+		id<MTLBuffer> buf_integral = (__bridge id)((void*)integral);
+		id<MTLBuffer> buf_out = (__bridge id)out;
+
+		if (!buf_i || !buf_p || !buf_sum || !buf_integral || !buf_out) {
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gHQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc0 = [cb computeCommandEncoder];
+
+		if (!cb || !enc0) {
+			rc = -1;
+			return;
+		}
+
+		[enc0 setComputePipelineState:gPSO_logt];
+		[enc0 setBuffer:buf_i offset:0 atIndex:0];
+		[enc0 setBuffer:buf_p offset:0 atIndex:1];
+		uint tu = (uint)T;
+		[enc0 setBytes:&tu length:sizeof(tu) atIndex:2];
+		[enc0 dispatchThreads:MTLSizeMake((NSUInteger)T, 1, 1)
+		  threadsPerThreadgroup:MTLSizeMake(gPSO_logt.threadExecutionWidth, 1, 1)];
+		[enc0 endEncoding];
+
+		id<MTLComputeCommandEncoder> enc1 = [cb computeCommandEncoder];
+		[enc1 setComputePipelineState:gPSO_logred];
+		[enc1 setBuffer:buf_p offset:0 atIndex:0];
+		[enc1 setBuffer:buf_sum offset:0 atIndex:1];
+		[enc1 setBytes:&tu length:sizeof(tu) atIndex:2];
+		[enc1 dispatchThreads:MTLSizeMake((NSUInteger)T, 1, 1)
+		  threadsPerThreadgroup:MTLSizeMake(gPSO_logred.threadExecutionWidth, 1, 1)];
+		[enc1 endEncoding];
+
+		id<MTLComputeCommandEncoder> enc2 = [cb computeCommandEncoder];
+		[enc2 setComputePipelineState:gPSO_logfin];
+		[enc2 setBuffer:buf_sum offset:0 atIndex:0];
+		[enc2 setBuffer:buf_integral offset:0 atIndex:1];
+		[enc2 setBuffer:buf_out offset:0 atIndex:2];
+		[enc2 dispatchThreads:MTLSizeMake(1, 1, 1)
+		  threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+		[enc2 endEncoding];
+
+		rc = hawkes_wait(cb);
+	});
+
+	return rc;
+}
+
 int metal_hawkes_simulate(
 	const float *mu, const float *alpha,
 	const float *beta,
@@ -454,6 +653,76 @@ int metal_hawkes_simulate(
 		}
 
 		memcpy(out, [buf_out contents], obytes);
+	});
+
+	return rc;
+}
+
+int metal_hawkes_simulate_tensor(
+	const void *mu, const void *alpha,
+	const void *beta,
+	const void *T_max,
+	int K, int maxSteps,
+	void *out) {
+	if (!gHInited) {
+		return -3;
+	}
+
+	if (!mu || !alpha || !beta || !T_max || !out || K <= 0 || maxSteps <= 0) {
+		return -1;
+	}
+
+	if ((size_t)K * (size_t)maxSteps > (size_t)UINT_MAX) {
+		return -1;
+	}
+
+	hawkes_ensure_serial();
+	__block int rc = 0;
+
+	dispatch_sync(gHSerial, ^{
+		uint32_t total_u = (uint32_t)((size_t)K * (size_t)maxSteps);
+		id<MTLBuffer> buf_mu = (__bridge id)((void*)mu);
+		id<MTLBuffer> buf_al = (__bridge id)((void*)alpha);
+		id<MTLBuffer> buf_be = (__bridge id)((void*)beta);
+		id<MTLBuffer> buf_tmax = (__bridge id)((void*)T_max);
+		id<MTLBuffer> buf_out = (__bridge id)out;
+
+		if (!buf_mu || !buf_al || !buf_be || !buf_tmax || !buf_out) {
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gHQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc0 = [cb computeCommandEncoder];
+
+		if (!cb || !enc0) {
+			rc = -1;
+			return;
+		}
+
+		[enc0 setComputePipelineState:gPSO_simclr];
+		[enc0 setBuffer:buf_out offset:0 atIndex:0];
+		[enc0 setBytes:&total_u length:sizeof(total_u) atIndex:1];
+		[enc0 dispatchThreads:MTLSizeMake((NSUInteger)total_u, 1, 1)
+		  threadsPerThreadgroup:MTLSizeMake(gPSO_simclr.threadExecutionWidth, 1, 1)];
+		[enc0 endEncoding];
+
+		id<MTLComputeCommandEncoder> enc1 = [cb computeCommandEncoder];
+		[enc1 setComputePipelineState:gPSO_simdim];
+		[enc1 setBuffer:buf_mu offset:0 atIndex:0];
+		[enc1 setBuffer:buf_al offset:0 atIndex:1];
+		[enc1 setBuffer:buf_be offset:0 atIndex:2];
+		[enc1 setBuffer:buf_out offset:0 atIndex:3];
+		[enc1 setBuffer:buf_tmax offset:0 atIndex:4];
+		uint ku = (uint)K;
+		uint ms = (uint)maxSteps;
+		[enc1 setBytes:&ku length:sizeof(ku) atIndex:5];
+		[enc1 setBytes:&ms length:sizeof(ms) atIndex:6];
+		[enc1 dispatchThreads:MTLSizeMake((NSUInteger)K, 1, 1)
+		  threadsPerThreadgroup:MTLSizeMake(gPSO_simdim.threadExecutionWidth, 1, 1)];
+		[enc1 endEncoding];
+
+		rc = hawkes_wait(cb);
 	});
 
 	return rc;

@@ -322,10 +322,16 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyLastToken(ctx, node, inputs)
 	case "projection.linear":
 		return tensorBackend.applyLinear(ctx, node, inputs)
+	case "projection.fused_qkv":
+		return tensorBackend.applyFusedQKV(ctx, node, inputs)
 	case "attention.sdpa":
 		return tensorBackend.applySDPA(ctx, node, inputs)
+	case "attention.mqa":
+		return tensorBackend.applyMQA(ctx, node, inputs)
 	case "attention.gqa":
 		return tensorBackend.applyGQA(ctx, node, inputs)
+	case "attention.sliding_window":
+		return tensorBackend.applySlidingWindowAttention(ctx, node, inputs)
 	case "positional.rope":
 		return tensorBackend.applyRoPE(ctx, node, inputs)
 	case "positional.alibi":
@@ -350,6 +356,24 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyMask(ctx, node, inputs)
 	case "masking.causal":
 		return tensorBackend.applyCausalMask(ctx, node, inputs)
+	case "vsa.bind":
+		return tensorBackend.applyVSABind(ctx, node, inputs)
+	case "vsa.bundle":
+		return tensorBackend.applyVSABundle(ctx, node, inputs)
+	case "vsa.similarity":
+		return tensorBackend.applyVSASimilarity(ctx, node, inputs)
+	case "vsa.permute":
+		return tensorBackend.applyVSAPermute(ctx, node, inputs)
+	case "vsa.inverse_permute":
+		return tensorBackend.applyVSAInversePermute(ctx, node, inputs)
+	case "hawkes.intensity":
+		return tensorBackend.applyHawkesIntensity(ctx, node, inputs)
+	case "hawkes.kernel_matrix":
+		return tensorBackend.applyHawkesKernelMatrix(ctx, node, inputs)
+	case "hawkes.log_likelihood":
+		return tensorBackend.applyHawkesLogLikelihood(ctx, node, inputs)
+	case "hawkes.simulate":
+		return tensorBackend.applyHawkesSimulate(ctx, node, inputs)
 	default:
 		return nil, fmt.Errorf(
 			"metal tensor: operation %q node %q has no resident Metal implementation",
@@ -1864,6 +1888,26 @@ func (tensorBackend *TensorBackend) masking() (*MetalMasking, error) {
 	tensorBackend.maskingOps = maskingOps
 
 	return maskingOps, nil
+}
+
+func (tensorBackend *TensorBackend) projection() (*ProjectionOps, error) {
+	tensorBackend.cacheMu.Lock()
+	defer tensorBackend.cacheMu.Unlock()
+
+	if tensorBackend.projectionOps != nil {
+		return tensorBackend.projectionOps, nil
+	}
+
+	projectionOps, err := NewProjectionOps(metalLibrary(nil, "projection.metallib"))
+
+	if err != nil {
+		return nil, err
+	}
+
+	projectionOps.runtime = tensorBackend.runtime
+	tensorBackend.projectionOps = projectionOps
+
+	return projectionOps, nil
 }
 
 func (tensorBackend *TensorBackend) attention() (*MetalAttention, error) {

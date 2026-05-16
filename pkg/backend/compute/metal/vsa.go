@@ -24,6 +24,7 @@ metallib must resolve to vsa.metallib (see Makefile in repo root).
 type MetalVSAOps struct {
 	mu       sync.Mutex
 	metallib string
+	runtime  *MetalRuntime
 }
 
 /*
@@ -41,7 +42,12 @@ func NewVSAOps(metallib string) (*MetalVSAOps, error) {
 		return nil, fmt.Errorf("metal_vsa_init failed (rc=%d): check %q exists", rc, metallib)
 	}
 
-	return &MetalVSAOps{metallib: metallib}, nil
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MetalVSAOps{metallib: metallib, runtime: runtime}, nil
 }
 
 /*

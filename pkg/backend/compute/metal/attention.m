@@ -374,6 +374,45 @@ int metal_mqa(const float* q, const float* k, const float* v, float* out,
     }
 }
 
+int metal_mqa_tensor(const void* q, const void* k, const void* v, void* out,
+                     int batch, int num_heads, int seq_len, int head_dim)
+{
+    @autoreleasepool {
+        if (!gAttnQueue || !gPSO_mqa || !q || !k || !v || !out) return -1;
+        if (batch <= 0 || num_heads <= 0 || seq_len <= 0 || head_dim <= 0) return -1;
+
+        int total_q_heads = batch * num_heads;
+        NSUInteger smem_bytes = (NSUInteger)seq_len * seq_len * sizeof(float);
+
+        id<MTLBuffer> bufQ = (__bridge id)((void*)q);
+        id<MTLBuffer> bufK = (__bridge id)((void*)k);
+        id<MTLBuffer> bufV = (__bridge id)((void*)v);
+        id<MTLBuffer> bufOut = (__bridge id)out;
+
+        id<MTLCommandBuffer> cb = [gAttnQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        if (!cb || !enc) return -1;
+
+        [enc setComputePipelineState:gPSO_mqa];
+        [enc setBuffer:bufQ offset:0 atIndex:0];
+        [enc setBuffer:bufK offset:0 atIndex:1];
+        [enc setBuffer:bufV offset:0 atIndex:2];
+        [enc setBuffer:bufOut offset:0 atIndex:3];
+        [enc setBytes:&seq_len length:sizeof(int) atIndex:4];
+        [enc setBytes:&head_dim length:sizeof(int) atIndex:5];
+        [enc setBytes:&num_heads length:sizeof(int) atIndex:6];
+        [enc setThreadgroupMemoryLength:smem_bytes atIndex:0];
+
+        [enc dispatchThreadgroups:MTLSizeMake((NSUInteger)total_q_heads, 1, 1)
+             threadsPerThreadgroup:MTLSizeMake((NSUInteger)seq_len, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        return cb.error ? -1 : 0;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // GQA dispatch
 // ---------------------------------------------------------------------------
@@ -509,5 +548,45 @@ int metal_sliding_window(const float* q, const float* k, const float* v, float* 
 
         copy_back_if_needed(bufOut, out, out_bytes);
         return 0;
+    }
+}
+
+int metal_sliding_window_tensor(const void* q, const void* k, const void* v, void* out,
+                                int batch, int num_heads, int seq_len, int head_dim, int window)
+{
+    @autoreleasepool {
+        if (!gAttnQueue || !gPSO_sw || !q || !k || !v || !out) return -1;
+        if (batch <= 0 || num_heads <= 0 || seq_len <= 0 || head_dim <= 0 ||
+            window < 0) return -1;
+
+        int total_heads = batch * num_heads;
+        NSUInteger smem_bytes = (NSUInteger)seq_len * seq_len * sizeof(float);
+
+        id<MTLBuffer> bufQ = (__bridge id)((void*)q);
+        id<MTLBuffer> bufK = (__bridge id)((void*)k);
+        id<MTLBuffer> bufV = (__bridge id)((void*)v);
+        id<MTLBuffer> bufOut = (__bridge id)out;
+
+        id<MTLCommandBuffer> cb = [gAttnQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        if (!cb || !enc) return -1;
+
+        [enc setComputePipelineState:gPSO_sw];
+        [enc setBuffer:bufQ offset:0 atIndex:0];
+        [enc setBuffer:bufK offset:0 atIndex:1];
+        [enc setBuffer:bufV offset:0 atIndex:2];
+        [enc setBuffer:bufOut offset:0 atIndex:3];
+        [enc setBytes:&seq_len length:sizeof(int) atIndex:4];
+        [enc setBytes:&head_dim length:sizeof(int) atIndex:5];
+        [enc setBytes:&window length:sizeof(int) atIndex:6];
+        [enc setThreadgroupMemoryLength:smem_bytes atIndex:0];
+
+        [enc dispatchThreadgroups:MTLSizeMake((NSUInteger)total_heads, 1, 1)
+             threadsPerThreadgroup:MTLSizeMake((NSUInteger)seq_len, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        return cb.error ? -1 : 0;
     }
 }

@@ -134,7 +134,7 @@ func (objectName *ObjectName) MethodName() {
 
 ### Size limits
 
-- **File size:** target 200 lines, hard ceiling 400. At 400+, split before adding more.
+- **File size:** target 200 lines, hard ceiling 400. At 400+, split before adding more. This does not apply to documentation or custom compute kernels.
 - **Method size:** target under 30 lines. Methods over 60 lines must be decomposed unless the operation is genuinely atomic (e.g. a single assembly kernel body).
 - **Type size:** if a type has more than ~10 methods, it is doing more than one thing.
 

@@ -11,9 +11,6 @@ extern "C" {
 int metal_projection_init(const char* metallib_path);
 
 // Linear projection: dst[M*N] = src[M*K] @ weight[K*N]  (+bias if non-NULL)
-// weight is stored [K*N] column-major (i.e. weight^T in row-major) so that
-// each column of weight^T is a contiguous output-neuron row.
-// In practice we pass weight as [N*K] row-major and transpose on the GPU.
 int metal_linear(const float* src, const float* weight, const float* bias,
                  float* dst, int M, int K, int N);
 
@@ -21,7 +18,16 @@ int metal_linear(const float* src, const float* weight, const float* bias,
 int metal_fused_qkv(const float* src, const float* weight, const float* bias,
                     float* dst, int M, int K, int N);
 
-// Tied embedding logit projection: dst[M*V] = src[M*D] @ weight[V*D]^T
+int metal_fused_qkv_tensor(
+    const void* src,
+    const void* weight,
+    const void* bias,
+    void*       dst,
+    int         M,
+    int         K,
+    int         N);
+
+// Tied embedding logit projection: dst[M*V] = src[M*D] @ weight[D*V]
 int metal_tied_embedding(const float* src, const float* weight,
                          float* dst, int M, int D, int V);
 

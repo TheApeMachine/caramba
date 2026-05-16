@@ -67,8 +67,11 @@ var residentOperationTable = []OperationCoverage{
 	residentOperation("shape.merge_heads", "metal_merge_heads_tensor", "BenchmarkMetalShapeOps_MergeHeadsTensor", "TestMetalShapeOps_MergeHeadsTensor"),
 	residentOperation("shape.last_token", "metal_last_token_tensor", "BenchmarkMetalShapeOps_LastTokenTensor", "TestMetalShapeOps_LastTokenTensor"),
 	residentOperation("projection.linear", "metal_matmul_add_tensor", "BenchmarkMathOps_MatmulAddFlatTensor", "TestMathOps_MatmulAddFlatTensor"),
+	residentOperation("projection.fused_qkv", "metal_fused_qkv_tensor", "BenchmarkProjectionOps_FusedQKVTensor", "TestProjectionOps_FusedQKVTensor"),
 	residentOperation("attention.sdpa", "metal_sdpa_tensor", "BenchmarkMetalAttention_SDPATensor", "TestMetalAttention_SDPATensor"),
+	residentOperation("attention.mqa", "metal_mqa_tensor", "BenchmarkMetalAttention_MQATensor", "TestMetalAttention_MQATensor"),
 	residentOperation("attention.gqa", "metal_gqa_tensor", "BenchmarkMetalAttention_GQATensor", "TestMetalAttention_GQATensor"),
+	residentOperation("attention.sliding_window", "metal_sliding_window_tensor", "BenchmarkMetalAttention_SlidingWindowTensor", "TestMetalAttention_SlidingWindowTensor"),
 	residentOperation("positional.rope", "metal_rope_tensor", "BenchmarkMetalPositional_RoPETensor", "TestMetalPositional_RoPETensor"),
 	residentOperation("positional.alibi", "metal_alibi_tensor", "BenchmarkMetalPositional_ALiBiTensor", "TestMetalPositional_ALiBiTensor"),
 	residentOperation("convolution.conv1d", "metal_conv1d_tensor", "BenchmarkConvolutionOps_Conv1dTensor", "TestConvolutionOps_Conv1dTensor"),
@@ -81,6 +84,15 @@ var residentOperationTable = []OperationCoverage{
 	residentOperation("pooling.adaptive_max_pool2d", "metal_adaptive_max_pool2d_tensor", "BenchmarkPoolingOps_AdaptiveMaxPool2dTensor", "TestPoolingOps_AdaptiveMaxPool2dTensor"),
 	residentOperation("masking.apply", "metal_apply_mask_tensor", "BenchmarkMetalMasking_ApplyMaskTensor", "TestMetalMasking_ApplyMaskTensor"),
 	residentOperation("masking.causal", "metal_causal_mask_tensor", "BenchmarkMetalMasking_CausalMaskTensor", "TestMetalMasking_CausalMaskTensor"),
+	residentOperation("vsa.bind", "metal_vsa_bind_tensor", "BenchmarkMetalVSAOps_BindTensor", "TestMetalVSAOps_BindTensor"),
+	residentOperation("vsa.bundle", "metal_vsa_bundle_tensor", "BenchmarkMetalVSAOps_BundleTensor", "TestMetalVSAOps_BundleTensor"),
+	residentOperation("vsa.similarity", "metal_vsa_dot_tensor", "BenchmarkMetalVSAOps_SimilarityTensor", "TestMetalVSAOps_SimilarityTensor"),
+	residentOperation("vsa.permute", "metal_vsa_permute_tensor", "BenchmarkMetalVSAOps_PermuteTensor", "TestMetalVSAOps_PermuteTensor"),
+	residentOperation("vsa.inverse_permute", "metal_vsa_inverse_permute_tensor", "BenchmarkMetalVSAOps_InversePermuteTensor", "TestMetalVSAOps_InversePermuteTensor"),
+	residentOperation("hawkes.intensity", "metal_hawkes_intensity_tensor", "BenchmarkMetalHawkes_IntensityTensor", "TestMetalHawkes_IntensityTensor"),
+	residentOperation("hawkes.kernel_matrix", "metal_hawkes_kernel_matrix_tensor", "BenchmarkMetalHawkes_KernelMatrixTensor", "TestMetalHawkes_KernelMatrixTensor"),
+	residentOperation("hawkes.log_likelihood", "metal_hawkes_log_likelihood_tensor", "BenchmarkMetalHawkes_LogLikelihoodTensor", "TestMetalHawkes_LogLikelihoodTensor"),
+	residentOperation("hawkes.simulate", "metal_hawkes_simulate_tensor", "BenchmarkMetalHawkes_SimulateTensor", "TestMetalHawkes_SimulateTensor"),
 }
 
 /*

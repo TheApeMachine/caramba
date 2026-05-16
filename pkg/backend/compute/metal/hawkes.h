@@ -32,11 +32,23 @@ int metal_hawkes_intensity(
     float t,
     float *out,
     int K, int T);
+int metal_hawkes_intensity_tensor(
+    const void *times, const void *alpha,
+    const void *beta, const void *mu,
+    const void *t,
+    void *out,
+    int K, int T);
 
 int metal_hawkes_kernel_matrix(
     const float *times,
     float alpha, float beta,
     float *out,
+    int T);
+int metal_hawkes_kernel_matrix_tensor(
+    const void *times,
+    const void *alpha,
+    const void *beta,
+    void *out,
     int T);
 
 int metal_hawkes_log_likelihood(
@@ -44,12 +56,23 @@ int metal_hawkes_log_likelihood(
     float integral,
     float *out,
     int T);
+int metal_hawkes_log_likelihood_tensor(
+    const void *intensities,
+    const void *integral,
+    void *out,
+    int T);
 
 int metal_hawkes_simulate(
     const float *mu, const float *alpha,
     const float *beta,
     float T_max, int K, int maxSteps,
     float *out);
+int metal_hawkes_simulate_tensor(
+    const void *mu, const void *alpha,
+    const void *beta,
+    const void *T_max,
+    int K, int maxSteps,
+    void *out);
 
 #ifdef __cplusplus
 }

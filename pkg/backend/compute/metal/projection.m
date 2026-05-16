@@ -133,6 +133,67 @@ static int dispatch_proj(
     }
 }
 
+static int dispatch_proj_tensor(
+    id<MTLComputePipelineState> pso,
+    const void* src,
+    const void* weight,
+    const void* bias,
+    void* dst,
+    unsigned int M, unsigned int K, unsigned int N,
+    unsigned int has_bias)
+{
+    @autoreleasepool {
+        if (!gProjQueue || !pso || !src || !weight || !dst) return -1;
+        if (M == 0 || K == 0 || N == 0) return -1;
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufWeight = (__bridge id)((void*)weight);
+        id<MTLBuffer> bufBias = nil;
+        BOOL releaseBias = NO;
+
+        if (bias) {
+            bufBias = (__bridge id)((void*)bias);
+        } else {
+            bufBias = [gProjDevice newBufferWithLength:4 options:MTLResourceStorageModeShared];
+            releaseBias = YES;
+        }
+
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        if (!bufSrc || !bufWeight || !bufBias || !bufDst) {
+            if (releaseBias) [bufBias release];
+            return -1;
+        }
+
+        id<MTLCommandBuffer> cb = [gProjQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        if (!cb || !enc) {
+            if (releaseBias) [bufBias release];
+            return -1;
+        }
+
+        [enc setComputePipelineState:pso];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufWeight offset:0 atIndex:1];
+        [enc setBuffer:bufBias offset:0 atIndex:2];
+        [enc setBuffer:bufDst offset:0 atIndex:3];
+        [enc setBytes:&M length:sizeof(unsigned int) atIndex:4];
+        [enc setBytes:&K length:sizeof(unsigned int) atIndex:5];
+        [enc setBytes:&N length:sizeof(unsigned int) atIndex:6];
+        [enc setBytes:&has_bias length:sizeof(unsigned int) atIndex:7];
+
+        MTLSize threads = MTLSizeMake((NSUInteger)N, (NSUInteger)M, 1);
+        MTLSize threadgroup = MTLSizeMake(pso.threadExecutionWidth, 1, 1);
+        [enc dispatchThreads:threads threadsPerThreadgroup:threadgroup];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        int rc = cb.error ? -1 : 0;
+        if (releaseBias) [bufBias release];
+        return rc;
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 int metal_linear(const float* src, const float* weight, const float* bias,
@@ -159,6 +220,26 @@ int metal_fused_qkv(const float* src, const float* weight, const float* bias,
         weight, N * K,
         bias,   N,
         dst,    M * N,
+        (unsigned int)M, (unsigned int)K, (unsigned int)N,
+        has_bias);
+}
+
+int metal_fused_qkv_tensor(
+    const void* src,
+    const void* weight,
+    const void* bias,
+    void*       dst,
+    int         M,
+    int         K,
+    int         N)
+{
+    unsigned int has_bias = (bias != NULL) ? 1u : 0u;
+    return dispatch_proj_tensor(
+        gPSO_fused_qkv,
+        src,
+        weight,
+        bias,
+        dst,
         (unsigned int)M, (unsigned int)K, (unsigned int)N,
         has_bias);
 }
