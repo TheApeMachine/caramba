@@ -321,16 +321,20 @@ kernel void lbfgs(
 	device float *state_history [[buffer(1)]],
 	device float *grad_history [[buffer(2)]],
 	device float *rho_history [[buffer(3)]],
-	device uint *head [[buffer(4)]],
-	device uint *history_count [[buffer(5)]],
-	device const float *params [[buffer(6)]],
-	device const float *grads [[buffer(7)]],
-	device const float *previous_params [[buffer(8)]],
-	device const float *previous_grads [[buffer(9)]],
-	constant uint &has_previous [[buffer(10)]],
-	constant uint &count [[buffer(11)]],
-	constant uint &history_size [[buffer(12)]],
-	constant float &learning_rate [[buffer(13)]],
+	device float *direction [[buffer(4)]],
+	device float *alphas [[buffer(5)]],
+	device uint *head [[buffer(6)]],
+	device uint *history_count [[buffer(7)]],
+	device const float *params [[buffer(8)]],
+	device const float *grads [[buffer(9)]],
+	device const float *previous_params [[buffer(10)]],
+	device const float *previous_grads [[buffer(11)]],
+	constant uint &has_previous [[buffer(12)]],
+	constant uint &count [[buffer(13)]],
+	constant uint &history_size [[buffer(14)]],
+	constant float &learning_rate [[buffer(15)]],
+	constant uint &line_search [[buffer(16)]],
+	constant float &c1 [[buffer(17)]],
 	uint index [[thread_position_in_grid]])
 {
 	if (index != 0) return;
@@ -355,6 +359,89 @@ kernel void lbfgs(
 	}
 
 	for (uint value_index = 0; value_index < count; value_index++) {
-		out[value_index] = params[value_index] - learning_rate * grads[value_index];
+		direction[value_index] = grads[value_index];
+	}
+
+	for (int history_index = int(history_count[0]) - 1; history_index >= 0; history_index--) {
+		uint slot = (head[0] - 1 - uint(history_index) + history_size * 2) % history_size;
+		float dot = 0.0f;
+
+		for (uint value_index = 0; value_index < count; value_index++) {
+			dot += state_history[slot * count + value_index] * direction[value_index];
+		}
+
+		alphas[history_index] = rho_history[slot] * dot;
+
+		for (uint value_index = 0; value_index < count; value_index++) {
+			direction[value_index] -= alphas[history_index] *
+				grad_history[slot * count + value_index];
+		}
+	}
+
+	if (history_count[0] > 0) {
+		uint slot = (head[0] - 1 + history_size * 2) % history_size;
+		float yy = 0.0f;
+		float ys = 0.0f;
+
+		for (uint value_index = 0; value_index < count; value_index++) {
+			float y_value = grad_history[slot * count + value_index];
+			yy += y_value * y_value;
+			ys += y_value * state_history[slot * count + value_index];
+		}
+
+		float gamma = ys / yy;
+
+		for (uint value_index = 0; value_index < count; value_index++) {
+			direction[value_index] *= gamma;
+		}
+	}
+
+	for (uint history_index = 0; history_index < history_count[0]; history_index++) {
+		uint slot = (head[0] - history_count[0] + history_index + history_size * 2) %
+			history_size;
+		float dot = 0.0f;
+
+		for (uint value_index = 0; value_index < count; value_index++) {
+			dot += grad_history[slot * count + value_index] * direction[value_index];
+		}
+
+		float beta = rho_history[slot] * dot;
+
+		for (uint value_index = 0; value_index < count; value_index++) {
+			direction[value_index] += (alphas[history_index] - beta) *
+				state_history[slot * count + value_index];
+		}
+	}
+
+	float effective_learning_rate = learning_rate;
+
+	if (line_search != 0) {
+		float f0 = 0.0f;
+		float slope = 0.0f;
+		float c1_value = c1 == 0.0f ? 1e-4f : c1;
+
+		for (uint value_index = 0; value_index < count; value_index++) {
+			f0 += grads[value_index] * grads[value_index];
+			slope -= grads[value_index] * direction[value_index];
+		}
+
+		for (uint search_index = 0; search_index < 50; search_index++) {
+			float decrease = f0 - c1_value * effective_learning_rate * slope;
+
+			if (decrease > 0.0f) break;
+
+			effective_learning_rate *= 0.5f;
+
+			if (effective_learning_rate < 1e-10f) break;
+		}
+
+		if (effective_learning_rate < 1e-10f) {
+			effective_learning_rate = 1e-10f;
+		}
+	}
+
+	for (uint value_index = 0; value_index < count; value_index++) {
+		out[value_index] = params[value_index] -
+			effective_learning_rate * direction[value_index];
 	}
 }

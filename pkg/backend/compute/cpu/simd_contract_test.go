@@ -3,10 +3,21 @@ package cpu
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+)
+
+var avx2VectorPattern = regexp.MustCompile(
+	`\bY[0-9]+\b|VMOVUPD|VADDPD|VMULPD|VFMADD|VBROADCAST|VPERM|VINSERT|VEXTRACT|VPADD|VPSUB|VPCM|VGATHER|VZEROUPPER`,
+)
+var sse2VectorPattern = regexp.MustCompile(
+	`\bX[0-9]+\b|MOVUPD|ADDPD|MULPD|SUBPD|DIVPD|MAXPD|MINPD|SQRTPD|SHUFPD|PADD|PSUB|PCM|CVT`,
+)
+var neonVectorPattern = regexp.MustCompile(
+	`\bV[0-9]+\.(D2|S4|B16|H8)|VLD1|VST1|VFADD|VFSUB|VFMUL|VFDIV|VFSQRT|VFMAX|VFMIN|VCMEQ|VCMGT|VAND|VORR|VEOR|VDUP`,
 )
 
 func TestSIMDAssemblyContract(test *testing.T) {
@@ -19,6 +30,12 @@ func TestSIMDAssemblyContract(test *testing.T) {
 
 		Convey("It should keep SSE2 assembly out of AVX2 files", func() {
 			failures := findSIMDArchitectureSplitFailures("operation", "optimizer")
+
+			So(failures, ShouldBeEmpty)
+		})
+
+		Convey("It should require ISA-named files to carry real vector kernels", func() {
+			failures := findSIMDVectorKernelFailures("operation", "optimizer")
 
 			So(failures, ShouldBeEmpty)
 		})
@@ -55,6 +72,60 @@ func findSIMDContractFailures(roots ...string) []string {
 
 			return nil
 		})
+	}
+
+	return failures
+}
+
+func findSIMDVectorKernelFailures(roots ...string) []string {
+	var failures []string
+
+	for _, root := range roots {
+		_ = filepath.WalkDir(root, func(path string, dirEntry os.DirEntry, walkErr error) error {
+			if walkErr != nil || dirEntry.IsDir() || filepath.Ext(path) != ".s" {
+				return nil
+			}
+
+			body, err := os.ReadFile(path)
+			if err != nil {
+				failures = append(failures, path+": "+err.Error())
+				return nil
+			}
+
+			text := string(body)
+
+			switch {
+			case strings.HasSuffix(path, "_avx2_amd64.s"):
+				failures = appendVectorKernelFailure(failures, path, text, avx2VectorPattern)
+			case strings.HasSuffix(path, "_sse2_amd64.s") || strings.HasSuffix(path, "_sse_amd64.s"):
+				failures = appendVectorKernelFailure(failures, path, text, sse2VectorPattern)
+
+				if avx2VectorPattern.MatchString(text) {
+					failures = append(failures, path+": contains AVX2 register or instruction")
+				}
+			case strings.HasSuffix(path, "_neon_arm64.s"):
+				failures = appendVectorKernelFailure(failures, path, text, neonVectorPattern)
+			}
+
+			return nil
+		})
+	}
+
+	return failures
+}
+
+func appendVectorKernelFailure(
+	failures []string,
+	path string,
+	text string,
+	vectorPattern *regexp.Regexp,
+) []string {
+	if !strings.Contains(text, "TEXT ") {
+		return append(failures, path+": contains no TEXT symbol")
+	}
+
+	if !vectorPattern.MatchString(text) {
+		return append(failures, path+": contains no vector register or vector instruction")
 	}
 
 	return failures

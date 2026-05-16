@@ -5,7 +5,8 @@
 extern "C" {
 #endif
 
-int metal_optimizer_init_source(const char *source);
+int metal_optimizer_init(const char *metallib_path);
+const char *metal_optimizer_last_error(void);
 
 int metal_optimizer_adam(
 	double *out, double *moment, double *variance,

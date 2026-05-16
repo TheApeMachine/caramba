@@ -209,7 +209,7 @@ func (m *MetalActivation) SELU(input []float64) ([]float64, error) {
 	return toFloat64(dst), nil
 }
 
-// SwiGLU computes sigmoid(gate[i]) * value[i].
+// SwiGLU computes gate[i] * sigmoid(gate[i]) * value[i].
 // input must have 2*n elements: the first n are gates, the second n are values.
 // Returns n elements.
 func (m *MetalActivation) SwiGLU(input []float64) ([]float64, error) {

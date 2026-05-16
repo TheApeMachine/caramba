@@ -4,11 +4,11 @@ package metal
 
 // #include <stdlib.h>
 // #include "optimizer.h"
-// int metal_optimizer_init_source(const char *source);
+// int metal_optimizer_init(const char *metallib_path);
+// const char *metal_optimizer_last_error(void);
 import "C"
 
 import (
-	_ "embed"
 	"fmt"
 	stdmath "math"
 	"unsafe"
@@ -16,92 +16,97 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
-//go:embed optimizer.metal
-var optimizerMetalSource string
+type Registry struct {
+	metallib string
+}
 
-type Registry struct{}
+func NewOptimizerRegistry() Registry {
+	return NewOptimizerRegistryWithMetallib("")
+}
 
-func NewOptimizerRegistry() Registry { return Registry{} }
+func NewOptimizerRegistryWithMetallib(metallib string) Registry {
+	return Registry{metallib: metallib}
+}
 
-func (registry Registry) Adam(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) Adam(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &Adam{}, nil
 }
 
-func (registry Registry) AdamW(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) AdamW(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &AdamW{}, nil
 }
 
-func (registry Registry) AdaMax(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) AdaMax(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &AdaMax{}, nil
 }
 
-func (registry Registry) SGD(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) SGD(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &SGD{}, nil
 }
 
-func (registry Registry) Lion(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) Lion(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &Lion{}, nil
 }
 
-func (registry Registry) RMSProp(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) RMSProp(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &RMSProp{}, nil
 }
 
-func (registry Registry) Hebbian(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) Hebbian(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &Hebbian{}, nil
 }
 
-func (registry Registry) Lars(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) Lars(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &Lars{}, nil
 }
 
-func (registry Registry) Lamb(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) Lamb(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &Lamb{}, nil
 }
 
-func (registry Registry) AdaGrad(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) AdaGrad(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &AdaGrad{}, nil
 }
 
-func (registry Registry) AdaDelta(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) AdaDelta(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &AdaDelta{}, nil
 }
 
-func (registry Registry) LBFGS(*state.Dict) (state.Optimizer, error) {
-	if err := ensureOptimizerSource(); err != nil {
+func (registry Registry) LBFGS(config *state.Dict) (state.Optimizer, error) {
+	if err := registry.ensure(config); err != nil {
 		return nil, err
 	}
 	return &LBFGS{}, nil
@@ -361,11 +366,15 @@ func adamLearningRate(stateDict *state.Dict) float64 {
 	return stateDict.LR * stdmath.Sqrt(bc2) / bc1
 }
 
-func ensureOptimizerSource() error {
-	source := C.CString(optimizerMetalSource)
-	defer C.free(unsafe.Pointer(source))
+func (registry Registry) ensure(config *state.Dict) error {
+	metallib := registry.metallib
+	if metallib == "" {
+		metallib = metalLibrary(config, "optimizer.metallib")
+	}
+	path := C.CString(metallib)
+	defer C.free(unsafe.Pointer(path))
 
-	return metalOptimizerError(C.metal_optimizer_init_source(source), "source init")
+	return metalOptimizerError(C.metal_optimizer_init(path), "init")
 }
 
 func previous(stateDict *state.Dict) ([]float64, []float64) {
@@ -416,6 +425,11 @@ func boolInt(value bool) C.int {
 func metalOptimizerError(rc C.int, name string) error {
 	if rc == 0 {
 		return nil
+	}
+
+	message := C.GoString(C.metal_optimizer_last_error())
+	if message != "" {
+		return fmt.Errorf("metal optimizer: %s fused kernel failed: %s", name, message)
 	}
 
 	return fmt.Errorf("metal optimizer: %s fused kernel failed", name)

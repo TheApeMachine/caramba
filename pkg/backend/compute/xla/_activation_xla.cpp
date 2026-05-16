@@ -365,7 +365,6 @@ static std::string build_selu(int n) {
 
 static std::string build_swiglu(int n) {
     // src layout: [gates(n), values(n)] as flat tensor of 2n.
-    // Split, apply logistic to gates, multiply.
     std::string t  = f64_type(n);
     std::string t2 = f64_2type(n);
     return
@@ -374,7 +373,8 @@ static std::string build_swiglu(int n) {
         "    %gates  = stablehlo.slice %arg0 [0:" + std::to_string(n) + "] : (" + t2 + ") -> " + t + "\n"
         "    %values = stablehlo.slice %arg0 [" + std::to_string(n) + ":" + std::to_string(2*n) + "] : (" + t2 + ") -> " + t + "\n"
         "    %sig    = stablehlo.logistic %gates   : " + t + "\n"
-        "    %out    = stablehlo.multiply %sig, %values : " + t + "\n"
+        "    %swish  = stablehlo.multiply %gates, %sig : " + t + "\n"
+        "    %out    = stablehlo.multiply %swish, %values : " + t + "\n"
         "    return %out : " + t + "\n"
         "  }\n"
         "}\n";

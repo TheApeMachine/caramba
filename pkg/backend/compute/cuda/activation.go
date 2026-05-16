@@ -183,7 +183,7 @@ func (c *CUDAActivation) SELU(input []float64) ([]float64, error) {
 	return dst, nil
 }
 
-// SwiGLU computes sigmoid(gate[i]) * value[i].
+// SwiGLU computes gate[i] * sigmoid(gate[i]) * value[i].
 // input must have 2*n elements: first n are gates, second n are values.
 // Returns n elements.
 func (c *CUDAActivation) SwiGLU(input []float64) ([]float64, error) {

@@ -213,7 +213,7 @@ func (x *XLAActivation) SELU(input []float64) ([]float64, error) {
 	return dst, nil
 }
 
-// SwiGLU computes sigmoid(gate[i]) * value[i].
+// SwiGLU computes gate[i] * sigmoid(gate[i]) * value[i].
 // input must have 2*n elements (gates first, then values); output is n elements.
 func (x *XLAActivation) SwiGLU(input []float64) ([]float64, error) {
 	if len(input)%2 != 0 {

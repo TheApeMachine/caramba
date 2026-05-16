@@ -1,6 +1,7 @@
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "optimizer.h"
@@ -9,30 +10,48 @@ static id<MTLDevice> gOptimizerDevice = nil;
 static id<MTLCommandQueue> gOptimizerQueue = nil;
 static id<MTLLibrary> gOptimizerLibrary = nil;
 static NSMutableDictionary<NSString *, id<MTLComputePipelineState>> *gOptimizerPipelines = nil;
-static NSString *gOptimizerSource = nil;
+static NSString *gOptimizerLibraryPath = nil;
+static char gOptimizerLastError[1024] = {0};
 
-int metal_optimizer_init_source(const char *source) {
+static int optimizer_error(int code, NSString *message) {
+	if (message) {
+		snprintf(gOptimizerLastError, sizeof(gOptimizerLastError), "%s", [message UTF8String]);
+	} else {
+		snprintf(gOptimizerLastError, sizeof(gOptimizerLastError), "metal optimizer error %d", code);
+	}
+	return code;
+}
+
+const char *metal_optimizer_last_error(void) {
+	return gOptimizerLastError;
+}
+
+int metal_optimizer_init(const char *metallib_path) {
 	@autoreleasepool {
-		if (!source || source[0] == '\0') return -1;
-		if (gOptimizerSource != nil) return 0;
-		gOptimizerSource = [NSString stringWithUTF8String:source];
-		return gOptimizerSource == nil ? -1 : 0;
+		if (!metallib_path || metallib_path[0] == '\0') {
+			return optimizer_error(-1, @"empty optimizer metallib path");
+		}
+		if (gOptimizerLibrary != nil) return 0;
+		gOptimizerLibraryPath = [[NSString alloc] initWithUTF8String:metallib_path];
+		if (!gOptimizerLibraryPath) return optimizer_error(-1, @"invalid optimizer metallib path");
+		gOptimizerDevice = MTLCreateSystemDefaultDevice();
+		if (!gOptimizerDevice) return optimizer_error(-1, @"no Metal device");
+		gOptimizerQueue = [gOptimizerDevice newCommandQueue];
+		if (!gOptimizerQueue) return optimizer_error(-1, @"could not create Metal command queue");
+		NSError *error = nil;
+		NSURL *url = [NSURL fileURLWithPath:gOptimizerLibraryPath];
+		gOptimizerLibrary = [gOptimizerDevice newLibraryWithURL:url error:&error];
+		if (!gOptimizerLibrary) return optimizer_error(-1, [error localizedDescription]);
+		gOptimizerPipelines = [[NSMutableDictionary alloc] init];
+		gOptimizerLastError[0] = '\0';
+		return 0;
 	}
 }
 
 static int optimizer_init(void) {
 	@autoreleasepool {
-		if (gOptimizerDevice != nil) return 0;
-		gOptimizerDevice = MTLCreateSystemDefaultDevice();
-		if (!gOptimizerDevice) return -1;
-		gOptimizerQueue = [gOptimizerDevice newCommandQueue];
-		if (!gOptimizerQueue) return -1;
-		NSError *error = nil;
-		if (gOptimizerSource == nil) return -1;
-		gOptimizerLibrary = [gOptimizerDevice newLibraryWithSource:gOptimizerSource options:nil error:&error];
-		if (!gOptimizerLibrary) return -1;
-		gOptimizerPipelines = [NSMutableDictionary dictionary];
-		return 0;
+		if (gOptimizerDevice && gOptimizerQueue && gOptimizerLibrary) return 0;
+		return optimizer_error(-1, @"optimizer metallib not initialized");
 	}
 }
 
@@ -41,9 +60,11 @@ static id<MTLComputePipelineState> optimizer_pipeline(const char *name) {
 	id<MTLComputePipelineState> cached = [gOptimizerPipelines objectForKey:key];
 	if (cached) return cached;
 	id<MTLFunction> function = [gOptimizerLibrary newFunctionWithName:key];
+	if (!function) optimizer_error(-2, [NSString stringWithFormat:@"missing Metal function %@", key]);
 	if (!function) return nil;
 	NSError *error = nil;
 	id<MTLComputePipelineState> pipeline = [gOptimizerDevice newComputePipelineStateWithFunction:function error:&error];
+	if (!pipeline) optimizer_error(-2, [error localizedDescription]);
 	if (!pipeline) return nil;
 	[gOptimizerPipelines setObject:pipeline forKey:key];
 	return pipeline;
@@ -78,19 +99,25 @@ static id<MTLBuffer> rw_uint(const uint *values, int count) {
 
 static int run_threads(id<MTLComputePipelineState> pipeline, id<MTLCommandBuffer> command_buffer, id<MTLComputeCommandEncoder> encoder, int count) {
 	if (!pipeline || !command_buffer || !encoder) return -1;
-	[encoder dispatchThreads:MTLSizeMake((NSUInteger)count, 1, 1) threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+	NSUInteger thread_count = (NSUInteger)count;
+	NSUInteger group_count = thread_count < 256 ? thread_count : 256;
+	if (group_count == 0) return optimizer_error(-1, @"empty Metal dispatch");
+	[encoder dispatchThreads:MTLSizeMake(thread_count, 1, 1) threadsPerThreadgroup:MTLSizeMake(group_count, 1, 1)];
 	[encoder endEncoding];
 	[command_buffer commit];
 	[command_buffer waitUntilCompleted];
-	return command_buffer.error ? -1 : 0;
+	return command_buffer.error ? optimizer_error(-1, [command_buffer.error localizedDescription]) : 0;
 }
 
-#define START_ENCODER(kernel_name) \
-	if (optimizer_init() != 0) return -1; \
-	id<MTLComputePipelineState> pipeline = optimizer_pipeline(kernel_name); \
-	id<MTLCommandBuffer> command_buffer = [gOptimizerQueue commandBuffer]; \
-	id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder]; \
-	[encoder setComputePipelineState:pipeline]
+	#define START_ENCODER(kernel_name) \
+		if (optimizer_init() != 0) return -1; \
+		id<MTLComputePipelineState> pipeline = optimizer_pipeline(kernel_name); \
+		if (!pipeline) return -2; \
+		id<MTLCommandBuffer> command_buffer = [gOptimizerQueue commandBuffer]; \
+		if (!command_buffer) return -3; \
+		id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder]; \
+		if (!encoder) return -4; \
+		[encoder setComputePipelineState:pipeline]
 
 #define SET_SCALAR(value, type_name, index) do { type_name scalar = (type_name)(value); [encoder setBytes:&scalar length:sizeof(type_name) atIndex:index]; } while (0)
 
@@ -233,15 +260,14 @@ int metal_optimizer_adadelta(double *out, double *grad_average, double *delta_av
 }
 
 int metal_optimizer_lbfgs(double *out, double *s_history, double *y_history, double *rho_history, int *head, int *history_count, const double *params, const double *grads, const double *previous_params, const double *previous_grads, int has_previous, int count, int history_size, double learning_rate, int line_search, double c1) {
-	(void)line_search; (void)c1;
 	int history_elements = count * history_size;
 	float *sh = to_float(s_history, history_elements), *yh = to_float(y_history, history_elements), *rh = to_float(rho_history, history_size), *p = to_float(params, count), *g = to_float(grads, count), *pp = to_float(previous_params, count), *pg = to_float(previous_grads, count);
 	START_ENCODER("lbfgs");
-	id<MTLBuffer> bo = rw(NULL, count), bsh = rw(sh, history_elements), byh = rw(yh, history_elements), brh = rw(rh, history_size), bp = ro(p, count), bg = ro(g, count), bpp = ro(pp, count), bpg = ro(pg, count);
+	id<MTLBuffer> bo = rw(NULL, count), bsh = rw(sh, history_elements), byh = rw(yh, history_elements), brh = rw(rh, history_size), bd = rw(NULL, count), ba = rw(NULL, history_size), bp = ro(p, count), bg = ro(g, count), bpp = ro(pp, count), bpg = ro(pg, count);
 	uint h = (uint)*head, hc = (uint)*history_count;
 	id<MTLBuffer> bh = rw_uint(&h, 1), bhc = rw_uint(&hc, 1);
-	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bsh offset:0 atIndex:1]; [encoder setBuffer:byh offset:0 atIndex:2]; [encoder setBuffer:brh offset:0 atIndex:3]; [encoder setBuffer:bh offset:0 atIndex:4]; [encoder setBuffer:bhc offset:0 atIndex:5]; [encoder setBuffer:bp offset:0 atIndex:6]; [encoder setBuffer:bg offset:0 atIndex:7]; [encoder setBuffer:bpp offset:0 atIndex:8]; [encoder setBuffer:bpg offset:0 atIndex:9];
-	SET_SCALAR(has_previous, uint, 10); SET_SCALAR(count, uint, 11); SET_SCALAR(history_size, uint, 12); SET_SCALAR(learning_rate, float, 13);
+	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bsh offset:0 atIndex:1]; [encoder setBuffer:byh offset:0 atIndex:2]; [encoder setBuffer:brh offset:0 atIndex:3]; [encoder setBuffer:bd offset:0 atIndex:4]; [encoder setBuffer:ba offset:0 atIndex:5]; [encoder setBuffer:bh offset:0 atIndex:6]; [encoder setBuffer:bhc offset:0 atIndex:7]; [encoder setBuffer:bp offset:0 atIndex:8]; [encoder setBuffer:bg offset:0 atIndex:9]; [encoder setBuffer:bpp offset:0 atIndex:10]; [encoder setBuffer:bpg offset:0 atIndex:11];
+	SET_SCALAR(has_previous, uint, 12); SET_SCALAR(count, uint, 13); SET_SCALAR(history_size, uint, 14); SET_SCALAR(learning_rate, float, 15); SET_SCALAR(line_search, uint, 16); SET_SCALAR(c1, float, 17);
 	int rc = run_threads(pipeline, command_buffer, encoder, 1);
 	if (rc == 0) { to_double(out, [bo contents], count); to_double(s_history, [bsh contents], history_elements); to_double(y_history, [byh contents], history_elements); to_double(rho_history, [brh contents], history_size); *head = (int)(*((uint *)[bh contents])); *history_count = (int)(*((uint *)[bhc contents])); }
 	free(sh); free(yh); free(rh); free(p); free(g); free(pp); free(pg); return rc;

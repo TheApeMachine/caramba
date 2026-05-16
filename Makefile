@@ -38,7 +38,9 @@ build:
 	&& xcrun -sdk macosx metal -std=metal3.1 -mmacosx-version-min=14.0 -fmodules-cache-path=/tmp/six-metal-module-cache -I. -c convolution.metal -o convolution.air \
 	&& xcrun -sdk macosx metallib convolution.air -o convolution.metallib \
 	&& xcrun -sdk macosx metal -std=metal3.1 -mmacosx-version-min=14.0 -fmodules-cache-path=/tmp/six-metal-module-cache -I. -c projection.metal -o projection.air \
-	&& xcrun -sdk macosx metallib projection.air -o projection.metallib
+	&& xcrun -sdk macosx metallib projection.air -o projection.metallib \
+	&& xcrun -sdk macosx metal -std=metal3.1 -mmacosx-version-min=14.0 -fmodules-cache-path=/tmp/six-metal-module-cache -I. -c optimizer.metal -o optimizer.air \
+	&& xcrun -sdk macosx metallib optimizer.air -o optimizer.metallib
 
 	@if command -v nvcc >/dev/null 2>&1; then \
 		go generate -tags cuda ./pkg/backend/compute/cuda; \

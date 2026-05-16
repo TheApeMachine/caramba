@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 /*
 These entry points are intentionally shaped as fused optimizer kernels for the
@@ -238,11 +239,10 @@ int xla_optimizer_lbfgs(
 	const double *previous_grads, int has_previous, int count,
 	int history_size, double learning_rate, int line_search, double c1
 ) {
-	(void)line_search;
-	(void)c1;
 	if (has_previous != 0 && history_size > 0) {
 		int slot = (*head) % history_size;
 		double curvature = 0.0;
+
 		for (int index = 0; index < count; index++) {
 			double state_delta = params[index] - previous_params[index];
 			double grad_delta = grads[index] - previous_grads[index];
@@ -250,13 +250,101 @@ int xla_optimizer_lbfgs(
 			y_history[slot * count + index] = grad_delta;
 			curvature += grad_delta * state_delta;
 		}
+
 		if (curvature > 1e-10) {
 			rho_history[slot] = 1.0 / curvature;
 			*head += 1;
 			if (*history_count < history_size) *history_count += 1;
 		}
 	}
-	for (int index = 0; index < count; index++) out[index] = params[index] - learning_rate * grads[index];
+
+	std::vector<double> direction((size_t)count);
+	std::vector<double> alphas((size_t)*history_count);
+
+	for (int index = 0; index < count; index++) {
+		direction[(size_t)index] = grads[index];
+	}
+
+	for (int history_index = *history_count - 1; history_index >= 0; history_index--) {
+		int slot = (*head - 1 - history_index + history_size * 2) % history_size;
+		double dot = 0.0;
+
+		for (int index = 0; index < count; index++) {
+			dot += s_history[slot * count + index] * direction[(size_t)index];
+		}
+
+		alphas[(size_t)history_index] = rho_history[slot] * dot;
+
+		for (int index = 0; index < count; index++) {
+			direction[(size_t)index] -= alphas[(size_t)history_index] *
+				y_history[slot * count + index];
+		}
+	}
+
+	if (*history_count > 0) {
+		int slot = (*head - 1 + history_size * 2) % history_size;
+		double yy = 0.0;
+		double ys = 0.0;
+
+		for (int index = 0; index < count; index++) {
+			double y_value = y_history[slot * count + index];
+			yy += y_value * y_value;
+			ys += y_value * s_history[slot * count + index];
+		}
+
+		double gamma = ys / yy;
+
+		for (int index = 0; index < count; index++) {
+			direction[(size_t)index] *= gamma;
+		}
+	}
+
+	for (int history_index = 0; history_index < *history_count; history_index++) {
+		int slot = (*head - *history_count + history_index + history_size * 2) % history_size;
+		double dot = 0.0;
+
+		for (int index = 0; index < count; index++) {
+			dot += y_history[slot * count + index] * direction[(size_t)index];
+		}
+
+		double beta = rho_history[slot] * dot;
+
+		for (int index = 0; index < count; index++) {
+			direction[(size_t)index] +=
+				(alphas[(size_t)history_index] - beta) * s_history[slot * count + index];
+		}
+	}
+
+	double effective_learning_rate = learning_rate;
+
+	if (line_search != 0) {
+		double f0 = 0.0;
+		double slope = 0.0;
+		double c1_value = c1 == 0.0 ? 1e-4 : c1;
+
+		for (int index = 0; index < count; index++) {
+			f0 += grads[index] * grads[index];
+			slope -= grads[index] * direction[(size_t)index];
+		}
+
+		for (int search_index = 0; search_index < 50; search_index++) {
+			double decrease = f0 - c1_value * effective_learning_rate * slope;
+
+			if (decrease > 0.0) break;
+
+			effective_learning_rate *= 0.5;
+
+			if (effective_learning_rate < 1e-10) break;
+		}
+
+		if (effective_learning_rate < 1e-10) {
+			effective_learning_rate = 1e-10;
+		}
+	}
+
+	for (int index = 0; index < count; index++) {
+		out[index] = params[index] - effective_learning_rate * direction[(size_t)index];
+	}
 
 	return 0;
 }

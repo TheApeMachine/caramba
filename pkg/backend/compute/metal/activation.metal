@@ -81,5 +81,5 @@ kernel void swiglu_forward(
     float gate  = src[i];
     float value = src[n + i];
     float sig   = 1.0f / (1.0f + exp(-gate));
-    dst[i] = sig * value;
+    dst[i] = gate * sig * value;
 }

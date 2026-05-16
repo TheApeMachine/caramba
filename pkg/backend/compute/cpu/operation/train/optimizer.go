@@ -187,8 +187,8 @@ func NewLBFGSStep(lr float64, histSize int, lineSearch bool, c1 float64) *Optimi
 	stateDict := state.NewDict().
 		WithLR(lr).
 		WithHistSize(histSize).
-		WithLineSearch(lineSearch)
-	stateDict.C1 = c1
+		WithLineSearch(lineSearch).
+		WithC1(c1)
 
 	return newOptimizerStep(lbfgs.NewLBFGS(), stateDict)
 }

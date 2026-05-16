@@ -69,7 +69,7 @@ __global__ void swiglu_kernel(const double* src, double* dst, int n) {
     double gate  = src[i];
     double value = src[n + i];
     double sig   = 1.0 / (1.0 + exp(-gate));
-    dst[i] = sig * value;
+    dst[i] = gate * sig * value;
 }
 
 // ---------------------------------------------------------------------------

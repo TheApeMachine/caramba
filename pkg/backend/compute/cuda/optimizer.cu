@@ -267,7 +267,7 @@ __global__ void optimizer_lbfgs_kernel(
     int* head, int* history_count, const double* params,
     const double* grads, const double* previous_params,
     const double* previous_grads, int has_previous, int count,
-    int history_size, double learning_rate
+    int history_size, double learning_rate, int line_search, double c1
 ) {
     if (blockIdx.x != 0 || threadIdx.x != 0) return;
 
@@ -673,7 +673,8 @@ int cuda_optimizer_lbfgs(
     CUDA_OPT_CHECK(cudaMemcpy(dCount, history_count, sizeof(int), cudaMemcpyHostToDevice));
     optimizer_lbfgs_kernel<<<1, 1>>>(
         dOut, dS, dY, dRho, dDirection, dAlphas, dHead, dCount, dParams, dGrads,
-        dPrevParams, dPrevGrads, has_previous, count, history_size, learning_rate
+        dPrevParams, dPrevGrads, has_previous, count, history_size, learning_rate,
+        line_search, c1
     );
     CUDA_OPT_CHECK(cudaGetLastError());
     optimizer_copy_free(out, dOut, count);
