@@ -134,3 +134,55 @@ int metal_apply_mask(const float* scores, const float* mask, float* out, int n) 
         return 0;
     }
 }
+
+int metal_causal_mask_tensor(void* out, int seq_len) {
+    @autoreleasepool {
+        if (!gMaskQueue || !gPSO_causal || !out || seq_len < 0) return -1;
+        if (seq_len == 0) return 0;
+
+        id<MTLBuffer> bufOut = (__bridge id)out;
+        int sl = seq_len;
+        id<MTLCommandBuffer> cb = [gMaskQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+
+        [enc setComputePipelineState:gPSO_causal];
+        [enc setBuffer:bufOut offset:0 atIndex:0];
+        [enc setBytes:&sl length:sizeof(int) atIndex:1];
+
+        MTLSize threads = MTLSizeMake((NSUInteger)seq_len, (NSUInteger)seq_len, 1);
+        MTLSize threadgroup = MTLSizeMake(gPSO_causal.threadExecutionWidth, 1, 1);
+        [enc dispatchThreads:threads threadsPerThreadgroup:threadgroup];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        return cb.error ? -1 : 0;
+    }
+}
+
+int metal_apply_mask_tensor(const void* scores, const void* mask, void* out, int n) {
+    @autoreleasepool {
+        if (!gMaskQueue || !gPSO_apply || !scores || !mask || !out || n < 0) return -1;
+        if (n == 0) return 0;
+
+        id<MTLBuffer> bufScores = (__bridge id)((void*)scores);
+        id<MTLBuffer> bufMask = (__bridge id)((void*)mask);
+        id<MTLBuffer> bufOut = (__bridge id)out;
+        id<MTLCommandBuffer> cb = [gMaskQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+
+        [enc setComputePipelineState:gPSO_apply];
+        [enc setBuffer:bufScores offset:0 atIndex:0];
+        [enc setBuffer:bufMask offset:0 atIndex:1];
+        [enc setBuffer:bufOut offset:0 atIndex:2];
+
+        MTLSize threads = MTLSizeMake((NSUInteger)n, 1, 1);
+        MTLSize threadgroup = MTLSizeMake(gPSO_apply.threadExecutionWidth, 1, 1);
+        [enc dispatchThreads:threads threadsPerThreadgroup:threadgroup];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        return cb.error ? -1 : 0;
+    }
+}

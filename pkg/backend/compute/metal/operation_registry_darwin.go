@@ -1402,7 +1402,11 @@ func (alibi *ALiBi) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
-	output, err := alibi.positional.ALiBiForward(stateDict.OperationShape())
+	output, err := alibi.positional.ALiBiForwardCausal(
+		stateDict.OperationShape(),
+		stateDict.Causal,
+	)
+
 	return setMetalOutput(stateDict, output, err)
 }
 

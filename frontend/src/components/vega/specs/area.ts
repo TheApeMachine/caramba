@@ -107,7 +107,7 @@ export const areaSpec = ({
 			},
 			{
 				encoding: {
-					color: { field: "series", legend: null, type: "nominal" },
+					color: colorEnc,
 					x: xEnc,
 					y: yEnc,
 				},

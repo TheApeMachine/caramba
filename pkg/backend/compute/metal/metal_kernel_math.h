@@ -31,6 +31,15 @@ int metal_matmul_tensor(const void* A, const void* B, void* C, int M, int K, int
 int metal_add_tensor(const void* a, const void* b, void* out, int n);
 int metal_mul_tensor(const void* a, const void* b, void* out, int n);
 
+int metal_inv_sqrt_dim_scale_tensor(const void* src, void* dst, int n, int dim);
+int metal_exp_tensor(const void* src, void* dst, int n);
+int metal_log_tensor(const void* src, void* dst, int n);
+int metal_sign_tensor(const void* src, void* dst, int n);
+int metal_softmax_tensor(const void* src, void* dst, int num_rows, int dim_size);
+int metal_logsumexp_tensor(const void* src, void* dst, int num_rows, int dim_size);
+int metal_outer_tensor(const void* a, const void* b, void* dst, int M, int N);
+int metal_dropout_tensor(const void* src, void* dst, int n, float p, int training, int seed);
+
 /*
 Resident fused matmul + bias (+ optional GELU).
   A, B, bias — read-only device buffers (row-major float32).

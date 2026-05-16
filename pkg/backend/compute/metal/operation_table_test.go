@@ -1,6 +1,9 @@
 package metal
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -44,8 +47,53 @@ func TestResidentOperationTable(test *testing.T) {
 	})
 }
 
+func TestResidentOperationTable_ResidentSymbols(test *testing.T) {
+	Convey("Given the Metal resident operation table", test, func() {
+		sources := readMetalBridgeSources(test)
+
+		Convey("It should declare symbols that exist in the Metal bridge sources", func() {
+			for _, operation := range ResidentOperationTable() {
+				SoMsg(
+					string(operation.ID)+" "+operation.ResidentSymbol,
+					strings.Contains(sources, operation.ResidentSymbol),
+					ShouldBeTrue,
+				)
+			}
+		})
+	})
+}
+
 func BenchmarkResidentOperationTable(benchmark *testing.B) {
 	for benchmark.Loop() {
 		_ = ResidentOperationTable()
 	}
+}
+
+func readMetalBridgeSources(test testing.TB) string {
+	test.Helper()
+
+	entries, err := os.ReadDir(".")
+	So(err, ShouldBeNil)
+
+	var builder strings.Builder
+
+	for _, entry := range entries {
+		if entry.IsDir() || !isMetalBridgeSource(entry.Name()) {
+			continue
+		}
+
+		content, err := os.ReadFile(filepath.Clean(entry.Name()))
+		So(err, ShouldBeNil)
+
+		builder.Write(content)
+		builder.WriteByte('\n')
+	}
+
+	return builder.String()
+}
+
+func isMetalBridgeSource(name string) bool {
+	return strings.HasSuffix(name, ".h") ||
+		strings.HasSuffix(name, ".m") ||
+		strings.HasSuffix(name, ".metal")
 }

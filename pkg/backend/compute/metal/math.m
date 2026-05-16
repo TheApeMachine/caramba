@@ -181,6 +181,19 @@ static void commit_wait(id<MTLCommandBuffer> cb) {
     [cb waitUntilCompleted];
 }
 
+static NSUInteger reduction_threads_for_dim(int dim_size) {
+    if (dim_size <= 1) return 1;
+
+    NSUInteger threads = 1;
+    NSUInteger target = (NSUInteger)dim_size < 256 ? (NSUInteger)dim_size : 256;
+
+    while (threads < target) {
+        threads <<= 1;
+    }
+
+    return threads;
+}
+
 static int dispatch_binary_tensor(
     id<MTLComputePipelineState> pso,
     const void* a,
@@ -208,6 +221,159 @@ static int dispatch_binary_tensor(
         commit_wait(cb);
 
         return 0;
+    }
+}
+
+static int dispatch_unary_tensor(
+    id<MTLComputePipelineState> pso,
+    const void* src,
+    void* dst,
+    int n)
+{
+    @autoreleasepool {
+        if (!gMQueue || !pso || !src || !dst || n < 0) return -1;
+        if (n == 0) return 0;
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:pso];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(pso.threadExecutionWidth,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+
+        return cb.error ? -1 : 0;
+    }
+}
+
+static int dispatch_scale_tensor(
+    const void* src,
+    void* dst,
+    int n,
+    int dim)
+{
+    @autoreleasepool {
+        if (!gMQueue || !gPSO_isdscale || !src || !dst || n < 0 || dim <= 0) return -1;
+        if (n == 0) return 0;
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        float scale = 1.0f / __builtin_sqrtf((float)dim);
+
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_isdscale];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:&scale length:sizeof(float) atIndex:2];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(gPSO_isdscale.threadExecutionWidth,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+
+        return cb.error ? -1 : 0;
+    }
+}
+
+static int dispatch_softmax_tensor(
+    id<MTLComputePipelineState> pso,
+    const void* src,
+    void* dst,
+    int num_rows,
+    int dim_size)
+{
+    @autoreleasepool {
+        if (!gMQueue || !pso || !src || !dst || num_rows <= 0 || dim_size <= 0) return -1;
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        unsigned int ds = (unsigned int)dim_size;
+        NSUInteger tgs = reduction_threads_for_dim(dim_size);
+
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:pso];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:&ds length:sizeof(unsigned int) atIndex:2];
+        [enc dispatchThreadgroups:MTLSizeMake((NSUInteger)num_rows,1,1)
+        threadsPerThreadgroup:MTLSizeMake(tgs,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+
+        return cb.error ? -1 : 0;
+    }
+}
+
+static int dispatch_outer_tensor(
+    const void* a,
+    const void* b,
+    void* dst,
+    int M,
+    int N)
+{
+    @autoreleasepool {
+        if (!gMQueue || !gPSO_outer || !a || !b || !dst || M <= 0 || N <= 0) return -1;
+
+        id<MTLBuffer> bufA = (__bridge id)((void*)a);
+        id<MTLBuffer> bufB = (__bridge id)((void*)b);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        unsigned int dims[2] = { (unsigned int)M, (unsigned int)N };
+
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_outer];
+        [enc setBuffer:bufA offset:0 atIndex:0];
+        [enc setBuffer:bufB offset:0 atIndex:1];
+        [enc setBuffer:bufDst offset:0 atIndex:2];
+        [enc setBytes:dims length:sizeof(dims) atIndex:3];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)N,(NSUInteger)M,1)
+        threadsPerThreadgroup:MTLSizeMake(16,16,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+
+        return cb.error ? -1 : 0;
+    }
+}
+
+static int dispatch_dropout_tensor(
+    const void* src,
+    void* dst,
+    int n,
+    float p,
+    int training,
+    int seed)
+{
+    @autoreleasepool {
+        if (!gMQueue || !gPSO_dropout || !src || !dst || n < 0 || p < 0.0f || p >= 1.0f) {
+            return -1;
+        }
+        if (n == 0) return 0;
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        unsigned int trainingValue = training ? 1u : 0u;
+        unsigned int seedValue = (unsigned int)seed;
+
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_dropout];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:&p length:sizeof(float) atIndex:2];
+        [enc setBytes:&trainingValue length:sizeof(unsigned int) atIndex:3];
+        [enc setBytes:&seedValue length:sizeof(unsigned int) atIndex:4];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n,1,1)
+        threadsPerThreadgroup:MTLSizeMake(gPSO_dropout.threadExecutionWidth,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+
+        return cb.error ? -1 : 0;
     }
 }
 
@@ -333,6 +499,38 @@ int metal_add_tensor(const void* a, const void* b, void* out, int n) {
 
 int metal_mul_tensor(const void* a, const void* b, void* out, int n) {
     return dispatch_binary_tensor(gPSO_mul, a, b, out, n);
+}
+
+int metal_inv_sqrt_dim_scale_tensor(const void* src, void* dst, int n, int dim) {
+    return dispatch_scale_tensor(src, dst, n, dim);
+}
+
+int metal_exp_tensor(const void* src, void* dst, int n) {
+    return dispatch_unary_tensor(gPSO_exp, src, dst, n);
+}
+
+int metal_log_tensor(const void* src, void* dst, int n) {
+    return dispatch_unary_tensor(gPSO_log, src, dst, n);
+}
+
+int metal_sign_tensor(const void* src, void* dst, int n) {
+    return dispatch_unary_tensor(gPSO_sign, src, dst, n);
+}
+
+int metal_softmax_tensor(const void* src, void* dst, int num_rows, int dim_size) {
+    return dispatch_softmax_tensor(gPSO_softmax, src, dst, num_rows, dim_size);
+}
+
+int metal_logsumexp_tensor(const void* src, void* dst, int num_rows, int dim_size) {
+    return dispatch_softmax_tensor(gPSO_logsumexp, src, dst, num_rows, dim_size);
+}
+
+int metal_outer_tensor(const void* a, const void* b, void* dst, int M, int N) {
+    return dispatch_outer_tensor(a, b, dst, M, N);
+}
+
+int metal_dropout_tensor(const void* src, void* dst, int n, float p, int training, int seed) {
+    return dispatch_dropout_tensor(src, dst, n, p, training, seed);
 }
 
 int metal_matmul_add_tensor(
@@ -463,7 +661,7 @@ int metal_softmax(const float* src, float* dst, int num_rows, int dim_size) {
         [enc setBuffer:bSrc offset:0 atIndex:0];
         [enc setBuffer:bDst offset:0 atIndex:1];
         [enc setBytes:&ds length:sizeof(unsigned int) atIndex:2];
-        NSUInteger tgs = (NSUInteger)dim_size < 256 ? (NSUInteger)dim_size : 256;
+        NSUInteger tgs = reduction_threads_for_dim(dim_size);
         [enc dispatchThreadgroups:MTLSizeMake((NSUInteger)num_rows,1,1)
         threadsPerThreadgroup:MTLSizeMake(tgs,1,1)];
         [enc endEncoding];
@@ -490,7 +688,7 @@ int metal_logsumexp(const float* src, float* dst, int num_rows, int dim_size) {
         [enc setBuffer:bSrc offset:0 atIndex:0];
         [enc setBuffer:bDst offset:0 atIndex:1];
         [enc setBytes:&ds length:sizeof(unsigned int) atIndex:2];
-        NSUInteger tgs = (NSUInteger)dim_size < 256 ? (NSUInteger)dim_size : 256;
+        NSUInteger tgs = reduction_threads_for_dim(dim_size);
         [enc dispatchThreadgroups:MTLSizeMake((NSUInteger)num_rows,1,1)
         threadsPerThreadgroup:MTLSizeMake(tgs,1,1)];
         [enc endEncoding];

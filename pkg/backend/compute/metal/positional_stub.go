@@ -83,3 +83,14 @@ func (m *MetalPositional) RoPETensorModeConfig(
 func (m *MetalPositional) ALiBiForward(shape []int) ([]float64, error) {
 	return nil, metalUnavailable()
 }
+
+func (m *MetalPositional) ALiBiForwardCausal(shape []int, causal bool) ([]float64, error) {
+	return nil, metalUnavailable()
+}
+
+func (m *MetalPositional) ALiBiTensor(
+	outputShape computetensor.Shape,
+	causal bool,
+) (computetensor.Float64Tensor, error) {
+	return nil, metalUnavailable()
+}

@@ -7,6 +7,19 @@ import { DEFAULT_PERSONA, DEFAULT_WINDOW_SIZE } from "./types";
 
 const LEGACY_SESSIONS_KEY = "caramba:assistant:sessions";
 const MIGRATED_FLAG = "caramba:assistant:migrated";
+const UUID_RE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function legacySessionHasUuidIds(session: LegacySession): boolean {
+	if (!UUID_RE.test(session.id)) return false;
+	for (const persona of session.personas ?? []) {
+		if (!UUID_RE.test(persona.id)) return false;
+	}
+	for (const message of session.messages ?? []) {
+		if (!UUID_RE.test(message.id)) return false;
+	}
+	return true;
+}
 
 type LegacyMessage = {
 	id: string;
@@ -67,10 +80,17 @@ export function importLocalStorageIfNeeded(stores: MigrationStores) {
 		return;
 	}
 
+	const migratable = legacy.filter(legacySessionHasUuidIds);
+
+	if (migratable.length === 0) {
+		window.localStorage.setItem(MIGRATED_FLAG, "1");
+		return;
+	}
+
 	(async () => {
 		const seenPersonaIds = new Set<string>();
 
-		for (const session of legacy) {
+		for (const session of migratable) {
 			const sessionId = session.id;
 			const personaIds: string[] = [];
 
@@ -142,5 +162,6 @@ export function importLocalStorageIfNeeded(stores: MigrationStores) {
 		window.localStorage.setItem(MIGRATED_FLAG, "1");
 	})().catch((error) => {
 		console.error("[assistant] legacy import failed:", error);
+		window.localStorage.setItem(MIGRATED_FLAG, "1");
 	});
 }

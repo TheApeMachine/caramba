@@ -61,6 +61,7 @@ kernel void alibi_kernel(
     device const float* slopes    [[buffer(1)]],
     constant int&       seq_len_q [[buffer(2)]],
     constant int&       seq_len_k [[buffer(3)]],
+    constant int&       causal    [[buffer(4)]],
     uint                idx       [[thread_position_in_grid]])
 {
     int seqK   = seq_len_k;
@@ -70,6 +71,11 @@ kernel void alibi_kernel(
     int rem    = (int)(idx % (uint)total);
     int q      = rem / seqK;
     int k      = rem % seqK;
+    float distance = (float)(k - q);
 
-    out[idx] = slopes[h] * (float)(k - q);
+    if (causal == 0 && distance < 0.0f) {
+        distance = -distance;
+    }
+
+    out[idx] = slopes[h] * distance;
 }

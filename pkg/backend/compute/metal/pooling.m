@@ -139,6 +139,40 @@ typedef struct {
 
 // ---------------------------------------------------------------------------
 
+static int pool_dispatch_tensor(
+    id<MTLComputePipelineState> pso,
+    const void* src,
+    void* dst,
+    const void* params,
+    NSUInteger params_bytes,
+    int grid_n)
+{
+    @autoreleasepool {
+        if (!gPoolQueue || !pso || !src || !dst || !params || grid_n < 0) return -1;
+        if (grid_n == 0) return 0;
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        id<MTLCommandBuffer> cb = [gPoolQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+
+        [enc setComputePipelineState:pso];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:params length:params_bytes atIndex:2];
+
+        MTLSize threads = MTLSizeMake((NSUInteger)grid_n, 1, 1);
+        MTLSize threadgroup = MTLSizeMake(pso.threadExecutionWidth, 1, 1);
+
+        [enc dispatchThreads:threads threadsPerThreadgroup:threadgroup];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        return cb.error ? -1 : 0;
+    }
+}
+
 int metal_max_pool2d(
     const float* src, float* dst,
     int N, int C, int H, int W,
@@ -195,4 +229,46 @@ int metal_adaptive_max_pool2d(
     return pool_dispatch(gPSO_adaptMaxPool,
         src, src_bytes, dst, dst_bytes,
         &p, sizeof(p), N*C*OutH*OutW);
+}
+
+int metal_max_pool2d_tensor(
+    const void* src, void* dst,
+    int N, int C, int H, int W,
+    int kH, int kW, int sH, int sW,
+    int pH, int pW, int dH, int dW,
+    int Hout, int Wout)
+{
+    MetalMaxPoolParams p = { N,C,H,W, kH,kW,sH,sW, pH,pW,dH,dW, Hout,Wout };
+    return pool_dispatch_tensor(gPSO_maxPool, src, dst, &p, sizeof(p), N*C*Hout*Wout);
+}
+
+int metal_avg_pool2d_tensor(
+    const void* src, void* dst,
+    int N, int C, int H, int W,
+    int kH, int kW, int sH, int sW,
+    int pH, int pW, int dH, int dW,
+    int Hout, int Wout,
+    int count_include_pad, int divisor_override)
+{
+    MetalAvgPoolParams p = { N,C,H,W, kH,kW,sH,sW, pH,pW,dH,dW, Hout,Wout,
+                             count_include_pad, divisor_override };
+    return pool_dispatch_tensor(gPSO_avgPool, src, dst, &p, sizeof(p), N*C*Hout*Wout);
+}
+
+int metal_adaptive_avg_pool2d_tensor(
+    const void* src, void* dst,
+    int N, int C, int H, int W,
+    int OutH, int OutW)
+{
+    MetalAdaptivePoolParams p = { N,C,H,W, OutH,OutW };
+    return pool_dispatch_tensor(gPSO_adaptAvgPool, src, dst, &p, sizeof(p), N*C*OutH*OutW);
+}
+
+int metal_adaptive_max_pool2d_tensor(
+    const void* src, void* dst,
+    int N, int C, int H, int W,
+    int OutH, int OutW)
+{
+    MetalAdaptivePoolParams p = { N,C,H,W, OutH,OutW };
+    return pool_dispatch_tensor(gPSO_adaptMaxPool, src, dst, &p, sizeof(p), N*C*OutH*OutW);
 }

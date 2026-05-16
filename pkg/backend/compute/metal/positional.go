@@ -349,6 +349,13 @@ func buildSlopesFP32(numHeads int) []float32 {
 // ALiBiForward computes the ALiBi bias tensor on the Metal GPU.
 // shape=[num_heads, seq_len_q, seq_len_k].
 func (m *MetalPositional) ALiBiForward(shape []int) ([]float64, error) {
+	return m.ALiBiForwardCausal(shape, false)
+}
+
+/*
+ALiBiForwardCausal computes the ALiBi bias tensor with explicit causal mode.
+*/
+func (m *MetalPositional) ALiBiForwardCausal(shape []int, causal bool) ([]float64, error) {
 	numHeads := shape[0]
 	seqLenQ := shape[1]
 	seqLenK := shape[2]
@@ -362,9 +369,55 @@ func (m *MetalPositional) ALiBiForward(shape []int) ([]float64, error) {
 		C.int(numHeads),
 		C.int(seqLenQ),
 		C.int(seqLenK),
+		boolInt(causal),
 	)
 	if rc != 0 {
 		return nil, fmt.Errorf("metal_alibi failed (rc=%d)", rc)
 	}
 	return toFloat64(dst32), nil
+}
+
+/*
+ALiBiTensor computes the ALiBi bias tensor in resident Metal storage.
+*/
+func (m *MetalPositional) ALiBiTensor(
+	outputShape computetensor.Shape,
+	causal bool,
+) (computetensor.Float64Tensor, error) {
+	dimensions := outputShape.Dims()
+	if len(dimensions) != 3 {
+		return nil, fmt.Errorf("metal_alibi_tensor: expected rank 3, got %d", len(dimensions))
+	}
+
+	numHeads := dimensions[0]
+	seqLenQ := dimensions[1]
+	seqLenK := dimensions[2]
+
+	if numHeads <= 0 || seqLenQ <= 0 || seqLenK <= 0 {
+		return nil, fmt.Errorf("metal_alibi_tensor: dimensions must be positive")
+	}
+
+	slopes := buildSlopesFP32(numHeads)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_alibi_tensor(
+		output.buffer,
+		(*C.float)(unsafe.Pointer(&slopes[0])),
+		C.int(numHeads),
+		C.int(seqLenQ),
+		C.int(seqLenK),
+		boolInt(causal),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_alibi_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
 }

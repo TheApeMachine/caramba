@@ -23,8 +23,17 @@ export const donutSpec = ({
 	centerValue,
 	showLegend = true,
 }: DonutSpecOptions): Spec => {
-	const inner = innerRadius ?? 70;
-	const outer = outerRadius ?? 110;
+	// Radii are expressions so the donut scales with the container. The
+	// plotting `width`/`height` signals already exclude legend space, so
+	// `min(width, height) / 2` is the largest radius that won't clip.
+	// Caller-supplied overrides take precedence and stay fixed in pixels.
+	const outer: number | { expr: string } =
+		outerRadius ?? { expr: "max(20, min(width, height) / 2 - 4)" };
+	const inner: number | { expr: string } =
+		innerRadius ??
+		(typeof outer === "number"
+			? Math.round(outer * 0.64)
+			: { expr: "max(0, (max(20, min(width, height) / 2 - 4)) * 0.64)" });
 
 	const layers: Record<string, unknown>[] = [
 		{

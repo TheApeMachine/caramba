@@ -42,7 +42,16 @@ int metal_alibi(
     const float* slopes,
     int          num_heads,
     int          seq_len_q,
-    int          seq_len_k);
+    int          seq_len_k,
+    int          causal);
+
+int metal_alibi_tensor(
+    void*        out,
+    const float* slopes,
+    int          num_heads,
+    int          seq_len_q,
+    int          seq_len_k,
+    int          causal);
 
 #ifdef __cplusplus
 }

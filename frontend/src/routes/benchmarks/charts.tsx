@@ -9,6 +9,8 @@ import { ChartWidget, VegaProvider } from "#/components/vega";
 import {
 	areaSpec,
 	barSpec,
+	boxPlotSpec,
+	calendarHeatmapSpec,
 	donutSpec,
 	gaugeSpec,
 	heatmapSpec,
@@ -16,6 +18,7 @@ import {
 	labeledBarSpec,
 	lineSpec,
 	metricSpec,
+	scatterSpec,
 	sparklineSpec,
 	spiderSpec,
 	stackedBarSpec,
@@ -119,6 +122,62 @@ const samplePerClass = [
 	{ label: "Sarcastic", value: 38 },
 ];
 
+const sampleScatter = () => {
+	const rand = seedRandom(23);
+	const families = ["base", "tuned", "distilled"] as const;
+	return Array.from({ length: 90 }, (_, idx) => {
+		const family = families[idx % families.length];
+		const familyBias = family === "tuned" ? 0.15 : family === "distilled" ? -0.05 : 0;
+		const latency = 30 + rand() * 220;
+		const accuracy = Math.min(
+			0.99,
+			Math.max(0.4, 0.55 + 0.35 * (1 - latency / 250) + familyBias + (rand() - 0.5) * 0.06),
+		);
+		return {
+			accuracy,
+			family,
+			latency,
+			samples: 200 + Math.round(rand() * 1800),
+		};
+	});
+};
+
+const sampleBoxplot = () => {
+	const rand = seedRandom(31);
+	const buckets = [
+		{ category: "8B", base: 1.2, spread: 0.18 },
+		{ category: "32B", base: 1.6, spread: 0.22 },
+		{ category: "70B", base: 2.4, spread: 0.32 },
+		{ category: "175B", base: 4.1, spread: 0.5 },
+	];
+	return buckets.flatMap((bucket) =>
+		Array.from({ length: 60 }, () => {
+			// Gaussian-ish via two-sample average + occasional outlier.
+			const noise = (rand() + rand() - 1) * bucket.spread;
+			const outlier = rand() > 0.95 ? bucket.spread * 2.5 : 0;
+			return {
+				category: bucket.category,
+				value: bucket.base + noise + outlier,
+			};
+		}),
+	);
+};
+
+const sampleCalendar = () => {
+	const rand = seedRandom(53);
+	const today = Date.now();
+	return Array.from({ length: 180 }, (_, idx) => {
+		const date = today - (179 - idx) * 86_400_000;
+		const weekday = new Date(date).getUTCDay();
+		const weekend = weekday === 0 || weekday === 6;
+		const burst = rand() > 0.85 ? rand() * 40 : 0;
+		return {
+			date,
+			value: Math.round((weekend ? 1 : 4) + rand() * 6 + burst),
+		};
+	});
+};
+
 const Section = ({
 	title,
 	children,
@@ -157,6 +216,9 @@ const Gallery = () => {
 	const area = useMemo(sampleArea, []);
 	const latencies = useMemo(sampleLatencies, []);
 	const heatmap = useMemo(sampleHeatmap, []);
+	const scatter = useMemo(sampleScatter, []);
+	const boxplotData = useMemo(sampleBoxplot, []);
+	const calendar = useMemo(sampleCalendar, []);
 
 	const lineMulti = useMemo(
 		() =>
@@ -284,6 +346,39 @@ const Gallery = () => {
 		[],
 	);
 
+	const scatterChart = useMemo(
+		() =>
+			scatterSpec({
+				data: scatter as unknown as Array<Record<string, number | string>>,
+				seriesField: "family",
+				sizeField: "samples",
+				xField: "latency",
+				xFormat: ".0f",
+				xTitle: "latency (ms)",
+				yField: "accuracy",
+				yFormat: ".0%",
+				yTitle: "accuracy",
+			}),
+		[scatter],
+	);
+
+	const boxplot = useMemo(
+		() =>
+			boxPlotSpec({
+				categoryOrder: ["8B", "32B", "70B", "175B"],
+				categoryTitle: "model size",
+				data: boxplotData,
+				valueFormat: ".2f",
+				valueTitle: "tok/s × 1e3",
+			}),
+		[boxplotData],
+	);
+
+	const calendarChart = useMemo(
+		() => calendarHeatmapSpec({ data: calendar, valueTitle: "runs" }),
+		[calendar],
+	);
+
 	const sparkUp = useMemo(
 		() => sparklineSpec({ values: steps.map((step) => step.accuracy) }),
 		[steps],
@@ -376,6 +471,27 @@ const Gallery = () => {
 					</ChartTile>
 					<ChartTile title="spiderSpec" hint="multi-axis radar chart">
 						<ChartWidget spec={spider} />
+					</ChartTile>
+					<ChartTile
+						title="boxPlotSpec"
+						hint="per-category whiskers, Tukey outliers"
+					>
+						<ChartWidget spec={boxplot} />
+					</ChartTile>
+				</Section>
+
+				<Section title="Relationships">
+					<ChartTile
+						title="scatterSpec"
+						hint="quantitative x/y, color = family, size = samples"
+					>
+						<ChartWidget spec={scatterChart} />
+					</ChartTile>
+					<ChartTile
+						title="calendarHeatmapSpec"
+						hint="GitHub-style daily activity grid"
+					>
+						<ChartWidget spec={calendarChart} />
 					</ChartTile>
 				</Section>
 

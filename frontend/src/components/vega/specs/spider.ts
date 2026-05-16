@@ -134,13 +134,16 @@ export const spiderSpec = ({
 				encoding: {
 					detail: { field: "ring", type: "nominal" },
 					order: { field: "order", type: "quantitative" },
-					stroke: { value: "var(--border)" },
-					strokeOpacity: { value: 0.55 },
-					strokeWidth: { value: 1 },
 					x: xEnc,
 					y: yEnc,
 				},
-				mark: { interpolate: "linear-closed", type: "line" },
+				mark: {
+					interpolate: "linear-closed",
+					stroke: "var(--border)",
+					strokeOpacity: 0.55,
+					strokeWidth: 1,
+					type: "line",
+				},
 			},
 			// Spokes from center to each axis tip.
 			{
@@ -148,38 +151,40 @@ export const spiderSpec = ({
 				encoding: {
 					detail: { field: "axis", type: "nominal" },
 					order: { field: "order", type: "quantitative" },
-					stroke: { value: "var(--border)" },
-					strokeOpacity: { value: 0.55 },
-					strokeWidth: { value: 1 },
 					x: xEnc,
 					y: yEnc,
 				},
-				mark: { type: "line" },
+				mark: {
+					stroke: "var(--border)",
+					strokeOpacity: 0.55,
+					strokeWidth: 1,
+					type: "line",
+				},
 			},
-			// Filled polygon for the series.
+			// Filled polygon for the series. Uses a closed line mark with a
+			// mark-level fill — Vega-Lite's `area` mark baselines to y=0 and
+			// would render as triangular fans instead of a closed polygon.
 			{
 				data: { values: polygonPoints },
 				encoding: {
-					color: { value: "var(--color-chart-1)" },
-					fillOpacity: { value: 0.22 },
 					order: { field: "order", type: "quantitative" },
 					x: xEnc,
 					y: yEnc,
 				},
 				mark: {
+					fill: "var(--color-chart-1)",
+					fillOpacity: 0.22,
 					interpolate: "linear-closed",
+					stroke: "var(--color-chart-1)",
 					strokeJoin: "round",
 					strokeWidth: 2,
-					type: "area",
+					type: "line",
 				},
 			},
 			// Vertex dots.
 			{
 				data: { values: polygonPoints.slice(0, count) },
 				encoding: {
-					color: { value: "var(--color-chart-1)" },
-					stroke: { value: "var(--background)" },
-					strokeWidth: { value: 1.5 },
 					tooltip: [
 						{ field: "category", title: "Category", type: "nominal" },
 						{ field: "value", title: "Value", type: "quantitative" },
@@ -187,13 +192,19 @@ export const spiderSpec = ({
 					x: xEnc,
 					y: yEnc,
 				},
-				mark: { filled: true, size: 80, type: "point" },
+				mark: {
+					fill: "var(--color-chart-1)",
+					filled: true,
+					size: 80,
+					stroke: "var(--background)",
+					strokeWidth: 1.5,
+					type: "point",
+				},
 			},
 			// Axis labels parked just outside the outermost ring.
 			{
 				data: { values: labelPoints },
 				encoding: {
-					color: { value: "var(--muted-foreground)" },
 					text: { field: "category", type: "nominal" },
 					x: xEnc,
 					y: yEnc,
@@ -201,6 +212,7 @@ export const spiderSpec = ({
 				mark: {
 					align: "center",
 					baseline: "middle",
+					fill: "var(--muted-foreground)",
 					fontSize: 10,
 					type: "text",
 				},

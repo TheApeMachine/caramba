@@ -188,7 +188,8 @@ int metal_alibi(
     const float* slopes,
     int          num_heads,
     int          seq_len_q,
-    int          seq_len_k)
+    int          seq_len_k,
+    int          causal)
 {
     @autoreleasepool {
         int grid_n = num_heads * seq_len_q * seq_len_k;
@@ -210,6 +211,7 @@ int metal_alibi(
         [enc setBuffer:bufSlopes offset:0 atIndex:1];
         [enc setBytes:&seq_len_q length:sizeof(int) atIndex:2];
         [enc setBytes:&seq_len_k length:sizeof(int) atIndex:3];
+        [enc setBytes:&causal length:sizeof(int) atIndex:4];
 
         NSUInteger tw = gPSO_alibi.threadExecutionWidth;
         [enc dispatchThreads:MTLSizeMake((NSUInteger)grid_n, 1, 1)
@@ -225,5 +227,53 @@ int metal_alibi(
         [bufOut release];
         [bufSlopes release];
         return 0;
+    }
+}
+
+int metal_alibi_tensor(
+    void*        out,
+    const float* slopes,
+    int          num_heads,
+    int          seq_len_q,
+    int          seq_len_k,
+    int          causal)
+{
+    @autoreleasepool {
+        if (!gPos_Queue || !gPSO_alibi || !out || !slopes) return -1;
+        if (num_heads <= 0 || seq_len_q <= 0 || seq_len_k <= 0) return -1;
+
+        int grid_n = num_heads * seq_len_q * seq_len_k;
+        NSUInteger slopebytes = (NSUInteger)num_heads * sizeof(float);
+
+        id<MTLBuffer> bufOut = (__bridge id)out;
+        id<MTLBuffer> bufSlopes = make_buf(gPos_Device, slopes, slopebytes);
+        if (!bufOut || !bufSlopes) {
+            [bufSlopes release];
+            return -1;
+        }
+
+        id<MTLCommandBuffer> cb = [gPos_Queue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        if (!cb || !enc) {
+            [bufSlopes release];
+            return -1;
+        }
+
+        [enc setComputePipelineState:gPSO_alibi];
+        [enc setBuffer:bufOut offset:0 atIndex:0];
+        [enc setBuffer:bufSlopes offset:0 atIndex:1];
+        [enc setBytes:&seq_len_q length:sizeof(int) atIndex:2];
+        [enc setBytes:&seq_len_k length:sizeof(int) atIndex:3];
+        [enc setBytes:&causal length:sizeof(int) atIndex:4];
+
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)grid_n, 1, 1)
+         threadsPerThreadgroup:MTLSizeMake(gPSO_alibi.threadExecutionWidth, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        int rc = cb.error ? -1 : 0;
+        [bufSlopes release];
+        return rc;
     }
 }

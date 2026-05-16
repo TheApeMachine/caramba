@@ -50,6 +50,31 @@ int metal_adaptive_max_pool2d(
     int N, int C, int H, int W,
     int OutH, int OutW);
 
+int metal_max_pool2d_tensor(
+    const void* src, void* dst,
+    int N, int C, int H, int W,
+    int kH, int kW, int sH, int sW,
+    int pH, int pW, int dH, int dW,
+    int Hout, int Wout);
+
+int metal_avg_pool2d_tensor(
+    const void* src, void* dst,
+    int N, int C, int H, int W,
+    int kH, int kW, int sH, int sW,
+    int pH, int pW, int dH, int dW,
+    int Hout, int Wout,
+    int count_include_pad, int divisor_override);
+
+int metal_adaptive_avg_pool2d_tensor(
+    const void* src, void* dst,
+    int N, int C, int H, int W,
+    int OutH, int OutW);
+
+int metal_adaptive_max_pool2d_tensor(
+    const void* src, void* dst,
+    int N, int C, int H, int W,
+    int OutH, int OutW);
+
 #ifdef __cplusplus
 }
 #endif

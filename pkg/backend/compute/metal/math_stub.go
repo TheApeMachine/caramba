@@ -56,7 +56,19 @@ func (m *MathOps) InvSqrtDimScale(shape []int, data ...[]float64) ([]float64, er
 	return nil, metalUnavailable()
 }
 
+func (m *MathOps) InvSqrtDimScaleTensor(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return nil, metalUnavailable()
+}
+
 func (m *MathOps) Exp(shape []int, data ...[]float64) ([]float64, error) {
+	return nil, metalUnavailable()
+}
+
+func (m *MathOps) ExpTensor(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -64,7 +76,25 @@ func (m *MathOps) Log(shape []int, data ...[]float64) ([]float64, error) {
 	return nil, metalUnavailable()
 }
 
+func (m *MathOps) LogTensor(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return nil, metalUnavailable()
+}
+
 func (m *MathOps) Softmax(shape []int, data ...[]float64) ([]float64, error) {
+	return nil, metalUnavailable()
+}
+
+func (m *MathOps) SoftmaxTensor(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return nil, metalUnavailable()
+}
+
+func (m *MathOps) LogSumExpTensor(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -99,6 +129,29 @@ func (m *MathOps) Sign(shape []int, data ...[]float64) ([]float64, error) {
 	return nil, metalUnavailable()
 }
 
+func (m *MathOps) SignTensor(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return nil, metalUnavailable()
+}
+
+func (m *MathOps) DropoutTensor(
+	input computetensor.Float64Tensor,
+	probability float64,
+	training bool,
+	seed int,
+) (computetensor.Float64Tensor, error) {
+	return nil, metalUnavailable()
+}
+
 func (m *MathOps) Outer(shape []int, data ...[]float64) ([]float64, error) {
+	return nil, metalUnavailable()
+}
+
+func (m *MathOps) OuterTensor(
+	left computetensor.Float64Tensor,
+	right computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+) (computetensor.Float64Tensor, error) {
 	return nil, metalUnavailable()
 }

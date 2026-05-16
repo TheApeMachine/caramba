@@ -1,5 +1,7 @@
 export { areaSpec } from "./area";
 export { type BarDatum, barSpec, stackedBarSpec } from "./bar";
+export { boxPlotSpec } from "./boxplot";
+export { calendarHeatmapSpec } from "./calendar-heatmap";
 export { donutSpec } from "./donut";
 export { gaugeSpec } from "./gauge";
 export { heatmapSpec } from "./heatmap";
@@ -7,6 +9,7 @@ export { histogramSpec } from "./histogram";
 export { labeledBarSpec } from "./labeled-bar";
 export { lineSpec } from "./line";
 export { metricSpec } from "./metric";
+export { scatterSpec } from "./scatter";
 export { sparklineSpec } from "./sparkline";
 export { spiderSpec } from "./spider";
 export type { SeriesPoint, Spec } from "./types";

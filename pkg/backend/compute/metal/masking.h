@@ -19,6 +19,10 @@ int metal_causal_mask(float* out, int seq_len);
 // n: total number of elements
 int metal_apply_mask(const float* scores, const float* mask, float* out, int n);
 
+int metal_causal_mask_tensor(void* out, int seq_len);
+
+int metal_apply_mask_tensor(const void* scores, const void* mask, void* out, int n);
+
 #ifdef __cplusplus
 }
 #endif

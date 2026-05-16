@@ -282,6 +282,22 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 	switch strings.ToLower(string(node.Op)) {
 	case "embedding.token":
 		return tensorBackend.applyTokenEmbedding(ctx, node, inputs)
+	case "math.exp":
+		return tensorBackend.applyExp(ctx, node, inputs)
+	case "math.log":
+		return tensorBackend.applyLog(ctx, node, inputs)
+	case "math.sign":
+		return tensorBackend.applySign(ctx, node, inputs)
+	case "math.outer":
+		return tensorBackend.applyOuter(ctx, node, inputs)
+	case "math.inv_sqrt_dim_scale":
+		return tensorBackend.applyInvSqrtDimScale(ctx, node, inputs)
+	case "math.dropout":
+		return tensorBackend.applyDropout(ctx, node, inputs)
+	case "math.softmax":
+		return tensorBackend.applySoftmax(ctx, node, inputs)
+	case "math.logsumexp":
+		return tensorBackend.applyLogSumExp(ctx, node, inputs)
 	case "math.rmsnorm":
 		return tensorBackend.applyRMSNorm(ctx, node, inputs)
 	case "math.layernorm":
@@ -312,6 +328,8 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyGQA(ctx, node, inputs)
 	case "positional.rope":
 		return tensorBackend.applyRoPE(ctx, node, inputs)
+	case "positional.alibi":
+		return tensorBackend.applyALiBi(ctx, node, inputs)
 	case "convolution.conv1d":
 		return tensorBackend.applyConv1D(ctx, node, inputs)
 	case "convolution.conv2d":
@@ -320,6 +338,18 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyConv3D(ctx, node, inputs)
 	case "convolution.conv_transpose2d":
 		return tensorBackend.applyConvTranspose2D(ctx, node, inputs)
+	case "pooling.max_pool2d":
+		return tensorBackend.applyMaxPool2D(ctx, node, inputs)
+	case "pooling.avg_pool2d":
+		return tensorBackend.applyAvgPool2D(ctx, node, inputs)
+	case "pooling.adaptive_avg_pool2d":
+		return tensorBackend.applyAdaptiveAvgPool2D(ctx, node, inputs)
+	case "pooling.adaptive_max_pool2d":
+		return tensorBackend.applyAdaptiveMaxPool2D(ctx, node, inputs)
+	case "masking.apply":
+		return tensorBackend.applyMask(ctx, node, inputs)
+	case "masking.causal":
+		return tensorBackend.applyCausalMask(ctx, node, inputs)
 	default:
 		return nil, fmt.Errorf(
 			"metal tensor: operation %q node %q has no resident Metal implementation",
@@ -1471,6 +1501,34 @@ func (tensorBackend *TensorBackend) applyRoPE(
 	)
 }
 
+func (tensorBackend *TensorBackend) applyALiBi(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 0 {
+		return nil, fmt.Errorf("metal tensor: ALiBi node %q requires 0 inputs", node.ID)
+	}
+
+	outputShape, err := tensor.NewShape(node.Shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	positionalOps, err := tensorBackend.positional()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return positionalOps.ALiBiTensor(outputShape, boolConfig(node, "causal", false))
+}
+
 func (tensorBackend *TensorBackend) appendResidentKV(
 	attentionOps *MetalAttention,
 	cache *kv.Cache,
@@ -1766,6 +1824,46 @@ func (tensorBackend *TensorBackend) convolution() (*ConvolutionOps, error) {
 	tensorBackend.convolutionOps = convolutionOps
 
 	return convolutionOps, nil
+}
+
+func (tensorBackend *TensorBackend) pooling() (*PoolingOps, error) {
+	tensorBackend.cacheMu.Lock()
+	defer tensorBackend.cacheMu.Unlock()
+
+	if tensorBackend.poolingOps != nil {
+		return tensorBackend.poolingOps, nil
+	}
+
+	poolingOps, err := NewPoolingOps(metalLibrary(nil, "pooling.metallib"))
+
+	if err != nil {
+		return nil, err
+	}
+
+	poolingOps.runtime = tensorBackend.runtime
+	tensorBackend.poolingOps = poolingOps
+
+	return poolingOps, nil
+}
+
+func (tensorBackend *TensorBackend) masking() (*MetalMasking, error) {
+	tensorBackend.cacheMu.Lock()
+	defer tensorBackend.cacheMu.Unlock()
+
+	if tensorBackend.maskingOps != nil {
+		return tensorBackend.maskingOps, nil
+	}
+
+	maskingOps, err := NewMasking(metalLibrary(nil, "masking.metallib"))
+
+	if err != nil {
+		return nil, err
+	}
+
+	maskingOps.runtime = tensorBackend.runtime
+	tensorBackend.maskingOps = maskingOps
+
+	return maskingOps, nil
 }
 
 func (tensorBackend *TensorBackend) attention() (*MetalAttention, error) {

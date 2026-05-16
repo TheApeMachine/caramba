@@ -14,6 +14,7 @@ import (
 // MetalMasking holds the path to the compiled masking.metallib.
 type MetalMasking struct {
 	metallib string
+	runtime  *MetalRuntime
 }
 
 // NewMasking creates and initialises a MetalMasking.
@@ -29,7 +30,13 @@ func NewMasking(metallib string) (*MetalMasking, error) {
 	if rc := C.metal_masking_init(cpath); rc != 0 {
 		return nil, fmt.Errorf("metal_masking_init failed (rc=%d): check that %q exists and Metal is available", rc, metallib)
 	}
-	return &MetalMasking{metallib: metallib}, nil
+
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MetalMasking{metallib: metallib, runtime: runtime}, nil
 }
 
 // ---------------------------------------------------------------------------

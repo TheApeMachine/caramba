@@ -17,6 +17,7 @@ import (
 // converted on the host.
 type PoolingOps struct {
 	metallib string
+	runtime  *MetalRuntime
 }
 
 // NewPoolingOps creates and initialises a PoolingOps.
@@ -32,7 +33,13 @@ func NewPoolingOps(metallib string) (*PoolingOps, error) {
 	if rc := C.metal_pooling_init(cpath); rc != 0 {
 		return nil, fmt.Errorf("metal_pooling_init failed (rc=%d): check that %q exists", rc, metallib)
 	}
-	return &PoolingOps{metallib: metallib}, nil
+
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &PoolingOps{metallib: metallib, runtime: runtime}, nil
 }
 
 // ---------------------------------------------------------------------------
