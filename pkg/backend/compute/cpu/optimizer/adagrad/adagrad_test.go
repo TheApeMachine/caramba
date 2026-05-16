@@ -45,11 +45,12 @@ func TestAdaGrad_Step(test *testing.T) {
 func TestAdaDelta_Step(test *testing.T) {
 	Convey("Given an AdaDelta optimizer", test, func() {
 		Convey("Step", func() {
-			Convey("It should match scalar parity across SIMD lengths", func() {
+			Convey("It should match scalar parity and carry state through state.Dict", func() {
 				for _, parameterCount := range []int{1, 7, 64, 1024, 8192} {
-					optimizer := NewAdaDelta(0.9, 1e-6, 0.01)
+					optimizer := NewAdaDelta()
 					params, grads, _ := adagradParityState(parameterCount)
-					stateDict := adagradState(params, grads, 0, 0, 0)
+					stateDict := adagradState(params, grads, 0, 1e-6, 0.01).
+						WithRho(0.9)
 
 					updated, err := optimizer.Step(stateDict)
 
@@ -66,8 +67,33 @@ func TestAdaDelta_Step(test *testing.T) {
 							0.01,
 						)
 						So(updated.Out[parameterIndex], ShouldAlmostEqual, expectedParam, 1e-12)
-						So(optimizer.eg2[parameterIndex], ShouldAlmostEqual, expectedEG2, 1e-12)
-						So(optimizer.edp2[parameterIndex], ShouldAlmostEqual, expectedEDP2, 1e-12)
+						So(updated.V[parameterIndex], ShouldAlmostEqual, expectedEG2, 1e-12)
+						So(updated.Buf[parameterIndex], ShouldAlmostEqual, expectedEDP2, 1e-12)
+					}
+
+					previousGradientAverage := append([]float64(nil), updated.V...)
+					previousDeltaAverage := append([]float64(nil), updated.Buf...)
+					secondGrads := adadeltaSecondGradients(parameterCount)
+					updated.WithParams(append([]float64(nil), updated.Out...)).
+						WithGrads(secondGrads)
+
+					secondUpdated, err := NewAdaDelta().Step(updated)
+
+					So(err, ShouldBeNil)
+
+					for parameterIndex := range parameterCount {
+						expectedParam, expectedEG2, expectedEDP2 := adadeltaReferenceStep(
+							updated.Params[parameterIndex],
+							secondGrads[parameterIndex],
+							previousGradientAverage[parameterIndex],
+							previousDeltaAverage[parameterIndex],
+							0.9,
+							1e-6,
+							0.01,
+						)
+						So(secondUpdated.Out[parameterIndex], ShouldAlmostEqual, expectedParam, 1e-12)
+						So(secondUpdated.V[parameterIndex], ShouldAlmostEqual, expectedEG2, 1e-12)
+						So(secondUpdated.Buf[parameterIndex], ShouldAlmostEqual, expectedEDP2, 1e-12)
 					}
 				}
 			})
@@ -94,10 +120,11 @@ func BenchmarkAdaGrad_Step(benchmark *testing.B) {
 }
 
 func BenchmarkAdaDelta_Step(benchmark *testing.B) {
-	optimizer := NewAdaDelta(0.9, 1e-6, 0.01)
+	optimizer := NewAdaDelta()
 	parameterCount := 1 << 20
 	params, grads, _ := adagradParityState(parameterCount)
-	stateDict := adagradState(params, grads, 0, 0, 0)
+	stateDict := adagradState(params, grads, 0, 1e-6, 0.01).
+		WithRho(0.9)
 
 	for benchmark.Loop() {
 		updated, err := optimizer.Step(stateDict)
@@ -137,6 +164,16 @@ func adagradParityState(parameterCount int) ([]float64, []float64, []float64) {
 	}
 
 	return params, grads, accumulators
+}
+
+func adadeltaSecondGradients(parameterCount int) []float64 {
+	grads := make([]float64, parameterCount)
+
+	for parameterIndex := range parameterCount {
+		grads[parameterIndex] = float64(parameterIndex%13-6) * 0.03125
+	}
+
+	return grads
 }
 
 func adagradReferenceStep(

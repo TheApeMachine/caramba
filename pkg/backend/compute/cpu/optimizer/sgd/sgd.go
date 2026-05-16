@@ -3,8 +3,8 @@ package sgd
 import "github.com/theapemachine/caramba/pkg/backend/compute/state"
 
 /*
-SGD implements stochastic gradient descent with optional momentum and Nesterov
-correction. The full update is executed entirely by AVX2/SSE2/NEON kernels.
+SGD implements stochastic gradient descent. Momentum and Nesterov correction
+are executed by the architecture kernel selected for the current CPU.
 */
 type SGD struct {
 }

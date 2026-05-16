@@ -36,24 +36,60 @@ func TestLARS_Step(test *testing.T) {
 func TestLAMB_Step(test *testing.T) {
 	Convey("Given a LAMB optimizer", test, func() {
 		Convey("Step", func() {
-			Convey("It should match scalar parity across SIMD lengths", func() {
+			Convey("It should match scalar parity and carry state through state.Dict", func() {
 				for _, parameterCount := range []int{1, 7, 64, 1024, 8192} {
 					params, grads := larsParityState(parameterCount)
 					stateDict := state.NewDict().
+						WithLR(0.01).
+						WithBeta1(0.9).
+						WithBeta2(0.999).
+						WithEps(1e-8).
+						WithWD(0.01).
 						WithParams(params).
 						WithGrads(grads)
-					optimizer := NewLAMB(0.01, 0.9, 0.999, 1e-8, 0.01)
+					optimizer := NewLAMB()
 
 					updated, err := optimizer.Step(stateDict)
 
 					So(err, ShouldBeNil)
 
-					expectedM, expectedV, expectedOut := lambReferenceFirstStep(params, grads)
+					expectedM, expectedV, expectedOut := lambReferenceStep(
+						params,
+						grads,
+						make([]float64, parameterCount),
+						make([]float64, parameterCount),
+						1,
+					)
 
 					for parameterIndex := range parameterCount {
-						So(optimizer.m[parameterIndex], ShouldAlmostEqual, expectedM[parameterIndex], 1e-12)
-						So(optimizer.v[parameterIndex], ShouldAlmostEqual, expectedV[parameterIndex], 1e-12)
+						So(updated.M[parameterIndex], ShouldAlmostEqual, expectedM[parameterIndex], 1e-12)
+						So(updated.V[parameterIndex], ShouldAlmostEqual, expectedV[parameterIndex], 1e-12)
 						So(updated.Out[parameterIndex], ShouldAlmostEqual, expectedOut[parameterIndex], 1e-12)
+					}
+
+					previousM := append([]float64(nil), updated.M...)
+					previousV := append([]float64(nil), updated.V...)
+					secondGrads := lambSecondGradients(parameterCount)
+					updated.WithParams(append([]float64(nil), updated.Out...)).
+						WithGrads(secondGrads)
+
+					secondUpdated, err := NewLAMB().Step(updated)
+
+					So(err, ShouldBeNil)
+					So(secondUpdated.Step, ShouldEqual, 2)
+
+					expectedM, expectedV, expectedOut = lambReferenceStep(
+						updated.Params,
+						secondGrads,
+						previousM,
+						previousV,
+						2,
+					)
+
+					for parameterIndex := range parameterCount {
+						So(secondUpdated.M[parameterIndex], ShouldAlmostEqual, expectedM[parameterIndex], 1e-12)
+						So(secondUpdated.V[parameterIndex], ShouldAlmostEqual, expectedV[parameterIndex], 1e-12)
+						So(secondUpdated.Out[parameterIndex], ShouldAlmostEqual, expectedOut[parameterIndex], 1e-12)
 					}
 				}
 			})
@@ -80,9 +116,14 @@ func BenchmarkLARS_Step(benchmark *testing.B) {
 func BenchmarkLAMB_Step(benchmark *testing.B) {
 	params, grads := larsParityState(1 << 20)
 	stateDict := state.NewDict().
+		WithLR(0.01).
+		WithBeta1(0.9).
+		WithBeta2(0.999).
+		WithEps(1e-8).
+		WithWD(0.01).
 		WithParams(params).
 		WithGrads(grads)
-	optimizer := NewLAMB(0.01, 0.9, 0.999, 1e-8, 0.01)
+	optimizer := NewLAMB()
 
 	for benchmark.Loop() {
 		updated, err := optimizer.Step(stateDict)
@@ -135,18 +176,27 @@ func larsReferenceLocalLR(
 	return 0.01
 }
 
-func lambReferenceFirstStep(params []float64, grads []float64) ([]float64, []float64, []float64) {
+func lambReferenceStep(
+	params []float64,
+	grads []float64,
+	previousM []float64,
+	previousV []float64,
+	step int,
+) ([]float64, []float64, []float64) {
 	m := make([]float64, len(params))
 	v := make([]float64, len(params))
 	update := make([]float64, len(params))
 	out := make([]float64, len(params))
+	biasCorrection1Inv := 1 / (1 - stdmath.Pow(0.9, float64(step)))
+	biasCorrection2Inv := 1 / (1 - stdmath.Pow(0.999, float64(step)))
 
 	for parameterIndex := range params {
-		m[parameterIndex] = 0.1 * grads[parameterIndex]
-		v[parameterIndex] = 0.001 * grads[parameterIndex] * grads[parameterIndex]
-		mHat := m[parameterIndex] * 10
-		vHat := v[parameterIndex] * 1000
-		update[parameterIndex] = mHat/(stdmath.Sqrt(vHat)+1e-8) + 0.01*params[parameterIndex]
+		m[parameterIndex] = 0.9*previousM[parameterIndex] + 0.1*grads[parameterIndex]
+		v[parameterIndex] = 0.999*previousV[parameterIndex] +
+			0.001*grads[parameterIndex]*grads[parameterIndex]
+		update[parameterIndex] = m[parameterIndex]*biasCorrection1Inv/
+			(stdmath.Sqrt(v[parameterIndex]*biasCorrection2Inv)+1e-8) +
+			0.01*params[parameterIndex]
 	}
 
 	paramNorm := stdmath.Sqrt(larsReferenceNormSq(params))
@@ -162,6 +212,16 @@ func lambReferenceFirstStep(params []float64, grads []float64) ([]float64, []flo
 	}
 
 	return m, v, out
+}
+
+func lambSecondGradients(parameterCount int) []float64 {
+	grads := make([]float64, parameterCount)
+
+	for parameterIndex := range parameterCount {
+		grads[parameterIndex] = float64(parameterIndex%19-9) * 0.03125
+	}
+
+	return grads
 }
 
 func larsReferenceNormSq(values []float64) float64 {

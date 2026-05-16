@@ -1,6 +1,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { Menu as MenuIcon } from "lucide-react";
 import type React from "react";
+import { useState } from "react";
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -67,11 +68,19 @@ export const Page = ({ children }: { children?: React.ReactNode }) => {
 
 Page.Header = ({ children }: { children?: React.ReactNode }) => {
 	return (
+		<PageHeaderBody>{children}</PageHeaderBody>
+	);
+};
+
+const PageHeaderBody = ({ children }: { children?: React.ReactNode }) => {
+	const [navOpen, setNavOpen] = useState(false);
+
+	return (
 		<header className="grid-area-header flex shrink-0 flex-wrap items-center justify-between gap-4 p-4">
 			<Breadcrumb className="min-w-0 flex-1">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<Sheet>
+						<Sheet open={navOpen} onOpenChange={setNavOpen}>
 							<SheetTrigger render={<Button variant="outline" />}>
 								<MenuIcon />
 							</SheetTrigger>
@@ -83,7 +92,7 @@ Page.Header = ({ children }: { children?: React.ReactNode }) => {
 									</SheetDescription>
 								</SheetHeader>
 								<SheetPanel className="grid gap-4">
-									<Navigation />
+									<Navigation onNavigate={() => setNavOpen(false)} />
 								</SheetPanel>
 								<SheetFooter>
 									<SheetClose render={<Button variant="ghost" />}>

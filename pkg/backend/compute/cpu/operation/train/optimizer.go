@@ -152,7 +152,7 @@ NewLAMBStep creates a LAMB optimizer node.
 func NewLAMBStep(lr, beta1, beta2, eps, wd float64) *OptimizerStep {
 	stateDict := optimizerState(lr, beta1, beta2, eps, wd)
 
-	return newOptimizerStep(lars.NewLAMB(lr, beta1, beta2, eps, wd), stateDict)
+	return newOptimizerStep(lars.NewLAMB(), stateDict)
 }
 
 /*
@@ -177,7 +177,7 @@ func NewAdaDeltaStep(rho, eps, wd float64) *OptimizerStep {
 		WithEps(eps).
 		WithWD(wd)
 
-	return newOptimizerStep(adagrad.NewAdaDelta(rho, eps, wd), stateDict)
+	return newOptimizerStep(adagrad.NewAdaDelta(), stateDict)
 }
 
 /*

@@ -7,8 +7,8 @@ AdaGrad accumulates squared gradients and scales the learning rate per parameter
 G  += g²
 p  -= lr * g / (sqrt(G) + ε)
 
-Full pipeline (incl. optional weight decay) is implemented in dedicated
-AVX2/SSE2/NEON kernels — no Go-side primitive composition.
+Weight decay and accumulator mutation are executed inside the architecture
+kernel for the selected CPU target.
 */
 type AdaGrad struct {
 }
@@ -51,15 +51,10 @@ E[g²]  = ρ*E[g²] + (1-ρ)*g²
 E[Δp²] = ρ*E[Δp²] + (1-ρ)*Δp²
 */
 type AdaDelta struct {
-	Rho  float64
-	Eps  float64
-	WD   float64
-	eg2  []float64
-	edp2 []float64
 }
 
-func NewAdaDelta(rho, eps, wd float64) *AdaDelta {
-	return &AdaDelta{Rho: rho, Eps: eps, WD: wd}
+func NewAdaDelta() *AdaDelta {
+	return &AdaDelta{}
 }
 
 func (ad *AdaDelta) Step(stateDict *state.Dict) (*state.Dict, error) {
@@ -67,24 +62,17 @@ func (ad *AdaDelta) Step(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
-	n := len(stateDict.Params)
-
-	if ad.eg2 == nil {
-		ad.eg2 = make([]float64, n)
-		ad.edp2 = make([]float64, n)
-	}
-
-	stateDict.Out = make([]float64, n)
-	stateDict.X = stateDict.Out
+	stateDict.EnsureOut()
+	stateDict.EnsureBuf()
 	adadeltaStep(
 		stateDict.Out,
-		ad.eg2,
-		ad.edp2,
+		stateDict.V,
+		stateDict.Buf,
 		stateDict.Params,
 		stateDict.Grads,
-		ad.Rho,
-		ad.Eps,
-		ad.WD,
+		stateDict.Rho,
+		stateDict.Eps,
+		stateDict.WD,
 	)
 
 	return stateDict, nil

@@ -18,7 +18,7 @@ import {
 import { Button } from "#/components/ui/button";
 import { Flex } from "../ui/flex";
 
-export const Navigation = () => {
+export const Navigation = ({ onNavigate }: { onNavigate?: () => void } = {}) => {
 	return (
 		<Accordion className="w-full">
 			<AccordionItem value="item-1">
@@ -26,7 +26,7 @@ export const Navigation = () => {
 					<BlocksIcon /> Projects
 				</AccordionTrigger>
 				<AccordionPanel className="flex flex-col gap-2">
-					<Link to={"/kanban"}>
+					<Link to={"/kanban"} onClick={onNavigate}>
 						<Button
 							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
@@ -44,7 +44,7 @@ export const Navigation = () => {
 							/>
 						</Button>
 					</Link>
-					<Link to={"/request-feature"}>
+					<Link to={"/request-feature"} onClick={onNavigate}>
 						<Button
 							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
@@ -69,7 +69,7 @@ export const Navigation = () => {
 					<MicroscopeIcon /> Research
 				</AccordionTrigger>
 				<AccordionPanel className="flex flex-col gap-2">
-					<Link to={"/research"}>
+					<Link to={"/research"} onClick={onNavigate}>
 						<Button
 							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
@@ -94,7 +94,7 @@ export const Navigation = () => {
 					<NetworkIcon /> Models
 				</AccordionTrigger>
 				<AccordionPanel className="flex flex-col gap-2">
-					<Link to={"/research"}>
+					<Link to={"/research"} onClick={onNavigate}>
 						<Button
 							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
@@ -119,7 +119,7 @@ export const Navigation = () => {
 					<BotIcon /> Agents
 				</AccordionTrigger>
 				<AccordionPanel className="flex flex-col gap-2">
-					<Link to={"/research"}>
+					<Link to={"/research"} onClick={onNavigate}>
 						<Button
 							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"

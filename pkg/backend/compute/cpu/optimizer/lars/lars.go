@@ -8,8 +8,8 @@ import (
 
 /*
 LARS (Layer-wise Adaptive Rate Scaling). Trust ratio and effective gradient
-are computed in scalar (single layer-wide scalars), then a fused AVX2/SSE2/NEON
-kernel writes the per-element update.
+are computed once per layer, then the architecture kernel writes the
+per-element update.
 */
 type LARS struct {
 }
@@ -50,17 +50,10 @@ LAMB combines Adam moment estimates with layer-wise trust ratio. EMA, norm
 computations, and the parameter step are all in dedicated assembly kernels.
 */
 type LAMB struct {
-	LR    float64
-	Beta1 float64
-	Beta2 float64
-	Eps   float64
-	WD    float64
-	m, v  []float64
-	step  int
 }
 
-func NewLAMB(lr, beta1, beta2, eps, wd float64) *LAMB {
-	return &LAMB{LR: lr, Beta1: beta1, Beta2: beta2, Eps: eps, WD: wd}
+func NewLAMB() *LAMB {
+	return &LAMB{}
 }
 
 func (lamb *LAMB) Step(stateDict *state.Dict) (*state.Dict, error) {
@@ -68,44 +61,36 @@ func (lamb *LAMB) Step(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
-	n := len(stateDict.Params)
-	lamb.step++
+	stateDict.Step++
+	stateDict.EnsureOut()
+	lambEMA(stateDict.M, stateDict.V, stateDict.Grads, stateDict.Beta1, stateDict.Beta2)
 
-	if lamb.m == nil {
-		lamb.m = make([]float64, n)
-		lamb.v = make([]float64, n)
-	}
-
-	lambEMA(lamb.m, lamb.v, stateDict.Grads, lamb.Beta1, lamb.Beta2)
-
-	bc1Inv := 1.0 / (1 - stdmath.Pow(lamb.Beta1, float64(lamb.step)))
-	bc2Inv := 1.0 / (1 - stdmath.Pow(lamb.Beta2, float64(lamb.step)))
+	bc1Inv := 1.0 / (1 - stdmath.Pow(stateDict.Beta1, float64(stateDict.Step)))
+	bc2Inv := 1.0 / (1 - stdmath.Pow(stateDict.Beta2, float64(stateDict.Step)))
 
 	pNorm := stdmath.Sqrt(lambL2NormSq(stateDict.Params))
 	uNormSq := lambUpdateNormSq(
-		lamb.m, lamb.v, stateDict.Params, bc1Inv, bc2Inv, lamb.Eps, lamb.WD,
+		stateDict.M, stateDict.V, stateDict.Params, bc1Inv, bc2Inv, stateDict.Eps, stateDict.WD,
 	)
 	uNorm := stdmath.Sqrt(uNormSq)
 
-	ratio := lamb.LR
+	ratio := stateDict.LR
 
 	if pNorm > 0 && uNorm > 0 {
-		ratio = lamb.LR * pNorm / uNorm
+		ratio = stateDict.LR * pNorm / uNorm
 	}
 
-	stateDict.Out = make([]float64, n)
-	stateDict.X = stateDict.Out
 	lambStep(
 		stateDict.Out,
-		lamb.m,
-		lamb.v,
+		stateDict.M,
+		stateDict.V,
 		stateDict.Params,
 		stateDict.Grads,
 		ratio,
 		bc1Inv,
 		bc2Inv,
-		lamb.Eps,
-		lamb.WD,
+		stateDict.Eps,
+		stateDict.WD,
 	)
 
 	return stateDict, nil

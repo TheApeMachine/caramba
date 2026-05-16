@@ -204,7 +204,7 @@ func TestAdam_SIMDSourceSeparation(t *testing.T) {
 			}{
 				{
 					name:   "It should implement Adam SSE2 in its own file",
-					file:   "adam_sse_amd64.s",
+					file:   "adam_sse2_amd64.s",
 					symbol: "TEXT ·adamStepSSE2(SB)",
 				},
 				{
@@ -215,7 +215,7 @@ func TestAdam_SIMDSourceSeparation(t *testing.T) {
 				},
 				{
 					name:      "It should implement AdamW SSE2 without jumping into Adam",
-					file:      "adamw_sse_amd64.s",
+					file:      "adamw_sse2_amd64.s",
 					symbol:    "TEXT ·adamwStepSSE2(SB)",
 					forbidden: []string{"JMP ·adamStep", "CALL ·adamStep"},
 				},
@@ -227,7 +227,7 @@ func TestAdam_SIMDSourceSeparation(t *testing.T) {
 				},
 				{
 					name:      "It should implement AdaMax SSE2 in its own file",
-					file:      "adamax_sse_amd64.s",
+					file:      "adamax_sse2_amd64.s",
 					symbol:    "TEXT ·adamaxStepSSE2(SB)",
 					forbidden: []string{"JMP ·adamaxStepAVX2", "CALL ·adamaxStepAVX2"},
 				},

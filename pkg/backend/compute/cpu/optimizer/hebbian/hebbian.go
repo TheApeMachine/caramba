@@ -4,8 +4,8 @@ import "github.com/theapemachine/caramba/pkg/backend/compute/state"
 
 /*
 Hebbian / Oja / BCM rules. Each Step delegates to a fused AVX2/SSE2/NEON
-kernel — weight update, norm computation, and optional rescale are all
-in assembly.
+kernel; weight update, norm computation, and max-norm rescale all stay in
+architecture-specific execution.
 */
 type Hebbian struct {
 }

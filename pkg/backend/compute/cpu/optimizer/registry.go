@@ -51,7 +51,7 @@ func (registry Registry) Lars(*state.Dict) (state.Optimizer, error) {
 }
 
 func (registry Registry) Lamb(config *state.Dict) (state.Optimizer, error) {
-	return lars.NewLAMB(config.LR, config.Beta1, config.Beta2, config.Eps, config.WD), nil
+	return lars.NewLAMB(), nil
 }
 
 func (registry Registry) AdaGrad(*state.Dict) (state.Optimizer, error) {
@@ -59,7 +59,7 @@ func (registry Registry) AdaGrad(*state.Dict) (state.Optimizer, error) {
 }
 
 func (registry Registry) AdaDelta(config *state.Dict) (state.Optimizer, error) {
-	return adagrad.NewAdaDelta(config.Rho, config.Eps, config.WD), nil
+	return adagrad.NewAdaDelta(), nil
 }
 
 func (registry Registry) LBFGS(*state.Dict) (state.Optimizer, error) {

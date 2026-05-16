@@ -1,7 +1,9 @@
 import type { UIMessage } from "@tanstack/ai-client";
 import { Bot, Maximize2, Minimize2, Plus, Send, Settings, Square, Trash2, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useState } from "react";
 import { Button } from "#/components/ui/button";
+import { Flex } from "#/components/ui/flex";
 import { Input } from "#/components/ui/input";
 import { Tabs } from "#/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -10,6 +12,9 @@ import { SettingsPanel } from "./panels/settings";
 import { usePageContext } from "./use-page-context";
 import { useSession } from "./use-session";
 import { useTeamChat } from "./use-team-chat";
+
+const panelSpring = { type: "spring", stiffness: 380, damping: 32, mass: 0.7 } as const;
+const fadeFast = { duration: 0.18, ease: [0.22, 1, 0.36, 1] } as const;
 
 function useInput() {
 	const [value, setValue] = useState("");

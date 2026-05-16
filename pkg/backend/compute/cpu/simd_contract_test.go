@@ -39,6 +39,12 @@ func TestSIMDAssemblyContract(test *testing.T) {
 
 			So(failures, ShouldBeEmpty)
 		})
+
+		Convey("It should keep AVX2, SSE2, and NEON coverage aligned", func() {
+			failures := findSIMDCoverageFailures("operation", "optimizer")
+
+			So(failures, ShouldBeEmpty)
+		})
 	})
 }
 
@@ -97,12 +103,14 @@ func findSIMDVectorKernelFailures(roots ...string) []string {
 			switch {
 			case strings.HasSuffix(path, "_avx2_amd64.s"):
 				failures = appendVectorKernelFailure(failures, path, text, avx2VectorPattern)
-			case strings.HasSuffix(path, "_sse2_amd64.s") || strings.HasSuffix(path, "_sse_amd64.s"):
+			case strings.HasSuffix(path, "_sse2_amd64.s"):
 				failures = appendVectorKernelFailure(failures, path, text, sse2VectorPattern)
 
 				if avx2VectorPattern.MatchString(text) {
 					failures = append(failures, path+": contains AVX2 register or instruction")
 				}
+			case strings.HasSuffix(path, "_sse_amd64.s"):
+				failures = append(failures, path+": SSE2 kernels must use _sse2_amd64.s")
 			case strings.HasSuffix(path, "_neon_arm64.s"):
 				failures = appendVectorKernelFailure(failures, path, text, neonVectorPattern)
 			}
@@ -112,6 +120,56 @@ func findSIMDVectorKernelFailures(roots ...string) []string {
 	}
 
 	return failures
+}
+
+func findSIMDCoverageFailures(roots ...string) []string {
+	coverage := make(map[string]map[string]bool)
+
+	for _, root := range roots {
+		_ = filepath.WalkDir(root, func(path string, dirEntry os.DirEntry, walkErr error) error {
+			if walkErr != nil || dirEntry.IsDir() || filepath.Ext(path) != ".s" {
+				return nil
+			}
+
+			base, isa := simdAssemblyBase(path)
+
+			if base == "" {
+				return nil
+			}
+
+			if coverage[base] == nil {
+				coverage[base] = make(map[string]bool)
+			}
+
+			coverage[base][isa] = true
+
+			return nil
+		})
+	}
+
+	var failures []string
+
+	for base, isaSet := range coverage {
+		for _, isa := range []string{"avx2_amd64", "sse2_amd64", "neon_arm64"} {
+			if !isaSet[isa] {
+				failures = append(failures, base+": missing "+isa)
+			}
+		}
+	}
+
+	return failures
+}
+
+func simdAssemblyBase(path string) (string, string) {
+	for _, isa := range []string{"avx2_amd64", "sse2_amd64", "neon_arm64"} {
+		suffix := "_" + isa + ".s"
+
+		if strings.HasSuffix(path, suffix) {
+			return strings.TrimSuffix(path, suffix), isa
+		}
+	}
+
+	return "", ""
 }
 
 func appendVectorKernelFailure(
