@@ -24,6 +24,7 @@ type ByteLevelBPE struct {
 	addPrefixSpace    bool
 	trimOffsets       bool
 	continuingSubword string
+	ignoreMerges      bool
 }
 
 type tokenPair struct {
@@ -60,6 +61,7 @@ func NewByteLevelBPE(document document) (*ByteLevelBPE, error) {
 		specialIDTokens: make(map[int]string),
 		byteToRune:      byteToRune,
 		runeToByte:      runeToByte,
+		ignoreMerges:    document.Model.IgnoreMerges,
 	}
 
 	for token, tokenID := range document.Model.Vocab {
@@ -179,6 +181,15 @@ func (tokenizer *ByteLevelBPE) encodeOrdinary(text string) ([]int, error) {
 
 	for _, preToken := range preTokens {
 		byteEncoded := tokenizer.encodeBytes(preToken)
+
+		if tokenizer.ignoreMerges {
+			if tokenID, ok := tokenizer.vocab[byteEncoded]; ok {
+				tokenIDs = append(tokenIDs, tokenID)
+
+				continue
+			}
+		}
+
 		pieces := tokenizer.applyBPE(byteEncoded)
 
 		for _, piece := range pieces {

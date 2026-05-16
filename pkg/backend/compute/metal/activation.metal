@@ -72,14 +72,20 @@ kernel void selu_forward(
 }
 
 kernel void swiglu_forward(
-    device const float* src  [[buffer(0)]],
-    device float* dst        [[buffer(1)]],
-    constant uint& n         [[buffer(2)]],
-    uint i                   [[thread_position_in_grid]])
+	device const float* src  [[buffer(0)]],
+	device float* dst        [[buffer(1)]],
+	constant uint2& shape    [[buffer(2)]],
+	uint i                   [[thread_position_in_grid]])
 {
-    if (i >= n) return;
-    float gate  = src[i];
-    float value = src[n + i];
-    float sig   = 1.0f / (1.0f + exp(-gate));
-    dst[i] = gate * sig * value;
+	uint n = shape.x;
+	uint row_width = shape.y;
+	uint output_width = row_width / 2;
+	if (i >= n) return;
+	uint row = i / output_width;
+	uint col = i - row * output_width;
+	uint gate_index = row * row_width + col;
+	float gate  = src[gate_index];
+	float value = src[gate_index + output_width];
+	float sig   = 1.0f / (1.0f + exp(-gate));
+	dst[i] = gate * sig * value;
 }

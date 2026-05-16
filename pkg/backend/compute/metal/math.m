@@ -237,6 +237,7 @@ static int dispatch_matmul_buffers(
     [enc dispatchThreads:grid threadsPerThreadgroup:tg];
     [enc endEncoding];
     commit_wait(cmdBuf);
+    [bufDims release];
 
     return 0;
 }
@@ -374,6 +375,7 @@ int metal_matmul_add_tensor(
         [enc dispatchThreads:grid threadsPerThreadgroup:tg];
         [enc endEncoding];
         commit_wait(cmdBuf);
+        [bufDims release];
 
         return 0;
     }

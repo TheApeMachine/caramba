@@ -1,4 +1,4 @@
-import { Settings } from "lucide-react";
+import { MessageSquareText, Settings } from "lucide-react";
 import { useState } from "react";
 import { Card, CardPanel } from "#/components/ui/card";
 import { AnimatePresence, Flex } from "#/components/ui/flex";
@@ -56,9 +56,9 @@ export const Body = ({
 			: "Message…";
 
 	return (
-		<Card>
-			<CardPanel>
-				<Flex className="h-full min-h-0">
+		<Card className="w-full h-full">
+			<CardPanel className="w-full h-full">
+				<Flex gap={6} className="min-h-0" fullWidth fullHeight>
 					{isFull && (
 						<Sidebar
 							sessions={sessions}
@@ -69,16 +69,20 @@ export const Body = ({
 						/>
 					)}
 
-					<Flex.Column className="flex-1 min-w-0">
+					<Flex.Column className="flex-1 min-w-0" fullWidth fullHeight>
 						{isFull && (
 							<Flex.Row
 								align="center"
 								justify="between"
 								className="px-4 py-2 border-b"
+								fullWidth
 							>
 								<Tabs value={tab} onValueChange={setTab}>
 									<Tabs.List>
-										<Tabs.Tab value="chat">Chat</Tabs.Tab>
+										<Tabs.Tab value="chat">
+											<MessageSquareText />
+											Chat
+										</Tabs.Tab>
 										<Tabs.Tab value="settings">
 											<Settings />
 											Team
@@ -94,6 +98,7 @@ export const Body = ({
 									key="chat"
 									appear="fadeUp"
 									className="flex-1 min-h-0"
+									fullHeight
 								>
 									<MessageFeed
 										messages={session.messages}

@@ -27,96 +27,248 @@ func nextByteLevelToken(text string, index int) (int, string) {
 		return index + len(contraction), contraction
 	}
 
+	if nextIndex, token, ok := nextLetterToken(text, index); ok {
+		return nextIndex, token
+	}
+
+	if nextIndex, token, ok := nextNumberToken(text, index); ok {
+		return nextIndex, token
+	}
+
+	if nextIndex, token, ok := nextPunctuationToken(text, index); ok {
+		return nextIndex, token
+	}
+
+	if nextIndex, token, ok := nextNewlineToken(text, index); ok {
+		return nextIndex, token
+	}
+
+	if nextIndex, token, ok := nextTrailingWhitespaceToken(text, index); ok {
+		return nextIndex, token
+	}
+
+	return nextWhitespaceToken(text, index)
+}
+
+func nextLetterToken(text string, index int) (int, string, bool) {
 	currentRune, width := utf8.DecodeRuneInString(text[index:])
 
-	if unicode.IsSpace(currentRune) {
-		return nextWhitespaceToken(text, index)
-	}
-
 	if unicode.IsLetter(currentRune) {
-		return consumeClass(text, index+width, index, unicode.IsLetter)
+		nextIndex := consumeLetters(text, index+width)
+
+		return nextIndex, text[index:nextIndex], true
 	}
 
-	if unicode.IsNumber(currentRune) {
-		return consumeClass(text, index+width, index, unicode.IsNumber)
+	if !isLetterPrefix(currentRune) {
+		return index, "", false
 	}
 
-	return consumePunctuation(text, index+width, index)
+	nextIndex := index + width
+
+	if nextIndex >= len(text) {
+		return index, "", false
+	}
+
+	nextRune, nextWidth := utf8.DecodeRuneInString(text[nextIndex:])
+
+	if !unicode.IsLetter(nextRune) {
+		return index, "", false
+	}
+
+	nextIndex = consumeLetters(text, nextIndex+nextWidth)
+
+	return nextIndex, text[index:nextIndex], true
+}
+
+func nextNumberToken(text string, index int) (int, string, bool) {
+	currentRune, width := utf8.DecodeRuneInString(text[index:])
+
+	if !unicode.IsNumber(currentRune) {
+		return index, "", false
+	}
+
+	nextIndex := index + width
+	count := 1
+
+	for nextIndex < len(text) && count < 3 {
+		nextRune, nextWidth := utf8.DecodeRuneInString(text[nextIndex:])
+
+		if !unicode.IsNumber(nextRune) {
+			break
+		}
+
+		nextIndex += nextWidth
+		count++
+	}
+
+	return nextIndex, text[index:nextIndex], true
+}
+
+func nextPunctuationToken(text string, index int) (int, string, bool) {
+	nextIndex := index
+
+	if text[index] == ' ' {
+		nextIndex++
+	}
+
+	if nextIndex >= len(text) {
+		return index, "", false
+	}
+
+	currentRune, width := utf8.DecodeRuneInString(text[nextIndex:])
+
+	if !isPunctuation(currentRune) {
+		return index, "", false
+	}
+
+	nextIndex += width
+
+	for nextIndex < len(text) {
+		nextRune, nextWidth := utf8.DecodeRuneInString(text[nextIndex:])
+
+		if !isPunctuation(nextRune) {
+			break
+		}
+
+		nextIndex += nextWidth
+	}
+
+	nextIndex = consumeNewlines(text, nextIndex)
+
+	return nextIndex, text[index:nextIndex], true
+}
+
+func nextNewlineToken(text string, index int) (int, string, bool) {
+	currentRune, currentWidth := utf8.DecodeRuneInString(text[index:])
+
+	if !unicode.IsSpace(currentRune) {
+		return index, "", false
+	}
+
+	nextIndex := index + currentWidth
+	lastNewlineEnd := index
+
+	if isNewline(currentRune) {
+		lastNewlineEnd = nextIndex
+	}
+
+	for nextIndex < len(text) {
+		nextRune, nextWidth := utf8.DecodeRuneInString(text[nextIndex:])
+
+		if !unicode.IsSpace(nextRune) {
+			break
+		}
+
+		nextIndex += nextWidth
+
+		if isNewline(nextRune) {
+			lastNewlineEnd = nextIndex
+		}
+	}
+
+	if lastNewlineEnd == index {
+		return index, "", false
+	}
+
+	return lastNewlineEnd, text[index:lastNewlineEnd], true
+}
+
+func nextTrailingWhitespaceToken(text string, index int) (int, string, bool) {
+	currentRune, currentWidth := utf8.DecodeRuneInString(text[index:])
+
+	if !unicode.IsSpace(currentRune) {
+		return index, "", false
+	}
+
+	nextIndex := index + currentWidth
+	lastSpaceStart := index
+
+	for nextIndex < len(text) {
+		nextRune, nextWidth := utf8.DecodeRuneInString(text[nextIndex:])
+
+		if !unicode.IsSpace(nextRune) {
+			break
+		}
+
+		lastSpaceStart = nextIndex
+		nextIndex += nextWidth
+	}
+
+	if nextIndex >= len(text) {
+		return nextIndex, text[index:nextIndex], true
+	}
+
+	if lastSpaceStart > index {
+		return lastSpaceStart, text[index:lastSpaceStart], true
+	}
+
+	return index, "", false
 }
 
 func nextWhitespaceToken(text string, index int) (int, string) {
-	spaceStart := index
-	lastSpaceStart := index
+	nextIndex := index
 
-	for index < len(text) {
-		currentRune, width := utf8.DecodeRuneInString(text[index:])
+	for nextIndex < len(text) {
+		currentRune, width := utf8.DecodeRuneInString(text[nextIndex:])
 
 		if !unicode.IsSpace(currentRune) {
 			break
 		}
 
-		lastSpaceStart = index
-		index += width
+		nextIndex += width
 	}
 
-	if index >= len(text) {
-		return index, text[spaceStart:index]
-	}
-
-	if spaceStart < lastSpaceStart {
-		return lastSpaceStart, text[spaceStart:lastSpaceStart]
+	if nextIndex > index {
+		return nextIndex, text[index:nextIndex]
 	}
 
 	currentRune, width := utf8.DecodeRuneInString(text[index:])
 
-	if unicode.IsLetter(currentRune) {
-		return consumeClass(text, index+width, lastSpaceStart, unicode.IsLetter)
-	}
-
-	if unicode.IsNumber(currentRune) {
-		return consumeClass(text, index+width, lastSpaceStart, unicode.IsNumber)
-	}
-
-	return consumePunctuation(text, index+width, lastSpaceStart)
+	return index + width, string(currentRune)
 }
 
-func consumeClass(
-	text string,
-	index int,
-	start int,
-	predicate func(rune) bool,
-) (int, string) {
+func consumeLetters(text string, index int) int {
 	for index < len(text) {
 		currentRune, width := utf8.DecodeRuneInString(text[index:])
 
-		if !predicate(currentRune) {
+		if !unicode.IsLetter(currentRune) {
 			break
 		}
 
 		index += width
 	}
 
-	return index, text[start:index]
+	return index
 }
 
-func consumePunctuation(text string, index int, start int) (int, string) {
+func consumeNewlines(text string, index int) int {
 	for index < len(text) {
 		currentRune, width := utf8.DecodeRuneInString(text[index:])
 
-		if unicode.IsSpace(currentRune) ||
-			unicode.IsLetter(currentRune) ||
-			unicode.IsNumber(currentRune) {
-			break
-		}
-
-		if _, ok := nextContraction(text, index); ok {
+		if !isNewline(currentRune) {
 			break
 		}
 
 		index += width
 	}
 
-	return index, text[start:index]
+	return index
+}
+
+func isLetterPrefix(value rune) bool {
+	return !isNewline(value) &&
+		!unicode.IsLetter(value) &&
+		!unicode.IsNumber(value)
+}
+
+func isPunctuation(value rune) bool {
+	return !unicode.IsSpace(value) &&
+		!unicode.IsLetter(value) &&
+		!unicode.IsNumber(value)
+}
+
+func isNewline(value rune) bool {
+	return value == '\n' || value == '\r'
 }
 
 func nextContraction(text string, index int) (string, bool) {

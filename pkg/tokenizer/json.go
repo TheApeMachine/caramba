@@ -17,9 +17,10 @@ type document struct {
 }
 
 type modelDocument struct {
-	Type   string          `json:"type"`
-	Vocab  map[string]int  `json:"vocab"`
-	Merges json.RawMessage `json:"merges"`
+	Type         string          `json:"type"`
+	Vocab        map[string]int  `json:"vocab"`
+	Merges       json.RawMessage `json:"merges"`
+	IgnoreMerges bool            `json:"ignore_merges"`
 }
 
 type addedToken struct {

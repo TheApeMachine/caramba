@@ -83,7 +83,7 @@ export function Assistant() {
 		>
 			<CardFrame
 				className={cn(
-					"flex-1 min-h-0 shadow-2xl",
+					"w-full flex-1 min-h-0 shadow-2xl",
 					isClosed && "bg-primary text-primary-foreground",
 				)}
 			>

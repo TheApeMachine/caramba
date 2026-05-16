@@ -37,6 +37,16 @@ system:
       top_k: 50
       top_p: 0.95
       seed: 0
+      prompt_template: |+
+        <|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+        Cutting Knowledge Date: December 2023
+        Today Date: 26 Jul 2024
+
+        <|eot_id|><|start_header_id|>user<|end_header_id|>
+
+        {{prompt}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
       stop_tokens: []
       stop_special_tokens: true
 
@@ -136,6 +146,12 @@ system:
             config:
               base: 500000.0
               head_dim: 64
+              mode: half
+              rope_type: llama3
+              rope_factor: 32.0
+              rope_low_freq_factor: 1.0
+              rope_high_freq_factor: 4.0
+              rope_original_context: 8192
 
           - id: rope_k_${i}
             op: positional.rope
@@ -146,6 +162,12 @@ system:
             config:
               base: 500000.0
               head_dim: 64
+              mode: half
+              rope_type: llama3
+              rope_factor: 32.0
+              rope_low_freq_factor: 1.0
+              rope_high_freq_factor: 4.0
+              rope_original_context: 8192
 
           - id: attn_${i}
             op: attention.gqa

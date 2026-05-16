@@ -36,6 +36,30 @@ func TestByteLevelBPE_Encode(test *testing.T) {
 			So(err, ShouldBeNil)
 			So(tokenIDs, ShouldResemble, []int{4, 8})
 		})
+
+		Convey("It should group newline runs before following text", func() {
+			tokenIDs, err := tokenizer.Encode("\n\nhello")
+
+			So(err, ShouldBeNil)
+			So(tokenIDs, ShouldResemble, []int{13, 7})
+		})
+	})
+}
+
+func TestByteLevelBPE_EncodeIgnoreMerges(test *testing.T) {
+	Convey("Given a byte-level BPE tokenizer that checks vocab before merges", test, func() {
+		artifact, err := Parse(ignoreMergesTokenizerJSON())
+
+		So(err, ShouldBeNil)
+
+		tokenizer := artifact.Tokenizer
+
+		Convey("It should emit the full pre-token when it already exists in vocab", func() {
+			tokenIDs, err := tokenizer.Encode("cat")
+
+			So(err, ShouldBeNil)
+			So(tokenIDs, ShouldResemble, []int{3})
+		})
 	})
 }
 
@@ -79,7 +103,7 @@ func TestRead(test *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(artifact.Backend, ShouldEqual, "bytelevel_bpe")
-			So(artifact.Tokenizer.VocabSize(), ShouldEqual, 12)
+			So(artifact.Tokenizer.VocabSize(), ShouldEqual, 14)
 		})
 	})
 }
@@ -93,6 +117,18 @@ func BenchmarkByteLevelBPE_Encode(benchmark *testing.B) {
 
 	for benchmark.Loop() {
 		_, _ = artifact.Tokenizer.Encode("hello hello!")
+	}
+}
+
+func BenchmarkByteLevelBPE_EncodeIgnoreMerges(benchmark *testing.B) {
+	artifact, err := Parse(ignoreMergesTokenizerJSON())
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	for benchmark.Loop() {
+		_, _ = artifact.Tokenizer.Encode("cat")
 	}
 }
 
@@ -119,14 +155,17 @@ func testTokenizerJSON() []byte {
       "Ġhello": 8,
       "!": 9,
       "<|endoftext|>": 10,
-      "hell": 11
+      "hell": 11,
+      "Ċ": 12,
+      "ĊĊ": 13
     },
     "merges": [
       "h e",
       "he l",
       "hel l",
       "hell o",
-      "Ġ hello"
+      "Ġ hello",
+      "Ċ Ċ"
     ]
   },
   "decoder": {
@@ -143,5 +182,35 @@ func testTokenizerJSON() []byte {
       "special": true
     }
   ]
+}`)
+}
+
+func ignoreMergesTokenizerJSON() []byte {
+	return []byte(`{
+  "version": "1.0",
+  "normalizer": null,
+  "pre_tokenizer": {
+    "type": "ByteLevel",
+    "add_prefix_space": false,
+    "trim_offsets": true
+  },
+  "model": {
+    "type": "BPE",
+    "ignore_merges": true,
+    "vocab": {
+      "c": 0,
+      "a": 1,
+      "t": 2,
+      "cat": 3,
+      "ca": 4
+    },
+    "merges": [
+      "c a"
+    ]
+  },
+  "decoder": {
+    "type": "ByteLevel"
+  },
+  "added_tokens": []
 }`)
 }

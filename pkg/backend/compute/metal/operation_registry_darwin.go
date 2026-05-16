@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/theapemachine/caramba/pkg/backend/compute/rotary"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
@@ -1319,8 +1320,17 @@ func (rope *RoPE) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
-	output, err := rope.positional.RoPEForward(
-		defaultFloat(stateDict.Base, 10000),
+	output, err := rope.positional.RoPEForwardAtModeConfig(
+		rotary.Config{
+			Base:                          defaultFloat(stateDict.Base, 10000),
+			Type:                          stateDict.RoPEType,
+			Factor:                        stateDict.RoPEFactor,
+			LowFreqFactor:                 stateDict.RoPELowFreqFactor,
+			HighFreqFactor:                stateDict.RoPEHighFreqFactor,
+			OriginalMaxPositionEmbeddings: stateDict.RoPEOriginalContext,
+		},
+		stateDict.PositionStart,
+		stateDict.Mode,
 		[]int{batch, numHeads, sequenceLength, headDim},
 		stateDict.Inputs...,
 	)

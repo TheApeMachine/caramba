@@ -1,6 +1,7 @@
 package attention
 
 import (
+	"math"
 	"testing"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/kv"
@@ -94,6 +95,38 @@ func TestGQA(test *testing.T) {
 			sdpaHeadCausal(expected[2:4], query[2:4], cachedKey, cachedValue, 1, 2, 2)
 			So(outputState.Out, ShouldResemble, expected)
 		})
+
+		Convey("It should match scalar reference for Llama-sized head dimensions", func() {
+			batch, heads, kvHeads, seqLen, headDim := 1, 32, 8, 4, 64
+			query := deterministicAttentionValues(batch*heads*seqLen*headDim, 17)
+			key := deterministicAttentionValues(batch*kvHeads*seqLen*headDim, 13)
+			value := deterministicAttentionValues(batch*kvHeads*seqLen*headDim, 11)
+			dict := state.NewDict().
+				WithShape([]int{batch, heads, seqLen, headDim}).
+				WithInputs(query, key, value)
+			dict.NumKVHeads = kvHeads
+			dict.HeadDim = headDim
+			dict.Causal = true
+
+			outputState, err := operation.Forward(dict)
+
+			So(err, ShouldBeNil)
+
+			expected := scalarGQAReference(
+				query,
+				key,
+				value,
+				batch,
+				heads,
+				kvHeads,
+				seqLen,
+				headDim,
+				true,
+			)
+			for index := range expected {
+				So(math.Abs(outputState.Out[index]-expected[index]), ShouldBeLessThan, 1e-9)
+			}
+		})
 	})
 }
 
@@ -123,4 +156,83 @@ func BenchmarkGQA_Forward(benchmark *testing.B) {
 
 		_, _ = operation.Forward(dict)
 	}
+}
+
+func deterministicAttentionValues(length int, period int) []float64 {
+	values := make([]float64, length)
+
+	for index := range values {
+		values[index] = float64(index%period-period/2) / float64(period)
+	}
+
+	return values
+}
+
+func scalarGQAReference(
+	query, key, value []float64,
+	batch int,
+	numHeads int,
+	numKVHeads int,
+	seqLen int,
+	headDim int,
+	causal bool,
+) []float64 {
+	output := make([]float64, len(query))
+	groupSize := numHeads / numKVHeads
+	scale := 1 / math.Sqrt(float64(headDim))
+
+	for batchIndex := range batch {
+		for headIndex := range numHeads {
+			kvHead := headIndex / groupSize
+			for queryIndex := range seqLen {
+				queryOffset := ((batchIndex*numHeads+headIndex)*seqLen + queryIndex) * headDim
+				keyOffset := ((batchIndex*numKVHeads + kvHead) * seqLen) * headDim
+				visible := seqLen
+
+				if causal {
+					visible = queryIndex + 1
+				}
+
+				scores := make([]float64, visible)
+				maxScore := math.Inf(-1)
+
+				for keyIndex := range visible {
+					score := 0.0
+
+					for dimIndex := range headDim {
+						score += query[queryOffset+dimIndex] *
+							key[keyOffset+keyIndex*headDim+dimIndex]
+					}
+
+					score *= scale
+					scores[keyIndex] = score
+
+					if score > maxScore {
+						maxScore = score
+					}
+				}
+
+				sum := 0.0
+
+				for scoreIndex, score := range scores {
+					weight := math.Exp(score - maxScore)
+					scores[scoreIndex] = weight
+					sum += weight
+				}
+
+				outputOffset := queryOffset
+
+				for keyIndex, score := range scores {
+					weight := score / sum
+
+					for dimIndex := range headDim {
+						output[outputOffset+dimIndex] += weight *
+							value[keyOffset+keyIndex*headDim+dimIndex]
+					}
+				}
+			}
+		}
+	}
+
+	return output
 }

@@ -156,7 +156,7 @@ func (binder *Binder) linearWeight(name string, inFeatures, outFeatures int) ([]
 			return nil, err
 		}
 
-		return orientLinearWeight(values, info.Shape, inFeatures, outFeatures)
+		return orientLinearWeight(name, values, info.Shape, inFeatures, outFeatures)
 	})
 }
 
@@ -405,7 +405,11 @@ func splitLayerNode(nodeID string) (string, string, bool) {
 }
 
 func orientLinearWeight(
-	values []float64, shape []int, inFeatures, outFeatures int,
+	name string,
+	values []float64,
+	shape []int,
+	inFeatures,
+	outFeatures int,
 ) ([]float64, error) {
 	if len(values) != inFeatures*outFeatures {
 		return nil, fmt.Errorf(
@@ -416,6 +420,19 @@ func orientLinearWeight(
 
 	if len(shape) != 2 {
 		return values, nil
+	}
+
+	if torchLinearWeight(name) {
+		if shape[0] != outFeatures || shape[1] != inFeatures {
+			return nil, fmt.Errorf(
+				"weight shape %v does not match torch linear [%d %d]",
+				shape,
+				outFeatures,
+				inFeatures,
+			)
+		}
+
+		return transpose(values, outFeatures, inFeatures), nil
 	}
 
 	switch {
@@ -429,6 +446,14 @@ func orientLinearWeight(
 			shape, inFeatures, outFeatures, outFeatures, inFeatures,
 		)
 	}
+}
+
+func torchLinearWeight(name string) bool {
+	if name == "lm_head.weight" || name == "model.embed_tokens.weight" {
+		return true
+	}
+
+	return strings.HasPrefix(name, "model.layers.")
 }
 
 func slicePackedLinear(

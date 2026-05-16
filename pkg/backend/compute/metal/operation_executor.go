@@ -12,6 +12,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/kv"
+	"github.com/theapemachine/caramba/pkg/backend/compute/rotary"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -875,10 +876,23 @@ func (tensorBackend *TensorBackend) applyRoPE(
 		return nil, err
 	}
 
-	return positionalOps.RoPETensor(
+	return positionalOps.RoPETensorModeConfig(
 		inputs[0],
 		outputShape,
-		floatConfig(node, "base", 10000),
+		rotary.Config{
+			Base:           floatConfig(node, "base", 10000),
+			Type:           stringConfig(node, "rope_type", ""),
+			Factor:         floatConfig(node, "rope_factor", 0),
+			LowFreqFactor:  floatConfig(node, "rope_low_freq_factor", 0),
+			HighFreqFactor: floatConfig(node, "rope_high_freq_factor", 0),
+			OriginalMaxPositionEmbeddings: intConfig(
+				node,
+				"rope_original_context",
+				0,
+			),
+		},
+		intConfig(node, "position_start", 0),
+		stringConfig(node, "mode", ""),
 		inputShape[0],
 		inputShape[1],
 		inputShape[2],
@@ -1298,6 +1312,22 @@ func intConfig(node executor.NodeSpec, key string, fallback int) int {
 	default:
 		return fallback
 	}
+}
+
+func stringConfig(node executor.NodeSpec, key string, fallback string) string {
+	value, ok := node.Metadata[key]
+
+	if !ok {
+		return fallback
+	}
+
+	typed, ok := value.(string)
+
+	if !ok {
+		return fallback
+	}
+
+	return typed
 }
 
 func floatConfig(node executor.NodeSpec, key string, fallback float64) float64 {

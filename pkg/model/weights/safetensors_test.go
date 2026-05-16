@@ -118,6 +118,11 @@ func TestBindIR(test *testing.T) {
 				values: []float64{13, 14, 15, 16, 17, 18},
 			},
 			{
+				name:   "h.0.attn.c_proj.weight",
+				shape:  []int{2, 2},
+				values: []float64{25, 26, 27, 28},
+			},
+			{
 				name:   "wte.weight",
 				shape:  []int{3, 2},
 				values: []float64{19, 20, 21, 22, 23, 24},
@@ -138,12 +143,17 @@ func TestBindIR(test *testing.T) {
 		qProjection.SetOperationID("projection.linear")
 		qProjection.SetMetadata("in_features", 2)
 		qProjection.SetMetadata("out_features", 2)
+		attentionProjection := ir.NewNode("attention_projection_0", ir.OpType("projection.linear"), shape)
+		attentionProjection.SetOperationID("projection.linear")
+		attentionProjection.SetMetadata("in_features", 2)
+		attentionProjection.SetMetadata("out_features", 2)
 		lmHead := ir.NewNode("lm_head", ir.OpType("projection.linear"), shape)
 		lmHead.SetOperationID("projection.linear")
 		lmHead.SetMetadata("in_features", 2)
 		lmHead.SetMetadata("out_features", 3)
 		graph.AddNode(layerNorm)
 		graph.AddNode(qProjection)
+		graph.AddNode(attentionProjection)
 		graph.AddNode(lmHead)
 
 		Convey("It should bind compact GPT-2 aliases", func() {
@@ -154,6 +164,7 @@ func TestBindIR(test *testing.T) {
 			So(layerNorm.Metadata()["bias"], ShouldResemble, []float64{3, 4})
 			So(qProjection.Metadata()["weight"], ShouldResemble, []float64{1, 2, 7, 8})
 			So(qProjection.Metadata()["bias"], ShouldResemble, []float64{13, 14})
+			So(attentionProjection.Metadata()["weight"], ShouldResemble, []float64{25, 26, 27, 28})
 			So(lmHead.Metadata()["weight"], ShouldResemble, []float64{19, 21, 23, 20, 22, 24})
 		})
 
@@ -170,6 +181,60 @@ func TestBindIR(test *testing.T) {
 
 			So(&qWeight[0] == &qWeightAgain[0], ShouldBeTrue)
 			So(&lmHeadWeight[0] == &lmHeadWeightAgain[0], ShouldBeTrue)
+		})
+	})
+
+	Convey("Given Llama PyTorch linear safetensors names", test, func() {
+		path := filepath.Join(test.TempDir(), "model.safetensors")
+		err := writeTestSafeTensors(path, []testTensor{
+			{
+				name:   "model.layers.0.self_attn.q_proj.weight",
+				shape:  []int{2, 2},
+				values: []float64{1, 2, 3, 4},
+			},
+			{
+				name:   "model.layers.0.self_attn.o_proj.weight",
+				shape:  []int{2, 2},
+				values: []float64{5, 6, 7, 8},
+			},
+			{
+				name:   "lm_head.weight",
+				shape:  []int{2, 2},
+				values: []float64{9, 10, 11, 12},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		store, err := Open(path)
+		So(err, ShouldBeNil)
+
+		shape, err := tensor.NewShape([]int{1, 1, 2})
+		So(err, ShouldBeNil)
+
+		graph := ir.NewGraph()
+		qProjection := ir.NewNode("q_proj_0", ir.OpType("projection.linear"), shape)
+		qProjection.SetOperationID("projection.linear")
+		qProjection.SetMetadata("in_features", 2)
+		qProjection.SetMetadata("out_features", 2)
+		oProjection := ir.NewNode("o_proj_0", ir.OpType("projection.linear"), shape)
+		oProjection.SetOperationID("projection.linear")
+		oProjection.SetMetadata("in_features", 2)
+		oProjection.SetMetadata("out_features", 2)
+		lmHead := ir.NewNode("lm_head", ir.OpType("projection.linear"), shape)
+		lmHead.SetOperationID("projection.linear")
+		lmHead.SetMetadata("in_features", 2)
+		lmHead.SetMetadata("out_features", 2)
+		graph.AddNode(qProjection)
+		graph.AddNode(oProjection)
+		graph.AddNode(lmHead)
+
+		Convey("It should transpose square PyTorch Linear tensors by name", func() {
+			err := BindIR(graph, store)
+			So(err, ShouldBeNil)
+
+			So(qProjection.Metadata()["weight"], ShouldResemble, []float64{1, 3, 2, 4})
+			So(oProjection.Metadata()["weight"], ShouldResemble, []float64{5, 7, 6, 8})
+			So(lmHead.Metadata()["weight"], ShouldResemble, []float64{9, 11, 10, 12})
 		})
 	})
 }

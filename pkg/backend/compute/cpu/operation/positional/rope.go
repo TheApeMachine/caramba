@@ -3,7 +3,9 @@ package positional
 import (
 	"fmt"
 	"math"
+	"strings"
 
+	"github.com/theapemachine/caramba/pkg/backend/compute/rotary"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
@@ -25,6 +27,11 @@ SIMD AVX2/SSE2/NEON kernel advances all numPairs angles per t in lockstep.
 */
 type RoPE struct{}
 
+const (
+	ropeModeAdjacent = "adjacent"
+	ropeModeHalf     = "half"
+)
+
 /*
 NewRoPE instantiates a stateless RoPE operation.
 */
@@ -32,32 +39,37 @@ func NewRoPE(args ...any) *RoPE {
 	return &RoPE{}
 }
 
-func buildRoPETables(base float64, headDim, seqLen int) (cosTable, sinTable []float64) {
-	if base == 0 {
-		base = 10000.0
-	}
-
+func buildRoPETables(
+	config rotary.Config,
+	headDim int,
+	seqLen int,
+	positionStart int,
+) (cosTable, sinTable []float64, err error) {
 	numPairs := headDim / 2
 	n := seqLen * numPairs
 	cosTable = make([]float64, n)
 	sinTable = make([]float64, n)
 
 	if seqLen == 0 || numPairs == 0 {
-		return
+		return cosTable, sinTable, nil
+	}
+
+	frequencies, err := config.InverseFrequencies(headDim)
+
+	if err != nil {
+		return nil, nil, err
 	}
 
 	cosStep := make([]float64, numPairs)
 	sinStep := make([]float64, numPairs)
 
 	for i := 0; i < numPairs; i++ {
-		theta := 1.0 / math.Pow(base, float64(2*i)/float64(headDim))
+		theta := frequencies[i]
 		cosStep[i] = math.Cos(theta)
 		sinStep[i] = math.Sin(theta)
-	}
-
-	for i := 0; i < numPairs; i++ {
-		cosTable[i] = 1.0
-		sinTable[i] = 0.0
+		angle := float64(positionStart) * theta
+		cosTable[i] = math.Cos(angle)
+		sinTable[i] = math.Sin(angle)
 	}
 
 	cosCur := make([]float64, numPairs)
@@ -72,6 +84,17 @@ func buildRoPETables(base float64, headDim, seqLen int) (cosTable, sinTable []fl
 	}
 
 	return
+}
+
+func ropeMode(mode string) (string, error) {
+	switch strings.ToLower(mode) {
+	case "", ropeModeAdjacent:
+		return ropeModeAdjacent, nil
+	case ropeModeHalf:
+		return ropeModeHalf, nil
+	default:
+		return "", fmt.Errorf("positional.rope: unsupported mode %q", mode)
+	}
 }
 
 func (rope *RoPE) Forward(stateDict *state.Dict) (*state.Dict, error) {
@@ -93,7 +116,39 @@ func (rope *RoPE) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	}
 
 	numPairs := headDim / 2
-	cosTable, sinTable := buildRoPETables(stateDict.Base, headDim, seqLen)
+	cosTable, sinTable, err := buildRoPETables(
+		rotary.Config{
+			Base:                          stateDict.Base,
+			Type:                          stateDict.RoPEType,
+			Factor:                        stateDict.RoPEFactor,
+			LowFreqFactor:                 stateDict.RoPELowFreqFactor,
+			HighFreqFactor:                stateDict.RoPEHighFreqFactor,
+			OriginalMaxPositionEmbeddings: stateDict.RoPEOriginalContext,
+		},
+		headDim,
+		seqLen,
+		stateDict.PositionStart,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	mode, err := ropeMode(stateDict.Mode)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if mode == ropeModeHalf {
+		ropeKernelHalf(
+			stateDict.Out, stateDict.Inputs[0], cosTable, sinTable,
+			batch, numHeads, seqLen, numPairs,
+		)
+
+		return stateDict, nil
+	}
+
 	ropeKernel(
 		stateDict.Out, stateDict.Inputs[0], cosTable, sinTable,
 		batch, numHeads, seqLen, numPairs,

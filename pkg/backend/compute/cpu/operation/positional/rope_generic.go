@@ -39,3 +39,32 @@ func ropeKernel(
 		}
 	}
 }
+
+func ropeKernelHalf(
+	dst, src, cosTable, sinTable []float64,
+	batch, numHeads, seqLen, numPairs int,
+) {
+	headDim := numPairs * 2
+
+	for batchIndex := range batch {
+		for headIndex := range numHeads {
+			for tokenIndex := range seqLen {
+				offset := ((batchIndex*numHeads+headIndex)*seqLen + tokenIndex) * headDim
+				cosOffset := tokenIndex * numPairs
+
+				for pairIndex := range numPairs {
+					firstOffset := offset + pairIndex
+					secondOffset := firstOffset + numPairs
+					tableOffset := cosOffset + pairIndex
+					x0 := src[firstOffset]
+					x1 := src[secondOffset]
+					cosValue := cosTable[tableOffset]
+					sinValue := sinTable[tableOffset]
+
+					dst[firstOffset] = x0*cosValue - x1*sinValue
+					dst[secondOffset] = x0*sinValue + x1*cosValue
+				}
+			}
+		}
+	}
+}

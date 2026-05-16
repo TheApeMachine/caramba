@@ -47,6 +47,7 @@ type ModelConfig struct {
 	TopK              int
 	TopP              float64
 	Seed              int64
+	PromptTemplate    string
 	StopTokens        []string
 	StopSpecialTokens bool
 }
@@ -64,6 +65,7 @@ type ModelGenerator struct {
 	model     string
 	maxTokens int
 	policy    generationPolicy
+	prompt    promptTemplate
 }
 
 /*
@@ -108,6 +110,16 @@ func NewModelGenerator(ctx context.Context, config ModelConfig) (*ModelGenerator
 		return nil, telemetry.Error(
 			"generation.validate",
 			"failed to validate generation policy",
+			err,
+		)
+	}
+
+	promptTemplate, err := newPromptTemplate(config.PromptTemplate)
+
+	if err != nil {
+		return nil, telemetry.Error(
+			"generation.prompt_template",
+			"failed to build prompt template",
 			err,
 		)
 	}
@@ -239,6 +251,7 @@ func NewModelGenerator(ctx context.Context, config ModelConfig) (*ModelGenerator
 		model:     config.Model,
 		maxTokens: config.MaxNewTokens,
 		policy:    policy,
+		prompt:    promptTemplate,
 	}, nil
 }
 
@@ -338,7 +351,8 @@ func (generator *ModelGenerator) Generate(
 		return fmt.Errorf("chat.model: generator is not initialized")
 	}
 
-	tokenIDs, err := generator.tokenizer.Encode(prompt)
+	formattedPrompt := generator.prompt.Apply(prompt)
+	tokenIDs, err := generator.tokenizer.Encode(formattedPrompt)
 
 	if err != nil {
 		return err
@@ -510,6 +524,7 @@ func (generator *ModelGenerator) lower(tokenIDs []int, positionStart int) (*ir.G
 	}
 
 	generator.bindKVCache(irGraph)
+	bindRoPEPositionStart(irGraph, positionStart)
 	positionNode := index.Node("position_ids")
 
 	if positionNode == nil {
@@ -519,6 +534,16 @@ func (generator *ModelGenerator) lower(tokenIDs []int, positionStart int) (*ir.G
 	positionNode.SetMetadata("values", positionValues(positionStart, len(tokenIDs)))
 
 	return irGraph, nil
+}
+
+func bindRoPEPositionStart(irGraph *ir.Graph, positionStart int) {
+	for _, node := range irGraph.Nodes() {
+		if string(node.OperationID()) != "positional.rope" {
+			continue
+		}
+
+		node.SetMetadata("position_start", positionStart)
+	}
 }
 
 func (generator *ModelGenerator) bindKVCache(irGraph *ir.Graph) {

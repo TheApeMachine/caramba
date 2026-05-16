@@ -283,7 +283,19 @@ func (metalActivation *MetalActivation) SwiGLUTensor(
 		return output, nil
 	}
 
-	rc := C.metal_swiglu_tensor(metalInput.buffer, output.buffer, C.int(outputShape.Len()))
+	inputDims := metalInput.shape.Dims()
+	inputWidth := metalInput.Len()
+
+	if len(inputDims) > 0 {
+		inputWidth = inputDims[len(inputDims)-1]
+	}
+
+	rc := C.metal_swiglu_tensor(
+		metalInput.buffer,
+		output.buffer,
+		C.int(outputShape.Len()),
+		C.int(inputWidth),
+	)
 
 	if rc != 0 {
 		_ = output.Close()

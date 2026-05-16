@@ -7,6 +7,7 @@ import (
 
 	cpuattention "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/attention"
 	cpupositional "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/positional"
+	"github.com/theapemachine/caramba/pkg/backend/compute/rotary"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -28,6 +29,70 @@ func TestMetalPositional_RoPEForward(test *testing.T) {
 			So(err, ShouldBeNil)
 
 			actual, err := positionalOps.RoPEForward(10000, shape, input)
+
+			So(err, ShouldBeNil)
+			assertAlmostEqualSlice(actual, expectedState.Out, 1e-4)
+		})
+
+		Convey("It should match CPU RoPE with an absolute position offset", func() {
+			input := positionalSequence(1 * 2 * 1 * 4)
+			shape := []int{1, 2, 1, 4}
+			expectedDict := state.NewDict().WithShape(shape).WithInput(input)
+			expectedDict.PositionStart = 5
+			expectedState, err := cpupositional.NewRoPE().Forward(expectedDict)
+			So(err, ShouldBeNil)
+
+			actual, err := positionalOps.RoPEForwardAt(10000, 5, shape, input)
+
+			So(err, ShouldBeNil)
+			assertAlmostEqualSlice(actual, expectedState.Out, 1e-4)
+		})
+
+		Convey("It should match CPU RoPE with split-half pair layout", func() {
+			input := positionalSequence(1 * 2 * 2 * 4)
+			shape := []int{1, 2, 2, 4}
+			expectedDict := state.NewDict().WithShape(shape).WithInput(input)
+			expectedDict.Mode = "half"
+			expectedDict.PositionStart = 3
+			expectedState, err := cpupositional.NewRoPE().Forward(expectedDict)
+			So(err, ShouldBeNil)
+
+			actual, err := positionalOps.RoPEForwardAtMode(10000, 3, "half", shape, input)
+
+			So(err, ShouldBeNil)
+			assertAlmostEqualSlice(actual, expectedState.Out, 1e-4)
+		})
+
+		Convey("It should match CPU RoPE with Llama 3 frequency scaling", func() {
+			input := positionalSequence(1 * 2 * 2 * 4)
+			shape := []int{1, 2, 2, 4}
+			config := rotary.Config{
+				Base:                          1e8,
+				Type:                          rotary.TypeLlama3,
+				Factor:                        2,
+				LowFreqFactor:                 1,
+				HighFreqFactor:                4,
+				OriginalMaxPositionEmbeddings: 8192,
+			}
+			expectedDict := state.NewDict().WithShape(shape).WithInput(input)
+			expectedDict.Mode = "half"
+			expectedDict.PositionStart = 3
+			expectedDict.Base = config.Base
+			expectedDict.RoPEType = config.Type
+			expectedDict.RoPEFactor = config.Factor
+			expectedDict.RoPELowFreqFactor = config.LowFreqFactor
+			expectedDict.RoPEHighFreqFactor = config.HighFreqFactor
+			expectedDict.RoPEOriginalContext = config.OriginalMaxPositionEmbeddings
+			expectedState, err := cpupositional.NewRoPE().Forward(expectedDict)
+			So(err, ShouldBeNil)
+
+			actual, err := positionalOps.RoPEForwardAtModeConfig(
+				config,
+				3,
+				"half",
+				shape,
+				input,
+			)
 
 			So(err, ShouldBeNil)
 			assertAlmostEqualSlice(actual, expectedState.Out, 1e-4)

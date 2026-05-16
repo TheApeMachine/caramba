@@ -66,6 +66,86 @@ func TestRoPE(t *testing.T) {
 				So(same, ShouldBeFalse)
 			})
 
+			Convey("It should honor absolute decode position offsets", func() {
+				in := []float64{1, 1, 1, 1}
+				baseState := state.NewDict().
+					WithShape([]int{1, 1, 1, 4}).
+					WithInput(in)
+				offsetState := state.NewDict().
+					WithShape([]int{1, 1, 1, 4}).
+					WithInput(in)
+				offsetState.PositionStart = 3
+
+				baseOutput, err := op.Forward(baseState)
+				So(err, ShouldBeNil)
+				offsetOutput, err := op.Forward(offsetState)
+				So(err, ShouldBeNil)
+
+				So(offsetOutput.Out, ShouldNotResemble, baseOutput.Out)
+			})
+
+			Convey("It should rotate split-half RoPE pairs when configured", func() {
+				input := []float64{1, 2, 3, 4}
+				operationState := state.NewDict().
+					WithShape([]int{1, 1, 1, 4}).
+					WithInput(input)
+				operationState.Mode = "half"
+				operationState.PositionStart = 1
+
+				outputState, err := op.Forward(operationState)
+
+				So(err, ShouldBeNil)
+
+				cos0 := math.Cos(1)
+				sin0 := math.Sin(1)
+				cos1 := math.Cos(0.01)
+				sin1 := math.Sin(0.01)
+				expected := []float64{
+					1*cos0 - 3*sin0,
+					2*cos1 - 4*sin1,
+					1*sin0 + 3*cos0,
+					2*sin1 + 4*cos1,
+				}
+
+				for index := range expected {
+					So(math.Abs(outputState.Out[index]-expected[index]), ShouldBeLessThan, 1e-9)
+				}
+			})
+
+			Convey("It should apply Llama 3 scaled split-half frequencies", func() {
+				input := []float64{1, 2, 3, 4}
+				operationState := state.NewDict().
+					WithShape([]int{1, 1, 1, 4}).
+					WithInput(input)
+				operationState.Mode = "half"
+				operationState.PositionStart = 1
+				operationState.Base = 1e8
+				operationState.RoPEType = "llama3"
+				operationState.RoPEFactor = 2
+				operationState.RoPELowFreqFactor = 1
+				operationState.RoPEHighFreqFactor = 4
+				operationState.RoPEOriginalContext = 8192
+
+				outputState, err := op.Forward(operationState)
+
+				So(err, ShouldBeNil)
+
+				cos0 := math.Cos(1)
+				sin0 := math.Sin(1)
+				cos1 := math.Cos(0.00005)
+				sin1 := math.Sin(0.00005)
+				expected := []float64{
+					1*cos0 - 3*sin0,
+					2*cos1 - 4*sin1,
+					1*sin0 + 3*cos0,
+					2*sin1 + 4*cos1,
+				}
+
+				for index := range expected {
+					So(math.Abs(outputState.Out[index]-expected[index]), ShouldBeLessThan, 1e-9)
+				}
+			})
+
 			Convey("It should reject projection tensors before head shaping", func() {
 				_, err := op.Forward(
 					state.NewDict().

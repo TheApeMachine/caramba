@@ -217,6 +217,14 @@ func applyManifestGeneration(
 		config.Seed = value
 	}
 
+	if value, ok, err := optionalRawString(generationBlock, "prompt_template"); ok || err != nil {
+		if err != nil {
+			return err
+		}
+
+		config.PromptTemplate = value
+	}
+
 	if value, ok, err := optionalStrings(generationBlock, "stop_tokens"); ok || err != nil {
 		if err != nil {
 			return err
@@ -396,6 +404,29 @@ func optionalString(
 	}
 
 	return strings.TrimSpace(text), true, nil
+}
+
+func optionalRawString(
+	mapping map[string]any,
+	keys ...string,
+) (string, bool, error) {
+	value, ok := firstValue(mapping, keys...)
+
+	if !ok || value == nil {
+		return "", false, nil
+	}
+
+	text, ok := value.(string)
+
+	if !ok {
+		return "", false, fmt.Errorf(
+			"chat.model: manifest key %q must be a string, got %T",
+			keys[0],
+			value,
+		)
+	}
+
+	return text, true, nil
 }
 
 func optionalStrings(

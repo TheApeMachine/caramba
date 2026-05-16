@@ -9,8 +9,10 @@ import "C"
 import (
 	"fmt"
 	"math"
+	"strings"
 	"unsafe"
 
+	"github.com/theapemachine/caramba/pkg/backend/compute/rotary"
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -18,6 +20,11 @@ import (
 type MetalPositional struct {
 	metallib string
 }
+
+const (
+	metalRoPEModeAdjacent = 0
+	metalRoPEModeHalf     = 1
+)
 
 // NewPositional creates and initializes a MetalPositional.
 // metallib must be the absolute path to positional.metallib.
@@ -35,25 +42,80 @@ func NewPositional(metallib string) (*MetalPositional, error) {
 // ---------------------------------------------------------------------------
 
 // buildTablesFP32 returns interleaved cos/sin tables as []float32.
-func buildTablesFP32(seqLen, headDim int, base float64) ([]float32, []float32) {
+func buildTablesFP32(
+	seqLen int,
+	headDim int,
+	config rotary.Config,
+	positionStart int,
+) ([]float32, []float32, error) {
 	numPairs := headDim / 2
 	n := seqLen * numPairs
 	cosT := make([]float32, n)
 	sinT := make([]float32, n)
+	frequencies, err := config.InverseFrequencies(headDim)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
 	for t := 0; t < seqLen; t++ {
 		for i := 0; i < numPairs; i++ {
-			theta := 1.0 / math.Pow(base, float64(2*i)/float64(headDim))
-			angle := float64(t) * theta
+			theta := frequencies[i]
+			angle := float64(positionStart+t) * theta
 			cosT[t*numPairs+i] = float32(math.Cos(angle))
 			sinT[t*numPairs+i] = float32(math.Sin(angle))
 		}
 	}
-	return cosT, sinT
+	return cosT, sinT, nil
 }
 
 // RoPEForward applies rotary position embeddings on the Metal GPU.
 // shape=[batch, num_heads, seq_len, head_dim]; data[0]=input tensor.
 func (m *MetalPositional) RoPEForward(base float64, shape []int, data ...[]float64) ([]float64, error) {
+	return m.RoPEForwardAt(base, 0, shape, data...)
+}
+
+/*
+RoPEForwardAt applies rotary position embeddings from an absolute position offset.
+*/
+func (m *MetalPositional) RoPEForwardAt(
+	base float64,
+	positionStart int,
+	shape []int,
+	data ...[]float64,
+) ([]float64, error) {
+	return m.RoPEForwardAtMode(base, positionStart, "", shape, data...)
+}
+
+/*
+RoPEForwardAtMode applies rotary position embeddings with an explicit pair layout.
+*/
+func (m *MetalPositional) RoPEForwardAtMode(
+	base float64,
+	positionStart int,
+	mode string,
+	shape []int,
+	data ...[]float64,
+) ([]float64, error) {
+	return m.RoPEForwardAtModeConfig(
+		rotary.Config{Base: base},
+		positionStart,
+		mode,
+		shape,
+		data...,
+	)
+}
+
+/*
+RoPEForwardAtModeConfig applies RoPE using a manifest-provided frequency schedule.
+*/
+func (m *MetalPositional) RoPEForwardAtModeConfig(
+	config rotary.Config,
+	positionStart int,
+	mode string,
+	shape []int,
+	data ...[]float64,
+) ([]float64, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("metal_rope: input[0] is required")
 	}
@@ -75,10 +137,6 @@ func (m *MetalPositional) RoPEForward(base float64, shape []int, data ...[]float
 		return nil, fmt.Errorf("metal_rope: expected even head_dim, got %d", headDim)
 	}
 
-	if base == 0 {
-		base = 10000.0
-	}
-
 	x := data[0]
 
 	if len(x) != batch*numHeads*seqLen*headDim {
@@ -88,7 +146,17 @@ func (m *MetalPositional) RoPEForward(base float64, shape []int, data ...[]float
 	src32 := toFloat32(x)
 	dst32 := make([]float32, len(x))
 
-	cosT, sinT := buildTablesFP32(seqLen, headDim, base)
+	cosT, sinT, err := buildTablesFP32(seqLen, headDim, config, positionStart)
+
+	if err != nil {
+		return nil, err
+	}
+
+	modeCode, err := metalRoPEMode(mode)
+
+	if err != nil {
+		return nil, err
+	}
 
 	totalHeads := batch * numHeads
 	rc := C.metal_rope(
@@ -98,6 +166,7 @@ func (m *MetalPositional) RoPEForward(base float64, shape []int, data ...[]float
 		(*C.float)(unsafe.Pointer(&sinT[0])),
 		C.int(seqLen),
 		C.int(headDim),
+		C.int(modeCode),
 		C.int(totalHeads),
 	)
 	if rc != 0 {
@@ -113,6 +182,49 @@ func (m *MetalPositional) RoPETensor(
 	input computetensor.Float64Tensor,
 	outputShape computetensor.Shape,
 	base float64,
+	positionStart int,
+	batch, numHeads, seqLen, headDim int,
+) (computetensor.Float64Tensor, error) {
+	return m.RoPETensorMode(
+		input,
+		outputShape,
+		base,
+		positionStart,
+		"",
+		batch, numHeads, seqLen, headDim,
+	)
+}
+
+/*
+RoPETensorMode applies rotary position embeddings with an explicit pair layout.
+*/
+func (m *MetalPositional) RoPETensorMode(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	base float64,
+	positionStart int,
+	mode string,
+	batch, numHeads, seqLen, headDim int,
+) (computetensor.Float64Tensor, error) {
+	return m.RoPETensorModeConfig(
+		input,
+		outputShape,
+		rotary.Config{Base: base},
+		positionStart,
+		mode,
+		batch, numHeads, seqLen, headDim,
+	)
+}
+
+/*
+RoPETensorModeConfig applies RoPE in resident Metal storage using a frequency schedule.
+*/
+func (m *MetalPositional) RoPETensorModeConfig(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	config rotary.Config,
+	positionStart int,
+	mode string,
 	batch, numHeads, seqLen, headDim int,
 ) (computetensor.Float64Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
@@ -135,11 +247,18 @@ func (m *MetalPositional) RoPETensor(
 		return nil, fmt.Errorf("metal_rope_tensor: input/output length mismatch")
 	}
 
-	if base == 0 {
-		base = 10000.0
+	cosT, sinT, err := buildTablesFP32(seqLen, headDim, config, positionStart)
+
+	if err != nil {
+		return nil, err
 	}
 
-	cosT, sinT := buildTablesFP32(seqLen, headDim, base)
+	modeCode, err := metalRoPEMode(mode)
+
+	if err != nil {
+		return nil, err
+	}
+
 	output, err := newMetalTensor(outputShape)
 
 	if err != nil {
@@ -153,6 +272,7 @@ func (m *MetalPositional) RoPETensor(
 		(*C.float)(unsafe.Pointer(&sinT[0])),
 		C.int(seqLen),
 		C.int(headDim),
+		C.int(modeCode),
 		C.int(batch*numHeads),
 	)
 
@@ -163,6 +283,17 @@ func (m *MetalPositional) RoPETensor(
 	}
 
 	return output, nil
+}
+
+func metalRoPEMode(mode string) (int, error) {
+	switch strings.ToLower(mode) {
+	case "", "adjacent":
+		return metalRoPEModeAdjacent, nil
+	case "half":
+		return metalRoPEModeHalf, nil
+	default:
+		return 0, fmt.Errorf("metal_rope: unsupported mode %q", mode)
+	}
 }
 
 // Forward dispatches RoPE with the universal signature.

@@ -73,6 +73,7 @@ int metal_rope(
     const float* sin_table,
     int          seq_len,
     int          head_dim,
+    int          rope_mode,
     int          total_heads)
 {
     @autoreleasepool {
@@ -85,7 +86,13 @@ int metal_rope(
         id<MTLBuffer> bufOut = make_out_buf(gPos_Device, out,   xbytes);
         id<MTLBuffer> bufCos = make_buf(gPos_Device, cos_table, tblbytes);
         id<MTLBuffer> bufSin = make_buf(gPos_Device, sin_table, tblbytes);
-        if (!bufX || !bufOut || !bufCos || !bufSin) return -1;
+        if (!bufX || !bufOut || !bufCos || !bufSin) {
+            [bufX release];
+            [bufOut release];
+            [bufCos release];
+            [bufSin release];
+            return -1;
+        }
 
         id<MTLCommandBuffer>         cb  = [gPos_Queue commandBuffer];
         id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
@@ -96,6 +103,7 @@ int metal_rope(
         [enc setBuffer:bufSin offset:0 atIndex:3];
         [enc setBytes:&seq_len  length:sizeof(int) atIndex:4];
         [enc setBytes:&head_dim length:sizeof(int) atIndex:5];
+        [enc setBytes:&rope_mode length:sizeof(int) atIndex:6];
 
         NSUInteger tw = gPSO_rope.threadExecutionWidth;
         [enc dispatchThreads:MTLSizeMake((NSUInteger)grid_n, 1, 1)
@@ -108,6 +116,10 @@ int metal_rope(
         if (((uintptr_t)out % page) != 0) {
             memcpy(out, [bufOut contents], xbytes);
         }
+        [bufX release];
+        [bufOut release];
+        [bufCos release];
+        [bufSin release];
         return 0;
     }
 }
@@ -119,6 +131,7 @@ int metal_rope_tensor(
     const float* sin_table,
     int          seq_len,
     int          head_dim,
+    int          rope_mode,
     int          total_heads)
 {
     @autoreleasepool {
@@ -133,11 +146,19 @@ int metal_rope_tensor(
         id<MTLBuffer> bufOut = (__bridge id)out;
         id<MTLBuffer> bufCos = make_buf(gPos_Device, cos_table, tblbytes);
         id<MTLBuffer> bufSin = make_buf(gPos_Device, sin_table, tblbytes);
-        if (!bufX || !bufOut || !bufCos || !bufSin) return -1;
+        if (!bufX || !bufOut || !bufCos || !bufSin) {
+            [bufCos release];
+            [bufSin release];
+            return -1;
+        }
 
         id<MTLCommandBuffer> cb = [gPos_Queue commandBuffer];
         id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
-        if (!cb || !enc) return -1;
+        if (!cb || !enc) {
+            [bufCos release];
+            [bufSin release];
+            return -1;
+        }
 
         [enc setComputePipelineState:gPSO_rope];
         [enc setBuffer:bufX offset:0 atIndex:0];
@@ -146,6 +167,7 @@ int metal_rope_tensor(
         [enc setBuffer:bufSin offset:0 atIndex:3];
         [enc setBytes:&seq_len length:sizeof(int) atIndex:4];
         [enc setBytes:&head_dim length:sizeof(int) atIndex:5];
+        [enc setBytes:&rope_mode length:sizeof(int) atIndex:6];
 
         NSUInteger tw = gPSO_rope.threadExecutionWidth;
         [enc dispatchThreads:MTLSizeMake((NSUInteger)grid_n, 1, 1)
@@ -154,7 +176,10 @@ int metal_rope_tensor(
         [cb commit];
         [cb waitUntilCompleted];
 
-        return cb.error ? -1 : 0;
+        int rc = cb.error ? -1 : 0;
+        [bufCos release];
+        [bufSin release];
+        return rc;
     }
 }
 
@@ -172,7 +197,11 @@ int metal_alibi(
 
         id<MTLBuffer> bufOut    = make_out_buf(gPos_Device, out, outbytes);
         id<MTLBuffer> bufSlopes = make_buf(gPos_Device, slopes, slopebytes);
-        if (!bufOut || !bufSlopes) return -1;
+        if (!bufOut || !bufSlopes) {
+            [bufOut release];
+            [bufSlopes release];
+            return -1;
+        }
 
         id<MTLCommandBuffer>         cb  = [gPos_Queue commandBuffer];
         id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
@@ -193,6 +222,8 @@ int metal_alibi(
         if (((uintptr_t)out % page) != 0) {
             memcpy(out, [bufOut contents], outbytes);
         }
+        [bufOut release];
+        [bufSlopes release];
         return 0;
     }
 }

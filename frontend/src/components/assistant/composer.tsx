@@ -23,30 +23,29 @@ export const Composer = ({
 	placeholder,
 }: ComposerProps) => {
 	return (
-		<Form onSubmit={onSubmit} className="flex gap-2 border-t p-3">
-			<Field className="flex-1">
+		<Form onSubmit={onSubmit} className="flex w-full border-t">
+			<Field className="w-full flex-1">
 				<Field.Label className="sr-only">Message</Field.Label>
 				<Input
 					value={value}
 					onChange={(e) => onChange(e.target.value)}
 					placeholder={placeholder}
 					disabled={busy}
+					className="w-full rounded-tr-none rounded-br-none"
 				/>
 			</Field>
 			<AnimatePresence mode="wait" initial={false}>
-				{busy ? (
-					<Flex key="stop" appear="scaleIn">
-						<Button type="button" variant="outline" onClick={onStop}>
-							<Square />
-						</Button>
-					</Flex>
-				) : (
-					<Flex key="send" appear="scaleIn">
-						<Button type="submit" disabled={!value.trim()}>
-							<Send />
-						</Button>
-					</Flex>
-				)}
+				<Flex key={busy ? "stop" : "send"} appear="scaleIn">
+					<Button
+						type={busy ? "button" : "submit"}
+						variant={busy ? "outline" : "default"}
+						onClick={busy ? onStop : undefined}
+						disabled={!busy && !value.trim()}
+						className="rounded-tl-none rounded-bl-none"
+					>
+						{busy ? <Square /> : <Send />}
+					</Button>
+				</Flex>
 			</AnimatePresence>
 		</Form>
 	);

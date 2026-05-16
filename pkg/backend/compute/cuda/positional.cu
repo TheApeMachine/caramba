@@ -15,6 +15,7 @@ __global__ void rope_kernel(
     const double* sin_table,
     int           seq_len,
     int           head_dim,
+    int           rope_mode,
     int           total_threads)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -25,16 +26,24 @@ __global__ void rope_kernel(
     int slot      = idx / num_pairs;             // b_h * seq_len + t
     int t         = slot % seq_len;
 
-    int x_base  = slot * head_dim + pair_i * 2;
-    double x0   = x[x_base];
-    double x1   = x[x_base + 1];
+    int slot_base = slot * head_dim;
+    int first_idx = slot_base + pair_i * 2;
+    int second_idx = first_idx + 1;
+
+    if (rope_mode == 1) {
+        first_idx = slot_base + pair_i;
+        second_idx = first_idx + num_pairs;
+    }
+
+    double x0 = x[first_idx];
+    double x1 = x[second_idx];
 
     int tbl_idx = t * num_pairs + pair_i;
     double c    = cos_table[tbl_idx];
     double s    = sin_table[tbl_idx];
 
-    out[x_base]     = x0 * c - x1 * s;
-    out[x_base + 1] = x0 * s + x1 * c;
+    out[first_idx]  = x0 * c - x1 * s;
+    out[second_idx] = x0 * s + x1 * c;
 }
 
 // ALiBi: each thread computes one output element.
@@ -82,6 +91,7 @@ int cuda_rope(
     const double* sin_table,
     int           seq_len,
     int           head_dim,
+    int           rope_mode,
     int           total_heads)
 {
     int num_pairs    = head_dim / 2;
@@ -103,7 +113,7 @@ int cuda_rope(
     if (cudaMemcpy(d_sin, sin_table, tblbytes, cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
 
     rope_kernel<<<blocks(grid_threads), BLOCK>>>(
-        d_x, d_out, d_cos, d_sin, seq_len, head_dim, grid_threads);
+        d_x, d_out, d_cos, d_sin, seq_len, head_dim, rope_mode, grid_threads);
     if (cudaGetLastError()    != cudaSuccess) goto fail;
     if (cudaDeviceSynchronize() != cudaSuccess) goto fail;
 

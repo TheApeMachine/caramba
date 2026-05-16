@@ -22,6 +22,7 @@ kernel void rope_kernel(
     device const float* sin_table [[buffer(3)]],
     constant int&       seq_len   [[buffer(4)]],
     constant int&       head_dim  [[buffer(5)]],
+    constant int&       rope_mode [[buffer(6)]],
     uint                idx       [[thread_position_in_grid]])
 {
     int num_pairs   = head_dim / 2;
@@ -30,16 +31,24 @@ kernel void rope_kernel(
     int t           = slot % seq_len;
     // int b_h      = slot / seq_len;  (not needed separately)
 
-    int x_base = slot * head_dim + pair_idx * 2;
-    float x0 = x[x_base];
-    float x1 = x[x_base + 1];
+    int slot_base = slot * head_dim;
+    int first_idx = slot_base + pair_idx * 2;
+    int second_idx = first_idx + 1;
+
+    if (rope_mode == 1) {
+        first_idx = slot_base + pair_idx;
+        second_idx = first_idx + num_pairs;
+    }
+
+    float x0 = x[first_idx];
+    float x1 = x[second_idx];
 
     int tbl_idx = t * num_pairs + pair_idx;
     float c = cos_table[tbl_idx];
     float s = sin_table[tbl_idx];
 
-    out[x_base]     = x0 * c - x1 * s;
-    out[x_base + 1] = x0 * s + x1 * c;
+    out[first_idx]  = x0 * c - x1 * s;
+    out[second_idx] = x0 * s + x1 * c;
 }
 
 // ALiBi kernel.

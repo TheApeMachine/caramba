@@ -180,6 +180,19 @@ func TestResolveManifestModelConfig(test *testing.T) {
 			So(config.StopSpecialTokens, ShouldBeTrue)
 		})
 
+		Convey("It should read the Llama instruct prompt template", func() {
+			config, err := resolveManifestModelConfig(ModelConfig{
+				Manifest: "model/llm/llama-3-2-1b-instruct.yml",
+			})
+
+			So(err, ShouldBeNil)
+			So(config.PromptTemplate, ShouldContainSubstring, "<|start_header_id|>system")
+			So(config.PromptTemplate, ShouldContainSubstring, "Today Date: 26 Jul 2024")
+			So(config.PromptTemplate, ShouldContainSubstring, "<|start_header_id|>user")
+			So(config.PromptTemplate, ShouldContainSubstring, "{{prompt}}")
+			So(config.PromptTemplate, ShouldEndWith, "<|end_header_id|>\n\n")
+		})
+
 		Convey("It should keep explicit package config when no runtime block exists", func() {
 			manifestPath := filepath.Join(test.TempDir(), "model.yml")
 			err := os.WriteFile(manifestPath, []byte(`

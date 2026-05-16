@@ -30,6 +30,7 @@ int xla_rope(
     const double* sin_table,
     int           seq_len,
     int           head_dim,
+    int           rope_mode,
     int           total_heads);
 
 // ALiBi: compute attention bias tensor.

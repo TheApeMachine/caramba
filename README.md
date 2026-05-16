@@ -24,6 +24,16 @@ system:
       temperature: 0.8
       top_k: 50
       top_p: 0.95
+      prompt_template: |+
+        <|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+        Cutting Knowledge Date: December 2023
+        Today Date: 26 Jul 2024
+
+        <|eot_id|><|start_header_id|>user<|end_header_id|>
+
+        {{prompt}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
 
   topology:
     nodes:
@@ -47,8 +57,32 @@ system:
           - { id: qh_${i},      op: shape.view_as_heads, in: [q_${i}],          out: [qh_${i}],  config: { num_heads: 32 } }
           - { id: kh_${i},      op: shape.view_as_heads, in: [k_${i}],          out: [kh_${i}],  config: { num_heads: 8  } }
           - { id: vh_${i},      op: shape.view_as_heads, in: [v_${i}],          out: [vh_${i}],  config: { num_heads: 8  } }
-          - { id: rope_q_${i},  op: positional.rope,     in: [qh_${i}],         out: [qr_${i}],  config: { base: 500000.0, head_dim: 64 } }
-          - { id: rope_k_${i},  op: positional.rope,     in: [kh_${i}],         out: [kr_${i}],  config: { base: 500000.0, head_dim: 64 } }
+          - id: rope_q_${i}
+            op: positional.rope
+            in:  [qh_${i}]
+            out: [qr_${i}]
+            config:
+              base: 500000.0
+              head_dim: 64
+              mode: half
+              rope_type: llama3
+              rope_factor: 32.0
+              rope_low_freq_factor: 1.0
+              rope_high_freq_factor: 4.0
+              rope_original_context: 8192
+          - id: rope_k_${i}
+            op: positional.rope
+            in:  [kh_${i}]
+            out: [kr_${i}]
+            config:
+              base: 500000.0
+              head_dim: 64
+              mode: half
+              rope_type: llama3
+              rope_factor: 32.0
+              rope_low_freq_factor: 1.0
+              rope_high_freq_factor: 4.0
+              rope_original_context: 8192
           - { id: attn_${i},    op: attention.gqa,       in: [qr_${i}, kr_${i}, vh_${i}], out: [ah_${i}], config: { num_heads: 32, num_kv_heads: 8, head_dim: 64, causal: true } }
           - { id: merge_${i},   op: shape.merge_heads,   in: [ah_${i}],         out: [a_${i}] }
           # ... swiglu MLP, residuals, etc.

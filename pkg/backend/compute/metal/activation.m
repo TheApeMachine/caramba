@@ -106,7 +106,11 @@ static int dispatch_2buf(
                                          options:MTLResourceStorageModeShared];
         }
 
-        if (!bufSrc || !bufDst) return -1;
+        if (!bufSrc || !bufDst) {
+            [bufSrc release];
+            [bufDst release];
+            return -1;
+        }
 
         id<MTLCommandBuffer>        cb  = [gQueue commandBuffer];
         id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
@@ -134,6 +138,8 @@ static int dispatch_2buf(
             memcpy(dst, [bufDst contents], dst_bytes);
         }
 
+        [bufSrc release];
+        [bufDst release];
         return 0;
     }
 }
@@ -247,9 +253,9 @@ int metal_selu(const float* src, float* dst, int n) {
 }
 
 int metal_swiglu(const float* src, float* dst, int n) {
-    unsigned int un = (unsigned int)n;
+    unsigned int shape[2] = {(unsigned int)n, (unsigned int)(2 * n)};
     // src has 2*n elements (gates then values); dst has n elements.
-    return dispatch_2buf(gPSO_swiglu, src, 2*n, dst, n, &un, sizeof(unsigned int), n);
+    return dispatch_2buf(gPSO_swiglu, src, 2*n, dst, n, shape, sizeof(shape), n);
 }
 
 int metal_relu_tensor(const void* src, void* dst, int n) {
@@ -336,17 +342,28 @@ int metal_selu_tensor(const void* src, void* dst, int n) {
     return dispatch_tensor_2buf(gPSO_selu, (void*)src, dst, NULL, 0, n, minB, minB);
 }
 
-int metal_swiglu_tensor(const void* src, void* dst, int n) {
+int metal_swiglu_tensor(const void* src, void* dst, int n, int input_width) {
     if (n <= 0) return -1;
 
-    if (n > INT_MAX / 2) return -1;
+    if (input_width <= 0 || input_width % 2 != 0) return -1;
 
-    if ((NSUInteger)n > ULONG_MAX / (2 * sizeof(float))) return -1;
+    int output_width = input_width / 2;
 
-    NSUInteger minSrc = (NSUInteger)(2 * n) * sizeof(float);
+    if (output_width <= 0 || n % output_width != 0) return -1;
+
+    int rows = n / output_width;
+
+    if (rows > INT_MAX / input_width) return -1;
+
+    int src_n = rows * input_width;
+
+    if ((NSUInteger)src_n > ULONG_MAX / sizeof(float)) return -1;
+    if ((NSUInteger)n > ULONG_MAX / sizeof(float)) return -1;
+
+    NSUInteger minSrc = (NSUInteger)src_n * sizeof(float);
     NSUInteger minDst = (NSUInteger)n * sizeof(float);
-    unsigned int un = (unsigned int)n;
+    unsigned int shape[2] = {(unsigned int)n, (unsigned int)input_width};
 
     return dispatch_tensor_2buf(
-        gPSO_swiglu, (void*)src, dst, &un, sizeof(unsigned int), n, minSrc, minDst);
+        gPSO_swiglu, (void*)src, dst, shape, sizeof(shape), n, minSrc, minDst);
 }

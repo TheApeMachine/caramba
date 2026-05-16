@@ -32,7 +32,7 @@ int metal_swish(const float* src, float* dst, int n);
 // Compute SELU: scale*x for positives, scale*alpha*(exp(x)-1) otherwise.
 int metal_selu(const float* src, float* dst, int n);
 
-// Compute SwiGLU: dst[i] = sigmoid(src[i]) * src[n+i]
+// Compute SwiGLU across one row: dst[i] = src[i] * sigmoid(src[i]) * src[n+i].
 // src has 2*n elements (gates first, then values); dst has n elements.
 int metal_swiglu(const float* src, float* dst, int n);
 
@@ -51,10 +51,11 @@ int metal_swish_tensor(const void* src, void* dst, int n);
 int metal_selu_tensor(const void* src, void* dst, int n);
 
 /*
-metal_swiglu_tensor: src buffer holds 2*n consecutive floats (gates then values);
-dst holds n floats. Requires n > 0.
+metal_swiglu_tensor applies SwiGLU row-wise over the final tensor dimension.
+input_width is the source final dimension, split as [gate | value] per row.
+dst holds n floats. Requires n > 0 and an even input_width.
 */
-int metal_swiglu_tensor(const void* src, void* dst, int n);
+int metal_swiglu_tensor(const void* src, void* dst, int n, int input_width);
 
 #ifdef __cplusplus
 }

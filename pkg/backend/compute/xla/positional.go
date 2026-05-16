@@ -13,13 +13,21 @@ import "C"
 import (
 	"fmt"
 	"math"
+	"strings"
 	"unsafe"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/rotary"
 )
 
 // XLAPositionalOps dispatches RoPE and ALiBi to the XLA runtime via PJRT.
 type XLAPositionalOps struct {
 	platform string
 }
+
+const (
+	xlaRoPEModeAdjacent = 0
+	xlaRoPEModeHalf     = 1
+)
 
 // NewPositional initialises the PJRT client for the given platform.
 func NewPositional(platform string) (*XLAPositionalOps, error) {
@@ -48,20 +56,32 @@ func (x *XLAPositionalOps) Shutdown() {
 // Helpers
 // ---------------------------------------------------------------------------
 
-func xlaCosSinTables(seqLen, headDim int, base float64) ([]float64, []float64) {
+func xlaCosSinTables(
+	seqLen int,
+	headDim int,
+	config rotary.Config,
+	positionStart int,
+) ([]float64, []float64, error) {
 	numPairs := headDim / 2
 	n := seqLen * numPairs
 	cosT := make([]float64, n)
 	sinT := make([]float64, n)
+	frequencies, err := config.InverseFrequencies(headDim)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
 	for t := 0; t < seqLen; t++ {
 		for i := 0; i < numPairs; i++ {
-			theta := 1.0 / math.Pow(base, float64(2*i)/float64(headDim))
-			angle := float64(t) * theta
+			theta := frequencies[i]
+			angle := float64(positionStart+t) * theta
 			cosT[t*numPairs+i] = math.Cos(angle)
 			sinT[t*numPairs+i] = math.Sin(angle)
 		}
 	}
-	return cosT, sinT
+
+	return cosT, sinT, nil
 }
 
 func xlaSlopes(numHeads int) []float64 {
@@ -126,6 +146,41 @@ func (x *XLAPositionalOps) ensureCompiledALiBi(numHeads, seqLenQ, seqLenK int) e
 // RoPEForward applies rotary position embeddings.
 // shape=[batch, num_heads, seq_len, head_dim]; data[0]=input tensor.
 func (x *XLAPositionalOps) RoPEForward(base float64, shape []int, data ...[]float64) ([]float64, error) {
+	return x.RoPEForwardAt(base, 0, shape, data...)
+}
+
+func (x *XLAPositionalOps) RoPEForwardAt(
+	base float64,
+	positionStart int,
+	shape []int,
+	data ...[]float64,
+) ([]float64, error) {
+	return x.RoPEForwardAtMode(base, positionStart, "", shape, data...)
+}
+
+func (x *XLAPositionalOps) RoPEForwardAtMode(
+	base float64,
+	positionStart int,
+	mode string,
+	shape []int,
+	data ...[]float64,
+) ([]float64, error) {
+	return x.RoPEForwardAtModeConfig(
+		rotary.Config{Base: base},
+		positionStart,
+		mode,
+		shape,
+		data...,
+	)
+}
+
+func (x *XLAPositionalOps) RoPEForwardAtModeConfig(
+	config rotary.Config,
+	positionStart int,
+	mode string,
+	shape []int,
+	data ...[]float64,
+) ([]float64, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("xla_rope: input[0] is required")
 	}
@@ -147,9 +202,6 @@ func (x *XLAPositionalOps) RoPEForward(base float64, shape []int, data ...[]floa
 		return nil, fmt.Errorf("xla_rope: expected even head_dim, got %d", headDim)
 	}
 
-	if base == 0 {
-		base = 10000.0
-	}
 	totalHeads := batch * numHeads
 
 	input := data[0]
@@ -163,7 +215,17 @@ func (x *XLAPositionalOps) RoPEForward(base float64, shape []int, data ...[]floa
 	}
 
 	dst := make([]float64, len(input))
-	cosT, sinT := xlaCosSinTables(seqLen, headDim, base)
+	cosT, sinT, err := xlaCosSinTables(seqLen, headDim, config, positionStart)
+
+	if err != nil {
+		return nil, err
+	}
+
+	modeCode, err := xlaRoPEMode(mode)
+
+	if err != nil {
+		return nil, err
+	}
 
 	rc := C.xla_rope(
 		(*C.double)(unsafe.Pointer(&input[0])),
@@ -172,12 +234,24 @@ func (x *XLAPositionalOps) RoPEForward(base float64, shape []int, data ...[]floa
 		(*C.double)(unsafe.Pointer(&sinT[0])),
 		C.int(seqLen),
 		C.int(headDim),
+		C.int(modeCode),
 		C.int(totalHeads),
 	)
 	if rc != 0 {
 		return nil, fmt.Errorf("xla_rope failed")
 	}
 	return dst, nil
+}
+
+func xlaRoPEMode(mode string) (int, error) {
+	switch strings.ToLower(mode) {
+	case "", "adjacent":
+		return xlaRoPEModeAdjacent, nil
+	case "half":
+		return xlaRoPEModeHalf, nil
+	default:
+		return 0, fmt.Errorf("xla_rope: unsupported mode %q", mode)
+	}
 }
 
 // Forward dispatches RoPEForward with base 0 so RoPEForward applies the

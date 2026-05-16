@@ -120,6 +120,7 @@ func applyStateMetadata(stateDict *state.Dict, node NodeSpec) {
 	stateDict.Pattern = stringConfig(node, "pattern", stateDict.Pattern)
 	stateDict.Except = stringConfig(node, "except", stateDict.Except)
 	stateDict.Mode = stringConfig(node, "mode", stateDict.Mode)
+	stateDict.RoPEType = stringConfig(node, "rope_type", stateDict.RoPEType)
 	stateDict.Targets = stringSliceConfig(node, "targets", stateDict.Targets)
 
 	stateDict.LR = floatConfig(node, "lr", stateDict.LR)
@@ -136,6 +137,17 @@ func applyStateMetadata(stateDict *state.Dict, node NodeSpec) {
 	stateDict.Tau = floatConfig(node, "tau", stateDict.Tau)
 	stateDict.Theta = floatConfig(node, "theta", stateDict.Theta)
 	stateDict.Base = floatConfig(node, "base", stateDict.Base)
+	stateDict.RoPEFactor = floatConfig(node, "rope_factor", stateDict.RoPEFactor)
+	stateDict.RoPELowFreqFactor = floatConfig(
+		node,
+		"rope_low_freq_factor",
+		stateDict.RoPELowFreqFactor,
+	)
+	stateDict.RoPEHighFreqFactor = floatConfig(
+		node,
+		"rope_high_freq_factor",
+		stateDict.RoPEHighFreqFactor,
+	)
 	stateDict.InitStd = floatConfig(node, "init_std", stateDict.InitStd)
 	stateDict.P = floatConfig(node, "p", stateDict.P)
 	stateDict.C1 = floatConfig(node, "c1", stateDict.C1)
@@ -165,6 +177,12 @@ func applyStateMetadata(stateDict *state.Dict, node NodeSpec) {
 	stateDict.Dim1 = intConfig(node, "dim1", stateDict.Dim1)
 	stateDict.SplitSize = intConfig(node, "split_size", stateDict.SplitSize)
 	stateDict.Window = intConfig(node, "window", stateDict.Window)
+	stateDict.PositionStart = intConfig(node, "position_start", stateDict.PositionStart)
+	stateDict.RoPEOriginalContext = intConfig(
+		node,
+		"rope_original_context",
+		stateDict.RoPEOriginalContext,
+	)
 	stateDict.NumHeads = intConfig(node, "num_heads", stateDict.NumHeads)
 	stateDict.NumKVHeads = intConfig(node, "num_kv_heads", stateDict.NumKVHeads)
 	stateDict.HeadDim = intConfig(node, "head_dim", stateDict.HeadDim)

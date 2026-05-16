@@ -9,11 +9,19 @@ import "C"
 import (
 	"fmt"
 	"math"
+	"strings"
 	"unsafe"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/rotary"
 )
 
 // CUDAPositionalOps dispatches RoPE and ALiBi kernels to the CUDA GPU.
 type CUDAPositionalOps struct{}
+
+const (
+	cudaRoPEModeAdjacent = 0
+	cudaRoPEModeHalf     = 1
+)
 
 // NewPositional returns a CUDAPositionalOps.
 func NewPositional() *CUDAPositionalOps {
@@ -24,20 +32,32 @@ func NewPositional() *CUDAPositionalOps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-func buildCossinTables(seqLen, headDim int, base float64) ([]float64, []float64) {
+func buildCossinTables(
+	seqLen int,
+	headDim int,
+	config rotary.Config,
+	positionStart int,
+) ([]float64, []float64, error) {
 	numPairs := headDim / 2
 	n := seqLen * numPairs
 	cosT := make([]float64, n)
 	sinT := make([]float64, n)
+	frequencies, err := config.InverseFrequencies(headDim)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
 	for t := 0; t < seqLen; t++ {
 		for i := 0; i < numPairs; i++ {
-			theta := 1.0 / math.Pow(base, float64(2*i)/float64(headDim))
-			angle := float64(t) * theta
+			theta := frequencies[i]
+			angle := float64(positionStart+t) * theta
 			cosT[t*numPairs+i] = math.Cos(angle)
 			sinT[t*numPairs+i] = math.Sin(angle)
 		}
 	}
-	return cosT, sinT
+
+	return cosT, sinT, nil
 }
 
 func buildSlopesFloat64(numHeads int) []float64 {
@@ -79,6 +99,41 @@ func buildSlopesFloat64(numHeads int) []float64 {
 // RoPEForward applies rotary position embeddings.
 // shape=[batch, num_heads, seq_len, head_dim]; data[0]=input tensor.
 func (c *CUDAPositionalOps) RoPEForward(base float64, shape []int, data ...[]float64) ([]float64, error) {
+	return c.RoPEForwardAt(base, 0, shape, data...)
+}
+
+func (c *CUDAPositionalOps) RoPEForwardAt(
+	base float64,
+	positionStart int,
+	shape []int,
+	data ...[]float64,
+) ([]float64, error) {
+	return c.RoPEForwardAtMode(base, positionStart, "", shape, data...)
+}
+
+func (c *CUDAPositionalOps) RoPEForwardAtMode(
+	base float64,
+	positionStart int,
+	mode string,
+	shape []int,
+	data ...[]float64,
+) ([]float64, error) {
+	return c.RoPEForwardAtModeConfig(
+		rotary.Config{Base: base},
+		positionStart,
+		mode,
+		shape,
+		data...,
+	)
+}
+
+func (c *CUDAPositionalOps) RoPEForwardAtModeConfig(
+	config rotary.Config,
+	positionStart int,
+	mode string,
+	shape []int,
+	data ...[]float64,
+) ([]float64, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("cuda_rope: input[0] is required")
 	}
@@ -100,10 +155,6 @@ func (c *CUDAPositionalOps) RoPEForward(base float64, shape []int, data ...[]flo
 		return nil, fmt.Errorf("cuda_rope: expected even head_dim, got %d", headDim)
 	}
 
-	if base == 0 {
-		base = 10000.0
-	}
-
 	x := data[0]
 
 	if len(x) != batch*numHeads*seqLen*headDim {
@@ -111,7 +162,18 @@ func (c *CUDAPositionalOps) RoPEForward(base float64, shape []int, data ...[]flo
 	}
 
 	dst := make([]float64, len(x))
-	cosT, sinT := buildCossinTables(seqLen, headDim, base)
+	cosT, sinT, err := buildCossinTables(seqLen, headDim, config, positionStart)
+
+	if err != nil {
+		return nil, err
+	}
+
+	modeCode, err := cudaRoPEMode(mode)
+
+	if err != nil {
+		return nil, err
+	}
+
 	totalHeads := batch * numHeads
 
 	rc := C.cuda_rope(
@@ -121,12 +183,24 @@ func (c *CUDAPositionalOps) RoPEForward(base float64, shape []int, data ...[]flo
 		(*C.double)(unsafe.Pointer(&sinT[0])),
 		C.int(seqLen),
 		C.int(headDim),
+		C.int(modeCode),
 		C.int(totalHeads),
 	)
 	if rc != 0 {
 		return nil, fmt.Errorf("cuda_rope failed (rc=%d)", rc)
 	}
 	return dst, nil
+}
+
+func cudaRoPEMode(mode string) (int, error) {
+	switch strings.ToLower(mode) {
+	case "", "adjacent":
+		return cudaRoPEModeAdjacent, nil
+	case "half":
+		return cudaRoPEModeHalf, nil
+	default:
+		return 0, fmt.Errorf("cuda_rope: unsupported mode %q", mode)
+	}
 }
 
 // Forward dispatches RoPE with the universal signature.

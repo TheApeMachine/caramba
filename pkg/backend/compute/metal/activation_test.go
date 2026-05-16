@@ -64,7 +64,7 @@ func TestMetalActivation_SwiGLU(test *testing.T) {
 			0.5, -1.25, 3, 7, -0.5, 1.75, -2,
 		}
 		expectedState, err := cpuactivation.NewSwiGLU().Forward(
-			state.NewDict().WithShape([]int{len(input) / 2}).WithInput(input),
+			state.NewDict().WithShape([]int{len(input)}).WithInput(input),
 		)
 		So(err, ShouldBeNil)
 
@@ -92,6 +92,33 @@ func TestMetalActivation_SwiGLU(test *testing.T) {
 			values, err := output.CloneFloat64()
 			So(err, ShouldBeNil)
 			assertAlmostEqualSlice(values, expectedState.Out, 1e-5)
+		})
+
+		Convey("It should split gates and values inside each resident tensor row", func() {
+			tensorBackend := newMetalTensorBackendForTest(test)
+			input := []float64{
+				1, 2, 3, 10, 20, 30,
+				4, 5, 6, 40, 50, 60,
+			}
+			shape, err := computetensor.NewShape([]int{2, 6})
+			So(err, ShouldBeNil)
+			expectedState, err := cpuactivation.NewSwiGLU().Forward(
+				state.NewDict().WithShape([]int{2, 6}).WithInput(input),
+			)
+			So(err, ShouldBeNil)
+
+			output, err := activationOps.SwiGLUTensor(
+				uploadMetalTensorForTest(test, tensorBackend, shape, input),
+			)
+
+			So(err, ShouldBeNil)
+			defer func() {
+				So(output.Close(), ShouldBeNil)
+			}()
+
+			values, err := output.CloneFloat64()
+			So(err, ShouldBeNil)
+			assertAlmostEqualSlice(values, expectedState.Out, 1e-4)
 		})
 	})
 }
@@ -158,7 +185,7 @@ func BenchmarkMetalActivation_SwiGLUTensor(benchmark *testing.B) {
 		benchmark.Fatal(err)
 	}
 
-	shape, err := computetensor.NewShape([]int{8192})
+	shape, err := computetensor.NewShape([]int{1, 8192})
 
 	if err != nil {
 		benchmark.Fatal(err)

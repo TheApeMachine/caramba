@@ -283,6 +283,7 @@ int xla_rope(
     const double* sin_table,
     int           seq_len,
     int           head_dim,
+    int           rope_mode,
     int           total_heads)
 {
     int num_pairs = head_dim / 2;
@@ -292,8 +293,14 @@ int xla_rope(
     std::vector<double> x_even(n), x_odd(n);
     for (int slot = 0; slot < total_heads * seq_len; slot++) {
         for (int i = 0; i < num_pairs; i++) {
-            x_even[slot * num_pairs + i] = x[slot * head_dim + i * 2];
-            x_odd [slot * num_pairs + i] = x[slot * head_dim + i * 2 + 1];
+            int first_idx = slot * head_dim + i * 2;
+            int second_idx = first_idx + 1;
+            if (rope_mode == 1) {
+                first_idx = slot * head_dim + i;
+                second_idx = first_idx + num_pairs;
+            }
+            x_even[slot * num_pairs + i] = x[first_idx];
+            x_odd [slot * num_pairs + i] = x[second_idx];
         }
     }
 
@@ -336,8 +343,14 @@ int xla_rope(
 
     for (int slot = 0; slot < total_heads * seq_len; slot++) {
         for (int i = 0; i < num_pairs; i++) {
-            out[slot * head_dim + i * 2]     = out_even[slot * num_pairs + i];
-            out[slot * head_dim + i * 2 + 1] = out_odd [slot * num_pairs + i];
+            int first_idx = slot * head_dim + i * 2;
+            int second_idx = first_idx + 1;
+            if (rope_mode == 1) {
+                first_idx = slot * head_dim + i;
+                second_idx = first_idx + num_pairs;
+            }
+            out[first_idx] = out_even[slot * num_pairs + i];
+            out[second_idx] = out_odd[slot * num_pairs + i];
         }
     }
 
