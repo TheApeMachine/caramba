@@ -174,7 +174,8 @@ __global__ void gqa_kernel(
     const double* q, const double* k, const double* v,
     double* out,
     int seq_len, int head_dim,
-    int num_heads, int num_kv_heads)
+    int num_heads, int num_kv_heads,
+    int causal)
 {
     extern __shared__ double scores[];
 
@@ -188,10 +189,15 @@ __global__ void gqa_kernel(
 
     int i = threadIdx.x;
     double scale = 1.0 / sqrt((double)head_dim);
+    int visible = seq_len;
+
+    if (causal != 0) {
+        visible = i + 1;
+    }
 
     if (i < seq_len) {
         const double* q_row = q + q_head_offset + i * head_dim;
-        for (int j = 0; j < seq_len; j++) {
+        for (int j = 0; j < visible; j++) {
             const double* k_row = k + kv_head_offset + j * head_dim;
             double dot = 0.0;
             for (int d = 0; d < head_dim; d++) dot += q_row[d] * k_row[d];
@@ -203,10 +209,10 @@ __global__ void gqa_kernel(
     if (i < seq_len) {
         double* row = scores + i * seq_len;
         double max_val = row[0];
-        for (int j = 1; j < seq_len; j++) max_val = max(max_val, row[j]);
+        for (int j = 1; j < visible; j++) max_val = max(max_val, row[j]);
         double sum = 0.0;
-        for (int j = 0; j < seq_len; j++) { row[j] = exp(row[j] - max_val); sum += row[j]; }
-        for (int j = 0; j < seq_len; j++) row[j] /= sum;
+        for (int j = 0; j < visible; j++) { row[j] = exp(row[j] - max_val); sum += row[j]; }
+        for (int j = 0; j < visible; j++) row[j] /= sum;
     }
     __syncthreads();
 
@@ -215,7 +221,7 @@ __global__ void gqa_kernel(
         double* out_row = out + q_head_offset + i * head_dim;
         for (int d = 0; d < head_dim; d++) {
             double acc = 0.0;
-            for (int j = 0; j < seq_len; j++) acc += row[j] * v[kv_head_offset + j * head_dim + d];
+            for (int j = 0; j < visible; j++) acc += row[j] * v[kv_head_offset + j * head_dim + d];
             out_row[d] = acc;
         }
     }
@@ -353,7 +359,8 @@ fail:
 }
 
 int cuda_gqa(const double* q, const double* k, const double* v, double* out,
-             int batch, int num_heads, int num_kv_heads, int seq_len, int head_dim)
+             int batch, int num_heads, int num_kv_heads, int seq_len, int head_dim,
+             int causal)
 {
     int total_q_heads  = batch * num_heads;
     int total_kv_heads = batch * num_kv_heads;
@@ -373,7 +380,8 @@ int cuda_gqa(const double* q, const double* k, const double* v, double* out,
 
     {
         int block = seq_len < 1024 ? seq_len : 1024;
-        gqa_kernel<<<total_q_heads, block, smem_bytes>>>(d_q, d_k, d_v, d_out, seq_len, head_dim, num_heads, num_kv_heads);
+        gqa_kernel<<<total_q_heads, block, smem_bytes>>>(
+            d_q, d_k, d_v, d_out, seq_len, head_dim, num_heads, num_kv_heads, causal);
     }
     if (cudaGetLastError() != cudaSuccess) goto fail;
     if (cudaDeviceSynchronize() != cudaSuccess) goto fail;

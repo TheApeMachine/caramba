@@ -43,7 +43,8 @@ int xla_mqa(const double* q, const double* k, const double* v, double* out,
 // q:  [batch, num_heads,    seq_len, head_dim]
 // k,v:[batch, num_kv_heads, seq_len, head_dim]
 int xla_gqa(const double* q, const double* k, const double* v, double* out,
-            int batch, int num_heads, int num_kv_heads, int seq_len, int head_dim);
+            int batch, int num_heads, int num_kv_heads, int seq_len, int head_dim,
+            int causal);
 
 // Sliding Window Attention.
 int xla_sliding_window(const double* q, const double* k, const double* v, double* out,

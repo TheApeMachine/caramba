@@ -2,6 +2,8 @@
 
 package metal
 
+import computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+
 type MetalAttention struct{}
 
 func NewAttention(metallib string) (*MetalAttention, error) {
@@ -20,7 +22,20 @@ func (m *MetalAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim
 	return nil, metalUnavailable()
 }
 
-func (m *MetalAttention) GQA(q, k, v []float64, batch, numHeads, numKVHeads, seqLen, headDim int) ([]float64, error) {
+func (m *MetalAttention) GQA(
+	q, k, v []float64,
+	batch, numHeads, numKVHeads, seqLen, headDim int,
+	causal bool,
+) ([]float64, error) {
+	return nil, metalUnavailable()
+}
+
+func (m *MetalAttention) GQATensor(
+	q, k, v computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch, numHeads, numKVHeads, queryLen, keyValueLen, keyValueStride, headDim int,
+	causal bool,
+) (computetensor.Float64Tensor, error) {
 	return nil, metalUnavailable()
 }
 

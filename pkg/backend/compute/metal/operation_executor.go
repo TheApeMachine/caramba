@@ -281,6 +281,8 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 	switch strings.ToLower(string(node.Op)) {
 	case "embedding.token":
 		return tensorBackend.applyTokenEmbedding(ctx, node, inputs)
+	case "math.rmsnorm":
+		return tensorBackend.applyRMSNorm(ctx, node, inputs)
 	case "math.layernorm":
 		return tensorBackend.applyLayerNorm(ctx, node, inputs)
 	case "shape.view_as_heads":
@@ -293,6 +295,10 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyLinear(ctx, node, inputs)
 	case "attention.sdpa":
 		return tensorBackend.applySDPA(ctx, node, inputs)
+	case "attention.gqa":
+		return tensorBackend.applyGQA(ctx, node, inputs)
+	case "positional.rope":
+		return tensorBackend.applyRoPE(ctx, node, inputs)
 	default:
 		return dispatch.RunOperation(
 			ctx,
@@ -354,6 +360,47 @@ func (tensorBackend *TensorBackend) applyTokenEmbedding(
 	}
 
 	return embeddingOps.ForwardTensor(inputs[0], weightTensor, outputShape)
+}
+
+func (tensorBackend *TensorBackend) applyRMSNorm(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("metal tensor: rmsnorm node %q requires 1 input", node.ID)
+	}
+
+	inputShape := inputs[0].Shape().Dims()
+
+	if len(inputShape) == 0 {
+		return nil, fmt.Errorf("metal tensor: rmsnorm node %q input shape is required", node.ID)
+	}
+
+	dModel := inputShape[len(inputShape)-1]
+	weight, err := floatSliceConfigRequired(node, "weight")
+
+	if err != nil {
+		return nil, err
+	}
+
+	weightTensor, err := tensorBackend.cachedTensor(node.ID+":weight", []int{dModel}, weight)
+
+	if err != nil {
+		return nil, err
+	}
+
+	mathOps, err := tensorBackend.math()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return mathOps.RMSNormTensor(inputs[0], weightTensor, floatConfig(node, "eps", 1e-5))
 }
 
 func (tensorBackend *TensorBackend) applyLayerNorm(
@@ -703,6 +750,142 @@ func (tensorBackend *TensorBackend) applySDPA(
 	)
 }
 
+func (tensorBackend *TensorBackend) applyGQA(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 3 {
+		return nil, fmt.Errorf("metal tensor: GQA node %q requires 3 inputs", node.ID)
+	}
+
+	queryShape := inputs[0].Shape().Dims()
+
+	if len(queryShape) != 4 {
+		return nil, fmt.Errorf("metal tensor: GQA node %q query must be rank 4", node.ID)
+	}
+
+	keyValueShape := inputs[1].Shape().Dims()
+
+	if len(keyValueShape) != 4 {
+		return nil, fmt.Errorf("metal tensor: GQA node %q key/value must be rank 4", node.ID)
+	}
+
+	if !inputs[1].Shape().Equal(inputs[2].Shape()) {
+		return nil, fmt.Errorf("metal tensor: GQA node %q key/value shape mismatch", node.ID)
+	}
+
+	numKVHeads := intConfig(node, "num_kv_heads", keyValueShape[1])
+
+	if numKVHeads <= 0 || queryShape[0] != keyValueShape[0] ||
+		keyValueShape[1] != numKVHeads ||
+		queryShape[3] != keyValueShape[3] || queryShape[1]%numKVHeads != 0 {
+		return nil, fmt.Errorf("metal tensor: GQA node %q query/key/value head shape mismatch", node.ID)
+	}
+
+	outputShape, err := tensor.NewShape(node.Shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	attentionOps, err := tensorBackend.attention()
+
+	if err != nil {
+		return nil, err
+	}
+
+	keyTensor := inputs[1]
+	valueTensor := inputs[2]
+	keyValueLen := keyValueShape[2]
+	keyValueStride := keyValueShape[2]
+	cache, _ := node.Metadata["kv_cache"].(*kv.Cache)
+
+	if cache != nil {
+		if !boolConfig(node, "causal", false) {
+			return nil, fmt.Errorf("metal tensor: KV cache requires causal GQA node %q", node.ID)
+		}
+
+		cacheEntry, err := tensorBackend.appendResidentKV(
+			attentionOps,
+			cache,
+			node.ID,
+			inputs[1],
+			inputs[2],
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		keyTensor = cacheEntry.key
+		valueTensor = cacheEntry.value
+		keyValueLen = cacheEntry.shape[2]
+		keyValueStride = cacheEntry.capacity
+	}
+
+	return attentionOps.GQATensor(
+		inputs[0],
+		keyTensor,
+		valueTensor,
+		outputShape,
+		queryShape[0],
+		queryShape[1],
+		numKVHeads,
+		queryShape[2],
+		keyValueLen,
+		keyValueStride,
+		queryShape[3],
+		boolConfig(node, "causal", false),
+	)
+}
+
+func (tensorBackend *TensorBackend) applyRoPE(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("metal tensor: RoPE node %q requires 1 input", node.ID)
+	}
+
+	inputShape := inputs[0].Shape().Dims()
+
+	if len(inputShape) != 4 {
+		return nil, fmt.Errorf("metal tensor: RoPE node %q input must be rank 4", node.ID)
+	}
+
+	outputShape, err := tensor.NewShape(node.Shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	positionalOps, err := tensorBackend.positional()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return positionalOps.RoPETensor(
+		inputs[0],
+		outputShape,
+		floatConfig(node, "base", 10000),
+		inputShape[0],
+		inputShape[1],
+		inputShape[2],
+		inputShape[3],
+	)
+}
+
 func (tensorBackend *TensorBackend) appendResidentKV(
 	attentionOps *MetalAttention,
 	cache *kv.Cache,
@@ -988,6 +1171,25 @@ func (tensorBackend *TensorBackend) attention() (*MetalAttention, error) {
 	tensorBackend.attentionOps = attentionOps
 
 	return attentionOps, nil
+}
+
+func (tensorBackend *TensorBackend) positional() (*MetalPositional, error) {
+	tensorBackend.cacheMu.Lock()
+	defer tensorBackend.cacheMu.Unlock()
+
+	if tensorBackend.positionalOps != nil {
+		return tensorBackend.positionalOps, nil
+	}
+
+	positionalOps, err := newMetalPositional(nil)
+
+	if err != nil {
+		return nil, err
+	}
+
+	tensorBackend.positionalOps = positionalOps
+
+	return positionalOps, nil
 }
 
 func (tensorBackend *TensorBackend) embedding(vocabSize, dModel int) (*EmbeddingOps, error) {

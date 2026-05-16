@@ -426,6 +426,62 @@ func (m *MathOps) LayerNormTensor(
 	return output, nil
 }
 
+func (m *MathOps) RMSNormTensor(
+	input, weight computetensor.Float64Tensor,
+	eps float64,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalWeight, err := requireMetalTensor(weight)
+
+	if err != nil {
+		return nil, err
+	}
+
+	dimensions := metalInput.shape.Dims()
+
+	if len(dimensions) == 0 {
+		return nil, fmt.Errorf("metal tensor: rmsnorm input shape is required")
+	}
+
+	dModel := dimensions[len(dimensions)-1]
+
+	if dModel <= 0 || metalInput.Len()%dModel != 0 {
+		return nil, fmt.Errorf("metal tensor: invalid rmsnorm final dimension %d", dModel)
+	}
+
+	if metalWeight.Len() != dModel {
+		return nil, fmt.Errorf("metal tensor: rmsnorm weight length must equal d_model=%d", dModel)
+	}
+
+	output, err := newMetalTensor(metalInput.shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_rmsnorm_tensor(
+		metalInput.buffer,
+		output.buffer,
+		metalWeight.buffer,
+		C.int(metalInput.Len()/dModel),
+		C.int(dModel),
+		C.float(eps),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal tensor: rmsnorm launch failed")
+	}
+
+	return output, nil
+}
+
 func (m *MathOps) binaryTensor(
 	left, right computetensor.Float64Tensor, name string,
 ) (computetensor.Float64Tensor, error) {

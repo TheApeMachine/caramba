@@ -5,6 +5,7 @@ import (
 	"math"
 	"sync"
 
+	"github.com/theapemachine/caramba/pkg/backend/compute/kv"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -18,12 +19,14 @@ type Dict struct {
 	OpShape           []int
 	TargetShape       []int
 	Inputs            [][]float64
+	KVCache           *kv.Cache
 	Source            string
 	File              string
 	Cache             string
 	Revision          string
 	RepoType          string
 	Text              string
+	NodeID            string
 	Op                string
 	At                string
 	After             string
@@ -68,6 +71,7 @@ type Dict struct {
 	SplitSize         int
 	Window            int
 	NumHeads          int
+	NumKVHeads        int
 	HeadDim           int
 	DModel            int
 	VocabSize         int
@@ -438,6 +442,118 @@ func (dict *Dict) OperationLastDim() int {
 	}
 
 	return shape[len(shape)-1]
+}
+
+func (dict *Dict) RoPELayout(name string) (
+	batch int,
+	numHeads int,
+	sequenceLength int,
+	headDim int,
+	err error,
+) {
+	shape := dict.OperationShape()
+
+	if len(shape) != 4 {
+		return 0, 0, 0, 0, fmt.Errorf(
+			"%s: expected [batch, num_heads, seq_len, head_dim]; got rank %d",
+			name,
+			len(shape),
+		)
+	}
+
+	batch, numHeads, sequenceLength, headDim = shape[0], shape[1], shape[2], shape[3]
+
+	if batch <= 0 || numHeads <= 0 || sequenceLength <= 0 || headDim <= 0 {
+		return 0, 0, 0, 0, fmt.Errorf("%s: all shape dimensions must be positive", name)
+	}
+
+	if dict.HeadDim != 0 && dict.HeadDim != headDim {
+		return 0, 0, 0, 0, fmt.Errorf(
+			"%s: head_dim %d does not match shape head dim %d",
+			name,
+			dict.HeadDim,
+			headDim,
+		)
+	}
+
+	if headDim%2 != 0 {
+		return 0, 0, 0, 0, fmt.Errorf("%s: expected even head_dim, got %d", name, headDim)
+	}
+
+	return batch, numHeads, sequenceLength, headDim, nil
+}
+
+func (dict *Dict) GQALayout(name string) (
+	batch int,
+	numHeads int,
+	numKVHeads int,
+	sequenceLength int,
+	headDim int,
+	err error,
+) {
+	shape := dict.OperationShape()
+
+	switch len(shape) {
+	case 4:
+		batch, numHeads, sequenceLength, headDim = shape[0], shape[1], shape[2], shape[3]
+		numKVHeads = dict.NumKVHeads
+
+		if numKVHeads <= 0 {
+			return 0, 0, 0, 0, 0, fmt.Errorf(
+				"%s: num_kv_heads is required for rank 4 GQA input",
+				name,
+			)
+		}
+	case 5:
+		batch = shape[0]
+		numHeads = shape[1]
+		numKVHeads = shape[2]
+		sequenceLength = shape[3]
+		headDim = shape[4]
+	default:
+		return 0, 0, 0, 0, 0, fmt.Errorf(
+			"%s: expected rank 4 or 5, got %d",
+			name,
+			len(shape),
+		)
+	}
+
+	if batch <= 0 || numHeads <= 0 || numKVHeads <= 0 || sequenceLength <= 0 || headDim <= 0 {
+		return 0, 0, 0, 0, 0, fmt.Errorf("%s: all shape dimensions must be positive", name)
+	}
+
+	if dict.NumHeads != 0 && dict.NumHeads != numHeads {
+		return 0, 0, 0, 0, 0, fmt.Errorf(
+			"%s: num_heads %d does not match shape heads %d",
+			name,
+			dict.NumHeads,
+			numHeads,
+		)
+	}
+
+	if dict.NumKVHeads != 0 && dict.NumKVHeads != numKVHeads {
+		return 0, 0, 0, 0, 0, fmt.Errorf(
+			"%s: num_kv_heads %d does not match layout kv heads %d",
+			name,
+			dict.NumKVHeads,
+			numKVHeads,
+		)
+	}
+
+	if dict.HeadDim != 0 && dict.HeadDim != headDim {
+		return 0, 0, 0, 0, 0, fmt.Errorf(
+			"%s: head_dim %d does not match shape head dim %d",
+			name,
+			dict.HeadDim,
+			headDim,
+		)
+	}
+
+	if numHeads%numKVHeads != 0 {
+		return 0, 0, 0, 0, 0, fmt.Errorf("%s: num_heads must be divisible by num_kv_heads", name)
+	}
+
+	return batch, numHeads, numKVHeads, sequenceLength, headDim, nil
 }
 
 func (dict *Dict) SetOperationOutput(output []float64) *Dict {

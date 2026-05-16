@@ -79,26 +79,10 @@ func (rope *RoPE) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
-	shape := stateDict.OperationShape()
+	batch, numHeads, seqLen, headDim, err := stateDict.RoPELayout("positional.rope")
 
-	if len(shape) != 4 {
-		return nil, fmt.Errorf("positional.rope: expected rank 4, got %d", len(shape))
-	}
-
-	batch := shape[0]
-	numHeads := shape[1]
-	seqLen := shape[2]
-	headDim := shape[3]
-
-	if stateDict.HeadDim != 0 && stateDict.HeadDim != headDim {
-		return nil, fmt.Errorf(
-			"positional.rope: head_dim %d does not match shape head dim %d",
-			stateDict.HeadDim, headDim,
-		)
-	}
-
-	if headDim%2 != 0 {
-		return nil, fmt.Errorf("positional.rope: expected even head dim, got %d", headDim)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(stateDict.Inputs[0]) != batch*numHeads*seqLen*headDim {

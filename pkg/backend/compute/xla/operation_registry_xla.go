@@ -573,7 +573,13 @@ func (mqa *MQA) Forward(stateDict *state.Dict) (*state.Dict, error) {
 }
 
 func (gqa *GQA) Forward(stateDict *state.Dict) (*state.Dict, error) {
-	shape, err := requireXLAShape(stateDict, "xla.attention.gqa", 5, 3)
+	if err := stateDict.RequireOperationInputs("xla.attention.gqa", 3); err != nil {
+		return nil, err
+	}
+
+	batch, numHeads, numKVHeads, sequenceLength, headDim, err := stateDict.GQALayout(
+		"xla.attention.gqa",
+	)
 
 	if err != nil {
 		return nil, err
@@ -581,7 +587,7 @@ func (gqa *GQA) Forward(stateDict *state.Dict) (*state.Dict, error) {
 
 	output, err := gqa.attention.GQA(
 		stateDict.Inputs[0], stateDict.Inputs[1], stateDict.Inputs[2],
-		shape[0], shape[1], shape[2], shape[3], shape[4],
+		batch, numHeads, numKVHeads, sequenceLength, headDim, stateDict.Causal,
 	)
 
 	return setXLAOutput(stateDict, output, err)
@@ -919,8 +925,18 @@ func (rope *RoPE) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, fmt.Errorf("xla.positional.rope: input[0] is required")
 	}
 
+	batch, numHeads, sequenceLength, headDim, err := stateDict.RoPELayout(
+		"xla.positional.rope",
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
 	output, err := rope.positional.RoPEForward(
-		defaultXLAFloat(stateDict.Base, 10000), stateDict.OperationShape(), stateDict.Inputs...,
+		defaultXLAFloat(stateDict.Base, 10000),
+		[]int{batch, numHeads, sequenceLength, headDim},
+		stateDict.Inputs...,
 	)
 
 	return setXLAOutput(stateDict, output, err)

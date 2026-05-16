@@ -378,8 +378,53 @@ int metal_mqa(const float* q, const float* k, const float* v, float* out,
 // GQA dispatch
 // ---------------------------------------------------------------------------
 
+static int dispatch_gqa_buffers(id<MTLBuffer> bufQ, id<MTLBuffer> bufK,
+                                id<MTLBuffer> bufV, id<MTLBuffer> bufOut,
+                                int batch, int num_heads, int num_kv_heads,
+                                int query_len, int key_value_len,
+                                int key_value_stride, int head_dim,
+                                int causal)
+{
+    if (!gAttnQueue || !gPSO_gqa || !bufQ || !bufK || !bufV || !bufOut) return -1;
+    if (batch <= 0 || num_heads <= 0 || num_kv_heads <= 0 ||
+        query_len <= 0 || key_value_len < query_len ||
+        key_value_stride < key_value_len || head_dim <= 0 ||
+        num_heads % num_kv_heads != 0) return -1;
+
+    NSUInteger smem_bytes = (NSUInteger)query_len * key_value_len * sizeof(float);
+    int total_q_heads = batch * num_heads;
+
+    id<MTLCommandBuffer>        cb  = [gAttnQueue commandBuffer];
+    id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+    if (!cb || !enc) return -1;
+
+    [enc setComputePipelineState:gPSO_gqa];
+    [enc setBuffer:bufQ   offset:0 atIndex:0];
+    [enc setBuffer:bufK   offset:0 atIndex:1];
+    [enc setBuffer:bufV   offset:0 atIndex:2];
+    [enc setBuffer:bufOut offset:0 atIndex:3];
+    [enc setBytes:&query_len        length:sizeof(int) atIndex:4];
+    [enc setBytes:&key_value_len    length:sizeof(int) atIndex:5];
+    [enc setBytes:&key_value_stride length:sizeof(int) atIndex:6];
+    [enc setBytes:&head_dim         length:sizeof(int) atIndex:7];
+    [enc setBytes:&num_heads        length:sizeof(int) atIndex:8];
+    [enc setBytes:&num_kv_heads     length:sizeof(int) atIndex:9];
+    [enc setBytes:&causal           length:sizeof(int) atIndex:10];
+    [enc setThreadgroupMemoryLength:smem_bytes atIndex:0];
+
+    MTLSize threadgroups    = MTLSizeMake((NSUInteger)total_q_heads, 1, 1);
+    MTLSize threadsPerGroup = MTLSizeMake((NSUInteger)query_len, 1, 1);
+    [enc dispatchThreadgroups:threadgroups threadsPerThreadgroup:threadsPerGroup];
+    [enc endEncoding];
+    [cb commit];
+    [cb waitUntilCompleted];
+
+    return cb.error ? -1 : 0;
+}
+
 int metal_gqa(const float* q, const float* k, const float* v, float* out,
-              int batch, int num_heads, int num_kv_heads, int seq_len, int head_dim)
+              int batch, int num_heads, int num_kv_heads, int seq_len, int head_dim,
+              int causal)
 {
     @autoreleasepool {
         int total_q_heads  = batch * num_heads;
@@ -395,31 +440,30 @@ int metal_gqa(const float* q, const float* k, const float* v, float* out,
         id<MTLBuffer> bufOut = make_buf_rw(gAttnDevice, out, out_bytes);
         if (!bufQ || !bufK || !bufV || !bufOut) return -1;
 
-        NSUInteger smem_bytes = (NSUInteger)seq_len * seq_len * sizeof(float);
-
-        id<MTLCommandBuffer>        cb  = [gAttnQueue commandBuffer];
-        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
-
-        [enc setComputePipelineState:gPSO_gqa];
-        [enc setBuffer:bufQ   offset:0 atIndex:0];
-        [enc setBuffer:bufK   offset:0 atIndex:1];
-        [enc setBuffer:bufV   offset:0 atIndex:2];
-        [enc setBuffer:bufOut offset:0 atIndex:3];
-        [enc setBytes:&seq_len     length:sizeof(int) atIndex:4];
-        [enc setBytes:&head_dim    length:sizeof(int) atIndex:5];
-        [enc setBytes:&num_heads   length:sizeof(int) atIndex:6];
-        [enc setBytes:&num_kv_heads length:sizeof(int) atIndex:7];
-        [enc setThreadgroupMemoryLength:smem_bytes atIndex:0];
-
-        MTLSize threadgroups    = MTLSizeMake((NSUInteger)total_q_heads, 1, 1);
-        MTLSize threadsPerGroup = MTLSizeMake((NSUInteger)seq_len, 1, 1);
-        [enc dispatchThreadgroups:threadgroups threadsPerThreadgroup:threadsPerGroup];
-        [enc endEncoding];
-        [cb commit];
-        [cb waitUntilCompleted];
+        int rc = dispatch_gqa_buffers(bufQ, bufK, bufV, bufOut, batch, num_heads,
+                                      num_kv_heads, seq_len, seq_len, seq_len,
+                                      head_dim, causal);
+        if (rc != 0) return rc;
 
         copy_back_if_needed(bufOut, out, out_bytes);
         return 0;
+    }
+}
+
+int metal_gqa_tensor(const void* q, const void* k, const void* v, void* out,
+                     int batch, int num_heads, int num_kv_heads,
+                     int query_len, int key_value_len, int key_value_stride,
+                     int head_dim, int causal)
+{
+    @autoreleasepool {
+        id<MTLBuffer> bufQ   = (__bridge id)((void*)q);
+        id<MTLBuffer> bufK   = (__bridge id)((void*)k);
+        id<MTLBuffer> bufV   = (__bridge id)((void*)v);
+        id<MTLBuffer> bufOut = (__bridge id)out;
+
+        return dispatch_gqa_buffers(bufQ, bufK, bufV, bufOut, batch, num_heads,
+                                    num_kv_heads, query_len, key_value_len,
+                                    key_value_stride, head_dim, causal);
     }
 }
 

@@ -615,6 +615,35 @@ int metal_rmsnorm(const float* src, float* dst,
     }
 }
 
+int metal_rmsnorm_tensor(const void* src, void* dst,
+                         const void* weight,
+                         int num_rows, int d_model, float eps) {
+    @autoreleasepool {
+        if (!gMQueue || !gPSO_rmsnorm || !src || !dst || !weight) return -1;
+        if (num_rows <= 0 || d_model <= 0) return -1;
+
+        id<MTLBuffer> bSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bDst = (__bridge id)dst;
+        id<MTLBuffer> bW = (__bridge id)((void*)weight);
+
+        unsigned int dm = (unsigned int)d_model;
+        id<MTLCommandBuffer> cb = begin_cb();
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:gPSO_rmsnorm];
+        [enc setBuffer:bSrc offset:0 atIndex:0];
+        [enc setBuffer:bDst offset:0 atIndex:1];
+        [enc setBuffer:bW offset:0 atIndex:2];
+        [enc setBytes:&dm length:sizeof(unsigned int) atIndex:3];
+        [enc setBytes:&eps length:sizeof(float) atIndex:4];
+        NSUInteger tgs = (NSUInteger)d_model < 256 ? (NSUInteger)d_model : 256;
+        [enc dispatchThreadgroups:MTLSizeMake((NSUInteger)num_rows,1,1)
+             threadsPerThreadgroup:MTLSizeMake(tgs,1,1)];
+        [enc endEncoding];
+        commit_wait(cb);
+        return cb.error ? -1 : 0;
+    }
+}
+
 int metal_sign(const float* src, float* dst, int n) {
     @autoreleasepool {
         NSUInteger nb = (NSUInteger)n * sizeof(float);

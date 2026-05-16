@@ -50,6 +50,11 @@ int metal_layernorm_tensor(
     int num_rows, int d_model, float eps
 );
 
+int metal_rmsnorm_tensor(
+    const void* src, void* dst, const void* weight,
+    int num_rows, int d_model, float eps
+);
+
 // Scale: dst[i] = src[i] * (1/sqrt(dim)).
 int metal_inv_sqrt_dim_scale(const float* src, float* dst, int n, int dim);
 

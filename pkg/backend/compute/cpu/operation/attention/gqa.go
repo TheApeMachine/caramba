@@ -25,33 +25,53 @@ func (gqa *GQA) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
-	shape := stateDict.OperationShape()
+	batch, numHeads, numKVHeads, seqLen, headDim, err := stateDict.GQALayout("attention.gqa")
 
-	if len(shape) != 5 {
-		return nil, fmt.Errorf("attention.gqa: expected rank 5, got %d", len(shape))
-	}
-
-	batch := shape[0]
-	numHeads := shape[1]
-	numKVHeads := shape[2]
-	seqLen := shape[3]
-	headDim := shape[4]
-
-	if batch <= 0 || numHeads <= 0 || numKVHeads <= 0 || seqLen <= 0 || headDim <= 0 {
-		return nil, fmt.Errorf("attention.gqa: all shape dimensions must be positive")
-	}
-
-	if numHeads%numKVHeads != 0 {
-		return nil, fmt.Errorf("attention.gqa: num_heads must be divisible by num_kv_heads")
+	if err != nil {
+		return nil, err
 	}
 
 	Q, K, V := stateDict.Inputs[0], stateDict.Inputs[1], stateDict.Inputs[2]
-	headStride := seqLen * headDim
+	keyValueWidth := batch * numKVHeads * headDim
+
+	if len(K) != len(V) || keyValueWidth == 0 || len(K)%keyValueWidth != 0 {
+		return nil, fmt.Errorf("attention.gqa: K/V lengths must match whole cached heads")
+	}
+
+	keyValueLen := len(K) / keyValueWidth
+	keyShape := []int{batch, numKVHeads, seqLen, headDim}
+
+	if stateDict.KVCache != nil {
+		if stateDict.NodeID == "" {
+			return nil, fmt.Errorf("attention.gqa: node id is required for KV cache")
+		}
+
+		var err error
+
+		K, V, keyShape, err = stateDict.KVCache.Append(stateDict.NodeID, keyShape, K, V)
+
+		if err != nil {
+			return nil, err
+		}
+
+		keyValueLen = keyShape[2]
+	}
+
+	if keyValueLen < seqLen {
+		return nil, fmt.Errorf(
+			"attention.gqa: key/value length %d is shorter than query length %d",
+			keyValueLen,
+			seqLen,
+		)
+	}
+
+	queryHeadStride := seqLen * headDim
+	keyValueHeadStride := keyValueLen * headDim
 	groups := numHeads / numKVHeads
 
-	qBatchStride := numHeads * headStride
-	kvBatchStride := numKVHeads * headStride
-	total := batch * numHeads * headStride
+	qBatchStride := numHeads * queryHeadStride
+	kvBatchStride := numKVHeads * keyValueHeadStride
+	total := batch * numHeads * queryHeadStride
 
 	if len(Q) != total || len(K) != batch*kvBatchStride || len(V) != batch*kvBatchStride {
 		return nil, fmt.Errorf("attention.gqa: Q/K/V lengths do not match GQA shape")
@@ -61,18 +81,34 @@ func (gqa *GQA) Forward(stateDict *state.Dict) (*state.Dict, error) {
 
 	for b := 0; b < batch; b++ {
 		for kv := 0; kv < numKVHeads; kv++ {
-			kvOff := b*kvBatchStride + kv*headStride
+			kvOff := b*kvBatchStride + kv*keyValueHeadStride
+
 			for g := 0; g < groups; g++ {
 				h := kv*groups + g
-				qOff := b*qBatchStride + h*headStride
+				qOff := b*qBatchStride + h*queryHeadStride
 				oOff := qOff
+
+				if stateDict.Causal {
+					sdpaHeadCausal(
+						stateDict.Out[oOff:oOff+queryHeadStride],
+						Q[qOff:qOff+queryHeadStride],
+						K[kvOff:kvOff+keyValueHeadStride],
+						V[kvOff:kvOff+keyValueHeadStride],
+						seqLen,
+						keyValueLen,
+						headDim,
+					)
+
+					continue
+				}
+
 				sdpaHead(
-					stateDict.Out[oOff:oOff+headStride],
-					Q[qOff:qOff+headStride],
-					K[kvOff:kvOff+headStride],
-					V[kvOff:kvOff+headStride],
+					stateDict.Out[oOff:oOff+queryHeadStride],
+					Q[qOff:qOff+queryHeadStride],
+					K[kvOff:kvOff+keyValueHeadStride],
+					V[kvOff:kvOff+keyValueHeadStride],
 					seqLen,
-					seqLen,
+					keyValueLen,
 					headDim,
 				)
 			}

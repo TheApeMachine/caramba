@@ -23,6 +23,15 @@ int metal_rope(
     int          head_dim,
     int          total_heads);
 
+int metal_rope_tensor(
+    const void*  x,
+    void*        out,
+    const float* cos_table,
+    const float* sin_table,
+    int          seq_len,
+    int          head_dim,
+    int          total_heads);
+
 // ALiBi: compute attention bias tensor.
 // out: float array of length num_heads * seq_len_q * seq_len_k
 // slopes: float array of length num_heads

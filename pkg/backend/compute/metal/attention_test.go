@@ -273,6 +273,61 @@ func TestMetalAttention_AppendKVTensor(test *testing.T) {
 	})
 }
 
+func TestMetalAttention_GQATensor(test *testing.T) {
+	lib := metallibPathOrSkip(test, "attention.metallib")
+
+	Convey("Given resident Metal GQA tensors", test, func() {
+		tensorBackend := newMetalTensorBackendForTest(test)
+		attentionOps, err := NewAttention(lib)
+		So(err, ShouldBeNil)
+
+		queryShape, err := computetensor.NewShape([]int{1, 2, 1, 2})
+		So(err, ShouldBeNil)
+
+		keyValueShape, err := computetensor.NewShape([]int{1, 1, 2, 2})
+		So(err, ShouldBeNil)
+
+		query := []float64{0, 1, 1, 0}
+		key := []float64{1, 0, 0, 1}
+		value := []float64{2, 3, 5, 7}
+		expectedState := state.NewDict().WithShape([]int{1, 2, 1, 2}).WithInputs(
+			query,
+			key,
+			value,
+		)
+		expectedState.NumKVHeads = 1
+		expectedState.HeadDim = 2
+		expectedState.Causal = true
+		expectedState, err = cpuattention.NewGQA().Forward(expectedState)
+		So(err, ShouldBeNil)
+
+		Convey("It should match CPU causal GQA with a longer KV history", func() {
+			output, err := attentionOps.GQATensor(
+				uploadMetalTensorForTest(test, tensorBackend, queryShape, query),
+				uploadMetalTensorForTest(test, tensorBackend, keyValueShape, key),
+				uploadMetalTensorForTest(test, tensorBackend, keyValueShape, value),
+				queryShape,
+				1,
+				2,
+				1,
+				1,
+				2,
+				2,
+				2,
+				true,
+			)
+			So(err, ShouldBeNil)
+			defer func() {
+				So(output.Close(), ShouldBeNil)
+			}()
+
+			values, err := output.CloneFloat64()
+			So(err, ShouldBeNil)
+			assertAlmostEqualSlice(values, expectedState.Out, 1e-5)
+		})
+	})
+}
+
 func TestTensorBackend_applySDPA(test *testing.T) {
 	Convey("Given a Metal tensor backend and a generation KV cache", test, func() {
 		tensorBackend := newMetalTensorBackendForTest(test)
@@ -370,6 +425,57 @@ func TestTensorBackend_applySDPA(test *testing.T) {
 			keyValues, err := tensorBackend.kvEntries["attention"].key.CloneFloat64()
 			So(err, ShouldBeNil)
 			So(keyValues, ShouldResemble, []float64{1, 0, 0, 1})
+		})
+	})
+}
+
+func TestTensorBackend_applyGQA(test *testing.T) {
+	Convey("Given a Metal tensor backend and grouped-query KV cache", test, func() {
+		tensorBackend := newMetalTensorBackendForTest(test)
+		cache := kv.NewCache()
+		So(cache.SetCapacity(8), ShouldBeNil)
+		queryShape, err := computetensor.NewShape([]int{1, 2, 1, 2})
+		So(err, ShouldBeNil)
+		keyValueShape, err := computetensor.NewShape([]int{1, 1, 1, 2})
+		So(err, ShouldBeNil)
+		node := executor.NodeSpec{
+			ID:    "gqa",
+			Op:    ir.OpType("attention.gqa"),
+			Shape: []int{1, 2, 1, 2},
+			Metadata: map[string]any{
+				"causal":       true,
+				"num_kv_heads": 1,
+				"kv_cache":     cache,
+			},
+		}
+
+		Convey("It should keep grouped K/V tensors resident across decode steps", func() {
+			output, err := tensorBackend.applyGQA(
+				context.Background(),
+				node,
+				[]computetensor.Float64Tensor{
+					uploadMetalTensorForTest(test, tensorBackend, queryShape, []float64{1, 0, 0, 1}),
+					uploadMetalTensorForTest(test, tensorBackend, keyValueShape, []float64{1, 0}),
+					uploadMetalTensorForTest(test, tensorBackend, keyValueShape, []float64{2, 3}),
+				},
+			)
+			So(err, ShouldBeNil)
+			So(output.Close(), ShouldBeNil)
+			So(tensorBackend.kvEntries["gqa"].shape, ShouldResemble, []int{1, 1, 1, 2})
+
+			output, err = tensorBackend.applyGQA(
+				context.Background(),
+				node,
+				[]computetensor.Float64Tensor{
+					uploadMetalTensorForTest(test, tensorBackend, queryShape, []float64{0, 1, 1, 0}),
+					uploadMetalTensorForTest(test, tensorBackend, keyValueShape, []float64{0, 1}),
+					uploadMetalTensorForTest(test, tensorBackend, keyValueShape, []float64{5, 7}),
+				},
+			)
+			So(err, ShouldBeNil)
+			So(output.Close(), ShouldBeNil)
+			So(tensorBackend.kvEntries["gqa"].shape, ShouldResemble, []int{1, 1, 2, 2})
+			So(tensorBackend.kvEntries["gqa"].capacity, ShouldEqual, 8)
 		})
 	})
 }

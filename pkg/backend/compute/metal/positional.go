@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"math"
 	"unsafe"
+
+	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
 // MetalPositional dispatches RoPE and ALiBi kernels to the Metal GPU.
@@ -52,16 +54,37 @@ func buildTablesFP32(seqLen, headDim int, base float64) ([]float32, []float32) {
 // RoPEForward applies rotary position embeddings on the Metal GPU.
 // shape=[batch, num_heads, seq_len, head_dim]; data[0]=input tensor.
 func (m *MetalPositional) RoPEForward(base float64, shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("metal_rope: input[0] is required")
+	}
+
+	if len(shape) != 4 {
+		return nil, fmt.Errorf("metal_rope: expected rank 4 shape, got %d", len(shape))
+	}
+
 	batch := shape[0]
 	numHeads := shape[1]
 	seqLen := shape[2]
 	headDim := shape[3]
+
+	if batch <= 0 || numHeads <= 0 || seqLen <= 0 || headDim <= 0 {
+		return nil, fmt.Errorf("metal_rope: all shape dimensions must be positive")
+	}
+
+	if headDim%2 != 0 {
+		return nil, fmt.Errorf("metal_rope: expected even head_dim, got %d", headDim)
+	}
 
 	if base == 0 {
 		base = 10000.0
 	}
 
 	x := data[0]
+
+	if len(x) != batch*numHeads*seqLen*headDim {
+		return nil, fmt.Errorf("metal_rope: input length mismatch")
+	}
+
 	src32 := toFloat32(x)
 	dst32 := make([]float32, len(x))
 
@@ -81,6 +104,65 @@ func (m *MetalPositional) RoPEForward(base float64, shape []int, data ...[]float
 		return nil, fmt.Errorf("metal_rope failed (rc=%d)", rc)
 	}
 	return toFloat64(dst32), nil
+}
+
+/*
+RoPETensor applies rotary position embeddings without leaving Metal storage.
+*/
+func (m *MetalPositional) RoPETensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	base float64,
+	batch, numHeads, seqLen, headDim int,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if batch <= 0 || numHeads <= 0 || seqLen <= 0 || headDim <= 0 {
+		return nil, fmt.Errorf("metal_rope_tensor: all shape dimensions must be positive")
+	}
+
+	if headDim%2 != 0 {
+		return nil, fmt.Errorf("metal_rope_tensor: expected even head_dim, got %d", headDim)
+	}
+
+	expectedLength := batch * numHeads * seqLen * headDim
+
+	if metalInput.Len() != expectedLength || outputShape.Len() != expectedLength {
+		return nil, fmt.Errorf("metal_rope_tensor: input/output length mismatch")
+	}
+
+	if base == 0 {
+		base = 10000.0
+	}
+
+	cosT, sinT := buildTablesFP32(seqLen, headDim, base)
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_rope_tensor(
+		metalInput.buffer,
+		output.buffer,
+		(*C.float)(unsafe.Pointer(&cosT[0])),
+		(*C.float)(unsafe.Pointer(&sinT[0])),
+		C.int(seqLen),
+		C.int(headDim),
+		C.int(batch*numHeads),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_rope_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
 }
 
 // Forward dispatches RoPE with the universal signature.

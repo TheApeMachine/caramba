@@ -153,7 +153,7 @@ system:
 			So(err, ShouldBeNil)
 			So(manifestPath, ShouldEqual, "model/llm/llama-3-2-1b-instruct.yml")
 			So(graph, ShouldNotBeNil)
-			So(graph.Nodes(), ShouldHaveLength, 227)
+			So(graph.Nodes(), ShouldHaveLength, 291)
 		})
 	})
 }
@@ -398,7 +398,9 @@ func testTokenizerJSON() []byte {
       "hell": 6,
       "hello": 7,
       "!": 8,
-      "<|endoftext|>": 9
+      "<|endoftext|>": 9,
+      "\u00c3": 10,
+      "\u00a9": 11
     },
     "merges": [
       "h e",

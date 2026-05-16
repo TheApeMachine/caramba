@@ -1,0 +1,83 @@
+package state
+
+import (
+	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
+)
+
+func TestDict_RoPELayout(test *testing.T) {
+	Convey("Given a RoPE state dictionary", test, func() {
+		Convey("It should resolve head-major RoPE dimensions", func() {
+			dict := NewDict().WithShape([]int{2, 4, 8, 16})
+			dict.HeadDim = 16
+
+			batch, numHeads, sequenceLength, headDim, err := dict.RoPELayout("rope")
+
+			So(err, ShouldBeNil)
+			So(batch, ShouldEqual, 2)
+			So(numHeads, ShouldEqual, 4)
+			So(sequenceLength, ShouldEqual, 8)
+			So(headDim, ShouldEqual, 16)
+		})
+
+		Convey("It should reject rank-three projection tensors before head shaping", func() {
+			dict := NewDict().WithShape([]int{1, 8, 64})
+			dict.HeadDim = 16
+
+			_, _, _, _, err := dict.RoPELayout("rope")
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "expected [batch, num_heads, seq_len, head_dim]")
+		})
+	})
+}
+
+func TestDict_GQALayout(test *testing.T) {
+	Convey("Given a GQA state dictionary", test, func() {
+		Convey("It should resolve rank-four query shape with configured KV heads", func() {
+			dict := NewDict().WithShape([]int{1, 32, 7, 64})
+			dict.NumHeads = 32
+			dict.NumKVHeads = 8
+			dict.HeadDim = 64
+
+			batch, numHeads, numKVHeads, sequenceLength, headDim, err := dict.GQALayout("gqa")
+
+			So(err, ShouldBeNil)
+			So(batch, ShouldEqual, 1)
+			So(numHeads, ShouldEqual, 32)
+			So(numKVHeads, ShouldEqual, 8)
+			So(sequenceLength, ShouldEqual, 7)
+			So(headDim, ShouldEqual, 64)
+		})
+
+		Convey("It should keep supporting legacy rank-five GQA shape", func() {
+			dict := NewDict().WithShape([]int{1, 32, 8, 7, 64})
+
+			_, numHeads, numKVHeads, _, _, err := dict.GQALayout("gqa")
+
+			So(err, ShouldBeNil)
+			So(numHeads, ShouldEqual, 32)
+			So(numKVHeads, ShouldEqual, 8)
+		})
+	})
+}
+
+func BenchmarkDict_RoPELayout(benchmark *testing.B) {
+	dict := NewDict().WithShape([]int{1, 32, 128, 64})
+	dict.HeadDim = 64
+
+	for benchmark.Loop() {
+		_, _, _, _, _ = dict.RoPELayout("rope")
+	}
+}
+
+func BenchmarkDict_GQALayout(benchmark *testing.B) {
+	dict := NewDict().WithShape([]int{1, 32, 128, 64})
+	dict.NumKVHeads = 8
+	dict.HeadDim = 64
+
+	for benchmark.Loop() {
+		_, _, _, _, _, _ = dict.GQALayout("gqa")
+	}
+}

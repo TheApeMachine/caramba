@@ -205,7 +205,8 @@ static std::string t1(int n) {
 static std::string build_sdpa_module(
     const std::string& name,
     int batch, int num_heads, int seq_len, int head_dim,
-    int kv_heads) // kv_heads == num_heads for SDPA/SW, 1 for MQA, num_kv_heads for GQA
+    int kv_heads,
+    bool causal) // kv_heads == num_heads for SDPA/SW, 1 for MQA, num_kv_heads for GQA
 {
     int q_n  = batch * num_heads * seq_len * head_dim;
     int kv_n = batch * kv_heads  * seq_len * head_dim;
@@ -301,7 +302,31 @@ static std::string build_sdpa_module(
         // Scale scores
         "    %scale_c = stablehlo.constant dense<" + scale_str + "> : tensor<f64>\n"
         "    %scale   = stablehlo.broadcast_in_dim %scale_c, dims = [] : (tensor<f64>) -> " + tSc + "\n"
-        "    %scores  = stablehlo.multiply %scores_raw, %scale : " + tSc + "\n"
+        "    %scores_scaled = stablehlo.multiply %scores_raw, %scale : " + tSc + "\n";
+
+    if (causal) {
+        std::string mask_vals = "";
+        for (int query = 0; query < seq_len; query++) {
+            for (int key = 0; key < seq_len; key++) {
+                if (key > 0 || query > 0) mask_vals += ", ";
+                mask_vals += (key > query) ? "-1.79769e+308" : "0.0";
+            }
+        }
+
+        std::string tMask2d = "tensor<" + si(seq_len) + "x" + si(seq_len) + "xf64>";
+
+        module +=
+        "    %mask2d = stablehlo.constant dense<[" + mask_vals + "]> : " + tMask2d + "\n"
+        "    %mask4d = stablehlo.broadcast_in_dim %mask2d, dims = [2, 3] : (" + tMask2d + ") -> " + tSc + "\n"
+        "    %scores = stablehlo.add %scores_scaled, %mask4d : " + tSc + "\n";
+    } else {
+        module +=
+        "    %zero_scores_c = stablehlo.constant dense<0.0> : tensor<f64>\n"
+        "    %zero_scores = stablehlo.broadcast_in_dim %zero_scores_c, dims = [] : (tensor<f64>) -> " + tSc + "\n"
+        "    %scores = stablehlo.add %scores_scaled, %zero_scores : " + tSc + "\n";
+    }
+
+    module +=
         // Softmax: reduce max over last dim
         "    %neg_inf  = stablehlo.constant dense<-1.79769e+308> : tensor<f64>\n"
         "    %sc_max_r = stablehlo.reduce(%scores init: %neg_inf) applies stablehlo.maximum across dimensions = [3] : (" + tSc + ", tensor<f64>) -> tensor<" + si(batch) + "x" + si(num_heads) + "x" + si(seq_len) + "xf64>\n"
@@ -393,14 +418,14 @@ static std::string build_sliding_window_module(
 }
 
 // Cache key helpers
-static std::string sdpa_key(int b, int h, int s, int d) {
-    return "sdpa:" + si(b) + ":" + si(h) + ":" + si(s) + ":" + si(d);
+static std::string sdpa_key(int b, int h, int s, int d, bool causal) {
+    return "sdpa:" + si(b) + ":" + si(h) + ":" + si(s) + ":" + si(d) + ":" + (causal ? "causal" : "full");
 }
-static std::string mqa_key(int b, int h, int s, int d) {
-    return "mqa:" + si(b) + ":" + si(h) + ":" + si(s) + ":" + si(d);
+static std::string mqa_key(int b, int h, int s, int d, bool causal) {
+    return "mqa:" + si(b) + ":" + si(h) + ":" + si(s) + ":" + si(d) + ":" + (causal ? "causal" : "full");
 }
-static std::string gqa_key(int b, int h, int kv, int s, int d) {
-    return "gqa:" + si(b) + ":" + si(h) + ":" + si(kv) + ":" + si(s) + ":" + si(d);
+static std::string gqa_key(int b, int h, int kv, int s, int d, bool causal) {
+    return "gqa:" + si(b) + ":" + si(h) + ":" + si(kv) + ":" + si(s) + ":" + si(d) + ":" + (causal ? "causal" : "full");
 }
 static std::string sw_key(int b, int h, int s, int d, int w) {
     return "sw:" + si(b) + ":" + si(h) + ":" + si(s) + ":" + si(d) + ":" + si(w);
@@ -424,9 +449,9 @@ int xla_sdpa(const double* q, const double* k, const double* v, double* out,
              int batch, int num_heads, int seq_len, int head_dim)
 {
     if (!g_client) return -1;
-    std::string key = sdpa_key(batch, num_heads, seq_len, head_dim);
+    std::string key = sdpa_key(batch, num_heads, seq_len, head_dim, false);
     PJRT_LoadedExecutable* exec = get_or_compile(
-        key, build_sdpa_module("sdpa", batch, num_heads, seq_len, head_dim, num_heads));
+        key, build_sdpa_module("sdpa", batch, num_heads, seq_len, head_dim, num_heads, false));
     if (!exec) return -1;
     int n = batch * num_heads * seq_len * head_dim;
     return attn_run2(exec, q, n, k, n, v, n, out, n);
@@ -436,9 +461,9 @@ int xla_mqa(const double* q, const double* k, const double* v, double* out,
             int batch, int num_heads, int seq_len, int head_dim)
 {
     if (!g_client) return -1;
-    std::string key = mqa_key(batch, num_heads, seq_len, head_dim);
+    std::string key = mqa_key(batch, num_heads, seq_len, head_dim, false);
     PJRT_LoadedExecutable* exec = get_or_compile(
-        key, build_sdpa_module("mqa", batch, num_heads, seq_len, head_dim, 1));
+        key, build_sdpa_module("mqa", batch, num_heads, seq_len, head_dim, 1, false));
     if (!exec) return -1;
     int qn  = batch * num_heads * seq_len * head_dim;
     int kvn = batch * 1          * seq_len * head_dim;
@@ -446,12 +471,14 @@ int xla_mqa(const double* q, const double* k, const double* v, double* out,
 }
 
 int xla_gqa(const double* q, const double* k, const double* v, double* out,
-            int batch, int num_heads, int num_kv_heads, int seq_len, int head_dim)
+            int batch, int num_heads, int num_kv_heads, int seq_len, int head_dim,
+            int causal)
 {
     if (!g_client) return -1;
-    std::string key = gqa_key(batch, num_heads, num_kv_heads, seq_len, head_dim);
+    bool use_causal = causal != 0;
+    std::string key = gqa_key(batch, num_heads, num_kv_heads, seq_len, head_dim, use_causal);
     PJRT_LoadedExecutable* exec = get_or_compile(
-        key, build_sdpa_module("gqa", batch, num_heads, seq_len, head_dim, num_kv_heads));
+        key, build_sdpa_module("gqa", batch, num_heads, seq_len, head_dim, num_kv_heads, use_causal));
     if (!exec) return -1;
     int qn  = batch * num_heads    * seq_len * head_dim;
     int kvn = batch * num_kv_heads * seq_len * head_dim;

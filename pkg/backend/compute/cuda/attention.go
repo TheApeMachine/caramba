@@ -51,7 +51,7 @@ func (c *CUDAAttention) Forward(shape []int, data ...[]float64) ([]float64, erro
 			)
 		}
 
-		return c.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
+		return c.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim, false)
 
 	case 4:
 		batch, numHeads, seqLen, headDim := shape[0], shape[1], shape[2], shape[3]
@@ -121,19 +121,30 @@ func (c *CUDAAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim 
 }
 
 // GQA computes grouped query attention.
-func (c *CUDAAttention) GQA(q, k, v []float64, batch, numHeads, numKVHeads, seqLen, headDim int) ([]float64, error) {
+func (c *CUDAAttention) GQA(
+	q, k, v []float64,
+	batch, numHeads, numKVHeads, seqLen, headDim int,
+	causal bool,
+) ([]float64, error) {
 	qn := batch * numHeads * seqLen * headDim
 	kvn := batch * numKVHeads * seqLen * headDim
 	if len(q) != qn || len(k) != kvn || len(v) != kvn {
 		return nil, fmt.Errorf("cuda_gqa: input length mismatch")
 	}
 	out := make([]float64, qn)
+	causalFlag := 0
+
+	if causal {
+		causalFlag = 1
+	}
+
 	rc := C.cuda_gqa(
 		(*C.double)(unsafe.Pointer(&q[0])),
 		(*C.double)(unsafe.Pointer(&k[0])),
 		(*C.double)(unsafe.Pointer(&v[0])),
 		(*C.double)(unsafe.Pointer(&out[0])),
 		C.int(batch), C.int(numHeads), C.int(numKVHeads), C.int(seqLen), C.int(headDim),
+		C.int(causalFlag),
 	)
 	if rc != 0 {
 		return nil, fmt.Errorf("cuda_gqa failed (rc=%d)", rc)

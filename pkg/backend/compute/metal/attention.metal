@@ -221,49 +221,59 @@ kernel void gqa_forward(
     device const float* k          [[buffer(1)]],
     device const float* v          [[buffer(2)]],
     device float*       out        [[buffer(3)]],
-    constant int&       seq_len    [[buffer(4)]],
-    constant int&       head_dim   [[buffer(5)]],
-    constant int&       num_heads  [[buffer(6)]],
-    constant int&       num_kv_heads [[buffer(7)]],
+    constant int&       query_len  [[buffer(4)]],
+    constant int&       key_value_len [[buffer(5)]],
+    constant int&       key_value_stride [[buffer(6)]],
+    constant int&       head_dim   [[buffer(7)]],
+    constant int&       num_heads  [[buffer(8)]],
+    constant int&       num_kv_heads [[buffer(9)]],
+    constant int&       causal     [[buffer(10)]],
     threadgroup float*  smem       [[threadgroup(0)]],
     uint head_idx [[threadgroup_position_in_grid]],
     uint t_idx    [[thread_position_in_threadgroup]])
 {
-    if ((int)t_idx >= seq_len) return;
+    if ((int)t_idx >= query_len) return;
 
     int group_size         = num_heads / num_kv_heads;
     int batch_idx          = (int)head_idx / num_heads;
     int head_within_batch  = (int)head_idx % num_heads;
     int kv_head_idx        = head_within_batch / group_size;
 
-    int q_head_offset  = (int)head_idx * seq_len * head_dim;
-    int kv_head_offset = (batch_idx * num_kv_heads + kv_head_idx) * seq_len * head_dim;
+    int q_head_offset  = (int)head_idx * query_len * head_dim;
+    int kv_head_offset = (batch_idx * num_kv_heads + kv_head_idx) *
+                         key_value_stride * head_dim;
     float scale = rsqrt((float)head_dim);
+    int visible = key_value_len;
+
+    if (causal != 0) {
+        int offset = key_value_len - query_len;
+        visible = offset + (int)t_idx + 1;
+    }
 
     const device float* q_row = q + q_head_offset + (int)t_idx * head_dim;
 
-    for (int j = 0; j < seq_len; j++) {
+    for (int j = 0; j < visible; j++) {
         const device float* k_row = k + kv_head_offset + j * head_dim;
         float dot = 0.0f;
         for (int d = 0; d < head_dim; d++) dot += q_row[d] * k_row[d];
-        smem[(int)t_idx * seq_len + j] = dot * scale;
+        smem[(int)t_idx * key_value_len + j] = dot * scale;
     }
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    threadgroup float* row = smem + (int)t_idx * seq_len;
+    threadgroup float* row = smem + (int)t_idx * key_value_len;
     float max_val = row[0];
-    for (int j = 1; j < seq_len; j++) max_val = max(max_val, row[j]);
+    for (int j = 1; j < visible; j++) max_val = max(max_val, row[j]);
     float sum = 0.0f;
-    for (int j = 0; j < seq_len; j++) { row[j] = exp(row[j] - max_val); sum += row[j]; }
-    for (int j = 0; j < seq_len; j++) row[j] /= sum;
+    for (int j = 0; j < visible; j++) { row[j] = exp(row[j] - max_val); sum += row[j]; }
+    for (int j = 0; j < visible; j++) row[j] /= sum;
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
     device float* out_row = out + q_head_offset + (int)t_idx * head_dim;
     for (int d = 0; d < head_dim; d++) {
         float acc = 0.0f;
-        for (int j = 0; j < seq_len; j++) {
+        for (int j = 0; j < visible; j++) {
             acc += row[j] * (v + kv_head_offset + j * head_dim)[d];
         }
         out_row[d] = acc;

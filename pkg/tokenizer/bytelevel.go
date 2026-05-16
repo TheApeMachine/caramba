@@ -2,12 +2,15 @@ package tokenizer
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
+
+var ErrInvalidUTF8 = errors.New("tokenizer: decoded bytes are not valid UTF-8")
 
 type ByteLevelBPE struct {
 	vocab             map[string]int
@@ -217,7 +220,7 @@ func (tokenizer *ByteLevelBPE) decodeByteLevel(text string) (string, error) {
 	}
 
 	if !utf8.Valid(bytes) {
-		return "", fmt.Errorf("tokenizer: decoded bytes are not valid UTF-8")
+		return "", ErrInvalidUTF8
 	}
 
 	return string(bytes), nil

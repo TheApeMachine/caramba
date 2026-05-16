@@ -58,7 +58,7 @@ func (m *MetalAttention) Forward(shape []int, data ...[]float64) ([]float64, err
 		batch, numHeads, numKVHeads, seqLen, headDim :=
 			shape[0], shape[1], shape[2], shape[3], shape[4]
 
-		return m.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim)
+		return m.GQA(data[0], data[1], data[2], batch, numHeads, numKVHeads, seqLen, headDim, false)
 
 	case 4:
 		batch, numHeads, seqLen, headDim := shape[0], shape[1], shape[2], shape[3]
@@ -477,7 +477,11 @@ func (m *MetalAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim
 }
 
 // GQA computes grouped query attention.
-func (m *MetalAttention) GQA(q, k, v []float64, batch, numHeads, numKVHeads, seqLen, headDim int) ([]float64, error) {
+func (m *MetalAttention) GQA(
+	q, k, v []float64,
+	batch, numHeads, numKVHeads, seqLen, headDim int,
+	causal bool,
+) ([]float64, error) {
 	qn := batch * numHeads * seqLen * headDim
 	kvn := batch * numKVHeads * seqLen * headDim
 	if len(q) != qn || len(k) != kvn || len(v) != kvn {
@@ -486,6 +490,11 @@ func (m *MetalAttention) GQA(q, k, v []float64, batch, numHeads, numKVHeads, seq
 
 	qf, kf, vf := toFloat32(q), toFloat32(k), toFloat32(v)
 	outf := make([]float32, qn)
+	causalFlag := 0
+
+	if causal {
+		causalFlag = 1
+	}
 
 	rc := C.metal_gqa(
 		(*C.float)(unsafe.Pointer(&qf[0])),
@@ -493,11 +502,95 @@ func (m *MetalAttention) GQA(q, k, v []float64, batch, numHeads, numKVHeads, seq
 		(*C.float)(unsafe.Pointer(&vf[0])),
 		(*C.float)(unsafe.Pointer(&outf[0])),
 		C.int(batch), C.int(numHeads), C.int(numKVHeads), C.int(seqLen), C.int(headDim),
+		C.int(causalFlag),
 	)
 	if rc != 0 {
 		return nil, fmt.Errorf("metal_gqa failed (rc=%d)", rc)
 	}
 	return toFloat64(outf), nil
+}
+
+/*
+GQATensor computes grouped-query attention without leaving Metal storage.
+*/
+func (m *MetalAttention) GQATensor(
+	q, k, v computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch, numHeads, numKVHeads, queryLen, keyValueLen, keyValueStride, headDim int,
+	causal bool,
+) (computetensor.Float64Tensor, error) {
+	metalQ, err := requireMetalTensor(q)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalK, err := requireMetalTensor(k)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalV, err := requireMetalTensor(v)
+
+	if err != nil {
+		return nil, err
+	}
+
+	queryLength := batch * numHeads * queryLen * headDim
+	keyValueLength := batch * numKVHeads * keyValueStride * headDim
+
+	if queryLength <= 0 || keyValueLength <= 0 || keyValueStride < keyValueLen ||
+		keyValueLen < queryLen || numHeads%numKVHeads != 0 {
+		return nil, fmt.Errorf("metal_gqa_tensor: dimensions must be positive")
+	}
+
+	if metalQ.Len() != queryLength {
+		return nil, fmt.Errorf("metal_gqa_tensor: Q length mismatch")
+	}
+
+	if metalK.Len() != keyValueLength || metalV.Len() != keyValueLength {
+		return nil, fmt.Errorf("metal_gqa_tensor: K/V length mismatch")
+	}
+
+	if outputShape.Len() != queryLength {
+		return nil, fmt.Errorf("metal_gqa_tensor: output length mismatch")
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	causalFlag := 0
+
+	if causal {
+		causalFlag = 1
+	}
+
+	rc := C.metal_gqa_tensor(
+		metalQ.buffer,
+		metalK.buffer,
+		metalV.buffer,
+		output.buffer,
+		C.int(batch),
+		C.int(numHeads),
+		C.int(numKVHeads),
+		C.int(queryLen),
+		C.int(keyValueLen),
+		C.int(keyValueStride),
+		C.int(headDim),
+		C.int(causalFlag),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_gqa_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
 }
 
 // SlidingWindow computes sliding-window masked attention.

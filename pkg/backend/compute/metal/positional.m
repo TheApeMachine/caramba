@@ -112,6 +112,52 @@ int metal_rope(
     }
 }
 
+int metal_rope_tensor(
+    const void*  x,
+    void*        out,
+    const float* cos_table,
+    const float* sin_table,
+    int          seq_len,
+    int          head_dim,
+    int          total_heads)
+{
+    @autoreleasepool {
+        if (!gPos_Queue || !gPSO_rope || !x || !out || !cos_table || !sin_table) return -1;
+        if (seq_len <= 0 || head_dim <= 0 || total_heads <= 0 || (head_dim % 2) != 0) return -1;
+
+        int num_pairs = head_dim / 2;
+        int grid_n = total_heads * seq_len * num_pairs;
+        NSUInteger tblbytes = (NSUInteger)(seq_len * num_pairs) * sizeof(float);
+
+        id<MTLBuffer> bufX = (__bridge id)((void*)x);
+        id<MTLBuffer> bufOut = (__bridge id)out;
+        id<MTLBuffer> bufCos = make_buf(gPos_Device, cos_table, tblbytes);
+        id<MTLBuffer> bufSin = make_buf(gPos_Device, sin_table, tblbytes);
+        if (!bufX || !bufOut || !bufCos || !bufSin) return -1;
+
+        id<MTLCommandBuffer> cb = [gPos_Queue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        if (!cb || !enc) return -1;
+
+        [enc setComputePipelineState:gPSO_rope];
+        [enc setBuffer:bufX offset:0 atIndex:0];
+        [enc setBuffer:bufOut offset:0 atIndex:1];
+        [enc setBuffer:bufCos offset:0 atIndex:2];
+        [enc setBuffer:bufSin offset:0 atIndex:3];
+        [enc setBytes:&seq_len length:sizeof(int) atIndex:4];
+        [enc setBytes:&head_dim length:sizeof(int) atIndex:5];
+
+        NSUInteger tw = gPSO_rope.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)grid_n, 1, 1)
+         threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        return cb.error ? -1 : 0;
+    }
+}
+
 int metal_alibi(
     float*       out,
     const float* slopes,

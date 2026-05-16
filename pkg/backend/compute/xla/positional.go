@@ -126,20 +126,42 @@ func (x *XLAPositionalOps) ensureCompiledALiBi(numHeads, seqLenQ, seqLenK int) e
 // RoPEForward applies rotary position embeddings.
 // shape=[batch, num_heads, seq_len, head_dim]; data[0]=input tensor.
 func (x *XLAPositionalOps) RoPEForward(base float64, shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("xla_rope: input[0] is required")
+	}
+
+	if len(shape) != 4 {
+		return nil, fmt.Errorf("xla_rope: expected rank 4 shape, got %d", len(shape))
+	}
+
 	batch := shape[0]
 	numHeads := shape[1]
 	seqLen := shape[2]
 	headDim := shape[3]
+
+	if batch <= 0 || numHeads <= 0 || seqLen <= 0 || headDim <= 0 {
+		return nil, fmt.Errorf("xla_rope: all shape dimensions must be positive")
+	}
+
+	if headDim%2 != 0 {
+		return nil, fmt.Errorf("xla_rope: expected even head_dim, got %d", headDim)
+	}
+
 	if base == 0 {
 		base = 10000.0
 	}
 	totalHeads := batch * numHeads
 
+	input := data[0]
+
+	if len(input) != totalHeads*seqLen*headDim {
+		return nil, fmt.Errorf("xla_rope: input length mismatch")
+	}
+
 	if err := x.ensureCompiledRoPE(totalHeads, seqLen, headDim); err != nil {
 		return nil, err
 	}
 
-	input := data[0]
 	dst := make([]float64, len(input))
 	cosT, sinT := xlaCosSinTables(seqLen, headDim, base)
 

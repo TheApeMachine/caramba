@@ -79,15 +79,37 @@ func buildSlopesFloat64(numHeads int) []float64 {
 // RoPEForward applies rotary position embeddings.
 // shape=[batch, num_heads, seq_len, head_dim]; data[0]=input tensor.
 func (c *CUDAPositionalOps) RoPEForward(base float64, shape []int, data ...[]float64) ([]float64, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("cuda_rope: input[0] is required")
+	}
+
+	if len(shape) != 4 {
+		return nil, fmt.Errorf("cuda_rope: expected rank 4 shape, got %d", len(shape))
+	}
+
 	batch := shape[0]
 	numHeads := shape[1]
 	seqLen := shape[2]
 	headDim := shape[3]
+
+	if batch <= 0 || numHeads <= 0 || seqLen <= 0 || headDim <= 0 {
+		return nil, fmt.Errorf("cuda_rope: all shape dimensions must be positive")
+	}
+
+	if headDim%2 != 0 {
+		return nil, fmt.Errorf("cuda_rope: expected even head_dim, got %d", headDim)
+	}
+
 	if base == 0 {
 		base = 10000.0
 	}
 
 	x := data[0]
+
+	if len(x) != batch*numHeads*seqLen*headDim {
+		return nil, fmt.Errorf("cuda_rope: input length mismatch")
+	}
+
 	dst := make([]float64, len(x))
 	cosT, sinT := buildCossinTables(seqLen, headDim, base)
 	totalHeads := batch * numHeads

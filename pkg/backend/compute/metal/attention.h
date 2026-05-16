@@ -49,7 +49,13 @@ int metal_mqa(const float* q, const float* k, const float* v, float* out,
 // q:  [batch*num_heads,    seq_len, head_dim]
 // k,v:[batch*num_kv_heads, seq_len, head_dim]
 int metal_gqa(const float* q, const float* k, const float* v, float* out,
-              int batch, int num_heads, int num_kv_heads, int seq_len, int head_dim);
+              int batch, int num_heads, int num_kv_heads, int seq_len, int head_dim,
+              int causal);
+
+int metal_gqa_tensor(const void* q, const void* k, const void* v, void* out,
+                     int batch, int num_heads, int num_kv_heads,
+                     int query_len, int key_value_len, int key_value_stride,
+                     int head_dim, int causal);
 
 // Sliding Window Attention. window is the one-sided context radius.
 int metal_sliding_window(const float* q, const float* k, const float* v, float* out,

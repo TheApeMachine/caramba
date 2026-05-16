@@ -100,10 +100,37 @@ system:
               in_features: 2048
               out_features: 512
 
+          - id: q_heads_${i}
+            op: shape.view_as_heads
+            in:
+              - q_proj_${i}
+            out:
+              - q_heads_${i}
+            config:
+              num_heads: 32
+
+          - id: k_heads_${i}
+            op: shape.view_as_heads
+            in:
+              - k_proj_${i}
+            out:
+              - k_heads_${i}
+            config:
+              num_heads: 8
+
+          - id: v_heads_${i}
+            op: shape.view_as_heads
+            in:
+              - v_proj_${i}
+            out:
+              - v_heads_${i}
+            config:
+              num_heads: 8
+
           - id: rope_q_${i}
             op: positional.rope
             in:
-              - q_proj_${i}
+              - q_heads_${i}
             out:
               - q_rope_${i}
             config:
@@ -113,7 +140,7 @@ system:
           - id: rope_k_${i}
             op: positional.rope
             in:
-              - k_proj_${i}
+              - k_heads_${i}
             out:
               - k_rope_${i}
             config:
@@ -125,7 +152,19 @@ system:
             in:
               - q_rope_${i}
               - k_rope_${i}
-              - v_proj_${i}
+              - v_heads_${i}
+            out:
+              - attn_heads_${i}
+            config:
+              num_heads: 32
+              num_kv_heads: 8
+              head_dim: 64
+              causal: true
+
+          - id: merge_attention_${i}
+            op: shape.merge_heads
+            in:
+              - attn_heads_${i}
             out:
               - attn_out_${i}
 

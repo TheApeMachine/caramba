@@ -65,6 +65,17 @@ func TestRoPE(t *testing.T) {
 				}
 				So(same, ShouldBeFalse)
 			})
+
+			Convey("It should reject projection tensors before head shaping", func() {
+				_, err := op.Forward(
+					state.NewDict().
+						WithShape([]int{1, 2, 8}).
+						WithInput(make([]float64, 16)),
+				)
+
+				So(err, ShouldNotBeNil)
+				So(err.Error(), ShouldContainSubstring, "expected [batch, num_heads, seq_len, head_dim]")
+			})
 		})
 	})
 }

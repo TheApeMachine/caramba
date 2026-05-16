@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
+	"github.com/theapemachine/caramba/pkg/backend/compute/kv"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
@@ -93,6 +94,7 @@ func OperationState(
 
 func OperationConfig(node NodeSpec) *state.Dict {
 	stateDict := state.NewDict()
+	stateDict.NodeID = node.ID
 
 	applyStateMetadata(stateDict, node)
 
@@ -100,6 +102,10 @@ func OperationConfig(node NodeSpec) *state.Dict {
 }
 
 func applyStateMetadata(stateDict *state.Dict, node NodeSpec) {
+	if cache, ok := node.Metadata["kv_cache"].(*kv.Cache); ok {
+		stateDict.KVCache = cache
+	}
+
 	stateDict.Source = stringConfig(node, "source", stateDict.Source)
 	stateDict.File = stringConfig(node, "file", stateDict.File)
 	stateDict.Cache = stringConfig(node, "cache", stateDict.Cache)
@@ -160,6 +166,7 @@ func applyStateMetadata(stateDict *state.Dict, node NodeSpec) {
 	stateDict.SplitSize = intConfig(node, "split_size", stateDict.SplitSize)
 	stateDict.Window = intConfig(node, "window", stateDict.Window)
 	stateDict.NumHeads = intConfig(node, "num_heads", stateDict.NumHeads)
+	stateDict.NumKVHeads = intConfig(node, "num_kv_heads", stateDict.NumKVHeads)
 	stateDict.HeadDim = intConfig(node, "head_dim", stateDict.HeadDim)
 	stateDict.DModel = intConfig(node, "d_model", stateDict.DModel)
 	stateDict.VocabSize = intConfig(node, "vocab_size", stateDict.VocabSize)

@@ -16,6 +16,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/manifest"
 	modelweights "github.com/theapemachine/caramba/pkg/model/weights"
+	"github.com/theapemachine/caramba/pkg/qpool"
 	"github.com/theapemachine/caramba/pkg/tokenizer"
 )
 
@@ -69,59 +70,164 @@ type ModelGenerator struct {
 NewModelGenerator validates model chat configuration.
 */
 func NewModelGenerator(ctx context.Context, config ModelConfig) (*ModelGenerator, error) {
+	telemetry := newModelStartupTelemetry(config)
+	telemetry.Publish("model.start", "starting manifest-backed model runtime")
+	telemetry.Publish("manifest.resolve", "resolving model manifest runtime")
+
 	config, err := resolveManifestModelConfig(config)
 
 	if err != nil {
-		return nil, err
+		return nil, telemetry.Error(
+			"manifest.resolve",
+			"failed to resolve model manifest runtime",
+			err,
+		)
 	}
 
+	telemetry.Apply(config)
+	telemetry.Publish(
+		"manifest.resolved",
+		"resolved model manifest runtime",
+		qpool.Field{Key: "max_new_tokens", Value: config.MaxNewTokens},
+		qpool.Field{Key: "temperature", Value: config.Temperature},
+		qpool.Field{Key: "top_k", Value: config.TopK},
+		qpool.Field{Key: "top_p", Value: config.TopP},
+	)
+
 	if err := config.ValidateRuntime(); err != nil {
-		return nil, err
+		return nil, telemetry.Error(
+			"runtime.validate",
+			"failed to validate model runtime",
+			err,
+		)
 	}
 
 	if config.MaxNewTokens < 1 {
-		return nil, fmt.Errorf("chat.model: max_new_tokens must be positive")
+		err := fmt.Errorf("chat.model: max_new_tokens must be positive")
+
+		return nil, telemetry.Error(
+			"generation.validate",
+			"failed to validate generation policy",
+			err,
+		)
 	}
+
+	telemetry.Publish("generation.policy", "building generation policy")
 
 	policy, err := newGenerationPolicy(config)
 
 	if err != nil {
-		return nil, err
+		return nil, telemetry.Error(
+			"generation.policy",
+			"failed to build generation policy",
+			err,
+		)
 	}
+
+	telemetry.Publish("backend.select", "selecting compute backend")
 
 	backend, err := config.ComputeBackend()
 
 	if err != nil {
-		return nil, err
+		return nil, telemetry.Error(
+			"backend.select",
+			"failed to select compute backend",
+			err,
+		)
 	}
+
+	telemetry.SetBackend(string(backend.Location()))
+	telemetry.Publish("backend.selected", "selected compute backend")
+	telemetry.Publish("manifest.compile", "compiling model manifest")
 
 	graph, manifestPath, err := compileModelManifest(config.Manifest)
 
 	if err != nil {
-		return nil, err
+		return nil, telemetry.Error(
+			"manifest.compile",
+			"failed to compile model manifest",
+			err,
+		)
 	}
+
+	telemetry.Publish(
+		"manifest.compiled",
+		"compiled model manifest",
+		qpool.Field{Key: "compiled_manifest", Value: manifestPath},
+		qpool.Field{Key: "nodes", Value: len(graph.Nodes())},
+	)
 
 	source := tokenizerSource(config)
 
 	if source.Source == "" {
-		return nil, fmt.Errorf("chat.model: model or tokenizer source is required")
+		err := fmt.Errorf("chat.model: model or tokenizer source is required")
+
+		return nil, telemetry.Error(
+			"tokenizer.source",
+			"failed to resolve tokenizer source",
+			err,
+		)
 	}
+
+	telemetry.Publish(
+		"tokenizer.load",
+		"loading tokenizer",
+		qpool.Field{Key: "tokenizer_source", Value: source.Source},
+		qpool.Field{Key: "tokenizer_file", Value: source.WithDefaults().File},
+		qpool.Field{Key: "tokenizer_revision", Value: source.Revision},
+	)
 
 	artifact, err := tokenizer.Load(ctx, source)
 
 	if err != nil {
-		return nil, err
+		return nil, telemetry.Error(
+			"tokenizer.load",
+			"failed to load tokenizer",
+			err,
+			qpool.Field{Key: "tokenizer_source", Value: source.Source},
+		)
 	}
+
+	telemetry.Publish(
+		"tokenizer.loaded",
+		"loaded tokenizer",
+		qpool.Field{Key: "tokenizer_path", Value: artifact.Path},
+		qpool.Field{Key: "tokenizer_backend", Value: artifact.Backend},
+	)
 
 	if err := policy.bindStopSequences(artifact.Tokenizer); err != nil {
-		return nil, err
+		return nil, telemetry.Error(
+			"generation.stop_sequences",
+			"failed to bind generation stop sequences",
+			err,
+		)
 	}
 
-	weightStore, err := modelweights.Resolve(ctx, modelWeightSource(config))
+	weightSource := modelWeightSource(config)
+	telemetry.Publish(
+		"weights.resolve",
+		"resolving model weights",
+		qpool.Field{Key: "weight_source", Value: weightSource.Source},
+		qpool.Field{Key: "weight_revision", Value: weightSource.Revision},
+	)
+
+	weightStore, err := modelweights.Resolve(ctx, weightSource)
 
 	if err != nil {
-		return nil, err
+		return nil, telemetry.Error(
+			"weights.resolve",
+			"failed to resolve model weights",
+			err,
+			qpool.Field{Key: "weight_source", Value: weightSource.Source},
+		)
 	}
+
+	telemetry.Publish(
+		"weights.resolved",
+		"resolved model weights",
+		qpool.Field{Key: "tensors", Value: len(weightStore.Names())},
+	)
+	telemetry.Publish("runtime.ready", "model runtime ready")
 
 	return &ModelGenerator{
 		backend:   backend,
@@ -249,6 +355,7 @@ func (generator *ModelGenerator) Generate(
 	positionStart := 0
 	generatedTokenIDs := make([]int, 0, generator.maxTokens)
 	pendingTokenIDs := make([]int, 0)
+	stream := newTokenStream(generator.tokenizer)
 
 	for range generator.maxTokens {
 		nextTokenID, err := generator.nextToken(
@@ -276,14 +383,18 @@ func (generator *ModelGenerator) Generate(
 			continue
 		}
 
-		if err := generator.emitTokens(pendingTokenIDs, emit); err != nil {
+		if err := stream.Append(pendingTokenIDs, emit); err != nil {
 			return err
 		}
 
 		pendingTokenIDs = pendingTokenIDs[:0]
 	}
 
-	return generator.emitTokens(pendingTokenIDs, emit)
+	if err := stream.Append(pendingTokenIDs, emit); err != nil {
+		return err
+	}
+
+	return stream.Flush(emit)
 }
 
 func (generator *ModelGenerator) nextToken(
@@ -355,27 +466,6 @@ func (generator *ModelGenerator) nextToken(
 	return nextTokenID, nil
 }
 
-func (generator *ModelGenerator) emitTokens(
-	tokenIDs []int,
-	emit func(string) error,
-) error {
-	if len(tokenIDs) == 0 {
-		return nil
-	}
-
-	text, err := generator.tokenizer.Decode(tokenIDs, true)
-
-	if err != nil {
-		return err
-	}
-
-	if text == "" {
-		return nil
-	}
-
-	return emit(text)
-}
-
 func outputTarget(graph *ir.Graph) *ir.Node {
 	index, err := graph.Index()
 
@@ -437,7 +527,9 @@ func (generator *ModelGenerator) bindKVCache(irGraph *ir.Graph) {
 	}
 
 	for _, node := range irGraph.Nodes() {
-		if string(node.OperationID()) != "attention.sdpa" {
+		operationID := string(node.OperationID())
+
+		if operationID != "attention.sdpa" && operationID != "attention.gqa" {
 			continue
 		}
 
