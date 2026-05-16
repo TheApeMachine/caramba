@@ -72,7 +72,7 @@ func (generator *PreviewGenerator) Generate(
 
 func (generator *PreviewGenerator) response(prompt string) (string, error) {
 	if generator.artifact == nil {
-		return "Preview runtime active. Provide --model to run manifest-backed local inference, or --tokenizer to exercise tokenizer loading.", nil
+		return "Preview runtime active. Use a manifest with system.runtime to run manifest-backed local inference.", nil
 	}
 
 	tokenIDs, err := generator.artifact.Tokenizer.Encode(prompt)
@@ -82,7 +82,7 @@ func (generator *PreviewGenerator) response(prompt string) (string, error) {
 	}
 
 	return fmt.Sprintf(
-		"Preview runtime active. The tokenizer encoded this prompt into %d tokens. Provide --model to run manifest-backed local inference.",
+		"Preview runtime active. The tokenizer encoded this prompt into %d tokens. Use a manifest with system.runtime to run manifest-backed local inference.",
 		len(tokenIDs),
 	), nil
 }

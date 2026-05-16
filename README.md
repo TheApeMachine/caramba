@@ -152,35 +152,30 @@ model interaction:
 
 ```bash
 caramba chat
-caramba chat --model openai-community/gpt2
-caramba chat --runtime preview --model openai-community/gpt2
-caramba chat --backend metal --model openai-community/gpt2
-caramba chat --prompt "Explain attention in one sentence."
-caramba chat --model openai-community/gpt2 --repetition-penalty 1.15
-caramba chat --model openai-community/gpt2 --temperature 0.8 --top-k 50 --top-p 0.95
+caramba chat --manifest model/llm/llama-3-2-1b-instruct.yml
 ```
 
-When `--model` or `--manifest` is provided, `chat` compiles the YAML model
-manifest through `pkg/manifest.Compiler`, lowers it through `pkg/manifest` into
-the compute IR, and executes through `pkg/backend/compute.Backend`. The first
-model manifest is `model/llm/gpt2.yml`, which declares architecture topology
-only. Hub files and serialized tensor formats are resolved outside the
-architecture spec and bind into matching manifest nodes by structure. The first
-weight binder reads SafeTensors checkpoints, including sharded
+`chat` accepts only a manifest selector. Runtime, compute backend, model source,
+tokenizer source, Hub repo type/revision/cache overrides, and generation policy
+live in the manifest under `system.runtime`; architecture still lives under
+`system.topology`. The default manifest is `model/llm/gpt2.yml`, and Llama 3.2
+1B Instruct is declared in `model/llm/llama-3-2-1b-instruct.yml`.
+
+When started, `chat` compiles the YAML model manifest through
+`pkg/manifest.Compiler`, lowers it through `pkg/manifest` into the compute IR,
+and executes through `pkg/backend/compute.Backend`. Hub files and serialized
+tensor formats bind into matching manifest nodes by structure. The first weight
+binder reads SafeTensors checkpoints, including sharded
 `model.safetensors.index.json` layouts, and attaches `weight`/`bias` state to
 the lowered IR before backend execution. The model runtime uses causal
 attention, projects decode-time logits from the final token position, and
-streams token selection through configurable repetition penalty, temperature,
-top-k, top-p, seed, stop-token, and special-token stopping controls. Causal
-attention nodes receive a per-generation KV cache: the prompt is prefetched
-once, then each decode step executes a single-token graph with absolute position
-IDs and cached keys/values. Metal keeps that cache in resident GPU buffers,
-preallocates the generation token budget, and writes decode chunks in place
-without copying K/V through host memory. Use `--runtime preview` when you only
-want to exercise Hub/tokenizer loading without compiling a model manifest. Use
-`--backend metal` on macOS to run the manifest executor through Metal kernels;
-the CLI default `--backend auto` selects Metal on Darwin, CUDA on Linux, and CPU
-elsewhere without silently falling back after a backend is selected.
+streams token selection through manifest-configured repetition penalty,
+temperature, top-k, top-p, seed, stop tokens, and special-token stopping
+controls. Causal attention nodes receive a per-generation KV cache: the prompt
+is prefetched once, then each decode step executes a single-token graph with
+absolute position IDs and cached keys/values. Metal keeps that cache in resident
+GPU buffers, preallocates the generation token budget, and writes decode chunks
+in place without copying K/V through host memory.
 
 ---
 

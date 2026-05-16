@@ -17,9 +17,28 @@ import (
 func TestNewModelGenerator(test *testing.T) {
 	Convey("Given model runtime configuration", test, func() {
 		Convey("It should require a positive generation budget", func() {
+			manifestPath := filepath.Join(test.TempDir(), "model.yml")
+			err := os.WriteFile(manifestPath, []byte(`
+inputs:
+  - name: input_ids
+    type: tensor
+system:
+  topology:
+    nodes:
+      - id: gelu
+        op: activation.gelu
+        in: [input_ids]
+        out: [y]
+`), 0o644)
+
+			So(err, ShouldBeNil)
+
 			generator, err := NewModelGenerator(
 				context.Background(),
-				ModelConfig{Model: "openai-community/gpt2"},
+				ModelConfig{
+					Model:    "openai-community/gpt2",
+					Manifest: manifestPath,
+				},
 			)
 
 			So(generator, ShouldBeNil)
@@ -139,6 +158,62 @@ system:
 	})
 }
 
+func TestResolveManifestModelConfig(test *testing.T) {
+	Convey("Given manifest-owned model runtime configuration", test, func() {
+		Convey("It should read chat settings from the embedded GPT-2 manifest", func() {
+			config, err := resolveManifestModelConfig(ModelConfig{
+				Manifest: DefaultModelManifest,
+			})
+
+			So(err, ShouldBeNil)
+			So(config.Runtime, ShouldEqual, "model")
+			So(config.Backend, ShouldEqual, "auto")
+			So(config.Model, ShouldEqual, "openai-community/gpt2")
+			So(config.Tokenizer, ShouldEqual, "openai-community/gpt2")
+			So(config.ModelRepoType, ShouldEqual, "model")
+			So(config.TokenizerRepoType, ShouldEqual, "model")
+			So(config.MaxNewTokens, ShouldEqual, 128)
+			So(config.RepetitionPenalty, ShouldEqual, 1.1)
+			So(config.Temperature, ShouldEqual, 0.8)
+			So(config.TopK, ShouldEqual, 50)
+			So(config.TopP, ShouldEqual, 0.95)
+			So(config.StopSpecialTokens, ShouldBeTrue)
+		})
+
+		Convey("It should keep explicit package config when no runtime block exists", func() {
+			manifestPath := filepath.Join(test.TempDir(), "model.yml")
+			err := os.WriteFile(manifestPath, []byte(`
+inputs:
+  - name: input_ids
+    type: tensor
+system:
+  topology:
+    nodes:
+      - id: gelu
+        op: activation.gelu
+        in: [input_ids]
+        out: [y]
+`), 0o644)
+
+			So(err, ShouldBeNil)
+
+			config, err := resolveManifestModelConfig(ModelConfig{
+				Model:        "local-model",
+				Tokenizer:    "local-tokenizer",
+				Backend:      "cpu",
+				Manifest:     manifestPath,
+				MaxNewTokens: 8,
+			})
+
+			So(err, ShouldBeNil)
+			So(config.Model, ShouldEqual, "local-model")
+			So(config.Tokenizer, ShouldEqual, "local-tokenizer")
+			So(config.Backend, ShouldEqual, "cpu")
+			So(config.MaxNewTokens, ShouldEqual, 8)
+		})
+	})
+}
+
 func TestSelectLastToken(test *testing.T) {
 	Convey("Given last-token logits and a generation policy", test, func() {
 		Convey("It should penalize tokens already present in the context", func() {
@@ -176,11 +251,66 @@ func TestModelConfig_ComputeBackend(test *testing.T) {
 }
 
 func BenchmarkNewModelGenerator(benchmark *testing.B) {
+	root := benchmark.TempDir()
+	manifestPath := filepath.Join(root, "model.yml")
+	tokenizerPath := filepath.Join(root, "tokenizer.json")
+	weightsPath := filepath.Join(root, "model.safetensors")
+
+	err := os.WriteFile(manifestPath, []byte(`
+inputs:
+  - name: input_ids
+    type: tensor
+system:
+  topology:
+    nodes:
+      - id: token_embedding
+        op: embedding.token
+        in: [input_ids]
+        out: [hidden]
+        config:
+          vocab_size: 12
+          d_model: 2
+`), 0o644)
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	err = os.WriteFile(tokenizerPath, testTokenizerJSON(), 0o644)
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	err = writeChatSafeTensors(weightsPath, map[string][]float64{
+		"token_embedding.weight": {
+			0, 1, 2, 3, 4, 5, 6, 7,
+			8, 9, 10, 11, 12, 13, 14, 15,
+			16, 17, 18, 19, 20, 21, 22, 23,
+		},
+	}, map[string][]int{
+		"token_embedding.weight": {12, 2},
+	})
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	config := ModelConfig{
+		Model:        root,
+		Tokenizer:    root,
+		Manifest:     manifestPath,
+		MaxNewTokens: 16,
+	}
+
 	for benchmark.Loop() {
-		_, _ = NewModelGenerator(
-			context.Background(),
-			ModelConfig{},
-		)
+		generator, err := NewModelGenerator(context.Background(), config)
+
+		if err != nil {
+			benchmark.Fatal(err)
+		}
+
+		_ = generator.backend.Close()
 	}
 }
 

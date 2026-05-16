@@ -25,13 +25,21 @@ const DefaultModelManifest = "model/llm/gpt2.yml"
 ModelConfig configures the manifest-backed chat generator.
 */
 type ModelConfig struct {
+	Runtime           string
 	Backend           string
 	Model             string
 	Tokenizer         string
+	TokenizerFile     string
 	Manifest          string
 	Cache             string
 	Revision          string
 	RepoType          string
+	ModelCache        string
+	ModelRevision     string
+	ModelRepoType     string
+	TokenizerCache    string
+	TokenizerRevision string
+	TokenizerRepoType string
 	MaxNewTokens      int
 	RepetitionPenalty float64
 	Temperature       float64
@@ -61,6 +69,16 @@ type ModelGenerator struct {
 NewModelGenerator validates model chat configuration.
 */
 func NewModelGenerator(ctx context.Context, config ModelConfig) (*ModelGenerator, error) {
+	config, err := resolveManifestModelConfig(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := config.ValidateRuntime(); err != nil {
+		return nil, err
+	}
+
 	if config.MaxNewTokens < 1 {
 		return nil, fmt.Errorf("chat.model: max_new_tokens must be positive")
 	}
@@ -120,7 +138,7 @@ func NewModelGenerator(ctx context.Context, config ModelConfig) (*ModelGenerator
 
 /*
 ComputeBackend resolves the model runtime backend.
-An empty value keeps package callers on CPU; the CLI passes "auto".
+An empty value keeps package callers on CPU when no manifest runtime is present.
 */
 func (config ModelConfig) ComputeBackend() (*compute.Backend, error) {
 	backendName := strings.ToLower(strings.TrimSpace(config.Backend))
@@ -139,6 +157,19 @@ func (config ModelConfig) ComputeBackend() (*compute.Backend, error) {
 }
 
 /*
+ValidateRuntime rejects manifest runtime types that are not model execution.
+*/
+func (config ModelConfig) ValidateRuntime() error {
+	runtimeName := strings.ToLower(strings.TrimSpace(config.Runtime))
+
+	if runtimeName == "" || runtimeName == "model" {
+		return nil
+	}
+
+	return fmt.Errorf("chat.model: unsupported manifest runtime %q", config.Runtime)
+}
+
+/*
 BackendName reports the concrete compute location used by this generator.
 */
 func (generator *ModelGenerator) BackendName() string {
@@ -147,6 +178,17 @@ func (generator *ModelGenerator) BackendName() string {
 	}
 
 	return string(generator.backend.Location())
+}
+
+/*
+ModelName reports the serialized model source configured by the manifest.
+*/
+func (generator *ModelGenerator) ModelName() string {
+	if generator == nil {
+		return ""
+	}
+
+	return generator.model
 }
 
 func modelBackendType(backendName string) (compute.BackendType, error) {
@@ -458,9 +500,10 @@ func tokenizerSource(config ModelConfig) tokenizer.Source {
 
 	return tokenizer.Source{
 		Source:   source,
-		Cache:    config.Cache,
-		Revision: config.Revision,
-		RepoType: config.RepoType,
+		File:     strings.TrimSpace(config.TokenizerFile),
+		Cache:    firstText(config.TokenizerCache, config.Cache),
+		Revision: firstText(config.TokenizerRevision, config.Revision),
+		RepoType: firstText(config.TokenizerRepoType, config.RepoType),
 	}
 }
 
@@ -473,9 +516,9 @@ func modelWeightSource(config ModelConfig) modelweights.Source {
 
 	return modelweights.Source{
 		Source:   source,
-		Cache:    config.Cache,
-		Revision: config.Revision,
-		RepoType: config.RepoType,
+		Cache:    firstText(config.ModelCache, config.Cache),
+		Revision: firstText(config.ModelRevision, config.Revision),
+		RepoType: firstText(config.ModelRepoType, config.RepoType),
 	}
 }
 
