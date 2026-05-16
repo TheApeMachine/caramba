@@ -282,6 +282,16 @@ func (registry OperationRegistry) LayerNorm(config *state.Dict) (state.Operation
 	return &LayerNorm{mathOps: mathOps}, nil
 }
 
+func (registry OperationRegistry) GroupNorm(config *state.Dict) (state.Operation, error) {
+	mathOps, err := newMetalMath(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &GroupNorm{mathOps: mathOps}, nil
+}
+
 func (registry OperationRegistry) Reshape(config *state.Dict) (state.Operation, error) {
 	shapeOps, err := newMetalShape(config)
 
@@ -320,6 +330,16 @@ func (registry OperationRegistry) Split(config *state.Dict) (state.Operation, er
 	}
 
 	return &Split{shapeOps: shapeOps}, nil
+}
+
+func (registry OperationRegistry) UpsampleNearest2D(config *state.Dict) (state.Operation, error) {
+	shapeOps, err := newMetalShape(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &UpsampleNearest2D{shapeOps: shapeOps}, nil
 }
 
 func (registry OperationRegistry) ViewAsHeads(config *state.Dict) (state.Operation, error) {
@@ -1035,6 +1055,7 @@ type InvSqrtDimScale struct{ mathOps *MathOps }
 type Dropout struct{ mathOps *MathOps }
 type RMSNorm struct{ mathOps *MathOps }
 type LayerNorm struct{ mathOps *MathOps }
+type GroupNorm struct{ mathOps *MathOps }
 
 func (add *Add) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperationInputs("metal.math.add", 2); err != nil {
@@ -1150,10 +1171,28 @@ func (layerNorm *LayerNorm) Forward(stateDict *state.Dict) (*state.Dict, error) 
 	return setMetalOutput(stateDict, output, err)
 }
 
+func (groupNorm *GroupNorm) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("metal.math.groupnorm"); err != nil {
+		return nil, err
+	}
+
+	output, err := groupNorm.mathOps.GroupNorm(
+		stateDict.OperationShape(),
+		stateDict.Eps,
+		stateDict.Groups,
+		stateDict.Weight,
+		stateDict.Bias,
+		stateDict.Inputs...,
+	)
+
+	return setMetalOutput(stateDict, output, err)
+}
+
 type Reshape struct{ shapeOps *MetalShapeOps }
 type Transpose struct{ shapeOps *MetalShapeOps }
 type Concat struct{ shapeOps *MetalShapeOps }
 type Split struct{ shapeOps *MetalShapeOps }
+type UpsampleNearest2D struct{ shapeOps *MetalShapeOps }
 type ViewAsHeads struct{ shapeOps *MetalShapeOps }
 type MergeHeads struct{ shapeOps *MetalShapeOps }
 type LastToken struct{ shapeOps *MetalShapeOps }
@@ -1236,6 +1275,26 @@ func (split *Split) Forward(stateDict *state.Dict) (*state.Dict, error) {
 
 	output, err := split.shapeOps.Split(
 		stateDict.Inputs[0], outer, dimSize, stateDict.SplitSize, inner,
+	)
+
+	return setMetalOutput(stateDict, output, err)
+}
+
+func (upsample *UpsampleNearest2D) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape, err := requireMetalShape(stateDict, "metal.shape.upsample_nearest2d", 4, 1)
+
+	if err != nil {
+		return nil, err
+	}
+
+	scaleH, scaleW, err := metalUpsampleNearest2DScale(stateDict, shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := upsample.shapeOps.UpsampleNearest2D(
+		stateDict.Inputs[0], shape[0], shape[1], shape[2], shape[3], scaleH, scaleW,
 	)
 
 	return setMetalOutput(stateDict, output, err)

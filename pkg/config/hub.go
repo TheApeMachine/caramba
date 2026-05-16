@@ -26,7 +26,7 @@ func NewHubConfig() *HubConfig {
 		),
 		CacheDir: WithDefault(
 			hubRootKey+".cache_dir",
-			".caramba/hub",
+			"${HOME}/.cache/huggingface/hub",
 		),
 		Token: WithDefault(hubRootKey+".token", ""),
 		Offline: WithDefault(

@@ -22,6 +22,7 @@ static id<MTLComputePipelineState> gPSO_logsumexp  = nil;
 static id<MTLComputePipelineState> gPSO_dropout    = nil;
 static id<MTLComputePipelineState> gPSO_layernorm  = nil;
 static id<MTLComputePipelineState> gPSO_rmsnorm    = nil;
+static id<MTLComputePipelineState> gPSO_groupnorm  = nil;
 static id<MTLComputePipelineState> gPSO_sign        = nil;
 static id<MTLComputePipelineState> gPSO_outer       = nil;
 static id<MTLComputePipelineState> gPSO_axpy        = nil;
@@ -71,6 +72,7 @@ int metal_math_init(const char* metallib_path) {
         gPSO_dropout   = make_mpso(lib, @"dropout_kernel");
         gPSO_layernorm = make_mpso(lib, @"layernorm_kernel");
         gPSO_rmsnorm   = make_mpso(lib, @"rmsnorm_kernel");
+        gPSO_groupnorm = make_mpso(lib, @"groupnorm_kernel");
         gPSO_sign       = make_mpso(lib, @"sign_kernel");
         gPSO_outer      = make_mpso(lib, @"outer_kernel");
         gPSO_axpy       = make_mpso(lib, @"axpy_kernel");
@@ -91,7 +93,7 @@ int metal_math_init(const char* metallib_path) {
             !gPSO_add || !gPSO_mul || !gPSO_isdscale ||
             !gPSO_exp || !gPSO_log || !gPSO_softmax ||
             !gPSO_logsumexp || !gPSO_dropout ||
-            !gPSO_layernorm || !gPSO_rmsnorm ||
+            !gPSO_layernorm || !gPSO_rmsnorm || !gPSO_groupnorm ||
             !gPSO_sign || !gPSO_outer ||
             !gPSO_axpy || !gPSO_scale2 || !gPSO_sqrt_vec ||
             !gPSO_add_scalar || !gPSO_div_vec || !gPSO_clamp_vec ||
@@ -118,6 +120,7 @@ int metal_math_shutdown(void) {
         gPSO_dropout = nil;
         gPSO_layernorm = nil;
         gPSO_rmsnorm = nil;
+        gPSO_groupnorm = nil;
         gPSO_sign = nil;
         gPSO_outer = nil;
         gPSO_axpy = nil;
@@ -643,6 +646,84 @@ int metal_rmsnorm_tensor(const void* src, void* dst,
         [enc endEncoding];
         commit_wait(cb);
         return cb.error ? -1 : 0;
+    }
+}
+
+static int groupnorm_launch(
+    id<MTLBuffer> bSrc,
+    id<MTLBuffer> bDst,
+    id<MTLBuffer> bW,
+    id<MTLBuffer> bB,
+    int batch,
+    int channels,
+    int height,
+    int width,
+    int groups,
+    float eps)
+{
+    if (!gMQueue || !gPSO_groupnorm || !bSrc || !bDst || !bW || !bB) return -1;
+    if (batch <= 0 || channels <= 0 || height <= 0 || width <= 0 || groups <= 0) return -1;
+    if ((channels % groups) != 0) return -1;
+
+    unsigned int dims[4] = {
+        (unsigned int)channels,
+        (unsigned int)height,
+        (unsigned int)width,
+        (unsigned int)groups
+    };
+    NSUInteger group_size = (NSUInteger)(channels / groups * height * width);
+    NSUInteger tgs = group_size < 256 ? group_size : 256;
+    if (tgs == 0) return -1;
+
+    id<MTLCommandBuffer> cb = begin_cb();
+    id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+    [enc setComputePipelineState:gPSO_groupnorm];
+    [enc setBuffer:bSrc offset:0 atIndex:0];
+    [enc setBuffer:bDst offset:0 atIndex:1];
+    [enc setBuffer:bW offset:0 atIndex:2];
+    [enc setBuffer:bB offset:0 atIndex:3];
+    [enc setBytes:dims length:sizeof(dims) atIndex:4];
+    [enc setBytes:&eps length:sizeof(float) atIndex:5];
+    [enc dispatchThreadgroups:MTLSizeMake((NSUInteger)groups, (NSUInteger)batch, 1)
+         threadsPerThreadgroup:MTLSizeMake(tgs, 1, 1)];
+    [enc endEncoding];
+    commit_wait(cb);
+
+    return cb.error ? -1 : 0;
+}
+
+int metal_groupnorm(const float* src, float* dst,
+                    const float* weight, const float* bias,
+                    int batch, int channels, int height, int width,
+                    int groups, float eps) {
+    @autoreleasepool {
+        NSUInteger nb = (NSUInteger)(batch * channels * height * width) * sizeof(float);
+        NSUInteger nb1 = (NSUInteger)channels * sizeof(float);
+        id<MTLBuffer> bSrc = make_buf_ro(gMDevice, src, nb);
+        id<MTLBuffer> bDst = make_buf_rw(gMDevice, dst, nb);
+        id<MTLBuffer> bW = make_buf_ro(gMDevice, weight, nb1);
+        id<MTLBuffer> bB = make_buf_ro(gMDevice, bias, nb1);
+        if (!bSrc || !bDst || !bW || !bB) return -1;
+
+        int rc = groupnorm_launch(bSrc, bDst, bW, bB, batch, channels, height, width, groups, eps);
+        if (rc != 0) return rc;
+
+        copy_back_if_needed(bDst, dst, nb);
+        return 0;
+    }
+}
+
+int metal_groupnorm_tensor(const void* src, void* dst,
+                           const void* weight, const void* bias,
+                           int batch, int channels, int height, int width,
+                           int groups, float eps) {
+    @autoreleasepool {
+        id<MTLBuffer> bSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bDst = (__bridge id)dst;
+        id<MTLBuffer> bW = (__bridge id)((void*)weight);
+        id<MTLBuffer> bB = (__bridge id)((void*)bias);
+
+        return groupnorm_launch(bSrc, bDst, bW, bB, batch, channels, height, width, groups, eps);
     }
 }
 

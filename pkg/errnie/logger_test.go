@@ -223,18 +223,6 @@ func captureStdout(testing *testing.T, fn func()) string {
 	original := os.Stdout
 	os.Stdout = writer
 
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-
-	var buf []byte
-	var readErr error
-
-	go func() {
-		defer wg.Done()
-		buf, readErr = io.ReadAll(reader)
-	}()
-
 	fn()
 
 	closeWriterErr := writer.Close()
@@ -242,7 +230,7 @@ func captureStdout(testing *testing.T, fn func()) string {
 
 	os.Stdout = original
 
-	wg.Wait()
+	buf, readErr := io.ReadAll(reader)
 
 	closeReaderErr := reader.Close()
 	So(closeReaderErr, ShouldBeNil)

@@ -10,9 +10,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/theapemachine/caramba/pkg/config"
 	"github.com/theapemachine/caramba/pkg/hub"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
 const (
@@ -75,12 +77,27 @@ func Open(paths ...string) (*Store, error) {
 		derived: make(map[string][]float64),
 	}
 
-	for _, path := range paths {
+	for index, path := range paths {
+		publishWeightProgress(
+			"open.file",
+			fmt.Sprintf("opening SafeTensors file %s", path),
+			qpool.Field{Key: "path", Value: path},
+			qpool.Field{Key: "file", Value: index + 1},
+			qpool.Field{Key: "files", Value: len(paths)},
+		)
+
 		file, err := openSafeTensors(path)
 
 		if err != nil {
 			return nil, err
 		}
+
+		publishWeightProgress(
+			"open.indexed",
+			fmt.Sprintf("indexed SafeTensors file %s", path),
+			qpool.Field{Key: "path", Value: path},
+			qpool.Field{Key: "tensors", Value: len(file.tensors)},
+		)
 
 		for name, tensor := range file.tensors {
 			if _, exists := store.tensors[name]; exists {
@@ -93,6 +110,14 @@ func Open(paths ...string) (*Store, error) {
 			}
 		}
 	}
+
+	publishWeightProgress(
+		"open.ready",
+		"SafeTensors store ready",
+		qpool.Field{Key: "files", Value: len(paths)},
+		qpool.Field{Key: "tensors", Value: len(store.tensors)},
+		qpool.Field{Key: "done", Value: true},
+	)
 
 	return store, nil
 }
@@ -373,6 +398,12 @@ func (source Source) downloadIndexShards(
 
 		seen[repoFilename] = true
 
+		publishWeightProgress(
+			"hub.shard",
+			fmt.Sprintf("resolving indexed SafeTensors shard %s", repoFilename),
+			qpool.Field{Key: "file", Value: repoFilename},
+		)
+
 		path, err := source.download(ctx, repoFilename)
 
 		if err != nil {
@@ -426,6 +457,12 @@ func (source Source) download(ctx context.Context, filename string) (string, err
 	}
 
 	return file.Path, nil
+}
+
+func publishWeightProgress(op string, message string, fields ...qpool.Field) {
+	event := qpool.NewInfoEvent("weights", op, message, fields)
+	event.WithTime(time.Now())
+	qpool.Publish(event)
 }
 
 func parseRepoType(value string) (hub.RepoType, error) {

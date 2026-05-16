@@ -111,6 +111,32 @@ kernel void split_kernel(
     dst[i] = src[srcIndex];
 }
 
+kernel void upsample_nearest2d_kernel(
+    device const float* src [[buffer(0)]],
+    device float*       dst [[buffer(1)]],
+    constant int&       B [[buffer(2)]],
+    constant int&       C [[buffer(3)]],
+    constant int&       H [[buffer(4)]],
+    constant int&       W [[buffer(5)]],
+    constant int&       scaleH [[buffer(6)]],
+    constant int&       scaleW [[buffer(7)]],
+    uint idx [[thread_position_in_grid]])
+{
+    int outW = W * scaleW;
+    int outH = H * scaleH;
+    int outColumn = int(idx) % outW;
+    int rem = int(idx) / outW;
+    int outRow = rem % outH;
+    rem = rem / outH;
+    int channel = rem % C;
+    int batch = rem / C;
+    int inputRow = outRow / scaleH;
+    int inputColumn = outColumn / scaleW;
+    int srcIndex = ((batch * C + channel) * H + inputRow) * W + inputColumn;
+
+    dst[idx] = src[srcIndex];
+}
+
 // ---------------------------------------------------------------------------
 // view_as_heads_kernel
 // Transposes dims 1 and 2 of a [B, T, H, head_dim] tensor ->

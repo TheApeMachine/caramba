@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/theapemachine/caramba/pkg/asset"
 	"github.com/theapemachine/caramba/pkg/backend/compute"
@@ -397,8 +398,12 @@ func (generator *ModelGenerator) Generate(
 		positionStart = len(historyTokenIDs) - 1
 
 		if generator.policy.stopMatched(generatedTokenIDs) {
+			generator.publishGenerationProgress(len(generatedTokenIDs), true)
+
 			return nil
 		}
+
+		generator.publishGenerationProgress(len(generatedTokenIDs), false)
 
 		if generator.policy.stopPending(generatedTokenIDs) {
 			continue
@@ -415,7 +420,29 @@ func (generator *ModelGenerator) Generate(
 		return err
 	}
 
-	return stream.Flush(emit)
+	if err := stream.Flush(emit); err != nil {
+		return err
+	}
+
+	generator.publishGenerationProgress(len(generatedTokenIDs), true)
+
+	return nil
+}
+
+func (generator *ModelGenerator) publishGenerationProgress(tokenCount int, done bool) {
+	event := qpool.NewDebugEvent(
+		chatTelemetryComponent,
+		"generation.token",
+		"generating model response",
+		[]qpool.Field{
+			{Key: "model", Value: generator.model},
+			{Key: "token", Value: tokenCount},
+			{Key: "tokens", Value: generator.maxTokens},
+			{Key: "done", Value: done},
+		},
+	)
+	event.WithTime(time.Now())
+	qpool.Publish(event)
 }
 
 func (generator *ModelGenerator) nextToken(

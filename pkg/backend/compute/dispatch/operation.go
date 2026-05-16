@@ -39,10 +39,12 @@ type OperationRegistry interface {
 	Dropout(*state.Dict) (state.Operation, error)
 	RMSNorm(*state.Dict) (state.Operation, error)
 	LayerNorm(*state.Dict) (state.Operation, error)
+	GroupNorm(*state.Dict) (state.Operation, error)
 	Reshape(*state.Dict) (state.Operation, error)
 	Transpose(*state.Dict) (state.Operation, error)
 	Concat(*state.Dict) (state.Operation, error)
 	Split(*state.Dict) (state.Operation, error)
+	UpsampleNearest2D(*state.Dict) (state.Operation, error)
 	ViewAsHeads(*state.Dict) (state.Operation, error)
 	MergeHeads(*state.Dict) (state.Operation, error)
 	LastToken(*state.Dict) (state.Operation, error)
@@ -222,6 +224,8 @@ func BuildOperation(
 		return registry.RMSNorm(config)
 	case "math.layernorm":
 		return registry.LayerNorm(config)
+	case "math.groupnorm":
+		return registry.GroupNorm(config)
 	case "shape.reshape":
 		return registry.Reshape(config)
 	case "shape.transpose":
@@ -230,6 +234,8 @@ func BuildOperation(
 		return registry.Concat(config)
 	case "shape.split":
 		return registry.Split(config)
+	case "shape.upsample_nearest2d":
+		return registry.UpsampleNearest2D(config)
 	case "shape.view_as_heads":
 		return registry.ViewAsHeads(config)
 	case "shape.merge_heads":

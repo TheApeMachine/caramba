@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -25,6 +27,24 @@ func TestNewHubConfig(test *testing.T) {
 			So(hubConfig.Offline, ShouldBeTrue)
 			So(hubConfig.MaxWorkers, ShouldEqual, 3)
 			So(hubConfig.Xet.Active, ShouldBeFalse)
+		})
+	})
+}
+
+func TestNewHubConfig_DefaultCacheDir(test *testing.T) {
+	Convey("Given default Hub settings", test, func() {
+		viper.Reset()
+		test.Cleanup(viper.Reset)
+
+		homeDir, err := os.UserHomeDir()
+
+		Convey("It should use the standard Hugging Face Hub cache", func() {
+			So(err, ShouldBeNil)
+			So(
+				NewHubConfig().CacheDir,
+				ShouldEqual,
+				filepath.Join(homeDir, ".cache", "huggingface", "hub"),
+			)
 		})
 	})
 }

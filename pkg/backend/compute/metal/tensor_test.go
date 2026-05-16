@@ -3,11 +3,14 @@
 package metal
 
 import (
-	"sync"
+	"context"
+	"strconv"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
 func TestNewTensorBackend(t *testing.T) {
@@ -136,23 +139,42 @@ func TestTensorBackend_CloseConcurrent(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("Concurrent Close should be safe", func() {
-			var waitGroup sync.WaitGroup
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-			for range 8 {
-				waitGroup.Add(1)
+			pool := qpool.NewQ(ctx, 8, 8, &qpool.Config{
+				SchedulingTimeout:  time.Second,
+				JobChannelCapacity: 8,
+				Scaler:             nil,
+			})
+			defer pool.Close()
 
-				go func() {
-					defer waitGroup.Done()
-					_ = tensorBackend.Close()
-				}()
+			results := make([]chan *qpool.QValue, 0, 8)
+
+			for index := range 8 {
+				results = append(results, pool.Schedule(
+					metalCloseJobID(index),
+					func(context.Context) (any, error) {
+						_ = tensorBackend.Close()
+
+						return nil, nil
+					},
+					qpool.WithExecTimeout(time.Second),
+				))
 			}
 
-			waitGroup.Wait()
+			for _, result := range results {
+				So((<-result).Error, ShouldBeNil)
+			}
 
 			_, err := tensorBackend.UploadFloat64(shape, []float64{1, 2})
 			So(err, ShouldNotBeNil)
 		})
 	})
+}
+
+func metalCloseJobID(index int) string {
+	return "metal.tensor.close." + strconv.Itoa(index)
 }
 
 func TestTensor_Close_emptyBuffer(t *testing.T) {

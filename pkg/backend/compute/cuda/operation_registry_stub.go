@@ -116,6 +116,10 @@ func (registry OperationRegistry) LayerNorm(*state.Dict) (state.Operation, error
 	return nil, cudaOperationsUnavailable()
 }
 
+func (registry OperationRegistry) GroupNorm(*state.Dict) (state.Operation, error) {
+	return nil, cudaOperationsUnavailable()
+}
+
 func (registry OperationRegistry) Reshape(*state.Dict) (state.Operation, error) {
 	return nil, cudaOperationsUnavailable()
 }
@@ -129,6 +133,10 @@ func (registry OperationRegistry) Concat(*state.Dict) (state.Operation, error) {
 }
 
 func (registry OperationRegistry) Split(*state.Dict) (state.Operation, error) {
+	return nil, cudaOperationsUnavailable()
+}
+
+func (registry OperationRegistry) UpsampleNearest2D(*state.Dict) (state.Operation, error) {
 	return nil, cudaOperationsUnavailable()
 }
 

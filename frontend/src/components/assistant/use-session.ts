@@ -146,8 +146,11 @@ function newSessionRow(scope: SessionScope = "personal"): AssistantSessionRow {
 	};
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: Collection union type widens too much to be useful
+type AnyCollection = any;
+
 async function replaceSessionPersonas(
-	joinCollection: ReturnType<typeof getSessionPersonasCollection>,
+	joinCollection: AnyCollection,
 	sessionId: string,
 	personaIds: string[],
 	existing: AssistantSessionPersonaRow[],
@@ -176,10 +179,10 @@ through the `get*Collection(mode)` factories.
 export function useSession() {
 	const { mode } = useAssistantMode();
 
-	const personasCollection = getPersonasCollection(mode);
-	const sessionsCollection = getSessionsCollection(mode);
-	const messagesCollection = getMessagesCollection(mode);
-	const sessionPersonasCollection = getSessionPersonasCollection(mode);
+	const personasCollection: AnyCollection = getPersonasCollection(mode);
+	const sessionsCollection: AnyCollection = getSessionsCollection(mode);
+	const messagesCollection: AnyCollection = getMessagesCollection(mode);
+	const sessionPersonasCollection: AnyCollection = getSessionPersonasCollection(mode);
 
 	const importedRef = useRef<string | null>(null);
 
@@ -317,7 +320,7 @@ export function useSession() {
 			const existing = messagesCollection.get(message.id);
 
 			if (existing) {
-				await messagesCollection.update(message.id, (draft) => {
+				await messagesCollection.update(message.id, (draft: AssistantMessageRow) => {
 					Object.assign(draft, row);
 				});
 				return;
@@ -333,7 +336,7 @@ export function useSession() {
 			const row = rowFromPersona(persona);
 
 			if (personasCollection.get(persona.id)) {
-				await personasCollection.update(persona.id, (draft) => {
+				await personasCollection.update(persona.id, (draft: AssistantPersonaRow) => {
 					Object.assign(draft, row);
 				});
 				return;
@@ -391,7 +394,7 @@ export function useSession() {
 			await sessionsCollection.update(
 				session.id,
 				{ metadata: { personaIds: session.personas.map((entry) => entry.id) } },
-				(draft) => {
+				(draft: AssistantSessionRow) => {
 					draft.window_size = size;
 				},
 			);

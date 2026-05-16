@@ -13,6 +13,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/kv"
 	"github.com/theapemachine/caramba/pkg/backend/compute/rotary"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -286,6 +287,10 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyRMSNorm(ctx, node, inputs)
 	case "math.layernorm":
 		return tensorBackend.applyLayerNorm(ctx, node, inputs)
+	case "math.groupnorm":
+		return tensorBackend.applyGroupNorm(ctx, node, inputs)
+	case "shape.upsample_nearest2d":
+		return tensorBackend.applyUpsampleNearest2D(ctx, node, inputs)
 	case "shape.view_as_heads":
 		return tensorBackend.applyViewAsHeads(ctx, node, inputs)
 	case "shape.merge_heads":
@@ -457,6 +462,68 @@ func (tensorBackend *TensorBackend) applyLayerNorm(
 	return mathOps.LayerNormTensor(inputs[0], weightTensor, biasTensor, floatConfig(node, "eps", 1e-5))
 }
 
+func (tensorBackend *TensorBackend) applyGroupNorm(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("metal tensor: groupnorm node %q requires 1 input", node.ID)
+	}
+
+	inputShape := inputs[0].Shape().Dims()
+
+	if len(inputShape) != 4 {
+		return nil, fmt.Errorf("metal tensor: groupnorm node %q expects NCHW rank 4", node.ID)
+	}
+
+	channels := inputShape[1]
+	groups := intConfig(node, "groups", 0)
+	groups = intConfig(node, "num_groups", groups)
+
+	weight, err := floatSliceConfigRequired(node, "weight")
+
+	if err != nil {
+		return nil, err
+	}
+
+	bias, err := floatSliceConfigRequired(node, "bias")
+
+	if err != nil {
+		return nil, err
+	}
+
+	weightTensor, err := tensorBackend.cachedTensor(node.ID+":weight", []int{channels}, weight)
+
+	if err != nil {
+		return nil, err
+	}
+
+	biasTensor, err := tensorBackend.cachedTensor(node.ID+":bias", []int{channels}, bias)
+
+	if err != nil {
+		return nil, err
+	}
+
+	mathOps, err := tensorBackend.math()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return mathOps.GroupNormTensor(
+		inputs[0],
+		weightTensor,
+		biasTensor,
+		groups,
+		floatConfig(node, "eps", 1e-5),
+	)
+}
+
 func (tensorBackend *TensorBackend) applyViewAsHeads(
 	ctx context.Context,
 	node executor.NodeSpec,
@@ -501,6 +568,58 @@ func (tensorBackend *TensorBackend) applyViewAsHeads(
 		inputShape[1],
 		numHeads,
 		inputShape[2]/numHeads,
+	)
+}
+
+func (tensorBackend *TensorBackend) applyUpsampleNearest2D(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("metal tensor: upsample_nearest2d node %q requires 1 input", node.ID)
+	}
+
+	inputShape := inputs[0].Shape().Dims()
+
+	if len(inputShape) != 4 {
+		return nil, fmt.Errorf("metal tensor: upsample_nearest2d node %q expects rank 4", node.ID)
+	}
+
+	outputShape, err := tensor.NewShape(node.Shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	stateDict := executor.OperationConfig(node)
+	stateDict.OutH = outputShape.Dims()[2]
+	stateDict.OutW = outputShape.Dims()[3]
+	scaleH, scaleW, err := metalUpsampleNearest2DScale(stateDict, inputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	shapeOps, err := tensorBackend.shape()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return shapeOps.UpsampleNearest2DTensor(
+		inputs[0],
+		outputShape,
+		inputShape[0],
+		inputShape[1],
+		inputShape[2],
+		inputShape[3],
+		scaleH,
+		scaleW,
 	)
 }
 
@@ -1295,6 +1414,47 @@ func floatSliceConfig(node executor.NodeSpec, key string) []float64 {
 	default:
 		return nil
 	}
+}
+
+func metalUpsampleNearest2DScale(stateDict *state.Dict, shape []int) (int, int, error) {
+	if len(shape) != 4 {
+		return 0, 0, fmt.Errorf("metal.shape.upsample_nearest2d: expected NCHW rank 4")
+	}
+
+	scaleH := stateDict.ScaleH
+	scaleW := stateDict.ScaleW
+
+	if scaleH == 0 && stateDict.OutH > 0 {
+		if stateDict.OutH%shape[2] != 0 {
+			return 0, 0, fmt.Errorf(
+				"metal.shape.upsample_nearest2d: out_h %d is not divisible by height %d",
+				stateDict.OutH,
+				shape[2],
+			)
+		}
+
+		scaleH = stateDict.OutH / shape[2]
+	}
+
+	if scaleW == 0 && stateDict.OutW > 0 {
+		if stateDict.OutW%shape[3] != 0 {
+			return 0, 0, fmt.Errorf(
+				"metal.shape.upsample_nearest2d: out_w %d is not divisible by width %d",
+				stateDict.OutW,
+				shape[3],
+			)
+		}
+
+		scaleW = stateDict.OutW / shape[3]
+	}
+
+	if scaleH <= 0 || scaleW <= 0 {
+		return 0, 0, fmt.Errorf(
+			"metal.shape.upsample_nearest2d: scale_h and scale_w must be positive",
+		)
+	}
+
+	return scaleH, scaleW, nil
 }
 
 func intConfig(node executor.NodeSpec, key string, fallback int) int {

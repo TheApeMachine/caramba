@@ -73,6 +73,7 @@ system:
     vae:
       source: black-forest-labs/FLUX.2-klein-4B
       path: vae
+      manifest: model/diffusion/flux-2-klein-4b-vae-decoder.yml
       file: vae/diffusion_pytorch_model.safetensors
       architecture: AutoencoderKLFlux2
     generation:

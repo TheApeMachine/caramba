@@ -1,6 +1,28 @@
 import { chat, toolDefinition, toServerSentEventsResponse } from "@tanstack/ai";
+import { createOllamaChat } from "@tanstack/ai-ollama";
 import { OPENAI_CHAT_MODELS, openaiText } from "@tanstack/ai-openai";
 import { createFileRoute } from "@tanstack/react-router";
+
+type AdapterType = "openai" | "ollama" | "openai-compat";
+
+function buildAdapter(
+	adapterType: AdapterType,
+	model: string,
+	endpointUrl: string,
+	openaiModel: ReturnType<typeof coerceOpenAIModel>,
+) {
+	if (adapterType === "ollama") {
+		return createOllamaChat(model, endpointUrl || undefined);
+	}
+
+	if (adapterType === "openai-compat") {
+		return openaiText(openaiModel, {
+			baseURL: endpointUrl || undefined,
+		});
+	}
+
+	return openaiText(openaiModel);
+}
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 120;
@@ -282,9 +304,25 @@ export const Route = createFileRoute("/api/assistant")({
 						: undefined;
 					const tools = resolveTools(payload.availableTools);
 
-					const model = coerceOpenAIModel(
-						requestedModel ?? process.env.OPENAI_MODEL,
+					const adapterType: AdapterType =
+						payload.adapterType === "ollama"
+							? "ollama"
+							: payload.adapterType === "openai-compat"
+								? "openai-compat"
+								: "openai";
+					const endpointUrl =
+						typeof payload.endpointUrl === "string" ? payload.endpointUrl : "";
+					const rawModel =
+						requestedModel ?? process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
+					const openaiModel = coerceOpenAIModel(
+						adapterType === "openai" ? rawModel : undefined,
 						{ requester: requesterFingerprint },
+					);
+					const adapter = buildAdapter(
+						adapterType,
+						rawModel,
+						endpointUrl,
+						openaiModel,
 					);
 
 					const abortController = new AbortController();
@@ -295,7 +333,7 @@ export const Route = createFileRoute("/api/assistant")({
 
 					try {
 						const stream = chat({
-							adapter: openaiText(model),
+							adapter,
 							messages,
 							conversationId: normalizedConversationId,
 							abortController,
@@ -319,7 +357,8 @@ export const Route = createFileRoute("/api/assistant")({
 							level: "info",
 							conversationId: normalizedConversationId ?? null,
 							requester: requesterFingerprint,
-							model,
+							model: rawModel,
+							adapter: adapterType,
 							toolCount: tools?.length ?? 0,
 						});
 

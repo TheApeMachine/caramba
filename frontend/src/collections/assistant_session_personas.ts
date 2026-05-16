@@ -1,6 +1,5 @@
 import { electricCollectionOptions } from "@tanstack/electric-db-collection";
 import {
-	type Collection,
 	createCollection,
 	localStorageCollectionOptions,
 } from "@tanstack/react-db";
@@ -14,17 +13,17 @@ export const AssistantSessionPersona = z.object({
 
 export type AssistantSessionPersonaRow = z.infer<typeof AssistantSessionPersona>;
 
-const shapeUrl =
-	typeof window !== "undefined"
-		? `${window.location.origin}/api/shape/assistant-session-personas`
-		: "/api/shape/assistant-session-personas";
+function shapeUrl() {
+	if (typeof window === "undefined") return "http://localhost/api/shape/assistant-session-personas";
+	return `${window.location.origin}/api/shape/assistant-session-personas`;
+}
 
 function compositeKey(item: AssistantSessionPersonaRow): string {
 	return `${item.session_id}:${item.persona_id}`;
 }
 
-let cloud: Collection<AssistantSessionPersonaRow> | null = null;
-let local: Collection<AssistantSessionPersonaRow> | null = null;
+let cloud: ReturnType<typeof buildCloud> | null = null;
+let local: ReturnType<typeof buildLocal> | null = null;
 
 function buildCloud() {
 	return createCollection(
@@ -32,7 +31,7 @@ function buildCloud() {
 			id: "assistant_session_personas",
 			schema: AssistantSessionPersona,
 			getKey: compositeKey,
-			shapeOptions: { url: shapeUrl },
+			shapeOptions: { url: shapeUrl() },
 		}),
 	);
 }
@@ -50,10 +49,10 @@ function buildLocal() {
 
 export function getSessionPersonasCollection(mode: "cloud" | "local") {
 	if (mode === "local") {
-		if (!local) local = buildLocal();
+		local ??= buildLocal();
 		return local;
 	}
 
-	if (!cloud) cloud = buildCloud();
+	cloud ??= buildCloud();
 	return cloud;
 }

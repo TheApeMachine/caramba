@@ -23,13 +23,20 @@ func TestPipeline_Generate(test *testing.T) {
 		outputPath := filepath.Join(root, "out.png")
 		tokenizerPath := filepath.Join(root, "tokenizer.json")
 		textEncoderManifest := filepath.Join(root, "text-encoder.yml")
+		vaeManifest := filepath.Join(root, "vae.yml")
 		diffusionManifest := filepath.Join(root, "diffusion.yml")
 		textEncoderWeights := filepath.Join(root, "text-encoder.safetensors")
 		transformerWeights := filepath.Join(root, "transformer.safetensors")
+		vaeWeights := filepath.Join(root, "vae.safetensors")
 
 		So(os.WriteFile(tokenizerPath, tinyTokenizerJSON(), 0o644), ShouldBeNil)
 		So(os.WriteFile(textEncoderManifest, []byte(tinyTextEncoderManifest()), 0o644), ShouldBeNil)
-		So(os.WriteFile(diffusionManifest, []byte(tinyDiffusionManifest(root, textEncoderManifest, outputPath)), 0o644), ShouldBeNil)
+		So(os.WriteFile(vaeManifest, []byte(tinyVAEManifest()), 0o644), ShouldBeNil)
+		So(os.WriteFile(
+			diffusionManifest,
+			[]byte(tinyDiffusionManifest(root, textEncoderManifest, vaeManifest, outputPath)),
+			0o644,
+		), ShouldBeNil)
 		So(writeTinySafeTensors(textEncoderWeights, []tinyTensor{{
 			name:   "prompt_embeds.weight",
 			shape:  []int{1, 7680},
@@ -40,8 +47,9 @@ func TestPipeline_Generate(test *testing.T) {
 			shape:  []int{3, 7680},
 			values: make([]float64, 3*7680),
 		}}), ShouldBeNil)
+		So(writeTinySafeTensors(vaeWeights, nil), ShouldBeNil)
 
-		Convey("It should encode the prompt, denoise, and write a PNG", func() {
+		Convey("It should encode the prompt, denoise, decode through VAE, and write a PNG", func() {
 			pipeline, err := NewPipeline(context.Background(), Config{
 				Manifest: diffusionManifest,
 				Prompt:   "h",
@@ -52,6 +60,8 @@ func TestPipeline_Generate(test *testing.T) {
 			result, err := pipeline.Generate(context.Background(), "h")
 			So(err, ShouldBeNil)
 			So(result.Output, ShouldEqual, outputPath)
+			So(result.Width, ShouldEqual, 1)
+			So(result.Height, ShouldEqual, 1)
 
 			info, err := os.Stat(outputPath)
 			So(err, ShouldBeNil)
@@ -69,9 +79,11 @@ func BenchmarkPipeline_Generate(benchmark *testing.B) {
 	outputPath := filepath.Join(root, "out.png")
 	tokenizerPath := filepath.Join(root, "tokenizer.json")
 	textEncoderManifest := filepath.Join(root, "text-encoder.yml")
+	vaeManifest := filepath.Join(root, "vae.yml")
 	diffusionManifest := filepath.Join(root, "diffusion.yml")
 	textEncoderWeights := filepath.Join(root, "text-encoder.safetensors")
 	transformerWeights := filepath.Join(root, "transformer.safetensors")
+	vaeWeights := filepath.Join(root, "vae.safetensors")
 
 	if err := os.WriteFile(tokenizerPath, tinyTokenizerJSON(), 0o644); err != nil {
 		benchmark.Fatal(err)
@@ -81,9 +93,13 @@ func BenchmarkPipeline_Generate(benchmark *testing.B) {
 		benchmark.Fatal(err)
 	}
 
+	if err := os.WriteFile(vaeManifest, []byte(tinyVAEManifest()), 0o644); err != nil {
+		benchmark.Fatal(err)
+	}
+
 	if err := os.WriteFile(
 		diffusionManifest,
-		[]byte(tinyDiffusionManifest(root, textEncoderManifest, outputPath)),
+		[]byte(tinyDiffusionManifest(root, textEncoderManifest, vaeManifest, outputPath)),
 		0o644,
 	); err != nil {
 		benchmark.Fatal(err)
@@ -102,6 +118,10 @@ func BenchmarkPipeline_Generate(benchmark *testing.B) {
 		shape:  []int{3, 7680},
 		values: make([]float64, 3*7680),
 	}}); err != nil {
+		benchmark.Fatal(err)
+	}
+
+	if err := writeTinySafeTensors(vaeWeights, nil); err != nil {
 		benchmark.Fatal(err)
 	}
 
@@ -158,7 +178,26 @@ system:
 `
 }
 
-func tinyDiffusionManifest(root string, textEncoderManifest string, outputPath string) string {
+func tinyVAEManifest() string {
+	return `
+system:
+  topology:
+    inputs: [latents]
+    nodes:
+      - id: rgb
+        op: shape.reshape
+        in: [latents]
+        out: [rgb]
+        config: { shape: [1, 3, 1, 1] }
+`
+}
+
+func tinyDiffusionManifest(
+	root string,
+	textEncoderManifest string,
+	vaeManifest string,
+	outputPath string,
+) string {
 	return `
 system:
   runtime:
@@ -177,6 +216,10 @@ system:
     transformer:
       source: ` + root + `
       file: transformer.safetensors
+    vae:
+      source: ` + root + `
+      manifest: ` + vaeManifest + `
+      file: vae.safetensors
     scheduler:
       type: flow_match_euler_discrete
       num_inference_steps: 1

@@ -395,6 +395,75 @@ __global__ void rmsnorm_kernel(const double* src, double* dst,
 }
 
 // ---------------------------------------------------------------------------
+// groupnorm_kernel: one block per batch/group pair on NCHW tensors
+// ---------------------------------------------------------------------------
+__global__ void groupnorm_kernel(const double* src, double* dst,
+                                 const double* weight, const double* bias,
+                                 int channels, int height, int width,
+                                 int groups, double eps)
+{
+    extern __shared__ double smem[];
+    int group_index = blockIdx.x;
+    int batch_index = blockIdx.y;
+    int channels_per_group = channels / groups;
+    int spatial = height * width;
+    int group_size = channels_per_group * spatial;
+    int batch_offset = batch_index * channels * spatial;
+    int group_offset = batch_offset + group_index * channels_per_group * spatial;
+
+    double lsum = 0.0;
+    for (int i = threadIdx.x; i < group_size; i += blockDim.x) {
+        lsum += src[group_offset + i];
+    }
+    #pragma unroll
+    for (int offset = warpSize/2; offset > 0; offset >>= 1)
+        lsum += __shfl_down_sync(0xffffffff, lsum, offset);
+    if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lsum;
+    __syncthreads();
+    int warp_count = (blockDim.x + warpSize - 1) / warpSize;
+    if (threadIdx.x < warp_count) {
+        lsum = smem[threadIdx.x];
+    } else {
+        lsum = 0.0;
+    }
+    #pragma unroll
+    for (int offset = warpSize/2; offset > 0; offset >>= 1)
+        lsum += __shfl_down_sync(0xffffffff, lsum, offset);
+    if (threadIdx.x == 0) smem[0] = lsum;
+    __syncthreads();
+    double mean = smem[0] / group_size;
+    __syncthreads();
+
+    double lvar = 0.0;
+    for (int i = threadIdx.x; i < group_size; i += blockDim.x) {
+        double diff = src[group_offset + i] - mean;
+        lvar += diff * diff;
+    }
+    #pragma unroll
+    for (int offset = warpSize/2; offset > 0; offset >>= 1)
+        lvar += __shfl_down_sync(0xffffffff, lvar, offset);
+    if (threadIdx.x % warpSize == 0) smem[threadIdx.x / warpSize] = lvar;
+    __syncthreads();
+    if (threadIdx.x < warp_count) {
+        lvar = smem[threadIdx.x];
+    } else {
+        lvar = 0.0;
+    }
+    #pragma unroll
+    for (int offset = warpSize/2; offset > 0; offset >>= 1)
+        lvar += __shfl_down_sync(0xffffffff, lvar, offset);
+    if (threadIdx.x == 0) smem[0] = lvar;
+    __syncthreads();
+    double inv_std = rsqrt(smem[0] / group_size + eps);
+    __syncthreads();
+
+    for (int i = threadIdx.x; i < group_size; i += blockDim.x) {
+        int channel = group_index * channels_per_group + i / spatial;
+        dst[group_offset + i] = (src[group_offset + i] - mean) * inv_std * weight[channel] + bias[channel];
+    }
+}
+
+// ---------------------------------------------------------------------------
 // C wrappers
 // ---------------------------------------------------------------------------
 
@@ -639,6 +708,33 @@ int cuda_rmsnorm(const double* src, double* dst,
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaMemcpy(dst, dDst, nb, cudaMemcpyDeviceToHost));
     cudaFree(dSrc); cudaFree(dDst); cudaFree(dW);
+    return 0;
+}
+
+int cuda_groupnorm(const double* src, double* dst,
+                   const double* weight, const double* bias,
+                   int batch, int channels, int height, int width,
+                   int groups, double eps) {
+    if (batch <= 0 || channels <= 0 || height <= 0 || width <= 0 || groups <= 0) return -1;
+    if ((channels % groups) != 0) return -1;
+
+    double *dSrc, *dDst, *dW, *dB;
+    size_t nb = (size_t)batch * channels * height * width * sizeof(double);
+    size_t nb1 = (size_t)channels * sizeof(double);
+    if (alloc_copy_free(src, (void**)&dSrc, nb)) return -1;
+    if (alloc_copy_free(weight, (void**)&dW, nb1)) { cudaFree(dSrc); return -1; }
+    if (alloc_copy_free(bias, (void**)&dB, nb1)) { cudaFree(dSrc); cudaFree(dW); return -1; }
+    CUDA_CHECK(cudaMalloc((void**)&dDst, nb));
+    int group_size = channels / groups * height * width;
+    int tgs = group_size < BLOCK_SIZE ? group_size : BLOCK_SIZE;
+    int warps = (tgs + 31) / 32;
+    dim3 grid(groups, batch);
+    groupnorm_kernel<<<grid, tgs, warps*sizeof(double)>>>(
+        dSrc, dDst, dW, dB, channels, height, width, groups, eps
+    );
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(dst, dDst, nb, cudaMemcpyDeviceToHost));
+    cudaFree(dSrc); cudaFree(dDst); cudaFree(dW); cudaFree(dB);
     return 0;
 }
 

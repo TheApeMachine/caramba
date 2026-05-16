@@ -114,6 +114,10 @@ func (registry *OperationRegistry) LayerNorm(_ *state.Dict) (state.Operation, er
 	return unavailableOperation()
 }
 
+func (registry *OperationRegistry) GroupNorm(_ *state.Dict) (state.Operation, error) {
+	return unavailableOperation()
+}
+
 func (registry *OperationRegistry) Reshape(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
@@ -127,6 +131,10 @@ func (registry *OperationRegistry) Concat(_ *state.Dict) (state.Operation, error
 }
 
 func (registry *OperationRegistry) Split(_ *state.Dict) (state.Operation, error) {
+	return unavailableOperation()
+}
+
+func (registry *OperationRegistry) UpsampleNearest2D(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 

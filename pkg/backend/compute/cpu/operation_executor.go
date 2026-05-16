@@ -77,10 +77,12 @@ func (operationDispatchContract OperationDispatchContract) SupportedIDSet() map[
 		"math.dropout":                          true,
 		"math.rmsnorm":                          true,
 		"math.layernorm":                        true,
+		"math.groupnorm":                        true,
 		"shape.reshape":                         true,
 		"shape.transpose":                       true,
 		"shape.concat":                          true,
 		"shape.split":                           true,
+		"shape.upsample_nearest2d":              true,
 		"shape.view_as_heads":                   true,
 		"shape.last_token":                      true,
 		"shape.merge_heads":                     true,
@@ -287,6 +289,8 @@ func (tensorBackend *TensorBackend) applyOperation(
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewRMSNorm())
 	case "math.layernorm":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewLayerNorm())
+	case "math.groupnorm":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewGroupNorm())
 	case "shape.reshape":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, shape.NewReshape(intSliceConfig(node, "shape")))
 	case "shape.transpose":
@@ -301,6 +305,8 @@ func (tensorBackend *TensorBackend) applyOperation(
 			intConfig(node, "split_size", 1),
 			intConfig(node, "dim", 0),
 		))
+	case "shape.upsample_nearest2d":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, shape.NewUpsampleNearest2D())
 	case "shape.view_as_heads":
 		return executor.RunOperation(
 			ctx,

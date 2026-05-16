@@ -55,6 +55,11 @@ int metal_rmsnorm_tensor(
     int num_rows, int d_model, float eps
 );
 
+int metal_groupnorm_tensor(
+    const void* src, void* dst, const void* weight, const void* bias,
+    int batch, int channels, int height, int width, int groups, float eps
+);
+
 // Scale: dst[i] = src[i] * (1/sqrt(dim)).
 int metal_inv_sqrt_dim_scale(const float* src, float* dst, int n, int dim);
 
@@ -82,6 +87,13 @@ int metal_layernorm(const float* src, float* dst,
 int metal_rmsnorm(const float* src, float* dst,
                   const float* weight,
                   int num_rows, int d_model, float eps);
+
+// Group norm over NCHW tensors. weight/bias length is channels.
+int metal_groupnorm(
+    const float* src, float* dst,
+    const float* weight, const float* bias,
+    int batch, int channels, int height, int width, int groups, float eps
+);
 
 // Elementwise sign: dst[i] = +1 if src[i] > 0, -1 if < 0, 0 if == 0.
 int metal_sign(const float* src, float* dst, int n);

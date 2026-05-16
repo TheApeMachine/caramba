@@ -535,6 +535,64 @@ static std::string rmsnorm_module(int num_rows, int dim_size, double eps) {
         "}\n";
 }
 
+static std::string groupnorm_module(
+    int batch, int channels, int height, int width, int groups, double eps
+) {
+    int channels_per_group = channels / groups;
+    int group_size = channels_per_group * height * width;
+
+    std::ostringstream eps_ss;
+    eps_ss << std::setprecision(17) << std::defaultfloat << eps;
+    std::string eps_s = eps_ss.str();
+
+    std::ostringstream group_ss;
+    group_ss << std::setprecision(17) << std::defaultfloat << (double)group_size;
+    std::string group_s = group_ss.str();
+
+    std::string b = std::to_string(batch);
+    std::string c = std::to_string(channels);
+    std::string h = std::to_string(height);
+    std::string w = std::to_string(width);
+    std::string g = std::to_string(groups);
+    std::string cg = std::to_string(channels_per_group);
+    std::string t4 = "tensor<" + b + "x" + c + "x" + h + "x" + w + "xf64>";
+    std::string t5 = "tensor<" + b + "x" + g + "x" + cg + "x" + h + "x" + w + "xf64>";
+    std::string tg = "tensor<" + b + "x" + g + "xf64>";
+    std::string tw = "tensor<" + c + "xf64>";
+    std::string twg = "tensor<" + g + "x" + cg + "xf64>";
+
+    return
+        "module @groupnorm {\n"
+        "  func.func @main(%x: " + t4 + ", %w: " + tw + ", %b: " + tw + ") -> " + t4 + " {\n"
+        "    %x5 = stablehlo.reshape %x : (" + t4 + ") -> " + t5 + "\n"
+        "    %zero = stablehlo.constant dense<0.0> : tensor<f64>\n"
+        "    %sum = stablehlo.reduce(%x5 init: %zero) applies stablehlo.add across dimensions = [2, 3, 4] : (" + t5 + ", tensor<f64>) -> " + tg + "\n"
+        "    %group_f = stablehlo.constant dense<" + group_s + "> : tensor<f64>\n"
+        "    %group_b = stablehlo.broadcast_in_dim %group_f, dims = [] : (tensor<f64>) -> " + tg + "\n"
+        "    %mean = stablehlo.divide %sum, %group_b : " + tg + "\n"
+        "    %mean_b = stablehlo.broadcast_in_dim %mean, dims = [0, 1] : (" + tg + ") -> " + t5 + "\n"
+        "    %diff = stablehlo.subtract %x5, %mean_b : " + t5 + "\n"
+        "    %sq = stablehlo.multiply %diff, %diff : " + t5 + "\n"
+        "    %var_sum = stablehlo.reduce(%sq init: %zero) applies stablehlo.add across dimensions = [2, 3, 4] : (" + t5 + ", tensor<f64>) -> " + tg + "\n"
+        "    %var = stablehlo.divide %var_sum, %group_b : " + tg + "\n"
+        "    %eps_val = stablehlo.constant dense<" + eps_s + "> : tensor<f64>\n"
+        "    %eps_b = stablehlo.broadcast_in_dim %eps_val, dims = [] : (tensor<f64>) -> " + tg + "\n"
+        "    %var_eps = stablehlo.add %var, %eps_b : " + tg + "\n"
+        "    %std = stablehlo.sqrt %var_eps : " + tg + "\n"
+        "    %std_b = stablehlo.broadcast_in_dim %std, dims = [0, 1] : (" + tg + ") -> " + t5 + "\n"
+        "    %norm = stablehlo.divide %diff, %std_b : " + t5 + "\n"
+        "    %w2 = stablehlo.reshape %w : (" + tw + ") -> " + twg + "\n"
+        "    %b2 = stablehlo.reshape %b : (" + tw + ") -> " + twg + "\n"
+        "    %w_b = stablehlo.broadcast_in_dim %w2, dims = [1, 2] : (" + twg + ") -> " + t5 + "\n"
+        "    %b_b = stablehlo.broadcast_in_dim %b2, dims = [1, 2] : (" + twg + ") -> " + t5 + "\n"
+        "    %scaled = stablehlo.multiply %norm, %w_b : " + t5 + "\n"
+        "    %out5 = stablehlo.add %scaled, %b_b : " + t5 + "\n"
+        "    %out = stablehlo.reshape %out5 : (" + t5 + ") -> " + t4 + "\n"
+        "    return %out : " + t4 + "\n"
+        "  }\n"
+        "}\n";
+}
+
 // ---------------------------------------------------------------------------
 // StableHLO module templates
 // ---------------------------------------------------------------------------
@@ -876,6 +934,34 @@ int xla_rmsnorm(const double* src, double* dst,
         (size_t)d_model * sizeof(double)
     };
     return xla_math_run_exec(exec, ins, 2, sizes, dst, sizes[0]);
+}
+
+int xla_groupnorm(const double* src, double* dst,
+                  const double* weight, const double* bias,
+                  int batch, int channels, int height, int width,
+                  int groups, double eps) {
+    if (batch <= 0 || channels <= 0 || height <= 0 || width <= 0 || groups <= 0) return -1;
+    if ((channels % groups) != 0) return -1;
+    if (!gm_client) return -1;
+
+    std::ostringstream eps_ss;
+    eps_ss << std::setprecision(17) << std::defaultfloat << eps;
+    std::string key = "groupnorm_" + std::to_string(batch) + "_" +
+        std::to_string(channels) + "_" + std::to_string(height) + "_" +
+        std::to_string(width) + "_" + std::to_string(groups) + "_" + eps_ss.str();
+    PJRT_LoadedExecutable* exec = xla_math_compile_module(
+        key,
+        groupnorm_module(batch, channels, height, width, groups, eps)
+    );
+    if (!exec) return -1;
+
+    const double* ins[3] = {src, weight, bias};
+    size_t sizes[3] = {
+        (size_t)batch * (size_t)channels * (size_t)height * (size_t)width * sizeof(double),
+        (size_t)channels * sizeof(double),
+        (size_t)channels * sizeof(double)
+    };
+    return xla_math_run_exec(exec, ins, 3, sizes, dst, sizes[0]);
 }
 
 int xla_axpy(double* dst, const double* src, double scale, int n) {

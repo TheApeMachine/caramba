@@ -180,6 +180,54 @@ func (c *CUDAShapeOps) Split(
 	return dst, nil
 }
 
+func (c *CUDAShapeOps) UpsampleNearest2D(
+	input []float64,
+	batch int,
+	channels int,
+	height int,
+	width int,
+	scaleH int,
+	scaleW int,
+) ([]float64, error) {
+	if batch <= 0 || channels <= 0 || height <= 0 || width <= 0 ||
+		scaleH <= 0 || scaleW <= 0 {
+		return nil, fmt.Errorf("cuda_upsample_nearest2d: dimensions must be positive")
+	}
+
+	inputLength := int64(batch) * int64(channels) * int64(height) * int64(width)
+	outputLength := inputLength * int64(scaleH) * int64(scaleW)
+
+	if inputLength != int64(len(input)) {
+		return nil, fmt.Errorf(
+			"cuda_upsample_nearest2d: input length %d does not match NCHW size %d",
+			len(input),
+			inputLength,
+		)
+	}
+
+	if outputLength > math.MaxInt32 {
+		return nil, fmt.Errorf("cuda_upsample_nearest2d: output length %d exceeds int32", outputLength)
+	}
+
+	dst := make([]float64, int(outputLength))
+	rc := C.cuda_upsample_nearest2d(
+		(*C.double)(unsafe.Pointer(&input[0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(batch),
+		C.int(channels),
+		C.int(height),
+		C.int(width),
+		C.int(scaleH),
+		C.int(scaleW),
+	)
+
+	if rc != 0 {
+		return nil, fmt.Errorf("cuda_upsample_nearest2d failed (rc=%d)", rc)
+	}
+
+	return dst, nil
+}
+
 // ---------------------------------------------------------------------------
 // ViewAsHeads: [B,T,D] -> [B,H,T,D/H]
 // ---------------------------------------------------------------------------

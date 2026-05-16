@@ -177,6 +177,11 @@ func (registry OperationRegistry) LayerNorm(config *state.Dict) (state.Operation
 	return &LayerNorm{mathOps: mathOps}, err
 }
 
+func (registry OperationRegistry) GroupNorm(config *state.Dict) (state.Operation, error) {
+	mathOps, err := NewMathOps(xlaPlatform(config))
+	return &GroupNorm{mathOps: mathOps}, err
+}
+
 func (registry OperationRegistry) Reshape(config *state.Dict) (state.Operation, error) {
 	shapeOps, err := newXLAShapeOps(config)
 	return &Reshape{shapeOps: shapeOps}, err
@@ -195,6 +200,11 @@ func (registry OperationRegistry) Concat(config *state.Dict) (state.Operation, e
 func (registry OperationRegistry) Split(config *state.Dict) (state.Operation, error) {
 	shapeOps, err := newXLAShapeOps(config)
 	return &Split{shapeOps: shapeOps}, err
+}
+
+func (registry OperationRegistry) UpsampleNearest2D(config *state.Dict) (state.Operation, error) {
+	shapeOps, err := newXLAShapeOps(config)
+	return &UpsampleNearest2D{shapeOps: shapeOps}, err
 }
 
 func (registry OperationRegistry) ViewAsHeads(config *state.Dict) (state.Operation, error) {
@@ -651,6 +661,7 @@ type InvSqrtDimScale struct{ mathOps *XLAMathOps }
 type Dropout struct{ mathOps *XLAMathOps }
 type RMSNorm struct{ mathOps *XLAMathOps }
 type LayerNorm struct{ mathOps *XLAMathOps }
+type GroupNorm struct{ mathOps *XLAMathOps }
 
 func (add *Add) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return xlaShapeForward(stateDict, "xla.math.add", 2, add.mathOps.Add)
@@ -759,10 +770,32 @@ func (layerNorm *LayerNorm) Forward(stateDict *state.Dict) (*state.Dict, error) 
 	return setXLAOutput(stateDict, output, err)
 }
 
+func (groupNorm *GroupNorm) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("xla.math.groupnorm"); err != nil {
+		return nil, err
+	}
+
+	if len(stateDict.Inputs) == 0 {
+		return nil, fmt.Errorf("xla.math.groupnorm: input[0] is required")
+	}
+
+	output, err := groupNorm.mathOps.GroupNorm(
+		stateDict.OperationShape(),
+		stateDict.Eps,
+		stateDict.Groups,
+		stateDict.Weight,
+		stateDict.Bias,
+		stateDict.Inputs...,
+	)
+
+	return setXLAOutput(stateDict, output, err)
+}
+
 type Reshape struct{ shapeOps *XLAShapeOps }
 type Transpose struct{ shapeOps *XLAShapeOps }
 type Concat struct{ shapeOps *XLAShapeOps }
 type Split struct{ shapeOps *XLAShapeOps }
+type UpsampleNearest2D struct{ shapeOps *XLAShapeOps }
 type ViewAsHeads struct{ shapeOps *XLAShapeOps }
 type MergeHeads struct{ shapeOps *XLAShapeOps }
 type LastToken struct{ shapeOps *XLAShapeOps }
@@ -849,6 +882,26 @@ func (split *Split) Forward(stateDict *state.Dict) (*state.Dict, error) {
 
 	output, err := split.shapeOps.Split(
 		stateDict.Inputs[0], outer, dimSize, stateDict.SplitSize, inner,
+	)
+
+	return setXLAOutput(stateDict, output, err)
+}
+
+func (upsample *UpsampleNearest2D) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	shape, err := requireXLAShape(stateDict, "xla.shape.upsample_nearest2d", 4, 1)
+
+	if err != nil {
+		return nil, err
+	}
+
+	scaleH, scaleW, err := xlaUpsampleNearest2DScale(stateDict, shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := upsample.shapeOps.UpsampleNearest2D(
+		stateDict.Inputs[0], shape[0], shape[1], shape[2], shape[3], scaleH, scaleW,
 	)
 
 	return setXLAOutput(stateDict, output, err)
@@ -1620,6 +1673,47 @@ func xlaWeightBias(stateDict *state.Dict) ([]float64, []float64) {
 	}
 
 	return weight, bias
+}
+
+func xlaUpsampleNearest2DScale(stateDict *state.Dict, shape []int) (int, int, error) {
+	if len(shape) != 4 {
+		return 0, 0, fmt.Errorf("xla.shape.upsample_nearest2d: expected NCHW rank 4")
+	}
+
+	scaleH := stateDict.ScaleH
+	scaleW := stateDict.ScaleW
+
+	if scaleH == 0 && stateDict.OutH > 0 {
+		if stateDict.OutH%shape[2] != 0 {
+			return 0, 0, fmt.Errorf(
+				"xla.shape.upsample_nearest2d: out_h %d is not divisible by height %d",
+				stateDict.OutH,
+				shape[2],
+			)
+		}
+
+		scaleH = stateDict.OutH / shape[2]
+	}
+
+	if scaleW == 0 && stateDict.OutW > 0 {
+		if stateDict.OutW%shape[3] != 0 {
+			return 0, 0, fmt.Errorf(
+				"xla.shape.upsample_nearest2d: out_w %d is not divisible by width %d",
+				stateDict.OutW,
+				shape[3],
+			)
+		}
+
+		scaleW = stateDict.OutW / shape[3]
+	}
+
+	if scaleH <= 0 || scaleW <= 0 {
+		return 0, 0, fmt.Errorf(
+			"xla.shape.upsample_nearest2d: scale_h and scale_w must be positive",
+		)
+	}
+
+	return scaleH, scaleW, nil
 }
 
 func xlaMaxPoolParams(stateDict *state.Dict) XLAMaxPool2dParams {

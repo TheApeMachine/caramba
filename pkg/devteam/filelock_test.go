@@ -3,10 +3,11 @@ package devteam
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
 func TestFileLockRegistryClaim(t *testing.T) {
@@ -129,28 +130,43 @@ func TestFileLockRegistrySnapshot(t *testing.T) {
 }
 
 func TestFileLockRegistryConcurrency(t *testing.T) {
-	Convey("Given 20 goroutines competing to claim the same path", t, func() {
+	Convey("Given 20 qpool jobs competing to claim the same path", t, func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		registry := NewFileLockRegistry(ctx)
 		defer registry.Close()
 
-		const goroutines = 20
-		results := make([]ClaimResult, goroutines)
-		var wg sync.WaitGroup
+		const workers = 20
+		results := make([]ClaimResult, workers)
+		pool := qpool.NewQ(ctx, workers, workers, &qpool.Config{
+			SchedulingTimeout:  time.Second,
+			JobChannelCapacity: workers,
+			Scaler:             nil,
+		})
+		defer pool.Close()
 
-		for i := range goroutines {
-			wg.Add(1)
+		resultChannels := make([]chan *qpool.QValue, workers)
 
-			go func(idx int) {
-				defer wg.Done()
-				agentID := fmt.Sprintf("agent-%d", idx)
-				results[idx] = registry.Claim(agentID, "shared/file.go", "concurrent claim")
-			}(i)
+		for index := range workers {
+			index := index
+
+			resultChannels[index] = pool.Schedule(
+				fmt.Sprintf("filelock-claim-%d", index),
+				func(context.Context) (any, error) {
+					agentID := fmt.Sprintf("agent-%d", index)
+
+					return registry.Claim(agentID, "shared/file.go", "concurrent claim"), nil
+				},
+				qpool.WithExecTimeout(time.Second),
+			)
 		}
 
-		wg.Wait()
+		for index, resultChannel := range resultChannels {
+			result := <-resultChannel
+			So(result.Error, ShouldBeNil)
+			results[index] = result.Value.(ClaimResult)
+		}
 
 		Convey("It should grant the claim to exactly one agent", func() {
 			acquired := 0

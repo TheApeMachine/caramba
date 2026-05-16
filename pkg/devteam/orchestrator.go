@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/go-github/v67/github"
 	_ "github.com/lib/pq"
@@ -13,7 +14,10 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/config"
 	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
+
+const devteamJobTimeout = 24 * time.Hour
 
 /*
 Orchestrator watches the kanban board for the "requests" project and manages
@@ -29,19 +33,19 @@ A shared FileLockRegistry prevents concurrent developer agents from
 unknowingly generating conflicting changes to the same logical file path.
 */
 type Orchestrator struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	cfg       *config.DevTeamConfig
-	db        *sql.DB
-	subtasks  *SubtaskStore
-	github    *github.Client
-	watcher   eventWatcher
-	locks     *FileLockRegistry
-	extractor *ContextExtractor
-	cardSem   chan struct{}
-	subtaskSem chan struct{}
+	ctx           context.Context
+	cancel        context.CancelFunc
+	cfg           *config.DevTeamConfig
+	db            *sql.DB
+	subtasks      *SubtaskStore
+	github        *github.Client
+	watcher       eventWatcher
+	locks         *FileLockRegistry
+	extractor     *ContextExtractor
+	watcherPool   *qpool.Q
+	cardPool      *qpool.Q
+	subtaskPool   *qpool.Q
 	integrationMu sync.Mutex
-	wg        sync.WaitGroup
 }
 
 type eventWatcher interface {
@@ -73,34 +77,39 @@ func NewOrchestrator(ctx context.Context, cfg *config.DevTeamConfig) (*Orchestra
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &Orchestrator{
-		ctx:       ctx,
-		cancel:    cancel,
-		cfg:       cfg,
-		db:        db,
-		subtasks:  NewSubtaskStore(db),
-		github:    ghClient,
-		watcher:   NewWatcher(ctx, cfg.DatabaseURL),
-		locks:     NewFileLockRegistry(ctx),
-		extractor: extractor,
-		cardSem:   make(chan struct{}, maxConcurrent(cfg.MaxConcurrent)),
-		subtaskSem: make(chan struct{}, maxConcurrent(cfg.MaxConcurrent)),
+		ctx:         ctx,
+		cancel:      cancel,
+		cfg:         cfg,
+		db:          db,
+		subtasks:    NewSubtaskStore(db),
+		github:      ghClient,
+		watcher:     NewWatcher(ctx, cfg.DatabaseURL),
+		locks:       NewFileLockRegistry(ctx),
+		extractor:   extractor,
+		watcherPool: newDevTeamPool(ctx, "watcher", 1),
+		cardPool:    newDevTeamPool(ctx, "card", maxConcurrent(cfg.MaxConcurrent)),
+		subtaskPool: newDevTeamPool(ctx, "subtask", maxConcurrent(cfg.MaxConcurrent)),
 	}, nil
 }
 
 /*
-Run starts the watcher goroutine and processes column-change events until ctx
-is cancelled or Stop is called.
+Run starts the watcher through qpool and processes column-change events until
+ctx is cancelled or Stop is called.
 */
 func (orchestrator *Orchestrator) Run() error {
-	orchestrator.wg.Add(1)
+	orchestrator.watcherPool.Schedule(
+		"devteam.watcher",
+		func(context.Context) (any, error) {
+			if err := orchestrator.watcher.Watch(); err != nil {
+				orchestrator.cancel()
 
-	go func() {
-		defer orchestrator.wg.Done()
+				return nil, err
+			}
 
-		if err := orchestrator.watcher.Watch(); err != nil {
-			orchestrator.cancel()
-		}
-	}()
+			return nil, nil
+		},
+		qpool.WithExecTimeout(devteamJobTimeout),
+	)
 
 	events := orchestrator.watcher.Events()
 	errors := orchestrator.watcher.Errors()
@@ -132,53 +141,51 @@ func (orchestrator *Orchestrator) Run() error {
 				continue
 			}
 
-			if err := orchestrator.acquire(orchestrator.cardSem); err != nil {
-				return err
-			}
+			cardEvent := event
+			orchestrator.cardPool.Schedule(
+				"devteam.card."+cardEvent.ID,
+				func(context.Context) (any, error) {
+					orchestrator.handle(cardEvent)
 
-			orchestrator.wg.Add(1)
-
-			go func(ev ColumnEvent) {
-				defer func() {
-					orchestrator.release(orchestrator.cardSem)
-					orchestrator.wg.Done()
-				}()
-				orchestrator.handle(ev)
-			}(event)
+					return nil, nil
+				},
+				qpool.WithExecTimeout(devteamJobTimeout),
+			)
 		}
 	}
 }
 
 /*
-Stop cancels the orchestrator and waits for all in-flight goroutines to finish.
+Stop cancels the orchestrator and waits for all in-flight qpool jobs to finish.
 */
 func (orchestrator *Orchestrator) Stop() {
 	orchestrator.cancel()
-	orchestrator.wg.Wait()
+	orchestrator.closePools()
 	orchestrator.locks.Close()
 	orchestrator.extractor.Close()
 	_ = orchestrator.db.Close()
 }
 
+func (orchestrator *Orchestrator) closePools() {
+	if orchestrator.watcherPool != nil {
+		orchestrator.watcherPool.Close()
+		orchestrator.watcherPool = nil
+	}
+
+	if orchestrator.cardPool != nil {
+		orchestrator.cardPool.Close()
+		orchestrator.cardPool = nil
+	}
+
+	if orchestrator.subtaskPool != nil {
+		orchestrator.subtaskPool.Close()
+		orchestrator.subtaskPool = nil
+	}
+}
+
 func (orchestrator *Orchestrator) isRelevant(event ColumnEvent) bool {
 	return event.ColumnKey == "todo" &&
 		event.ResearchProjectID == orchestrator.cfg.RequestsProjectID
-}
-
-func (orchestrator *Orchestrator) acquire(semaphore chan struct{}) error {
-	select {
-	case semaphore <- struct{}{}:
-		return nil
-	case <-orchestrator.ctx.Done():
-		return orchestrator.ctx.Err()
-	}
-}
-
-func (orchestrator *Orchestrator) release(semaphore chan struct{}) {
-	select {
-	case <-semaphore:
-	default:
-	}
 }
 
 func maxConcurrent(value int) int {
@@ -187,6 +194,25 @@ func maxConcurrent(value int) int {
 	}
 
 	return 1
+}
+
+func newDevTeamPool(ctx context.Context, name string, workers int) *qpool.Q {
+	workers = maxConcurrent(workers)
+
+	return qpool.NewQ(
+		ctx,
+		workers,
+		workers,
+		&qpool.Config{
+			SchedulingTimeout:  devteamJobTimeout,
+			JobChannelCapacity: workers * 4,
+			Scaler:             nil,
+			TelemetryPublish: func(event qpool.Event) {
+				event.WithField("devteam_pool", name)
+				qpool.Publish(event)
+			},
+		},
+	)
 }
 
 /*
@@ -224,11 +250,6 @@ func (orchestrator *Orchestrator) handle(event ColumnEvent) {
 		return
 	}
 
-	// Fan out: subtasks have their own semaphore so card slots are never held
-	// while child work waits for capacity.
-	var subtaskWG sync.WaitGroup
-	errCh := make(chan error, len(subtaskIDs))
-
 	allSubtasks, err := orchestrator.subtasks.ListForCard(orchestrator.ctx, event.ID)
 
 	if err != nil {
@@ -236,33 +257,40 @@ func (orchestrator *Orchestrator) handle(event ColumnEvent) {
 		return
 	}
 
+	results := make([]chan *qpool.QValue, 0, len(subtaskIDs))
+
 	for _, subtask := range allSubtasks {
-		if err := orchestrator.acquire(orchestrator.subtaskSem); err != nil {
-			errCh <- err
-			break
-		}
+		subtask := subtask
 
-		subtaskWG.Add(1)
+		results = append(results, orchestrator.subtaskPool.Schedule(
+			"devteam.subtask."+subtask.ID,
+			func(context.Context) (any, error) {
+				if err := orchestrator.runSubtask(event, subtask, branch); err != nil {
+					return nil, fmt.Errorf("subtask %q: %w", subtask.Title, err)
+				}
 
-		go func(st Subtask) {
-			defer func() {
-				orchestrator.release(orchestrator.subtaskSem)
-				subtaskWG.Done()
-			}()
-
-			if err := orchestrator.runSubtask(event, st, branch); err != nil {
-				errCh <- fmt.Errorf("subtask %q: %w", st.Title, err)
-			}
-		}(subtask)
+				return nil, nil
+			},
+			qpool.WithExecTimeout(devteamJobTimeout),
+		))
 	}
-
-	subtaskWG.Wait()
-	close(errCh)
 
 	var errs []string
 
-	for err := range errCh {
-		errs = append(errs, err.Error())
+	for _, result := range results {
+		select {
+		case <-orchestrator.ctx.Done():
+			errs = append(errs, orchestrator.ctx.Err().Error())
+		case value, channelOpen := <-result:
+			if !channelOpen {
+				errs = append(errs, "subtask result channel closed")
+				continue
+			}
+
+			if value != nil && value.Error != nil {
+				errs = append(errs, value.Error.Error())
+			}
+		}
 	}
 
 	if len(errs) > 0 {

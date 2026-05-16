@@ -3,6 +3,7 @@ import { auth } from "@clerk/tanstack-react-start/server";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import type { QueryClient } from "@tanstack/react-query";
 import {
+	ClientOnly,
 	createRootRouteWithContext,
 	HeadContent,
 	redirect,
@@ -47,7 +48,9 @@ const RootDocument = ({ children }: { children: React.ReactNode }) => {
 							<Page.Aside>{/* reserved for layout */}</Page.Aside>
 							<Page.Footer />
 						</Page>
+						<ClientOnly fallback={null}>
 						<Assistant />
+					</ClientOnly>
 					</ToastProvider>
 					<TanStackDevtools
 						config={{

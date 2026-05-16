@@ -251,6 +251,58 @@ func (x *XLAMathOps) RMSNorm(
 	return dst, nil
 }
 
+func (x *XLAMathOps) GroupNorm(
+	shape []int,
+	eps float64,
+	groups int,
+	weight,
+	bias []float64,
+	data ...[]float64,
+) ([]float64, error) {
+	if len(shape) != 4 {
+		return nil, fmt.Errorf("xla_groupnorm: expected NCHW rank 4, got %d", len(shape))
+	}
+
+	batch, channels, height, width := shape[0], shape[1], shape[2], shape[3]
+	n := len(data[0])
+
+	if n == 0 {
+		return []float64{}, nil
+	}
+
+	if n != batch*channels*height*width {
+		return nil, fmt.Errorf("xla_groupnorm: input length does not match NCHW shape")
+	}
+
+	if groups <= 0 || channels%groups != 0 {
+		return nil, fmt.Errorf("xla_groupnorm: channels must be divisible by groups")
+	}
+
+	if len(weight) != channels || len(bias) != channels {
+		return nil, fmt.Errorf("xla_groupnorm: weight/bias length must equal channels")
+	}
+
+	dst := make([]float64, n)
+	rc := C.xla_groupnorm(
+		(*C.double)(unsafe.Pointer(&data[0][0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		(*C.double)(unsafe.Pointer(&weight[0])),
+		(*C.double)(unsafe.Pointer(&bias[0])),
+		C.int(batch),
+		C.int(channels),
+		C.int(height),
+		C.int(width),
+		C.int(groups),
+		C.double(eps),
+	)
+
+	if rc != 0 {
+		return nil, fmt.Errorf("xla_groupnorm failed")
+	}
+
+	return dst, nil
+}
+
 func (x *XLAMathOps) Sign(shape []int, data ...[]float64) ([]float64, error) {
 	n := len(data[0])
 	dst := make([]float64, n)

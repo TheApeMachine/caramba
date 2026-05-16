@@ -44,7 +44,7 @@ compute:
 
 hub:
   endpoint: https://huggingface.co
-  cache_dir: .caramba/hub
+  cache_dir: ${HOME}/.cache/huggingface/hub
   token: ${HF_TOKEN}
   offline: false
   max_workers: 8

@@ -122,6 +122,32 @@ func TestMetalShapeOpsForwardParity(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(output, ShouldResemble, expectedState.Out)
 		})
+
+		Convey("It should route upsample_nearest2d metadata to the Metal upsample kernel", func() {
+			input := []float64{1, 2, 3, 4}
+			expectedState := state.NewDict().WithShape([]int{1, 1, 2, 2}).WithInput(input)
+			expectedState.ScaleH = 2
+			expectedState.ScaleW = 2
+			var err error
+			expectedState, err = cpushape.NewUpsampleNearest2D().Forward(expectedState)
+
+			So(err, ShouldBeNil)
+
+			output, err := ops.Forward(
+				ShapeForwardRequest{
+					Op: "shape.upsample_nearest2d",
+					Metadata: map[string]any{
+						"scale_h": 2,
+						"scale_w": 2,
+					},
+				},
+				[]int{1, 1, 2, 2},
+				input,
+			)
+
+			So(err, ShouldBeNil)
+			So(output, ShouldResemble, expectedState.Out)
+		})
 	})
 }
 

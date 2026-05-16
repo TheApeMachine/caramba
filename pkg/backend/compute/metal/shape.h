@@ -42,6 +42,11 @@ int metal_concat(const float* srcA, int n_a,
 int metal_split(const float* src, float* dst,
                 int outer, int dim_size, int split_size, int inner);
 
+// UpsampleNearest2D: [B,C,H,W] -> [B,C,H*scale_h,W*scale_w].
+int metal_upsample_nearest2d(const float* src, float* dst,
+                             int B, int C, int H, int W,
+                             int scale_h, int scale_w);
+
 // ViewAsHeads: [B,T,H,head_dim] -> [B,H,T,head_dim]
 int metal_view_as_heads(const float* src, float* dst,
                         int B, int T, int H, int head_dim);
@@ -62,6 +67,10 @@ int metal_merge_heads_tensor(const void* src, void* dst,
 
 int metal_last_token_tensor(const void* src, void* dst,
                             int outer, int seq_len, int feature);
+
+int metal_upsample_nearest2d_tensor(const void* src, void* dst,
+                                    int B, int C, int H, int W,
+                                    int scale_h, int scale_w);
 
 #ifdef __cplusplus
 }

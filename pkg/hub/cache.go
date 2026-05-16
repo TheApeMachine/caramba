@@ -17,6 +17,7 @@ type cachePaths struct {
 	refs      string
 	blobs     string
 	snapshots string
+	info      string
 	metadata  string
 	tmp       string
 }
@@ -31,6 +32,7 @@ func newCachePaths(cacheDir string, repoType RepoType, repoID string) cachePaths
 		refs:      filepath.Join(repoDir, "refs"),
 		blobs:     filepath.Join(repoDir, "blobs"),
 		snapshots: filepath.Join(repoDir, "snapshots"),
+		info:      filepath.Join(repoDir, "info"),
 		metadata:  filepath.Join(repoDir, "metadata"),
 		tmp:       filepath.Join(repoDir, "tmp"),
 	}
@@ -41,6 +43,7 @@ func (paths cachePaths) ensure() error {
 		paths.refs,
 		paths.blobs,
 		paths.snapshots,
+		paths.info,
 		paths.metadata,
 		paths.tmp,
 	} {
@@ -68,6 +71,10 @@ func (paths cachePaths) refFile(revision string) string {
 	return filepath.Join(paths.refs, filepath.FromSlash(revision))
 }
 
+func (paths cachePaths) infoFile(revision string) string {
+	return filepath.Join(paths.info, filepath.FromSlash(revision))
+}
+
 func (paths cachePaths) blobFile(identity string) string {
 	return filepath.Join(paths.blobs, sanitizeIdentity(identity))
 }
@@ -93,6 +100,47 @@ func (paths cachePaths) writeMetadata(file File) error {
 
 	if err != nil {
 		return fmt.Errorf("hub: marshal metadata: %w", err)
+	}
+
+	return os.WriteFile(path, data, 0o644)
+}
+
+func (paths cachePaths) writeInfo(revision string, repository *Repository) error {
+	path := paths.infoFile(revision)
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("hub: mkdir info: %w", err)
+	}
+
+	siblings := make([]siblingPayload, 0, len(repository.Siblings))
+
+	for _, sibling := range repository.Siblings {
+		payload := siblingPayload{
+			RFilename: sibling.Filename,
+			Size:      sibling.Size,
+		}
+
+		if sibling.LFS != nil {
+			payload.LFS = &lfsPayload{
+				SHA256:      sibling.LFS.SHA256,
+				Size:        sibling.LFS.Size,
+				PointerSize: sibling.LFS.PointerSize,
+			}
+		}
+
+		siblings = append(siblings, payload)
+	}
+
+	payload := repositoryPayload{
+		ID:       repository.ID,
+		SHA:      repository.Commit,
+		Siblings: siblings,
+	}
+
+	data, err := json.Marshal(payload)
+
+	if err != nil {
+		return fmt.Errorf("hub: marshal info: %w", err)
 	}
 
 	return os.WriteFile(path, data, 0o644)

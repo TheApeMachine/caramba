@@ -63,8 +63,7 @@ func (bucket *KBucket) Update(node *Node) {
 	leastRecentlySeen := bucket.nodes[0]
 	bucket.mu.Unlock() // Unlock to perform network I/O
 
-	// Ping the least recently seen node asynchronously or synchronously depending on the policy.
-	// Since Update is typically called in a goroutine handling a message, a synchronous ping is okay.
+	// Ping the least recently seen node synchronously while the bucket lock is released.
 	alive := false
 	if bucket.pingFunc != nil {
 		alive = bucket.pingFunc(context.Background(), leastRecentlySeen)

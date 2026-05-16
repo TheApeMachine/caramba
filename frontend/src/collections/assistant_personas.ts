@@ -1,6 +1,5 @@
 import { electricCollectionOptions } from "@tanstack/electric-db-collection";
 import {
-	type Collection,
 	createCollection,
 	localStorageCollectionOptions,
 } from "@tanstack/react-db";
@@ -29,10 +28,10 @@ export const AssistantPersona = z.object({
 
 export type AssistantPersonaRow = z.infer<typeof AssistantPersona>;
 
-const shapeUrl =
-	typeof window !== "undefined"
-		? `${window.location.origin}/api/shape/assistant-personas`
-		: "/api/shape/assistant-personas";
+function shapeUrl() {
+	if (typeof window === "undefined") return "http://localhost/api/shape/assistant-personas";
+	return `${window.location.origin}/api/shape/assistant-personas`;
+}
 
 const skipTxidAwait =
 	import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true";
@@ -42,8 +41,8 @@ function awaitOptions(txid: number | undefined) {
 	return { timeout: 60_000, txid };
 }
 
-let cloud: Collection<AssistantPersonaRow> | null = null;
-let local: Collection<AssistantPersonaRow> | null = null;
+let cloud: ReturnType<typeof buildCloud> | null = null;
+let local: ReturnType<typeof buildLocal> | null = null;
 
 function buildCloud() {
 	return createCollection(
@@ -52,7 +51,7 @@ function buildCloud() {
 			schema: AssistantPersona,
 			getKey: (item) => item.id,
 			shapeOptions: {
-				url: shapeUrl,
+				url: shapeUrl(),
 				parser: { timestamptz: (value: string) => new Date(value) },
 			},
 			onInsert: async ({ transaction }) => {
@@ -116,10 +115,10 @@ function buildLocal() {
 
 export function getPersonasCollection(mode: "cloud" | "local") {
 	if (mode === "local") {
-		if (!local) local = buildLocal();
+		local ??= buildLocal();
 		return local;
 	}
 
-	if (!cloud) cloud = buildCloud();
+	cloud ??= buildCloud();
 	return cloud;
 }

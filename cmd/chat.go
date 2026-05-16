@@ -32,37 +32,39 @@ func init() {
 }
 
 func runChat(command *cobra.Command, _ []string) error {
-	generator, err := chatOptions.Generator(command)
+	return runWithQPoolProgress(command, func() error {
+		generator, err := chatOptions.Generator(command)
 
-	if err != nil {
-		return err
-	}
+		if err != nil {
+			return err
+		}
 
-	backendName := ""
-	modelName := ""
+		backendName := ""
+		modelName := ""
 
-	if namedGenerator, ok := generator.(interface{ BackendName() string }); ok {
-		backendName = namedGenerator.BackendName()
-	}
+		if namedGenerator, ok := generator.(interface{ BackendName() string }); ok {
+			backendName = namedGenerator.BackendName()
+		}
 
-	if namedGenerator, ok := generator.(interface{ ModelName() string }); ok {
-		modelName = namedGenerator.ModelName()
-	}
+		if namedGenerator, ok := generator.(interface{ ModelName() string }); ok {
+			modelName = namedGenerator.ModelName()
+		}
 
-	session := chatpkg.NewSession(
-		command.Context(),
-		command.InOrStdin(),
-		command.OutOrStdout(),
-		generator,
-		chatpkg.SessionConfig{
-			Runtime:    "model",
-			Backend:    backendName,
-			Model:      modelName,
-			ShowBanner: true,
-		},
-	)
+		session := chatpkg.NewSession(
+			command.Context(),
+			command.InOrStdin(),
+			command.OutOrStdout(),
+			generator,
+			chatpkg.SessionConfig{
+				Runtime:    "model",
+				Backend:    backendName,
+				Model:      modelName,
+				ShowBanner: true,
+			},
+		)
 
-	return session.Run()
+		return session.Run()
+	})
 }
 
 type chatCommandOptions struct {

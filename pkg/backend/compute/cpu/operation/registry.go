@@ -139,6 +139,10 @@ func (registry *OperationRegistry) LayerNorm(*state.Dict) (state.Operation, erro
 	return mathop.NewLayerNorm(), nil
 }
 
+func (registry *OperationRegistry) GroupNorm(*state.Dict) (state.Operation, error) {
+	return mathop.NewGroupNorm(), nil
+}
+
 func (registry *OperationRegistry) Reshape(*state.Dict) (state.Operation, error) {
 	return shape.NewReshape(), nil
 }
@@ -153,6 +157,10 @@ func (registry *OperationRegistry) Concat(*state.Dict) (state.Operation, error) 
 
 func (registry *OperationRegistry) Split(*state.Dict) (state.Operation, error) {
 	return shape.NewSplit(), nil
+}
+
+func (registry *OperationRegistry) UpsampleNearest2D(*state.Dict) (state.Operation, error) {
+	return shape.NewUpsampleNearest2D(), nil
 }
 
 func (registry *OperationRegistry) ViewAsHeads(*state.Dict) (state.Operation, error) {

@@ -21,8 +21,10 @@ type Pipeline struct {
 	tokenizer          tokenizer.Tokenizer
 	textEncoderGraph   *manifest.Graph
 	transformerGraph   *manifest.Graph
+	vaeGraph           *manifest.Graph
 	textEncoderWeights *modelweights.Store
 	transformerWeights *modelweights.Store
+	vaeWeights         *modelweights.Store
 	telemetry          *Telemetry
 }
 
@@ -136,6 +138,40 @@ func NewPipeline(ctx context.Context, config Config) (*Pipeline, error) {
 		"resolved denoiser weights",
 		qpool.Field{Key: "tensors", Value: len(transformerWeights.Names())},
 	)
+
+	var vaeGraph *manifest.Graph
+	var vaeWeights *modelweights.Store
+	vaeManifest := strings.TrimSpace(config.VAE.Manifest)
+
+	if vaeManifest != "" {
+		telemetry.Publish("vae.compile", "compiling VAE decoder manifest")
+
+		vaeGraph, _, err = CompileManifest(vaeManifest)
+
+		if err != nil {
+			return nil, telemetry.Error("vae.compile", "failed to compile VAE decoder manifest", err)
+		}
+
+		telemetry.Publish(
+			"vae.compiled",
+			"compiled VAE decoder manifest",
+			qpool.Field{Key: "nodes", Value: len(vaeGraph.Nodes())},
+		)
+		telemetry.Publish("weights.vae", "resolving VAE decoder weights")
+
+		vaeWeights, err = modelweights.Resolve(ctx, weightSource(config.VAE))
+
+		if err != nil {
+			return nil, telemetry.Error("weights.vae", "failed to resolve VAE decoder weights", err)
+		}
+
+		telemetry.Publish(
+			"weights.vae.resolved",
+			"resolved VAE decoder weights",
+			qpool.Field{Key: "tensors", Value: len(vaeWeights.Names())},
+		)
+	}
+
 	telemetry.Publish("runtime.ready", "diffusion runtime ready")
 
 	return &Pipeline{
@@ -144,8 +180,10 @@ func NewPipeline(ctx context.Context, config Config) (*Pipeline, error) {
 		tokenizer:          tokenizerArtifact.Tokenizer,
 		textEncoderGraph:   textEncoderGraph,
 		transformerGraph:   transformerGraph,
+		vaeGraph:           vaeGraph,
 		textEncoderWeights: textEncoderWeights,
 		transformerWeights: transformerWeights,
+		vaeWeights:         vaeWeights,
 		telemetry:          telemetry,
 	}, nil
 }
@@ -221,7 +259,38 @@ func (pipeline *Pipeline) Generate(ctx context.Context, prompt string) (Result, 
 		}
 	}
 
+	pipeline.telemetry.Publish(
+		"denoise.done",
+		"completed denoising",
+		qpool.Field{Key: "step", Value: len(timesteps)},
+		qpool.Field{Key: "steps", Value: len(timesteps)},
+		qpool.Field{Key: "done", Value: true},
+	)
+
 	outputPath := pipeline.config.Generation.Output
+
+	if pipeline.vaeGraph != nil {
+		pipeline.telemetry.Publish("vae.decode", "decoding latents with VAE")
+
+		decoded, err := pipeline.decodeLatents(ctx, latents, imageSequenceLength)
+
+		if err != nil {
+			return Result{}, pipeline.telemetry.Error("vae.decode", "failed to decode latents", err)
+		}
+
+		pipeline.telemetry.Publish("image.write", "writing decoded RGB image", qpool.Field{Key: "output", Value: outputPath})
+
+		if err := WriteRGBImage(outputPath, decoded); err != nil {
+			return Result{}, pipeline.telemetry.Error("image.write", "failed to write decoded RGB image", err)
+		}
+
+		return Result{
+			Output: outputPath,
+			Width:  decoded.Width,
+			Height: decoded.Height,
+		}, nil
+	}
+
 	pipeline.telemetry.Publish("image.write", "writing latent preview image", qpool.Field{Key: "output", Value: outputPath})
 
 	if err := WriteLatentPreview(outputPath, LatentImage{
@@ -387,6 +456,85 @@ func (pipeline *Pipeline) denoise(
 	}
 
 	return output.CloneFloat64()
+}
+
+func (pipeline *Pipeline) decodeLatents(
+	ctx context.Context,
+	latents []float64,
+	sequenceLength int,
+) (RGBImage, error) {
+	latentShape, err := tensor.NewShape([]int{
+		1,
+		sequenceLength,
+		pipeline.config.Generation.LatentChannels,
+	})
+
+	if err != nil {
+		return RGBImage{}, err
+	}
+
+	irGraph, err := manifest.LowerGraphToIR(pipeline.vaeGraph, latentShape)
+
+	if err != nil {
+		return RGBImage{}, err
+	}
+
+	index, err := irGraph.Index()
+
+	if err != nil {
+		return RGBImage{}, err
+	}
+
+	if err := bindInputValues(index, "latents", latents); err != nil {
+		return RGBImage{}, err
+	}
+
+	if pipeline.vaeWeights != nil {
+		if err := modelweights.BindIR(irGraph, pipeline.vaeWeights); err != nil {
+			return RGBImage{}, err
+		}
+	}
+
+	target := outputTarget(irGraph)
+
+	if target == nil {
+		return RGBImage{}, fmt.Errorf("diffusion: VAE decoder has no executable target")
+	}
+
+	outputs, err := pipeline.backend.Execute(ctx, irGraph, []*ir.Node{target})
+
+	if err != nil {
+		return RGBImage{}, err
+	}
+
+	defer closeOutputs(outputs)
+
+	output := outputs[target.ID()]
+
+	if output == nil {
+		return RGBImage{}, fmt.Errorf("diffusion: VAE decoder produced no output")
+	}
+
+	shape := output.Shape().Dims()
+
+	if len(shape) != 4 || shape[0] != 1 || shape[1] != 3 {
+		return RGBImage{}, fmt.Errorf(
+			"diffusion: VAE decoder output must be [1,3,H,W], got %v",
+			shape,
+		)
+	}
+
+	values, err := output.CloneFloat64()
+
+	if err != nil {
+		return RGBImage{}, err
+	}
+
+	return RGBImage{
+		Width:  shape[3],
+		Height: shape[2],
+		Values: values,
+	}, nil
 }
 
 func (pipeline *Pipeline) latentLayout() (sequenceLength int, width int, height int, err error) {

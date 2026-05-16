@@ -36,6 +36,11 @@ int cuda_concat(const double* srcA, int n_a,
 int cuda_split(const double* src, double* dst,
                int outer, int dim_size, int split_size, int inner);
 
+// UpsampleNearest2D: [B,C,H,W] -> [B,C,H*scale_h,W*scale_w].
+int cuda_upsample_nearest2d(const double* src, double* dst,
+                            int B, int C, int H, int W,
+                            int scale_h, int scale_w);
+
 // ViewAsHeads: [B,T,H,head_dim] -> [B,H,T,head_dim]
 int cuda_view_as_heads(const double* src, double* dst,
                        int B, int T, int H, int head_dim);

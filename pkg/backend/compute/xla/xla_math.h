@@ -95,6 +95,13 @@ int xla_rmsnorm(
 	int num_rows, int d_model, double eps
 );
 
+/** Group norm over NCHW tensors; weight/bias length channels. */
+int xla_groupnorm(
+	const double* src, double* dst,
+	const double* weight, const double* bias,
+	int batch, int channels, int height, int width, int groups, double eps
+);
+
 int xla_sign(const double* src, double* dst, int n);
 int xla_outer(const double* a, const double* b, double* dst, int M, int N);
 

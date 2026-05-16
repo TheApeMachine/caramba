@@ -387,6 +387,53 @@ static std::string build_split(int outer, int dim_size, int split_size, int inne
     return body.str();
 }
 
+static std::string type4(int B, int C, int H, int W) {
+    return "tensor<" + std::to_string(B) + "x" + std::to_string(C) + "x" +
+           std::to_string(H) + "x" + std::to_string(W) + "xf64>";
+}
+
+static std::string type5(int B, int C, int H, int S, int W) {
+    return "tensor<" + std::to_string(B) + "x" + std::to_string(C) + "x" +
+           std::to_string(H) + "x" + std::to_string(S) + "x" +
+           std::to_string(W) + "xf64>";
+}
+
+static std::string type6(int B, int C, int H, int SH, int W, int SW) {
+    return "tensor<" + std::to_string(B) + "x" + std::to_string(C) + "x" +
+           std::to_string(H) + "x" + std::to_string(SH) + "x" +
+           std::to_string(W) + "x" + std::to_string(SW) + "xf64>";
+}
+
+static std::string build_upsample_nearest2d(
+    int B, int C, int H, int W, int scale_h, int scale_w)
+{
+    int64_t input64 = (int64_t)B * (int64_t)C * (int64_t)H * (int64_t)W;
+    int64_t output64 = input64 * (int64_t)scale_h * (int64_t)scale_w;
+
+    if (input64 <= 0 || input64 > INT32_MAX || output64 <= 0 || output64 > INT32_MAX) {
+        return "";
+    }
+
+    int input_count = (int)input64;
+    int output_count = (int)output64;
+    std::string tIn = type4(B, C, H, W);
+    std::string tH = type5(B, C, H, scale_h, W);
+    std::string tHW = type6(B, C, H, scale_h, W, scale_w);
+    std::string tOut = type4(B, C, H * scale_h, W * scale_w);
+
+    return
+        "module @upsample_nearest2d {\n"
+        "  func.func @main(%arg0: " + f64t(input_count) + ") -> " + f64t(output_count) + " {\n"
+        "    %nd = stablehlo.reshape %arg0 : (" + f64t(input_count) + ") -> " + tIn + "\n"
+        "    %h = stablehlo.broadcast_in_dim %nd, dims = [0, 1, 2, 4] : (" + tIn + ") -> " + tH + "\n"
+        "    %hw = stablehlo.broadcast_in_dim %h, dims = [0, 1, 2, 3, 4] : (" + tH + ") -> " + tHW + "\n"
+        "    %out4 = stablehlo.reshape %hw : (" + tHW + ") -> " + tOut + "\n"
+        "    %out = stablehlo.reshape %out4 : (" + tOut + ") -> " + f64t(output_count) + "\n"
+        "    return %out : " + f64t(output_count) + "\n"
+        "  }\n"
+        "}\n";
+}
+
 // ViewAsHeads: [B,T,H,head_dim] reshape+transpose -> [B,H,T,head_dim].
 static std::string build_view_as_heads(int B, int T, int H, int hd) {
     int n = B * T * H * hd;
@@ -550,6 +597,35 @@ int xla_split(const double* src, double* dst,
     PJRT_LoadedExecutable* exec = compile_shape_stablehlo(mlir);
     if (!exec) return -1;
     int rc = run_shape_exec(exec, src, total, dst, total);
+    PJRT_LoadedExecutable_Destroy_Args da{};
+    da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
+    da.executable  = exec;
+    g_api->PJRT_LoadedExecutable_Destroy(&da);
+    return rc;
+}
+
+int xla_upsample_nearest2d(const double* src, double* dst,
+                           int B, int C, int H, int W,
+                           int scale_h, int scale_w)
+{
+    if (!g_client) return -1;
+    if (!src || !dst || B <= 0 || C <= 0 || H <= 0 || W <= 0 ||
+        scale_h <= 0 || scale_w <= 0) {
+        return -1;
+    }
+
+    int64_t input64 = (int64_t)B * (int64_t)C * (int64_t)H * (int64_t)W;
+    int64_t output64 = input64 * (int64_t)scale_h * (int64_t)scale_w;
+
+    if (input64 <= 0 || input64 > INT32_MAX || output64 <= 0 || output64 > INT32_MAX) {
+        return -1;
+    }
+
+    std::string mlir = build_upsample_nearest2d(B, C, H, W, scale_h, scale_w);
+    if (mlir.empty()) return -1;
+    PJRT_LoadedExecutable* exec = compile_shape_stablehlo(mlir);
+    if (!exec) return -1;
+    int rc = run_shape_exec(exec, src, (int)input64, dst, (int)output64);
     PJRT_LoadedExecutable_Destroy_Args da{};
     da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
     da.executable  = exec;

@@ -8,6 +8,7 @@ Operations:
   - MergeHeads: [B,H,T,head_dim] -> [B,T,H*head_dim]
   - Concat: concatenate tensors along an axis
   - Split: split a tensor into equal-sized chunks along an axis
+  - UpsampleNearest2D: [B,C,H,W] -> [B,C,H*scale_h,W*scale_w]
 
 All operations use the universal signature:
 

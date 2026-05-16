@@ -8,20 +8,29 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/config"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
 func TestClient_Download(test *testing.T) {
 	Convey("Given a Hub server with one model file", test, func() {
+		defer silenceHubProgress()()
+
 		var downloads atomic.Int64
+		var repositoryHits atomic.Int64
+		var requests atomic.Int64
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			requests.Add(1)
+
 			switch request.URL.Path {
 			case "/api/models/org/repo/revision/main":
+				repositoryHits.Add(1)
 				writeJSON(writer, map[string]any{
 					"id":  "org/repo",
 					"sha": "commit123",
@@ -72,6 +81,17 @@ func TestClient_Download(test *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(string(data), ShouldEqual, `{"ok":true}`)
+
+			infoPath := filepath.Join(
+				cacheDir,
+				"models--org--repo",
+				"info",
+				"main",
+			)
+			infoData, err := os.ReadFile(infoPath)
+
+			So(err, ShouldBeNil)
+			So(string(infoData), ShouldContainSubstring, "commit123")
 		})
 
 		Convey("It should reuse the snapshot on the second call", func() {
@@ -91,6 +111,7 @@ func TestClient_Download(test *testing.T) {
 			So(err, ShouldBeNil)
 			So(file.Cached, ShouldBeTrue)
 			So(downloads.Load(), ShouldEqual, 1)
+			So(repositoryHits.Load(), ShouldEqual, 1)
 		})
 
 		Convey("It should resolve cached files while offline", func() {
@@ -119,12 +140,90 @@ func TestClient_Download(test *testing.T) {
 			So(file.Cached, ShouldBeTrue)
 			So(file.Commit, ShouldEqual, "commit123")
 		})
+
+		Convey("It should reuse a standard Hugging Face info snapshot before network", func() {
+			cacheDir := test.TempDir()
+			seedHuggingFaceSnapshot(
+				test,
+				cacheDir,
+				ModelRepo,
+				"org/repo",
+				"main",
+				"cachedcommit",
+				map[string][]byte{
+					"config.json": []byte(`{"cached":true}`),
+				},
+				true,
+			)
+			cachedClient := NewClient(&config.HubConfig{
+				Endpoint:   server.URL,
+				CacheDir:   cacheDir,
+				MaxWorkers: 1,
+				Xet:        config.HubXetConfig{Active: true},
+			})
+
+			file, err := cachedClient.Download(context.Background(), DownloadRequest{
+				RepoID:   "org/repo",
+				RepoType: ModelRepo,
+				Filename: "config.json",
+			})
+
+			So(err, ShouldBeNil)
+			So(file.Cached, ShouldBeTrue)
+			So(file.Commit, ShouldEqual, "cachedcommit")
+			So(requests.Load(), ShouldEqual, 0)
+
+			data, err := os.ReadFile(file.Path)
+
+			So(err, ShouldBeNil)
+			So(string(data), ShouldEqual, `{"cached":true}`)
+		})
+
+		Convey("It should reuse a commit-pinned snapshot without a ref", func() {
+			cacheDir := test.TempDir()
+			commit := strings.Repeat("a", 40)
+			seedHuggingFaceSnapshot(
+				test,
+				cacheDir,
+				ModelRepo,
+				"org/repo",
+				commit,
+				commit,
+				map[string][]byte{
+					"config.json": []byte(`{"commit":true}`),
+				},
+				false,
+			)
+			cachedClient := NewClient(&config.HubConfig{
+				Endpoint:   server.URL,
+				CacheDir:   cacheDir,
+				MaxWorkers: 1,
+				Xet:        config.HubXetConfig{Active: true},
+			})
+
+			file, err := cachedClient.Download(context.Background(), DownloadRequest{
+				RepoID:   "org/repo",
+				RepoType: ModelRepo,
+				Revision: commit,
+				Filename: "config.json",
+			})
+
+			So(err, ShouldBeNil)
+			So(file.Cached, ShouldBeTrue)
+			So(file.Commit, ShouldEqual, commit)
+			So(requests.Load(), ShouldEqual, 0)
+		})
 	})
 }
 
 func TestClient_Snapshot(test *testing.T) {
 	Convey("Given a Hub repository with several files", test, func() {
+		defer silenceHubProgress()()
+
+		var requests atomic.Int64
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			requests.Add(1)
+
 			switch {
 			case request.URL.Path == "/api/datasets/org/data/revision/main":
 				writeJSON(writer, map[string]any{
@@ -164,11 +263,52 @@ func TestClient_Snapshot(test *testing.T) {
 			So(snapshot.Files, ShouldHaveLength, 1)
 			So(snapshot.Files[0].Filename, ShouldEqual, "data/train.parquet")
 		})
+
+		Convey("It should reuse a complete standard Hugging Face info snapshot before network", func() {
+			cacheDir := test.TempDir()
+			seedHuggingFaceSnapshot(
+				test,
+				cacheDir,
+				DatasetRepo,
+				"org/data",
+				"main",
+				"cachedatasetsha",
+				map[string][]byte{
+					"README.md":           []byte("readme"),
+					"data/train.parquet":  []byte("train"),
+					"data/test.parquet":   []byte("test"),
+					"data/unused.parquet": []byte("unused"),
+				},
+				true,
+			)
+			cachedClient := NewClient(&config.HubConfig{
+				Endpoint:   server.URL,
+				CacheDir:   cacheDir,
+				MaxWorkers: 2,
+				Xet:        config.HubXetConfig{Active: true},
+			})
+
+			snapshot, err := cachedClient.Snapshot(context.Background(), SnapshotRequest{
+				RepoID:   "org/data",
+				RepoType: DatasetRepo,
+				Include:  []string{"**/*.parquet"},
+				Exclude:  []string{"*test*", "*unused*"},
+			})
+
+			So(err, ShouldBeNil)
+			So(snapshot.Commit, ShouldEqual, "cachedatasetsha")
+			So(snapshot.Files, ShouldHaveLength, 1)
+			So(snapshot.Files[0].Filename, ShouldEqual, "data/train.parquet")
+			So(snapshot.Files[0].Cached, ShouldBeTrue)
+			So(requests.Load(), ShouldEqual, 0)
+		})
 	})
 }
 
 func TestClient_DownloadXet(test *testing.T) {
 	Convey("Given a Hub server with a Xet-backed file", test, func() {
+		defer silenceHubProgress()()
+
 		fileID := strings.Repeat("a", 64)
 		xorbHash := strings.Repeat("b", 64)
 		xorbData := append(xorbChunk(0, []byte("hello ")), xorbChunk(0, []byte("world"))...)
@@ -262,6 +402,8 @@ func TestClient_DownloadXet(test *testing.T) {
 }
 
 func BenchmarkClient_DownloadDryRun(benchmark *testing.B) {
+	defer silenceHubProgress()()
+
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, map[string]any{
 			"id":  "org/repo",
@@ -290,7 +432,102 @@ func BenchmarkClient_DownloadDryRun(benchmark *testing.B) {
 	}
 }
 
+func silenceHubProgress() func() {
+	previousPublish := qpool.Publish
+	qpool.Publish = func(qpool.Event) {}
+
+	return func() {
+		qpool.Publish = previousPublish
+	}
+}
+
 func writeJSON(writer http.ResponseWriter, value any) {
 	writer.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(writer).Encode(value)
+}
+
+func seedHuggingFaceSnapshot(
+	test testing.TB,
+	cacheDir string,
+	repoType RepoType,
+	repoID string,
+	revision string,
+	commit string,
+	files map[string][]byte,
+	writeInfo bool,
+) {
+	test.Helper()
+
+	paths := newCachePaths(cacheDir, repoType, repoID)
+	filenames := make([]string, 0, len(files))
+
+	for filename := range files {
+		filenames = append(filenames, filename)
+	}
+
+	sort.Strings(filenames)
+
+	if writeInfo {
+		siblings := make([]siblingPayload, 0, len(filenames))
+
+		for _, filename := range filenames {
+			siblings = append(siblings, siblingPayload{
+				RFilename: filename,
+				Size:      int64(len(files[filename])),
+			})
+		}
+
+		info := repositoryPayload{
+			ID:       repoID,
+			SHA:      commit,
+			Siblings: siblings,
+		}
+
+		if err := os.MkdirAll(filepath.Dir(paths.infoFile(revision)), 0o755); err != nil {
+			test.Fatalf("mkdir info: %v", err)
+		}
+
+		data, err := json.Marshal(info)
+
+		if err != nil {
+			test.Fatalf("marshal info: %v", err)
+		}
+
+		if err := os.WriteFile(paths.infoFile(revision), data, 0o644); err != nil {
+			test.Fatalf("write info: %v", err)
+		}
+	}
+
+	for _, filename := range filenames {
+		blobName := sanitizeIdentity(commit + "-" + filename)
+		blobPath := paths.blobFile(blobName)
+
+		if err := os.MkdirAll(filepath.Dir(blobPath), 0o755); err != nil {
+			test.Fatalf("mkdir blob: %v", err)
+		}
+
+		if err := os.WriteFile(blobPath, files[filename], 0o644); err != nil {
+			test.Fatalf("write blob: %v", err)
+		}
+
+		snapshotPath := paths.snapshotFile(commit, filename)
+
+		if err := os.MkdirAll(filepath.Dir(snapshotPath), 0o755); err != nil {
+			test.Fatalf("mkdir snapshot: %v", err)
+		}
+
+		target, err := filepath.Rel(filepath.Dir(snapshotPath), blobPath)
+
+		if err == nil {
+			err = os.Symlink(target, snapshotPath)
+		}
+
+		if err == nil {
+			continue
+		}
+
+		if err := os.WriteFile(snapshotPath, files[filename], 0o644); err != nil {
+			test.Fatalf("write snapshot: %v", err)
+		}
+	}
 }

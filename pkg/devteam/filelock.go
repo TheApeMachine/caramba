@@ -3,8 +3,11 @@ package devteam
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
 /*
@@ -28,8 +31,8 @@ type lockOp func(map[string]*fileClaim)
 
 /*
 FileLockRegistry is a shared, process-wide registry that lets concurrent agent
-goroutines declare intent to modify a file before touching it. It is backed by
-a single actor goroutine so all state mutations are serialised without explicit
+jobs declare intent to modify a file before touching it. It is backed by a
+single qpool actor job so all state mutations are serialised without explicit
 locking.
 
 Each Docker sandbox runs in its own container (separate filesystem) but the
@@ -39,11 +42,14 @@ changes to the same file; the second agent learns about the first agent's intent
 and can adapt its implementation accordingly.
 */
 type FileLockRegistry struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	ops     chan lockOp
-	done    chan struct{}
-	stopped atomic.Bool
+	ctx      context.Context
+	cancel   context.CancelFunc
+	ops      chan lockOp
+	done     chan struct{}
+	doneOnce sync.Once
+	stopped  atomic.Bool
+	pool     *qpool.Q
+	result   chan *qpool.QValue
 }
 
 /*
@@ -60,13 +66,31 @@ func NewFileLockRegistry(ctx context.Context) *FileLockRegistry {
 		done:   make(chan struct{}),
 	}
 
-	go registry.loop()
+	registry.pool = qpool.NewQ(
+		ctx,
+		1,
+		1,
+		&qpool.Config{
+			SchedulingTimeout:  24 * time.Hour,
+			JobChannelCapacity: 2,
+			Scaler:             nil,
+		},
+	)
+	registry.result = registry.pool.Schedule(
+		"devteam.filelock.loop",
+		func(jobCtx context.Context) (any, error) {
+			registry.loop(jobCtx)
+
+			return nil, nil
+		},
+		qpool.WithExecTimeout(24*time.Hour),
+	)
 
 	return registry
 }
 
-func (registry *FileLockRegistry) loop() {
-	defer close(registry.done)
+func (registry *FileLockRegistry) loop(ctx context.Context) {
+	defer registry.closeDone()
 
 	claims := make(map[string]*fileClaim)
 
@@ -74,10 +98,18 @@ func (registry *FileLockRegistry) loop() {
 		select {
 		case op := <-registry.ops:
 			op(claims)
+		case <-ctx.Done():
+			return
 		case <-registry.ctx.Done():
 			return
 		}
 	}
+}
+
+func (registry *FileLockRegistry) closeDone() {
+	registry.doneOnce.Do(func() {
+		close(registry.done)
+	})
 }
 
 func (registry *FileLockRegistry) submit(op lockOp) bool {
@@ -192,5 +224,11 @@ func (registry *FileLockRegistry) Close() {
 	}
 
 	registry.cancel()
-	<-registry.done
+
+	if registry.pool != nil {
+		registry.pool.Close()
+		registry.pool = nil
+	}
+
+	registry.closeDone()
 }

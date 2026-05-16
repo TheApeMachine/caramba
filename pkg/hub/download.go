@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,8 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sync/errgroup"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
+
+const hubDownloadJobTimeout = 24 * time.Hour
 
 type remoteMetadata struct {
 	ETag    string
@@ -33,10 +36,37 @@ func (client *Client) Download(
 	}
 
 	paths := newCachePaths(request.CacheDir, request.RepoType, request.RepoID)
+	publishHubProgress(
+		"download.resolve",
+		fmt.Sprintf("resolving Hub file %s", request.Filename),
+		qpool.Field{Key: "repo", Value: request.RepoID},
+		qpool.Field{Key: "revision", Value: request.Revision},
+		qpool.Field{Key: "file", Value: request.Filename},
+	)
 
 	if client.config.Offline {
 		return offlineFile(paths, request)
 	}
+
+	if file, ok := cachedSnapshotFile(paths, request); ok {
+		publishHubProgress(
+			"download.cached",
+			fmt.Sprintf("using cached Hub snapshot file %s", request.Filename),
+			qpool.Field{Key: "repo", Value: request.RepoID},
+			qpool.Field{Key: "commit", Value: file.Commit},
+			qpool.Field{Key: "file", Value: request.Filename},
+			qpool.Field{Key: "path", Value: file.Path},
+		)
+
+		return file, nil
+	}
+
+	publishHubProgress(
+		"repository.resolve",
+		"resolving Hub repository metadata",
+		qpool.Field{Key: "repo", Value: request.RepoID},
+		qpool.Field{Key: "revision", Value: request.Revision},
+	)
 
 	repository, err := client.Repository(
 		ctx,
@@ -50,6 +80,13 @@ func (client *Client) Download(
 		return nil, err
 	}
 
+	publishHubProgress(
+		"repository.resolved",
+		"resolved Hub repository metadata",
+		qpool.Field{Key: "repo", Value: request.RepoID},
+		qpool.Field{Key: "commit", Value: repository.Commit},
+	)
+
 	return client.downloadWithRepository(ctx, request, repository, paths)
 }
 
@@ -59,11 +96,20 @@ func (client *Client) downloadWithRepository(
 	repository *Repository,
 	paths cachePaths,
 ) (*File, error) {
-	if err := paths.ensure(); err != nil {
+	if err := cacheRepositoryRevision(paths, request.Revision, repository); err != nil {
 		return nil, err
 	}
 
-	if err := paths.writeRef(request.Revision, repository.Commit); err != nil {
+	return client.downloadPreparedFile(ctx, request, repository, paths)
+}
+
+func (client *Client) downloadPreparedFile(
+	ctx context.Context,
+	request DownloadRequest,
+	repository *Repository,
+	paths cachePaths,
+) (*File, error) {
+	if err := paths.ensure(); err != nil {
 		return nil, err
 	}
 
@@ -97,6 +143,13 @@ func (client *Client) downloadWithRepository(
 	}
 
 	tmpPath := filepath.Join(paths.tmp, sanitizeIdentity(request.Filename)+"."+strconv.FormatInt(time.Now().UnixNano(), 10))
+	publishHubProgress(
+		"download.file",
+		fmt.Sprintf("downloading Hub file %s", request.Filename),
+		qpool.Field{Key: "repo", Value: request.RepoID},
+		qpool.Field{Key: "commit", Value: repository.Commit},
+		qpool.Field{Key: "file", Value: request.Filename},
+	)
 
 	metadata, err := client.downloadTo(
 		ctx,
@@ -146,6 +199,18 @@ func (client *Client) downloadWithRepository(
 	return file, nil
 }
 
+func cacheRepositoryRevision(paths cachePaths, revision string, repository *Repository) error {
+	if err := paths.ensure(); err != nil {
+		return err
+	}
+
+	if err := paths.writeRef(revision, repository.Commit); err != nil {
+		return err
+	}
+
+	return paths.writeInfo(revision, repository)
+}
+
 /*
 Snapshot downloads all matching files for a repository revision.
 */
@@ -164,6 +229,19 @@ func (client *Client) Snapshot(
 		return offlineSnapshot(paths, request)
 	}
 
+	if snapshot, ok := cachedSnapshot(paths, request); ok {
+		publishHubProgress(
+			"snapshot.cached",
+			fmt.Sprintf("using cached Hub snapshot %s", request.RepoID),
+			qpool.Field{Key: "repo", Value: request.RepoID},
+			qpool.Field{Key: "revision", Value: request.Revision},
+			qpool.Field{Key: "commit", Value: snapshot.Commit},
+			qpool.Field{Key: "files", Value: len(snapshot.Files)},
+		)
+
+		return snapshot, nil
+	}
+
 	repository, err := client.Repository(
 		ctx,
 		request.RepoType,
@@ -176,43 +254,15 @@ func (client *Client) Snapshot(
 		return nil, err
 	}
 
-	matches := repository.Matching(request.Include, request.Exclude)
-	files := make([]File, len(matches))
-	group, groupCtx := errgroup.WithContext(ctx)
-	sem := make(chan struct{}, request.MaxWorkers)
-
-	for index, sibling := range matches {
-		index := index
-		sibling := sibling
-
-		group.Go(func() error {
-			sem <- struct{}{}
-			defer func() {
-				<-sem
-			}()
-
-			file, err := client.downloadWithRepository(groupCtx, DownloadRequest{
-				RepoID:   request.RepoID,
-				RepoType: request.RepoType,
-				Revision: request.Revision,
-				Filename: sibling.Filename,
-				CacheDir: request.CacheDir,
-				Token:    request.Token,
-				Force:    request.Force,
-				DryRun:   request.DryRun,
-			}, repository, paths)
-
-			if err != nil {
-				return err
-			}
-
-			files[index] = *file
-
-			return nil
-		})
+	if err := cacheRepositoryRevision(paths, request.Revision, repository); err != nil {
+		return nil, err
 	}
 
-	if err := group.Wait(); err != nil {
+	matches := repository.Matching(request.Include, request.Exclude)
+
+	files, err := client.downloadSnapshotFiles(ctx, request, repository, paths, matches)
+
+	if err != nil {
 		return nil, err
 	}
 
@@ -224,6 +274,117 @@ func (client *Client) Snapshot(
 		Path:     paths.snapshotDir(repository.Commit),
 		Files:    files,
 	}, nil
+}
+
+func (client *Client) downloadSnapshotFiles(
+	ctx context.Context,
+	request SnapshotRequest,
+	repository *Repository,
+	paths cachePaths,
+	matches []Sibling,
+) ([]File, error) {
+	files := make([]File, len(matches))
+	poolCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	workerPool := qpool.NewQ(
+		poolCtx,
+		request.MaxWorkers,
+		request.MaxWorkers,
+		&qpool.Config{
+			SchedulingTimeout:  hubDownloadJobTimeout,
+			JobChannelCapacity: max(1, len(matches)),
+			Scaler:             nil,
+		},
+	)
+	defer workerPool.Close()
+
+	results := make([]chan *qpool.QValue, len(matches))
+
+	for index, sibling := range matches {
+		index := index
+		downloadRequest := DownloadRequest{
+			RepoID:   request.RepoID,
+			RepoType: request.RepoType,
+			Revision: request.Revision,
+			Filename: sibling.Filename,
+			CacheDir: request.CacheDir,
+			Token:    request.Token,
+			Force:    request.Force,
+			DryRun:   request.DryRun,
+		}
+
+		results[index] = workerPool.Schedule(
+			hubSnapshotJobID(repository.Commit, index, sibling.Filename),
+			func(jobCtx context.Context) (any, error) {
+				file, err := client.downloadPreparedFile(
+					jobCtx,
+					downloadRequest,
+					repository,
+					paths,
+				)
+
+				if err != nil {
+					return nil, err
+				}
+
+				return *file, nil
+			},
+			qpool.WithExecTimeout(hubDownloadJobTimeout),
+		)
+	}
+
+	for index, result := range results {
+		value, err := waitHubSnapshotJob(ctx, result)
+
+		if err != nil {
+			cancel()
+
+			return nil, err
+		}
+
+		file, valid := value.Value.(File)
+
+		if !valid {
+			cancel()
+
+			return nil, fmt.Errorf("hub: snapshot job %d returned %T", index, value.Value)
+		}
+
+		files[index] = file
+	}
+
+	return files, nil
+}
+
+func waitHubSnapshotJob(ctx context.Context, result <-chan *qpool.QValue) (*qpool.QValue, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case value, channelOpen := <-result:
+		if !channelOpen {
+			return nil, fmt.Errorf("hub: snapshot job result channel closed")
+		}
+
+		if value == nil {
+			return nil, fmt.Errorf("hub: snapshot job returned nil result")
+		}
+
+		if value.Error != nil {
+			return nil, value.Error
+		}
+
+		return value, nil
+	}
+}
+
+func hubSnapshotJobID(commit string, index int, filename string) string {
+	return "hub.snapshot." +
+		sanitizeIdentity(commit) +
+		"." +
+		strconv.Itoa(index) +
+		"." +
+		sanitizeIdentity(filename)
 }
 
 func (client *Client) normalizeDownloadRequest(
@@ -329,6 +490,37 @@ func offlineFile(paths cachePaths, request DownloadRequest) (*File, error) {
 	}, nil
 }
 
+func cachedSnapshotFile(paths cachePaths, request DownloadRequest) (*File, bool) {
+	if request.Force || request.DryRun {
+		return nil, false
+	}
+
+	commit, err := readOfflineCommit(paths, request.Revision)
+
+	if err != nil {
+		return nil, false
+	}
+
+	path := paths.snapshotFile(commit, request.Filename)
+	info, err := os.Stat(path)
+
+	if err != nil {
+		return nil, false
+	}
+
+	return &File{
+		RepoID:        request.RepoID,
+		RepoType:      request.RepoType,
+		Revision:      request.Revision,
+		Commit:        commit,
+		Filename:      request.Filename,
+		Path:          path,
+		Size:          info.Size(),
+		Cached:        true,
+		WouldDownload: false,
+	}, true
+}
+
 func offlineSnapshot(paths cachePaths, request SnapshotRequest) (*Snapshot, error) {
 	commit, err := readOfflineCommit(paths, request.Revision)
 
@@ -395,25 +587,135 @@ func offlineSnapshot(paths cachePaths, request SnapshotRequest) (*Snapshot, erro
 	}, nil
 }
 
+func cachedSnapshot(paths cachePaths, request SnapshotRequest) (*Snapshot, bool) {
+	if request.Force || request.DryRun {
+		return nil, false
+	}
+
+	repository, err := cachedRepository(paths, request)
+
+	if err != nil {
+		return nil, false
+	}
+
+	matches := repository.Matching(request.Include, request.Exclude)
+	files := make([]File, len(matches))
+
+	for index, sibling := range matches {
+		path := paths.snapshotFile(repository.Commit, sibling.Filename)
+		info, err := os.Stat(path)
+
+		if err != nil {
+			return nil, false
+		}
+
+		files[index] = File{
+			RepoID:        request.RepoID,
+			RepoType:      request.RepoType,
+			Revision:      request.Revision,
+			Commit:        repository.Commit,
+			Filename:      sibling.Filename,
+			Path:          path,
+			Size:          info.Size(),
+			Cached:        true,
+			WouldDownload: false,
+		}
+	}
+
+	return &Snapshot{
+		RepoID:   request.RepoID,
+		RepoType: request.RepoType,
+		Revision: request.Revision,
+		Commit:   repository.Commit,
+		Path:     paths.snapshotDir(repository.Commit),
+		Files:    files,
+	}, true
+}
+
+func cachedRepository(paths cachePaths, request SnapshotRequest) (*Repository, error) {
+	payload, err := readInfoPayload(paths, request.Revision)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return repositoryFromPayload(request.RepoType, request.Revision, request.RepoID, payload)
+}
+
 func readOfflineCommit(paths cachePaths, revision string) (string, error) {
 	data, err := os.ReadFile(paths.refFile(revision))
 
+	if err == nil {
+		commit := strings.TrimSpace(string(data))
+
+		if commit == "" {
+			return "", fmt.Errorf("hub: offline revision %s has an empty ref", revision)
+		}
+
+		return commit, nil
+	}
+
+	payload, infoErr := readInfoPayload(paths, revision)
+
+	if infoErr == nil && payload.SHA != "" {
+		return payload.SHA, nil
+	}
+
+	if looksLikeCommitHash(revision) {
+		if info, statErr := os.Stat(paths.snapshotDir(revision)); statErr == nil && info.IsDir() {
+			return revision, nil
+		}
+	}
+
+	return "", fmt.Errorf("hub: offline revision %s is not cached: %w", revision, err)
+}
+
+func readInfoPayload(paths cachePaths, revision string) (repositoryPayload, error) {
+	data, err := os.ReadFile(paths.infoFile(revision))
+
 	if err != nil {
-		return "", fmt.Errorf("hub: offline revision %s is not cached: %w", revision, err)
+		return repositoryPayload{}, err
 	}
 
-	commit := strings.TrimSpace(string(data))
+	var payload repositoryPayload
 
-	if commit == "" {
-		return "", fmt.Errorf("hub: offline revision %s has an empty ref", revision)
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return repositoryPayload{}, fmt.Errorf("hub: parse cached info %s: %w", revision, err)
 	}
 
-	return commit, nil
+	return payload, nil
+}
+
+func looksLikeCommitHash(revision string) bool {
+	if len(revision) < 7 {
+		return false
+	}
+
+	for _, value := range revision {
+		if value >= '0' && value <= '9' {
+			continue
+		}
+
+		if value >= 'a' && value <= 'f' {
+			continue
+		}
+
+		return false
+	}
+
+	return true
 }
 
 func (client *Client) downloadTo(
 	ctx context.Context, request DownloadRequest, tmpPath string,
 ) (remoteMetadata, error) {
+	publishHubProgress(
+		"download.probe",
+		fmt.Sprintf("probing Hub file transport for %s", request.Filename),
+		qpool.Field{Key: "repo", Value: request.RepoID},
+		qpool.Field{Key: "file", Value: request.Filename},
+	)
+
 	probe, err := client.probe(ctx, request)
 
 	if err != nil {
@@ -421,8 +723,25 @@ func (client *Client) downloadTo(
 	}
 
 	if probe.XetHash != "" && client.config.Xet.Active {
+		publishHubProgress(
+			"download.xet",
+			fmt.Sprintf("reconstructing Hub file %s through Xet CAS", request.Filename),
+			qpool.Field{Key: "repo", Value: request.RepoID},
+			qpool.Field{Key: "file", Value: request.Filename},
+			qpool.Field{Key: "xet_hash", Value: probe.XetHash},
+			qpool.Field{Key: "size", Value: probe.Size},
+		)
+
 		return client.downloadXet(ctx, request, probe, tmpPath)
 	}
+
+	publishHubProgress(
+		"download.http",
+		fmt.Sprintf("downloading Hub file %s through HTTP", request.Filename),
+		qpool.Field{Key: "repo", Value: request.RepoID},
+		qpool.Field{Key: "file", Value: request.Filename},
+		qpool.Field{Key: "size", Value: probe.Size},
+	)
 
 	return client.downloadHTTP(ctx, request, tmpPath)
 }
@@ -549,7 +868,7 @@ func (client *Client) downloadHTTP(
 
 	defer file.Close()
 
-	if _, err := io.Copy(file, resp.Body); err != nil {
+	if err := copyHTTPWithProgress(request.Filename, file, resp.Body, resp.ContentLength); err != nil {
 		return remoteMetadata{}, fmt.Errorf("hub: write temp: %w", err)
 	}
 
@@ -558,6 +877,67 @@ func (client *Client) downloadHTTP(
 		XetHash: resp.Header.Get("X-Xet-Hash"),
 		Size:    resp.ContentLength,
 	}, nil
+}
+
+const downloadProgressStride = 64 * 1024 * 1024
+
+func copyHTTPWithProgress(
+	filename string,
+	writer io.Writer,
+	reader io.Reader,
+	expected int64,
+) error {
+	scratch := make([]byte, 4*1024*1024)
+	nextProgress := int64(downloadProgressStride)
+	var read int64
+
+	for {
+		size, readErr := reader.Read(scratch)
+
+		if size > 0 {
+			read += int64(size)
+
+			if _, writeErr := writer.Write(scratch[:size]); writeErr != nil {
+				return writeErr
+			}
+
+			if expected > 0 && read >= nextProgress {
+				publishHubProgress(
+					"download.http.read",
+					fmt.Sprintf(
+						"read %d MiB of Hub file %s",
+						read/(1024*1024),
+						filename,
+					),
+					qpool.Field{Key: "file", Value: filename},
+					qpool.Field{Key: "read_bytes", Value: read},
+					qpool.Field{Key: "expected_bytes", Value: expected},
+				)
+				nextProgress += downloadProgressStride
+			}
+		}
+
+		if readErr == nil {
+			continue
+		}
+
+		if readErr == io.EOF {
+			break
+		}
+
+		return readErr
+	}
+
+	publishHubProgress(
+		"download.http.fetched",
+		fmt.Sprintf("fetched %d MiB of Hub file %s", read/(1024*1024), filename),
+		qpool.Field{Key: "file", Value: filename},
+		qpool.Field{Key: "read_bytes", Value: read},
+		qpool.Field{Key: "expected_bytes", Value: expected},
+		qpool.Field{Key: "done", Value: true},
+	)
+
+	return nil
 }
 
 func (repository *Repository) Find(filename string) (Sibling, bool) {

@@ -173,6 +173,10 @@ func (registry operationRegistry) LayerNorm(config *state.Dict) (state.Operation
 	return registry.operation(config)
 }
 
+func (registry operationRegistry) GroupNorm(config *state.Dict) (state.Operation, error) {
+	return registry.operation(config)
+}
+
 func (registry operationRegistry) Reshape(config *state.Dict) (state.Operation, error) {
 	return registry.operation(config)
 }
@@ -186,6 +190,10 @@ func (registry operationRegistry) Concat(config *state.Dict) (state.Operation, e
 }
 
 func (registry operationRegistry) Split(config *state.Dict) (state.Operation, error) {
+	return registry.operation(config)
+}
+
+func (registry operationRegistry) UpsampleNearest2D(config *state.Dict) (state.Operation, error) {
 	return registry.operation(config)
 }
 

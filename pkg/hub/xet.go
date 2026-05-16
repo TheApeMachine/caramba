@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
 type xetTokenPayload struct {
@@ -65,6 +67,13 @@ func (client *Client) downloadXet(
 		return remoteMetadata{}, err
 	}
 
+	publishHubProgress(
+		"xet.reconstruction",
+		fmt.Sprintf("resolved Xet reconstruction plan for %s", request.Filename),
+		qpool.Field{Key: "file", Value: request.Filename},
+		qpool.Field{Key: "terms", Value: len(reconstruction.Terms)},
+	)
+
 	if err := os.MkdirAll(filepath.Dir(tmpPath), 0o755); err != nil {
 		return remoteMetadata{}, fmt.Errorf("hub: mkdir temp: %w", err)
 	}
@@ -81,7 +90,29 @@ func (client *Client) downloadXet(
 	offset := reconstruction.OffsetIntoFirstRange
 
 	for termIndex, term := range reconstruction.Terms {
-		chunks, err := client.xetTermChunks(ctx, term, reconstruction, chunkCache)
+		if shouldPublishHubProgress(termIndex, len(reconstruction.Terms)) {
+			publishHubProgress(
+				"xet.term",
+				fmt.Sprintf(
+					"reconstructing Xet term %d/%d for %s",
+					termIndex+1,
+					len(reconstruction.Terms),
+					request.Filename,
+				),
+				qpool.Field{Key: "file", Value: request.Filename},
+				qpool.Field{Key: "term", Value: termIndex + 1},
+				qpool.Field{Key: "terms", Value: len(reconstruction.Terms)},
+				qpool.Field{Key: "chunks", Value: term.Range.End - term.Range.Start},
+			)
+		}
+
+		chunks, err := client.xetTermChunks(
+			ctx,
+			request.Filename,
+			term,
+			reconstruction,
+			chunkCache,
+		)
 
 		if err != nil {
 			return remoteMetadata{}, err
@@ -228,6 +259,7 @@ func (client *Client) xetReconstruction(
 
 func (client *Client) xetTermChunks(
 	ctx context.Context,
+	filename string,
 	term xetTerm,
 	reconstruction xetReconstruction,
 	chunkCache map[string]map[int64][]byte,
@@ -247,6 +279,13 @@ func (client *Client) xetTermChunks(
 	if chunks, ok := chunkCache[cacheKey]; ok {
 		return chunks, nil
 	}
+
+	publishHubProgress(
+		"xet.xorb.fetch",
+		fmt.Sprintf("fetching Xet xorb range for %s", filename),
+		qpool.Field{Key: "file", Value: filename},
+		qpool.Field{Key: "bytes", Value: fetch.URLRange.End - fetch.URLRange.Start + 1},
+	)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fetch.URL, nil)
 
@@ -271,7 +310,7 @@ func (client *Client) xetTermChunks(
 		return nil, statusError("hub: xet xorb fetch", resp)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := readXetXorbRange(filename, fetch, resp.Body)
 
 	if err != nil {
 		return nil, fmt.Errorf("hub: read xet xorb: %w", err)
@@ -286,6 +325,68 @@ func (client *Client) xetTermChunks(
 	chunkCache[cacheKey] = chunks
 
 	return chunks, nil
+}
+
+const xetProgressStride = 64 * 1024 * 1024
+
+func readXetXorbRange(
+	filename string,
+	fetch xetFetchInfo,
+	reader io.Reader,
+) ([]byte, error) {
+	var buffer bytes.Buffer
+	scratch := make([]byte, 4*1024*1024)
+	expected := fetch.URLRange.End - fetch.URLRange.Start + 1
+	nextProgress := int64(xetProgressStride)
+	var read int64
+
+	for {
+		size, err := reader.Read(scratch)
+
+		if size > 0 {
+			read += int64(size)
+
+			if _, writeErr := buffer.Write(scratch[:size]); writeErr != nil {
+				return nil, writeErr
+			}
+
+			if read >= nextProgress {
+				publishHubProgress(
+					"xet.xorb.read",
+					fmt.Sprintf(
+						"read %d MiB of Xet xorb data for %s",
+						read/(1024*1024),
+						filename,
+					),
+					qpool.Field{Key: "file", Value: filename},
+					qpool.Field{Key: "read_bytes", Value: read},
+					qpool.Field{Key: "expected_bytes", Value: expected},
+				)
+				nextProgress += xetProgressStride
+			}
+		}
+
+		if err == nil {
+			continue
+		}
+
+		if err == io.EOF {
+			break
+		}
+
+		return nil, err
+	}
+
+	publishHubProgress(
+		"xet.xorb.fetched",
+		fmt.Sprintf("fetched %d MiB of Xet xorb data for %s", read/(1024*1024), filename),
+		qpool.Field{Key: "file", Value: filename},
+		qpool.Field{Key: "read_bytes", Value: read},
+		qpool.Field{Key: "expected_bytes", Value: expected},
+		qpool.Field{Key: "done", Value: true},
+	)
+
+	return buffer.Bytes(), nil
 }
 
 func matchingFetchInfo(term xetTerm, fetches []xetFetchInfo) (xetFetchInfo, error) {

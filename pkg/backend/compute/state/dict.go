@@ -73,6 +73,8 @@ type Dict struct {
 	Dim0                int
 	Dim1                int
 	SplitSize           int
+	ScaleH              int
+	ScaleW              int
 	Window              int
 	PositionStart       int
 	RoPEOriginalContext int

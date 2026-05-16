@@ -56,15 +56,21 @@ func runImage(command *cobra.Command, args []string) error {
 		return fmt.Errorf("image: prompt is required")
 	}
 
-	pipeline, err := diffusion.NewPipeline(command.Context(), options.Config())
+	var result diffusion.Result
 
-	if err != nil {
+	err := runWithQPoolProgress(command, func() error {
+		pipeline, err := diffusion.NewPipeline(command.Context(), options.Config())
+
+		if err != nil {
+			return err
+		}
+
+		defer pipeline.Close()
+
+		result, err = pipeline.Generate(command.Context(), options.Prompt)
+
 		return err
-	}
-
-	defer pipeline.Close()
-
-	result, err := pipeline.Generate(command.Context(), options.Prompt)
+	})
 
 	if err != nil {
 		return err

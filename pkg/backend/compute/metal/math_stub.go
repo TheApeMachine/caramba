@@ -76,6 +76,25 @@ func (m *MathOps) RMSNorm(shape []int, eps float64, weight []float64, data ...[]
 	return nil, metalUnavailable()
 }
 
+func (m *MathOps) GroupNorm(
+	shape []int,
+	eps float64,
+	groups int,
+	weight,
+	bias []float64,
+	data ...[]float64,
+) ([]float64, error) {
+	return nil, metalUnavailable()
+}
+
+func (m *MathOps) GroupNormTensor(
+	input, weight, bias computetensor.Float64Tensor,
+	groups int,
+	eps float64,
+) (computetensor.Float64Tensor, error) {
+	return nil, metalUnavailable()
+}
+
 func (m *MathOps) Sign(shape []int, data ...[]float64) ([]float64, error) {
 	return nil, metalUnavailable()
 }

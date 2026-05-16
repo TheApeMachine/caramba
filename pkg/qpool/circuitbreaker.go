@@ -3,8 +3,6 @@ package qpool
 import (
 	"sync/atomic"
 	"time"
-
-	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 /*
@@ -165,7 +163,13 @@ func (cb *CircuitBreaker) tryOpenToHalfOpen(now time.Time) bool {
 	if cb.state.CompareAndSwap(cbOpen, cbHalfOpen) {
 		cb.halfOpenSuccess.Store(0)
 		cb.halfOpenInflight.Store(0)
-		errnie.Warn("circuit breaker: half-open after reset timeout")
+		Publish(NewWarningEvent(
+			"qpool",
+			"circuit-half-open",
+			"circuit breaker half-open after reset timeout",
+			nil,
+		))
+
 		return true
 	}
 
@@ -203,7 +207,12 @@ func (cb *CircuitBreaker) transitionToOpen() {
 	}
 	cb.halfOpenSuccess.Store(0)
 	cb.halfOpenInflight.Store(0)
-	errnie.Warn("circuit breaker: open")
+	Publish(NewWarningEvent(
+		"qpool",
+		"circuit-open",
+		"circuit breaker open",
+		nil,
+	))
 }
 
 func (cb *CircuitBreaker) safeDecHalfOpenInflight() {

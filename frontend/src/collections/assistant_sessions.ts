@@ -1,6 +1,5 @@
 import { electricCollectionOptions } from "@tanstack/electric-db-collection";
 import {
-	type Collection,
 	createCollection,
 	localStorageCollectionOptions,
 } from "@tanstack/react-db";
@@ -24,10 +23,10 @@ export const AssistantSession = z.object({
 
 export type AssistantSessionRow = z.infer<typeof AssistantSession>;
 
-const shapeUrl =
-	typeof window !== "undefined"
-		? `${window.location.origin}/api/shape/assistant-sessions`
-		: "/api/shape/assistant-sessions";
+function shapeUrl() {
+	if (typeof window === "undefined") return "http://localhost/api/shape/assistant-sessions";
+	return `${window.location.origin}/api/shape/assistant-sessions`;
+}
 
 const skipTxidAwait =
 	import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true";
@@ -41,8 +40,8 @@ type SessionMutationContext = {
 	personaIds?: string[];
 };
 
-let cloud: Collection<AssistantSessionRow> | null = null;
-let local: Collection<AssistantSessionRow> | null = null;
+let cloud: ReturnType<typeof buildCloud> | null = null;
+let local: ReturnType<typeof buildLocal> | null = null;
 
 function buildCloud() {
 	return createCollection(
@@ -51,7 +50,7 @@ function buildCloud() {
 			schema: AssistantSession,
 			getKey: (item) => item.id,
 			shapeOptions: {
-				url: shapeUrl,
+				url: shapeUrl(),
 				parser: { timestamptz: (value: string) => new Date(value) },
 			},
 			onInsert: async ({ transaction }) => {
@@ -107,10 +106,10 @@ function buildLocal() {
 
 export function getSessionsCollection(mode: "cloud" | "local") {
 	if (mode === "local") {
-		if (!local) local = buildLocal();
+		local ??= buildLocal();
 		return local;
 	}
 
-	if (!cloud) cloud = buildCloud();
+	cloud ??= buildCloud();
 	return cloud;
 }

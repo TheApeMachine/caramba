@@ -1,10 +1,69 @@
-# caramba
+# 🌈 caramba
 
 **A substrate for AI research.**
 
-Design a neural architecture as YAML. Compile it to a typed tensor graph. Run it on CPU, CUDA, Metal, or XLA — the same operations, the same numerics, your choice of hardware. Inspect it, train it, branch it, and keep its complete history along for the ride.
+Caramba treats a neural architecture as a declared artifact: a typed tensor graph described in YAML, compiled through a pipeline of verification, fusion, and scheduling, then lowered to the backend you select. The same description runs on CPU, CUDA, Metal, or XLA — with hand-written kernels on each path and tight ULP parity against a scalar reference. There are no silent fallbacks; if a kernel is missing for a backend, the build fails.
+
+Around that core, caramba provides the surfaces an architecture needs to be useful: a Hugging Face Hub resolver that binds pretrained weights into named graph nodes by structure, a streaming chat runtime with resident KV caches, a diffusion pipeline that runs through the same manifest path, a visual node-graph editor that round-trips to the same YAML the CLI consumes, and a provenance ledger that signs the graph and weights together so a trained model carries its own history.
+
+The intent is a platform where the architecture itself — including the unconventional operations researchers actually want to study — is the unit of work, and where running it at full performance on the hardware in front of you is the platform's job, not yours.
 
 ---
+
+## ✨ Features
+
+- [x] Compute Primitives
+  - [x] Activation (ReLU, LeakyReLU, SELU, Sigmoid, Tanh, GeLU, Swish, SwiGLU)
+  - [x] Attention (SDPA, MQA, GQA, sliding window, softmax)
+  - [x] Convolution (Conv1D, Conv2D, Conv3D, ConvTranspose2D)
+  - [x] Embedding (token, RoPE, ALiBi, tied)
+  - [x] Math (matmul, add/mul, exp/log, rmsnorm, layernorm, groupnorm, softmax, logsumexp, dropout)
+  - [x] Pooling (avg, max, adaptive avg, adaptive max)
+  - [x] Projection (linear, fused QKV, tied embedding)
+  - [x] Shape (reshape, transpose, concat, split, view_as_heads, merge_heads, last_token, nearest upsample)
+  - [x] Masking (causal mask, apply mask)
+  - [x] Active Inference (free energy, expected free energy, belief update, precision weighting)
+  - [x] Causal Inference (do-calculus, backdoor, frontdoor, CATE, IV, counterfactual, DAG factorization)
+  - [x] Hawkes Process (intensity, kernel matrix, simulate, log-likelihood)
+  - [x] Markov Blanket (partition, mutual information, internal/active flow)
+  - [x] Predictive Coding (prediction, prediction error, representation/weight updates)
+  - [x] VSA (bind, bundle, permute, inverse permute, similarity)
+- [x] Multiple Compute Backends
+  - [x] CPU (Go native)
+  - [x] SIMD/Assembly
+    - [x] AVX2 (amd64)
+    - [x] SSE2 (amd64)
+    - [x] NEON (arm64)
+  - [x] CUDA
+  - [x] METAL
+  - [x] XLA
+- [x] Optimizers (SGD, Adam, AdamW, AdaMax, AdaGrad, AdaDelta, RMSProp, Lion, LARS, LAMB, L-BFGS, Hebbian)
+- [ ] Training Models
+- [ ] Fine-tuning Models
+- [x] Manifest Compiler (verify, canonicalize, CSE, algebraic simplify, fusion, DCE, memory planning, cost scheduling)
+- [x] Hugging Face Hub Asset Resolver (revision-pinned, content-addressed, Xet CAS)
+- [x] Provenance Ledger (signed by `pkg/notary`)
+- [x] Streaming Chat Runtime (KV cache, sampling, `qpool` startup events)
+- [x] Diffusion Pipeline (FlowMatch Euler, prompt encoder + denoiser + VAE decoder)
+- [ ] Supported Pre-trained Models
+  - [x] [openai-community/gpt2](https://huggingface.co/openai-community/gpt2)
+  - [x] [meta-llama/Llama-3.2-1B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct) (Gated model, requires request for access)
+  - [ ] [meta-llama/Llama-4-Scout-17B-16E](https://huggingface.co/meta-llama/Llama-4-Scout-17B-16E)
+  - [x] [black-forest-labs/FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B)
+  - [ ] [google/gemma-4-31B-it](https://huggingface.co/google/gemma-4-31B-it)
+  - [ ] [ibm-granite/granite-4.1-8b](https://huggingface.co/ibm-granite/granite-4.1-8b)
+  - [ ] [Qwen/Qwen3-Coder-Next](https://huggingface.co/Qwen/Qwen3-Coder-Next)
+  - [ ] [stabilityai/stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
+  - [ ] [meituan-longcat/LongCat-AudioDiT-3.5B](https://huggingface.co/meituan-longcat/LongCat-AudioDiT-3.5B)
+  - [ ] [facebook/ijepa_vith16_1k](https://huggingface.co/facebook/ijepa_vith16_1k)
+  - [ ] [facebook/vjepa2-vitg-fpc64-256](https://huggingface.co/facebook/vjepa2-vitg-fpc64-256)
+- [ ] Visual Node-Graph Architecture Builder
+- [ ] ModelScope deep inspection tools
+- [ ] Layer Surgery tools
+- [ ] Hyperparameter Tuner
+- [ ] Distributed Training
+- [ ] Deeply Integrated A.I. Assistant and Research Team
+- [ ] Ergonomic WYSIWYG LaTeX Paper Editor
 
 ## A manifest is a model
 
@@ -102,14 +161,18 @@ caramba chat --manifest model/llm/llama-3-2-1b-instruct.yml
 
 caramba pulls the weights from the Hugging Face Hub (revision-pinned, cached, content-addressed), binds the safetensors into the named graph nodes by structure, lowers the graph to your selected backend, and streams tokens with a KV cache that lives in resident GPU memory.
 Startup publishes `qpool` progress events for manifest resolution, backend selection, tokenizer loading, SafeTensors resolution, and runtime readiness, so long first-run Hub downloads do not look like a dead terminal.
+The CLI subscribes to the same `qpool` broadcast stream and renders terminal progress bars for Hub transfers, SafeTensors loading, token generation, and diffusion denoising. While that TUI is active, standard JSON logging is suppressed and the latest `qpool` event is rendered as the status line above the progress bar.
+Application-level concurrency is scheduled through `qpool`; goroutine creation is isolated inside the pool internals so downloads, long-running services, and background work share the same telemetry, cancellation, and backpressure path.
 
 You did not write a model class. You did not write a forward pass. You described an architecture, and the substrate ran it.
 
 Diffusion models use the same manifest path. The FLUX.2 Klein 4B denoiser
 template lives at `model/diffusion/flux-2-klein-4b.yml`; its Qwen3 prompt
-encoder lives at `model/diffusion/flux-2-klein-4b-text-encoder.yml`. The image
+encoder lives at `model/diffusion/flux-2-klein-4b-text-encoder.yml`; its VAE
+decoder lives at `model/diffusion/flux-2-klein-4b-vae-decoder.yml`. The image
 command resolves those assets from the manifest, encodes the prompt, runs the
-FlowMatch Euler denoising loop, and writes the current latent preview as PNG:
+FlowMatch Euler denoising loop, decodes the latents through the manifest-backed
+VAE when configured, and writes an RGB PNG:
 
 ```bash
 caramba image --manifest model/diffusion/flux-2-klein-4b.yml "a brass observatory on a storm cliff"
@@ -126,13 +189,13 @@ caramba image --manifest model/diffusion/flux-2-klein-4b.yml "a brass observator
 - **Metal** native `.metal` shaders with resident KV caches and on-device tensor lifecycle.
 - **XLA** via PJRT — your graph becomes a StableHLO module and runs through whichever plugin you point caramba at.
 
-**A real operation library.** Standard primitives — attention (SDPA, GQA, flash, causal), activations (GeLU exact, SwiGLU, Mish, …), normalization, convolution, pooling, projection, embedding (token, RoPE, ALiBi, sinusoidal) — plus a set of operations you will not find in PyTorch: active inference, Hawkes processes, Markov blanket detection, predictive coding, vector symbolic architectures. Optimizers include SGD, Adam(W), Lion, LARS, LAMB, L-BFGS, each with native kernels on every backend.
+**A real operation library.** Standard primitives — attention (SDPA, GQA, flash, causal), activations (GeLU exact, SwiGLU, Mish, …), normalization, convolution, pooling, projection, embedding (token, RoPE, ALiBi, sinusoidal), shape transforms and nearest-neighbor upsample — plus a set of operations you will not find in PyTorch: active inference, Hawkes processes, Markov blanket detection, predictive coding, vector symbolic architectures. Optimizers include SGD, Adam(W), Lion, LARS, LAMB, L-BFGS, each with native kernels on every backend. Diffusion decoder support now binds VAE convolution and GroupNorm tensors through the same SafeTensors-to-IR path.
 
 **A compiler, not an interpreter.** Manifests pass through `pkg/manifest`'s pipeline: verification, canonicalization, semantic CSE, algebraic simplification, legality-aware fusion, side-effect-aware DCE, memory planning, and cost scheduling — before lowering. Fusions are declared and validated against per-backend capability contracts, not invented at runtime.
 
 **A visual editor.** The frontend (`frontend/`) is a Vite + React + Flume canvas that reads the operation registry from the backend, supports template blocks (`TransformerBlock`, `MLP`, `DBA`, `GQA`, …), and serializes back to the same YAML the CLI consumes. Dragging nodes and editing text are two paths to the same artifact.
 
-**Hub-native asset resolution.** `pkg/hub` provides a revision-aware local cache that mirrors `hf_hub_download` / `snapshot_download` semantics: refs, commit-pinned snapshots, content-addressed blobs, per-file metadata, Xet CAS reconstruction. Manifests reference assets by plain ID (`openai-community/gpt2`) or by explicit locator (`hf://model/openai-community/gpt2@main`).
+**Hub-native asset resolution.** `pkg/hub` provides a revision-aware local cache that mirrors `hf_hub_download` / `snapshot_download` semantics: refs or cached `info/<revision>` metadata, commit-pinned snapshots, content-addressed blobs, per-file metadata, Xet CAS reconstruction. The default cache is `${HOME}/.cache/huggingface/hub`, so existing Hugging Face snapshots are checked before caramba downloads. Manifests reference assets by plain ID (`openai-community/gpt2`) or by explicit locator (`hf://model/openai-community/gpt2@main`).
 
 **Provenance that travels with the artifact.** A trained model is its weights *and* the graph that produced them *and* a ledger entry signed by `pkg/notary`. Share a model and you share its history.
 
@@ -209,9 +272,10 @@ Backend kernels upload values once into a resident tensor store and only downloa
 | Activation        | ReLU, GeLU (exact erf), SwiGLU, Tanh, Mish          |
 | Attention         | SDPA, DBA, GQA, Multi-head, Causal, Flash           |
 | Embedding         | Token, Positional (RoPE, ALiBi, sinusoidal)         |
-| Normalization     | LayerNorm, RMSNorm, BatchNorm                       |
+| Normalization     | LayerNorm, RMSNorm, GroupNorm, BatchNorm            |
 | Projection        | Linear, FusedQKV, LoRA                              |
 | Convolution       | Conv1D, Conv2D, depthwise, grouped, transposed      |
+| Shape             | Reshape, transpose, concat, split, nearest upsample |
 | Pooling           | Mean, Max, Attention pooling                        |
 | Active Inference  | Free energy minimization, precision weighting       |
 | Causal            | Temporal difference, causal intervention            |

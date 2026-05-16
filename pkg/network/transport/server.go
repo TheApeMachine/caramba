@@ -9,6 +9,8 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"capnproto.org/go/capnp/v3"
 	"capnproto.org/go/capnp/v3/rpc"
@@ -18,9 +20,11 @@ import (
 	"github.com/theapemachine/caramba/pkg/network/dht"
 	"github.com/theapemachine/caramba/pkg/network/schema"
 	"github.com/theapemachine/caramba/pkg/notary"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
 const nodeIDLength = 20
+const transportJobTimeout = 24 * time.Hour
 
 type StreamComputeBackend = executor.Backend
 
@@ -481,7 +485,8 @@ type NodeTransport struct {
 	identity  *notary.Identity
 	backends  *StreamBackendRegistry
 	bootstrap schema.Peer
-	wg        sync.WaitGroup
+	pool      *qpool.Q
+	nextConn  atomic.Uint64
 	ctx       context.Context
 	cancel    context.CancelFunc
 }
@@ -511,8 +516,13 @@ func NewNodeTransport(address string, d *dht.DHT) (*NodeTransport, error) {
 		dht:       d,
 		identity:  identity,
 		backends:  NewStreamBackendRegistry(),
-		ctx:       ctx,
-		cancel:    cancel,
+		pool: qpool.NewQ(ctx, 1, 64, &qpool.Config{
+			SchedulingTimeout:  transportJobTimeout,
+			JobChannelCapacity: 128,
+			Scaler:             nil,
+		}),
+		ctx:    ctx,
+		cancel: cancel,
 	}, nil
 }
 
@@ -539,31 +549,47 @@ func (nt *NodeTransport) Listen() error {
 	}
 	nt.bootstrap = schema.Peer_ServerToClient(server)
 
-	nt.wg.Go(func() {
-		for {
-			conn, err := nt.listener.AcceptTCP()
-			if err != nil {
-				if nt.ctx.Err() != nil {
-					return
+	nt.pool.Schedule(
+		"transport.listen",
+		func(jobCtx context.Context) (any, error) {
+			for {
+				conn, err := nt.listener.AcceptTCP()
+				if err != nil {
+					if jobCtx.Err() != nil || nt.ctx.Err() != nil {
+						return nil, nil
+					}
+
+					continue
 				}
 
-				continue
+				// NewConn owns BootstrapClient, so every connection gets its own reference.
+				rpcConn := rpc.NewConn(rpc.NewStreamTransport(conn), &rpc.Options{
+					BootstrapClient: capnp.Client(nt.bootstrap.AddRef()),
+				})
+
+				connectionID := nt.nextConn.Add(1)
+				nt.pool.Schedule(
+					transportConnectionJobID(connectionID),
+					func(connectionCtx context.Context) (any, error) {
+						select {
+						case <-rpcConn.Done():
+							return nil, nil
+						case <-connectionCtx.Done():
+							rpcConn.Close()
+
+							return nil, nil
+						case <-nt.ctx.Done():
+							rpcConn.Close()
+
+							return nil, nil
+						}
+					},
+					qpool.WithExecTimeout(transportJobTimeout),
+				)
 			}
-
-			// NewConn owns BootstrapClient, so every connection gets its own reference.
-			rpcConn := rpc.NewConn(rpc.NewStreamTransport(conn), &rpc.Options{
-				BootstrapClient: capnp.Client(nt.bootstrap.AddRef()),
-			})
-
-			nt.wg.Go(func() {
-				select {
-				case <-rpcConn.Done():
-				case <-nt.ctx.Done():
-					rpcConn.Close()
-				}
-			})
-		}
-	})
+		},
+		qpool.WithExecTimeout(transportJobTimeout),
+	)
 
 	return nil
 }
@@ -595,7 +621,10 @@ func (nt *NodeTransport) Close() error {
 		nt.listener.Close()
 	}
 
-	nt.wg.Wait()
+	if nt.pool != nil {
+		nt.pool.Close()
+		nt.pool = nil
+	}
 
 	if nt.bootstrap.IsValid() {
 		nt.bootstrap.Release()
@@ -603,6 +632,10 @@ func (nt *NodeTransport) Close() error {
 	}
 
 	return nil
+}
+
+func transportConnectionJobID(connectionID uint64) string {
+	return fmt.Sprintf("transport.connection.%d", connectionID)
 }
 
 func (nt *NodeTransport) Address() string {

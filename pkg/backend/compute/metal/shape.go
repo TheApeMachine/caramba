@@ -103,6 +103,29 @@ func (m *MetalShapeOps) Forward(
 		}
 
 		return m.Concat(data[0], data[1])
+	case "shape.upsample_nearest2d":
+		if len(data) != 1 {
+			return nil, fmt.Errorf("metal shape Forward upsample_nearest2d: requires one input buffer")
+		}
+
+		if len(shape) != 4 {
+			return nil, fmt.Errorf("metal shape Forward upsample_nearest2d: shape must be [B,C,H,W]")
+		}
+
+		scaleH := metalIntConfig(node, "scale_factor", 0)
+		scaleW := metalIntConfig(node, "scale_factor", 0)
+		scaleH = metalIntConfig(node, "scale_h", scaleH)
+		scaleW = metalIntConfig(node, "scale_w", scaleW)
+
+		return m.UpsampleNearest2D(
+			data[0],
+			shape[0],
+			shape[1],
+			shape[2],
+			shape[3],
+			scaleH,
+			scaleW,
+		)
 	case "shape.view_as_heads":
 		if len(data) != 1 {
 			return nil, fmt.Errorf("metal shape Forward view_as_heads: requires one input buffer")
@@ -248,6 +271,55 @@ func (m *MetalShapeOps) Split(
 	if rc != 0 {
 		return nil, fmt.Errorf("metal_split failed (rc=%d)", rc)
 	}
+	return toFloat64(dst32), nil
+}
+
+func (m *MetalShapeOps) UpsampleNearest2D(
+	input []float64,
+	batch int,
+	channels int,
+	height int,
+	width int,
+	scaleH int,
+	scaleW int,
+) ([]float64, error) {
+	if batch <= 0 || channels <= 0 || height <= 0 || width <= 0 ||
+		scaleH <= 0 || scaleW <= 0 {
+		return nil, fmt.Errorf("metal_upsample_nearest2d: dimensions must be positive")
+	}
+
+	inputLength := int64(batch) * int64(channels) * int64(height) * int64(width)
+	outputLength := inputLength * int64(scaleH) * int64(scaleW)
+
+	if inputLength != int64(len(input)) {
+		return nil, fmt.Errorf(
+			"metal_upsample_nearest2d: input length %d does not match NCHW size %d",
+			len(input),
+			inputLength,
+		)
+	}
+
+	if outputLength > math.MaxInt32 {
+		return nil, fmt.Errorf("metal_upsample_nearest2d: output length %d exceeds int32", outputLength)
+	}
+
+	src32 := toFloat32(input)
+	dst32 := make([]float32, int(outputLength))
+	rc := C.metal_upsample_nearest2d(
+		(*C.float)(unsafe.Pointer(&src32[0])),
+		(*C.float)(unsafe.Pointer(&dst32[0])),
+		C.int(batch),
+		C.int(channels),
+		C.int(height),
+		C.int(width),
+		C.int(scaleH),
+		C.int(scaleW),
+	)
+
+	if rc != 0 {
+		return nil, fmt.Errorf("metal_upsample_nearest2d failed (rc=%d)", rc)
+	}
+
 	return toFloat64(dst32), nil
 }
 
@@ -480,6 +552,55 @@ func (m *MetalShapeOps) LastTokenTensor(
 		_ = output.Close()
 
 		return nil, fmt.Errorf("metal_last_token_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (m *MetalShapeOps) UpsampleNearest2DTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch int,
+	channels int,
+	height int,
+	width int,
+	scaleH int,
+	scaleW int,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	inputLength := batch * channels * height * width
+	outputLength := inputLength * scaleH * scaleW
+
+	if metalInput.Len() != inputLength || outputShape.Len() != outputLength {
+		return nil, fmt.Errorf("metal shape: invalid upsample_nearest2d tensor shape")
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_upsample_nearest2d_tensor(
+		metalInput.buffer,
+		output.buffer,
+		C.int(batch),
+		C.int(channels),
+		C.int(height),
+		C.int(width),
+		C.int(scaleH),
+		C.int(scaleW),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_upsample_nearest2d_tensor failed (rc=%d)", rc)
 	}
 
 	return output, nil

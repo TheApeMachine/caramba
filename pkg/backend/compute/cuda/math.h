@@ -61,6 +61,12 @@ int cuda_rmsnorm(const double* src, double* dst,
                  const double* weight,
                  int num_rows, int d_model, double eps);
 
+// Group norm over NCHW tensors. weight/bias length is channels.
+int cuda_groupnorm(const double* src, double* dst,
+                   const double* weight, const double* bias,
+                   int batch, int channels, int height, int width,
+                   int groups, double eps);
+
 // Elementwise sign: out[i] = +1 if src[i] > 0, -1 if < 0, 0 if == 0.
 int cuda_sign(const double* src, double* dst, int n);
 

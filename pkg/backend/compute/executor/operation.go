@@ -176,6 +176,10 @@ func applyStateMetadata(stateDict *state.Dict, node NodeSpec) {
 	stateDict.Dim0 = intConfig(node, "dim0", stateDict.Dim0)
 	stateDict.Dim1 = intConfig(node, "dim1", stateDict.Dim1)
 	stateDict.SplitSize = intConfig(node, "split_size", stateDict.SplitSize)
+	stateDict.ScaleH = intConfig(node, "scale_factor", stateDict.ScaleH)
+	stateDict.ScaleW = intConfig(node, "scale_factor", stateDict.ScaleW)
+	stateDict.ScaleH = intConfig(node, "scale_h", stateDict.ScaleH)
+	stateDict.ScaleW = intConfig(node, "scale_w", stateDict.ScaleW)
 	stateDict.Window = intConfig(node, "window", stateDict.Window)
 	stateDict.PositionStart = intConfig(node, "position_start", stateDict.PositionStart)
 	stateDict.RoPEOriginalContext = intConfig(
@@ -224,6 +228,7 @@ func applyStateMetadata(stateDict *state.Dict, node NodeSpec) {
 	stateDict.DilationH = intConfig(node, "d_h", stateDict.DilationH)
 	stateDict.DilationW = intConfig(node, "d_w", stateDict.DilationW)
 	stateDict.Groups = intConfig(node, "groups", stateDict.Groups)
+	stateDict.Groups = intConfig(node, "num_groups", stateDict.Groups)
 	stateDict.OutPadH = intConfig(node, "out_pad_h", stateDict.OutPadH)
 	stateDict.OutPadW = intConfig(node, "out_pad_w", stateDict.OutPadW)
 	stateDict.OutH = intConfig(node, "out_h", stateDict.OutH)

@@ -91,6 +91,28 @@ __global__ void split_kernel(
     dst[index] = src[src_index];
 }
 
+__global__ void upsample_nearest2d_kernel(
+    const double* src, double* dst,
+    int B, int C, int H, int W, int scale_h, int scale_w, int total)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= total) return;
+
+    int out_w = W * scale_w;
+    int out_h = H * scale_h;
+    int out_col = index % out_w;
+    int rem = index / out_w;
+    int out_row = rem % out_h;
+    rem = rem / out_h;
+    int channel = rem % C;
+    int batch = rem / C;
+    int input_row = out_row / scale_h;
+    int input_col = out_col / scale_w;
+    int src_index = ((batch * C + channel) * H + input_row) * W + input_col;
+
+    dst[index] = src[src_index];
+}
+
 // ViewAsHeads: input [B,T,H,head_dim] -> output [B,H,T,head_dim].
 __global__ void view_as_heads_kernel(
     const double* src, double* dst,
@@ -318,6 +340,47 @@ int cuda_split(const double* src, double* dst,
     if (cudaGetLastError() != cudaSuccess) goto fail;
     if (cudaDeviceSynchronize() != cudaSuccess) goto fail;
     if (cudaMemcpy(dst, d_dst, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
+
+    cudaFree(d_src); cudaFree(d_dst);
+    return 0;
+fail:
+    cudaFree(d_src); cudaFree(d_dst);
+    return -1;
+}
+
+int cuda_upsample_nearest2d(const double* src, double* dst,
+                            int B, int C, int H, int W,
+                            int scale_h, int scale_w)
+{
+    if (!src || !dst || B <= 0 || C <= 0 || H <= 0 || W <= 0 ||
+        scale_h <= 0 || scale_w <= 0) {
+        return -1;
+    }
+
+    size_t input_items = 0;
+
+    if (checked_total4(&input_items, B, C, H, W)) return -1;
+
+    size_t output_items = input_items;
+    if (checked_mul_size(&output_items, (size_t)scale_h)) return -1;
+    if (checked_mul_size(&output_items, (size_t)scale_w)) return -1;
+    if (output_items > INT_MAX) return -1;
+
+    double *d_src = NULL, *d_dst = NULL;
+    size_t input_bytes = input_items * sizeof(double);
+    size_t output_bytes = output_items * sizeof(double);
+    int total = (int)output_items;
+
+    if (cudaMalloc(&d_src, input_bytes) != cudaSuccess) return -1;
+    if (cudaMalloc(&d_dst, output_bytes) != cudaSuccess) { cudaFree(d_src); return -1; }
+
+    if (cudaMemcpy(d_src, src, input_bytes, cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
+    upsample_nearest2d_kernel<<<blocks(total), BLOCK>>>(
+        d_src, d_dst, B, C, H, W, scale_h, scale_w, total
+    );
+    if (cudaGetLastError() != cudaSuccess) goto fail;
+    if (cudaDeviceSynchronize() != cudaSuccess) goto fail;
+    if (cudaMemcpy(dst, d_dst, output_bytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
 
     cudaFree(d_src); cudaFree(d_dst);
     return 0;

@@ -15,6 +15,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/modelscope"
 	"github.com/theapemachine/caramba/pkg/config"
 	"github.com/theapemachine/caramba/pkg/devteam"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
 /*
@@ -41,9 +42,9 @@ func NewServer() *Server {
 			ServerHeader:  "Fiber",
 			AppName:       "Caramba v1.0.0",
 		}),
-		compute:          compute.NewService(),
-		architecture:     architecture.NewService(),
-		modelscope:       modelscope.NewService(),
+		compute:           compute.NewService(),
+		architecture:      architecture.NewService(),
+		modelscope:        modelscope.NewService(),
 		researchProjects:  NewResearchProjectService(config.NewDevTeamConfig().DatabaseURL),
 		assistantPersonas: NewAssistantPersonaService(config.NewDevTeamConfig().DatabaseURL),
 		assistantSessions: NewAssistantSessionService(config.NewDevTeamConfig().DatabaseURL),
@@ -98,7 +99,23 @@ func (server *Server) Up() error {
 		orchestrator, err := devteam.NewOrchestrator(context.Background(), devteamCfg)
 
 		if err == nil {
-			go orchestrator.Run()
+			workerPool := qpool.NewQ(
+				context.Background(),
+				1,
+				1,
+				&qpool.Config{
+					SchedulingTimeout:  24 * time.Hour,
+					JobChannelCapacity: 1,
+					Scaler:             nil,
+				},
+			)
+			workerPool.Schedule(
+				"backend.devteam.orchestrator",
+				func(context.Context) (any, error) {
+					return nil, orchestrator.Run()
+				},
+				qpool.WithExecTimeout(24*time.Hour),
+			)
 		}
 	}
 

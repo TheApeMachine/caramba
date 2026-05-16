@@ -77,6 +77,7 @@ type ShapeOperationRegistry interface {
 	Transpose(*state.Dict) (Operation, error)
 	Concat(*state.Dict) (Operation, error)
 	Split(*state.Dict) (Operation, error)
+	UpsampleNearest2D(*state.Dict) (Operation, error)
 	ViewAsHeads(*state.Dict) (Operation, error)
 	MergeHeads(*state.Dict) (Operation, error)
 	LastToken(*state.Dict) (Operation, error)

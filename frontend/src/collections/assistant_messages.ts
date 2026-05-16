@@ -1,6 +1,5 @@
 import { electricCollectionOptions } from "@tanstack/electric-db-collection";
 import {
-	type Collection,
 	createCollection,
 	localStorageCollectionOptions,
 } from "@tanstack/react-db";
@@ -19,10 +18,10 @@ export const AssistantMessage = z.object({
 
 export type AssistantMessageRow = z.infer<typeof AssistantMessage>;
 
-const shapeUrl =
-	typeof window !== "undefined"
-		? `${window.location.origin}/api/shape/assistant-messages`
-		: "/api/shape/assistant-messages";
+function shapeUrl() {
+	if (typeof window === "undefined") return "http://localhost/api/shape/assistant-messages";
+	return `${window.location.origin}/api/shape/assistant-messages`;
+}
 
 const skipTxidAwait =
 	import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true";
@@ -32,8 +31,8 @@ function awaitOptions(txid: number | undefined) {
 	return { timeout: 60_000, txid };
 }
 
-let cloud: Collection<AssistantMessageRow> | null = null;
-let local: Collection<AssistantMessageRow> | null = null;
+let cloud: ReturnType<typeof buildCloud> | null = null;
+let local: ReturnType<typeof buildLocal> | null = null;
 
 function buildCloud() {
 	return createCollection(
@@ -42,7 +41,7 @@ function buildCloud() {
 			schema: AssistantMessage,
 			getKey: (item) => item.id,
 			shapeOptions: {
-				url: shapeUrl,
+				url: shapeUrl(),
 				parser: { timestamptz: (value: string) => new Date(value) },
 			},
 			onInsert: async ({ transaction }) => {
@@ -77,10 +76,10 @@ function buildLocal() {
 
 export function getMessagesCollection(mode: "cloud" | "local") {
 	if (mode === "local") {
-		if (!local) local = buildLocal();
+		local ??= buildLocal();
 		return local;
 	}
 
-	if (!cloud) cloud = buildCloud();
+	cloud ??= buildCloud();
 	return cloud;
 }

@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/phuslu/log"
 )
 
 /*
@@ -75,7 +75,17 @@ func (s *Scaler) evaluate(read *MetricReading) {
 			s.lastScale = time.Now()
 			s.pool.metrics.NoteLastScale(s.lastScale)
 
-			errnie.Info("Scaled up by %d workers; workers=%d", toAdd, s.pool.metrics.workerCount.Load())
+			s.pool.publishTelemetry(Event{
+				Component: "qpool",
+				Op:        "scale-up",
+				Message:   "scaled worker pool up",
+				Time:      time.Now(),
+				Level:     log.DebugLevel,
+				Fields: []Field{
+					{Key: "delta", Value: toAdd},
+					{Key: "workers", Value: s.pool.metrics.workerCount.Load()},
+				},
+			})
 		}
 
 	case currentLoad < s.scaleDownThreshold && read.WorkerCount > s.minWorkers:
@@ -89,7 +99,17 @@ func (s *Scaler) evaluate(read *MetricReading) {
 			s.lastScale = time.Now()
 			s.pool.metrics.NoteLastScale(s.lastScale)
 
-			errnie.Info("Scaled down workers; workers=%d", s.pool.metrics.workerCount.Load())
+			s.pool.publishTelemetry(Event{
+				Component: "qpool",
+				Op:        "scale-down",
+				Message:   "scaled worker pool down",
+				Time:      time.Now(),
+				Level:     log.DebugLevel,
+				Fields: []Field{
+					{Key: "delta", Value: toRemove},
+					{Key: "workers", Value: s.pool.metrics.workerCount.Load()},
+				},
+			})
 		}
 	}
 }

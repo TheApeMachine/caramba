@@ -13,6 +13,7 @@ static id<MTLComputePipelineState> sPSO_transpose   = nil;
 static id<MTLComputePipelineState> sPSO_copy        = nil;
 static id<MTLComputePipelineState> sPSO_concat      = nil;
 static id<MTLComputePipelineState> sPSO_split       = nil;
+static id<MTLComputePipelineState> sPSO_upsample    = nil;
 static id<MTLComputePipelineState> sPSO_viewHeads   = nil;
 static id<MTLComputePipelineState> sPSO_mergeHeads  = nil;
 static id<MTLComputePipelineState> sPSO_lastToken   = nil;
@@ -43,12 +44,14 @@ int metal_shape_init(const char* metallib_path) {
         sPSO_copy       = make_pso_s(lib, @"copy_kernel");
         sPSO_concat     = make_pso_s(lib, @"concat_kernel");
         sPSO_split      = make_pso_s(lib, @"split_kernel");
+        sPSO_upsample   = make_pso_s(lib, @"upsample_nearest2d_kernel");
         sPSO_viewHeads  = make_pso_s(lib, @"view_as_heads_kernel");
         sPSO_mergeHeads = make_pso_s(lib, @"merge_heads_kernel");
         sPSO_lastToken  = make_pso_s(lib, @"last_token_kernel");
 
         if (!sPSO_transpose || !sPSO_copy || !sPSO_concat || !sPSO_split ||
-            !sPSO_viewHeads || !sPSO_mergeHeads || !sPSO_lastToken) return -1;
+            !sPSO_upsample || !sPSO_viewHeads || !sPSO_mergeHeads ||
+            !sPSO_lastToken) return -1;
 
         return 0;
     }
@@ -273,6 +276,51 @@ int metal_split(const float* src, float* dst,
     }
 }
 
+int metal_upsample_nearest2d(const float* src, float* dst,
+                             int B, int C, int H, int W,
+                             int scale_h, int scale_w)
+{
+    @autoreleasepool {
+        if (!src || !dst || B <= 0 || C <= 0 || H <= 0 || W <= 0 ||
+            scale_h <= 0 || scale_w <= 0 || !sPSO_upsample) {
+            return -1;
+        }
+
+        int input_n = B * C * H * W;
+        int output_n = B * C * H * scale_h * W * scale_w;
+        NSUInteger input_bytes = (NSUInteger)input_n * sizeof(float);
+        NSUInteger output_bytes = (NSUInteger)output_n * sizeof(float);
+
+        id<MTLBuffer> bufSrc = make_buf(sDevice, src, input_bytes);
+        id<MTLBuffer> bufDst = make_dst_buf(sDevice, dst, output_bytes);
+        if (!bufSrc || !bufDst) return -1;
+
+        id<MTLCommandBuffer> cb = [sQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:sPSO_upsample];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:&B length:sizeof(int) atIndex:2];
+        [enc setBytes:&C length:sizeof(int) atIndex:3];
+        [enc setBytes:&H length:sizeof(int) atIndex:4];
+        [enc setBytes:&W length:sizeof(int) atIndex:5];
+        [enc setBytes:&scale_h length:sizeof(int) atIndex:6];
+        [enc setBytes:&scale_w length:sizeof(int) atIndex:7];
+        NSUInteger tw = sPSO_upsample.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)output_n, 1, 1)
+     threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        vm_size_t page = getpagesize();
+        if (((uintptr_t)dst % page) != 0) {
+            memcpy(dst, [bufDst contents], output_bytes);
+        }
+        return 0;
+    }
+}
+
 int metal_view_as_heads(const float* src, float* dst,
                         int B, int T, int H, int head_dim)
 {
@@ -448,6 +496,40 @@ int metal_last_token_tensor(const void* src, void* dst,
         [enc setBytes:&seq_len length:sizeof(int) atIndex:2];
         [enc setBytes:&feature length:sizeof(int) atIndex:3];
         NSUInteger tw = sPSO_lastToken.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+     threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+        return 0;
+    }
+}
+
+int metal_upsample_nearest2d_tensor(const void* src, void* dst,
+                                    int B, int C, int H, int W,
+                                    int scale_h, int scale_w)
+{
+    @autoreleasepool {
+        int n = B * C * H * scale_h * W * scale_w;
+        if (!sQueue || !sPSO_upsample || !src || !dst || B <= 0 || C <= 0 ||
+            H <= 0 || W <= 0 || scale_h <= 0 || scale_w <= 0 || n <= 0) {
+            return -1;
+        }
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        id<MTLCommandBuffer> cb = [sQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:sPSO_upsample];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:&B length:sizeof(int) atIndex:2];
+        [enc setBytes:&C length:sizeof(int) atIndex:3];
+        [enc setBytes:&H length:sizeof(int) atIndex:4];
+        [enc setBytes:&W length:sizeof(int) atIndex:5];
+        [enc setBytes:&scale_h length:sizeof(int) atIndex:6];
+        [enc setBytes:&scale_w length:sizeof(int) atIndex:7];
+        NSUInteger tw = sPSO_upsample.threadExecutionWidth;
         [enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
      threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
         [enc endEncoding];

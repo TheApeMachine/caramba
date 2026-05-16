@@ -387,6 +387,71 @@ kernel void rmsnorm_kernel(
 }
 
 // ---------------------------------------------------------------------------
+// groupnorm_kernel: one threadgroup per batch/group pair on NCHW tensors
+// Buffers: 0=src, 1=dst, 2=weight, 3=bias,
+//          4=dims (uint4: channels,height,width,groups), 5=eps (float)
+// Grid: threadgroups = (groups, batch, 1)
+// ---------------------------------------------------------------------------
+kernel void groupnorm_kernel(
+    device const float* src     [[buffer(0)]],
+    device float* dst           [[buffer(1)]],
+    device const float* weight  [[buffer(2)]],
+    device const float* bias    [[buffer(3)]],
+    constant uint4& dims        [[buffer(4)]],
+    constant float& eps         [[buffer(5)]],
+    uint3 group_pos             [[threadgroup_position_in_grid]],
+    uint3 local_pos             [[thread_position_in_threadgroup]],
+    uint3 threads               [[threads_per_threadgroup]])
+{
+    threadgroup float smem[256];
+    uint lid = local_pos.x;
+    uint tg_size = threads.x;
+    uint channels = dims.x;
+    uint height = dims.y;
+    uint width = dims.z;
+    uint groups = dims.w;
+    uint channels_per_group = channels / groups;
+    uint spatial = height * width;
+    uint group_size = channels_per_group * spatial;
+    uint group_index = group_pos.x;
+    uint batch_index = group_pos.y;
+    uint batch_offset = batch_index * channels * spatial;
+    uint group_offset = batch_offset + group_index * channels_per_group * spatial;
+
+    float lsum = 0.0f;
+    for (uint i = lid; i < group_size; i += tg_size) {
+        lsum += src[group_offset + i];
+    }
+    smem[lid] = lsum;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint s = tg_size / 2; s > 0; s >>= 1) {
+        if (lid < s) smem[lid] += smem[lid + s];
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    float mean = smem[0] / (float)group_size;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    float lvar = 0.0f;
+    for (uint i = lid; i < group_size; i += tg_size) {
+        float diff = src[group_offset + i] - mean;
+        lvar += diff * diff;
+    }
+    smem[lid] = lvar;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint s = tg_size / 2; s > 0; s >>= 1) {
+        if (lid < s) smem[lid] += smem[lid + s];
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    float inv_std = rsqrt(smem[0] / (float)group_size + eps);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint i = lid; i < group_size; i += tg_size) {
+        uint channel = group_index * channels_per_group + i / spatial;
+        dst[group_offset + i] = (src[group_offset + i] - mean) * inv_std * weight[channel] + bias[channel];
+    }
+}
+
+// ---------------------------------------------------------------------------
 // sign_kernel: out[i] = sign(src[i])
 // Buffers: 0=src, 1=dst; thread_position_in_grid = i
 // ---------------------------------------------------------------------------

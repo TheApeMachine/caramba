@@ -244,6 +244,9 @@ func registerMath() {
 	Register("math.rmsnorm", func(config map[string]any) (operation.Operation, error) {
 		return math.NewRMSNorm(), nil
 	})
+	Register("math.groupnorm", func(config map[string]any) (operation.Operation, error) {
+		return math.NewGroupNorm(), nil
+	})
 	Register("math.dropout", func(config map[string]any) (operation.Operation, error) {
 		return math.NewDropout(), nil
 	})
@@ -412,6 +415,12 @@ func registerShape() {
 		return shape.NewSplit(
 			intParam(config, "split_size"),
 			intParam(config, "dim"),
+		), nil
+	})
+	Register("shape.upsample_nearest2d", func(config map[string]any) (operation.Operation, error) {
+		return shape.NewUpsampleNearest2D(
+			intParamDefault(config, "scale_h", intParamDefault(config, "scale_factor", 0)),
+			intParamDefault(config, "scale_w", intParamDefault(config, "scale_factor", 0)),
 		), nil
 	})
 	Register("shape.view_as_heads", func(config map[string]any) (operation.Operation, error) {

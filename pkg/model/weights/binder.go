@@ -50,8 +50,18 @@ func (binder *Binder) bindNode(node *ir.Node) error {
 		return binder.bindVectorOrMatrix(node, "bias", biasNames(node.ID()))
 	case "math.rmsnorm":
 		return binder.bindVectorOrMatrix(node, "weight", weightNames(node.ID()))
+	case "math.groupnorm":
+		if err := binder.bindVectorOrMatrix(node, "weight", weightNames(node.ID())); err != nil {
+			return err
+		}
+
+		return binder.bindVectorOrMatrix(node, "bias", biasNames(node.ID()))
 	case "projection.linear":
 		return binder.bindLinear(node)
+	case "convolution.conv2d":
+		return binder.bindConv2D(node)
+	case "convolution.conv_transpose2d":
+		return binder.bindConvTranspose2D(node)
 	default:
 		return nil
 	}
@@ -175,6 +185,87 @@ func (binder *Binder) linearBias(name string, outFeatures int) ([]float64, error
 	}
 
 	return values, nil
+}
+
+func (binder *Binder) bindConv2D(node *ir.Node) error {
+	inChannels := nodeConfigIntAny(node, "in_channels", "in_c")
+	outChannels := nodeConfigIntAny(node, "out_channels", "out_c")
+	kernelH := nodeConfigIntAny(node, "kernel_h", "k_h")
+	kernelW := nodeConfigIntAny(node, "kernel_w", "k_w")
+	groups := nodeConfigIntAny(node, "groups")
+
+	if groups == 0 {
+		groups = 1
+	}
+
+	expectedWeight := 0
+
+	if inChannels > 0 && outChannels > 0 && kernelH > 0 && kernelW > 0 && groups > 0 {
+		expectedWeight = outChannels * (inChannels / groups) * kernelH * kernelW
+	}
+
+	if err := binder.bindTensor(node, "weight", weightNames(node.ID()), expectedWeight); err != nil {
+		return err
+	}
+
+	return binder.bindTensor(node, "bias", biasNames(node.ID()), outChannels)
+}
+
+func (binder *Binder) bindConvTranspose2D(node *ir.Node) error {
+	inChannels := nodeConfigIntAny(node, "in_channels", "in_c")
+	outChannels := nodeConfigIntAny(node, "out_channels", "out_c")
+	kernelH := nodeConfigIntAny(node, "kernel_h", "k_h")
+	kernelW := nodeConfigIntAny(node, "kernel_w", "k_w")
+	groups := nodeConfigIntAny(node, "groups")
+
+	if groups == 0 {
+		groups = 1
+	}
+
+	expectedWeight := 0
+
+	if inChannels > 0 && outChannels > 0 && kernelH > 0 && kernelW > 0 && groups > 0 {
+		expectedWeight = inChannels * (outChannels / groups) * kernelH * kernelW
+	}
+
+	if err := binder.bindTensor(node, "weight", weightNames(node.ID()), expectedWeight); err != nil {
+		return err
+	}
+
+	return binder.bindTensor(node, "bias", biasNames(node.ID()), outChannels)
+}
+
+func (binder *Binder) bindTensor(
+	node *ir.Node,
+	metadataKey string,
+	names []string,
+	expectedLength int,
+) error {
+	name, ok := binder.first(names)
+
+	if !ok {
+		return fmt.Errorf("weights: no tensor found for node %q %s", node.ID(), metadataKey)
+	}
+
+	values, err := binder.store.Values(name)
+
+	if err != nil {
+		return err
+	}
+
+	if expectedLength > 0 && len(values) != expectedLength {
+		return fmt.Errorf(
+			"weights: node %q %s length %d does not match expected %d",
+			node.ID(),
+			metadataKey,
+			len(values),
+			expectedLength,
+		)
+	}
+
+	node.SetMetadata(metadataKey, values)
+
+	return nil
 }
 
 func (binder *Binder) fusedQKV(
@@ -549,4 +640,14 @@ func nodeConfigInt(node *ir.Node, key string) int {
 	default:
 		return 0
 	}
+}
+
+func nodeConfigIntAny(node *ir.Node, keys ...string) int {
+	for _, key := range keys {
+		if value := nodeConfigInt(node, key); value != 0 {
+			return value
+		}
+	}
+
+	return 0
 }

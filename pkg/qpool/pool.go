@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/phuslu/log"
-	"github.com/theapemachine/caramba/pkg/errnie"
 )
 
 type breakerMap struct {
@@ -136,6 +135,12 @@ func (q *Q) PeriodicScalerConfigured() bool {
 }
 
 func (q *Q) publishTelemetry(ev Event) {
+	if q != nil && q.config != nil && q.config.TelemetryPublish != nil {
+		q.config.TelemetryPublish(ev)
+
+		return
+	}
+
 	Publish(ev)
 }
 
@@ -498,10 +503,16 @@ func (q *Q) startWorker() {
 		q.runWorker(workerCtx, tok)
 	})
 
-	errnie.Info(
-		"Started worker; reporting workers=%d",
-		q.metrics.workerCount.Load(),
-	)
+	q.publishTelemetry(Event{
+		Component: "qpool",
+		Op:        "worker-start",
+		Message:   fmt.Sprintf("worker started; workers=%d", q.metrics.workerCount.Load()),
+		Time:      time.Now(),
+		Level:     log.DebugLevel,
+		Fields: []Field{
+			{Key: "workers", Value: q.metrics.workerCount.Load()},
+		},
+	})
 }
 
 func (q *Q) runWorker(workerCtx context.Context, tok *workerToken) {
@@ -511,7 +522,16 @@ func (q *Q) runWorker(workerCtx context.Context, tok *workerToken) {
 	for {
 		select {
 		case <-workerCtx.Done():
-			errnie.Info("Worker exiting due to cancellation")
+			q.publishTelemetry(Event{
+				Component: "qpool",
+				Op:        "worker-exit",
+				Message:   "worker exiting due to cancellation",
+				Time:      time.Now(),
+				Level:     log.DebugLevel,
+				Fields: []Field{
+					{Key: "worker", Value: tok.id},
+				},
+			})
 
 			return
 
@@ -552,7 +572,13 @@ func (q *Q) Close() {
 		return
 	}
 
-	errnie.Info("Closing Q pool")
+	q.publishTelemetry(Event{
+		Component: "qpool",
+		Op:        "close",
+		Message:   "closing Q pool",
+		Time:      time.Now(),
+		Level:     log.DebugLevel,
+	})
 
 	q.shutdownMu.Lock()
 	q.stopping.Store(true)
@@ -575,5 +601,11 @@ func (q *Q) Close() {
 
 	q.shutdownMu.Unlock()
 	q.space.Close()
-	errnie.Info("Q pool closed")
+	q.publishTelemetry(Event{
+		Component: "qpool",
+		Op:        "closed",
+		Message:   "Q pool closed",
+		Time:      time.Now(),
+		Level:     log.DebugLevel,
+	})
 }

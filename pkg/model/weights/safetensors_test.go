@@ -12,6 +12,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
 type testTensor struct {
@@ -22,6 +23,13 @@ type testTensor struct {
 
 func TestOpen(test *testing.T) {
 	Convey("Given a safetensors checkpoint", test, func() {
+		previousPublish := qpool.Publish
+		events := make([]qpool.Event, 0)
+		qpool.Publish = func(event qpool.Event) {
+			events = append(events, event)
+		}
+		defer func() { qpool.Publish = previousPublish }()
+
 		path := filepath.Join(test.TempDir(), "model.safetensors")
 		err := writeTestSafeTensors(path, []testTensor{
 			{
@@ -43,12 +51,18 @@ func TestOpen(test *testing.T) {
 			values, err := store.Values("token_embedding.weight")
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{1, 2, 3, 4})
+			So(len(events) > 0, ShouldBeTrue)
+			So(events[0].Component, ShouldEqual, "weights")
+			So(events[0].Op, ShouldEqual, "open.file")
+			So(events[len(events)-1].Op, ShouldEqual, "open.ready")
 		})
 	})
 }
 
 func TestResolve(test *testing.T) {
 	Convey("Given a local checkpoint with a component-scoped safetensors index", test, func() {
+		defer silenceWeightProgress()()
+
 		root := test.TempDir()
 		component := filepath.Join(root, "text_encoder")
 		So(os.MkdirAll(component, 0o755), ShouldBeNil)
@@ -88,6 +102,8 @@ func TestResolve(test *testing.T) {
 
 func TestBindIR(test *testing.T) {
 	Convey("Given a safetensors store and manifest-lowered IR", test, func() {
+		defer silenceWeightProgress()()
+
 		path := filepath.Join(test.TempDir(), "model.safetensors")
 		err := writeTestSafeTensors(path, []testTensor{
 			{
@@ -224,6 +240,80 @@ func TestBindIR(test *testing.T) {
 		})
 	})
 
+	Convey("Given VAE convolution and groupnorm safetensors names", test, func() {
+		path := filepath.Join(test.TempDir(), "vae.safetensors")
+		err := writeTestSafeTensors(path, []testTensor{
+			{
+				name:   "decoder.conv_in.weight",
+				shape:  []int{2, 1, 1, 1},
+				values: []float64{1, 2},
+			},
+			{
+				name:   "decoder.conv_in.bias",
+				shape:  []int{2},
+				values: []float64{3, 4},
+			},
+			{
+				name:   "decoder.norm_out.weight",
+				shape:  []int{2},
+				values: []float64{5, 6},
+			},
+			{
+				name:   "decoder.norm_out.bias",
+				shape:  []int{2},
+				values: []float64{7, 8},
+			},
+			{
+				name:   "decoder.up.weight",
+				shape:  []int{2, 1, 1, 1},
+				values: []float64{9, 10},
+			},
+			{
+				name:   "decoder.up.bias",
+				shape:  []int{1},
+				values: []float64{11},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		store, err := Open(path)
+		So(err, ShouldBeNil)
+
+		shape, err := tensor.NewShape([]int{1, 1, 1, 1})
+		So(err, ShouldBeNil)
+
+		graph := ir.NewGraph()
+		conv := ir.NewNode("decoder.conv_in", ir.OpType("convolution.conv2d"), shape)
+		conv.SetOperationID("convolution.conv2d")
+		conv.SetMetadata("in_channels", 1)
+		conv.SetMetadata("out_channels", 2)
+		conv.SetMetadata("kernel_h", 1)
+		conv.SetMetadata("kernel_w", 1)
+		norm := ir.NewNode("decoder.norm_out", ir.OpType("math.groupnorm"), shape)
+		norm.SetOperationID("math.groupnorm")
+		up := ir.NewNode("decoder.up", ir.OpType("convolution.conv_transpose2d"), shape)
+		up.SetOperationID("convolution.conv_transpose2d")
+		up.SetMetadata("in_channels", 2)
+		up.SetMetadata("out_channels", 1)
+		up.SetMetadata("kernel_h", 1)
+		up.SetMetadata("kernel_w", 1)
+		graph.AddNode(conv)
+		graph.AddNode(norm)
+		graph.AddNode(up)
+
+		Convey("It should bind convolution and groupnorm tensors without transposing", func() {
+			err := BindIR(graph, store)
+			So(err, ShouldBeNil)
+
+			So(conv.Metadata()["weight"], ShouldResemble, []float64{1, 2})
+			So(conv.Metadata()["bias"], ShouldResemble, []float64{3, 4})
+			So(norm.Metadata()["weight"], ShouldResemble, []float64{5, 6})
+			So(norm.Metadata()["bias"], ShouldResemble, []float64{7, 8})
+			So(up.Metadata()["weight"], ShouldResemble, []float64{9, 10})
+			So(up.Metadata()["bias"], ShouldResemble, []float64{11})
+		})
+	})
+
 	Convey("Given Llama PyTorch linear safetensors names", test, func() {
 		path := filepath.Join(test.TempDir(), "model.safetensors")
 		err := writeTestSafeTensors(path, []testTensor{
@@ -277,6 +367,15 @@ func TestBindIR(test *testing.T) {
 			So(lmHead.Metadata()["weight"], ShouldResemble, []float64{9, 11, 10, 12})
 		})
 	})
+}
+
+func silenceWeightProgress() func() {
+	previousPublish := qpool.Publish
+	qpool.Publish = func(qpool.Event) {}
+
+	return func() {
+		qpool.Publish = previousPublish
+	}
 }
 
 func BenchmarkOpen(benchmark *testing.B) {

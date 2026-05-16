@@ -80,8 +80,17 @@ func (client *Client) Repository(
 		return nil, fmt.Errorf("hub: decode repository: %w", err)
 	}
 
+	return repositoryFromPayload(repoType, revision, repoID, payload)
+}
+
+func repositoryFromPayload(
+	repoType RepoType,
+	revision string,
+	fallbackID string,
+	payload repositoryPayload,
+) (*Repository, error) {
 	if payload.SHA == "" {
-		return nil, fmt.Errorf("hub: repository %s returned no commit sha", repoID)
+		return nil, fmt.Errorf("hub: repository %s returned no commit sha", fallbackID)
 	}
 
 	siblings := make([]Sibling, 0, len(payload.Siblings))
@@ -109,8 +118,14 @@ func (client *Client) Repository(
 		}
 	}
 
+	repoID := payload.ID
+
+	if repoID == "" {
+		repoID = fallbackID
+	}
+
 	return &Repository{
-		ID:       payload.ID,
+		ID:       repoID,
 		RepoType: repoType,
 		Revision: revision,
 		Commit:   payload.SHA,

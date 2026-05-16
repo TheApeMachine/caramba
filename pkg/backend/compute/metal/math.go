@@ -482,6 +482,84 @@ func (m *MathOps) RMSNormTensor(
 	return output, nil
 }
 
+func (m *MathOps) GroupNormTensor(
+	input, weight, bias computetensor.Float64Tensor,
+	groups int,
+	eps float64,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalWeight, err := requireMetalTensor(weight)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalBias, err := requireMetalTensor(bias)
+
+	if err != nil {
+		return nil, err
+	}
+
+	dimensions := metalInput.shape.Dims()
+
+	if len(dimensions) != 4 {
+		return nil, fmt.Errorf("metal tensor: groupnorm requires NCHW rank-4 input")
+	}
+
+	batch, channels, height, width := dimensions[0], dimensions[1], dimensions[2], dimensions[3]
+
+	if batch <= 0 || channels <= 0 || height <= 0 || width <= 0 {
+		return nil, fmt.Errorf("metal tensor: groupnorm NCHW dimensions must be positive")
+	}
+
+	if groups <= 0 || channels%groups != 0 {
+		return nil, fmt.Errorf(
+			"metal tensor: groupnorm channels %d must be divisible by groups %d",
+			channels,
+			groups,
+		)
+	}
+
+	if metalWeight.Len() != channels || metalBias.Len() != channels {
+		return nil, fmt.Errorf(
+			"metal tensor: groupnorm weight/bias length must equal channels=%d",
+			channels,
+		)
+	}
+
+	output, err := newMetalTensor(metalInput.shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_groupnorm_tensor(
+		metalInput.buffer,
+		output.buffer,
+		metalWeight.buffer,
+		metalBias.buffer,
+		C.int(batch),
+		C.int(channels),
+		C.int(height),
+		C.int(width),
+		C.int(groups),
+		C.float(eps),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal tensor: groupnorm launch failed")
+	}
+
+	return output, nil
+}
+
 func (m *MathOps) binaryTensor(
 	left, right computetensor.Float64Tensor, name string,
 ) (computetensor.Float64Tensor, error) {
@@ -860,6 +938,62 @@ func (m *MathOps) RMSNorm(shape []int, eps float64, weight []float64, data ...[]
 	if rc != 0 {
 		return nil, fmt.Errorf("metal_rmsnorm failed (rc=%d)", rc)
 	}
+	return toFloat64(dst), nil
+}
+
+// GroupNorm normalizes NCHW tensors over batch/group partitions.
+func (m *MathOps) GroupNorm(
+	shape []int,
+	eps float64,
+	groups int,
+	weight,
+	bias []float64,
+	data ...[]float64,
+) ([]float64, error) {
+	if len(shape) != 4 {
+		return nil, fmt.Errorf("metal_groupnorm: expected NCHW rank 4, got %d", len(shape))
+	}
+
+	batch, channels, height, width := shape[0], shape[1], shape[2], shape[3]
+	n := len(data[0])
+
+	if n == 0 {
+		return []float64{}, nil
+	}
+
+	if n != batch*channels*height*width {
+		return nil, fmt.Errorf("metal_groupnorm: input length does not match NCHW shape")
+	}
+
+	if groups <= 0 || channels%groups != 0 {
+		return nil, fmt.Errorf("metal_groupnorm: channels must be divisible by groups")
+	}
+
+	if len(weight) != channels || len(bias) != channels {
+		return nil, fmt.Errorf("metal_groupnorm: weight/bias length must equal channels")
+	}
+
+	src := toFloat32(data[0])
+	dst := make([]float32, n)
+	w := toFloat32(weight)
+	b := toFloat32(bias)
+	rc := C.metal_groupnorm(
+		(*C.float)(unsafe.Pointer(&src[0])),
+		(*C.float)(unsafe.Pointer(&dst[0])),
+		(*C.float)(unsafe.Pointer(&w[0])),
+		(*C.float)(unsafe.Pointer(&b[0])),
+		C.int(batch),
+		C.int(channels),
+		C.int(height),
+		C.int(width),
+		C.int(groups),
+		C.float(eps),
+	)
+
+	if rc != 0 {
+		return nil, fmt.Errorf("metal_groupnorm failed (rc=%d)", rc)
+	}
+
 	return toFloat64(dst), nil
 }
 

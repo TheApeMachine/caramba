@@ -169,4 +169,66 @@ func TestLowerGraphToIR(t *testing.T) {
 			So(index.Node("right").Shape().Dims(), ShouldResemble, []int{1, 4, 5})
 		})
 	})
+
+	Convey("Given a convolution-shaped manifest graph", t, func() {
+		graph := newGraph()
+		graph.externalInputs["image"] = true
+		So(graph.addNode(&Node{
+			ID:   "conv",
+			OpID: "convolution.conv2d",
+			Config: map[string]any{
+				"out_channels": 8,
+				"kernel_h":     3,
+				"kernel_w":     3,
+				"stride_h":     2,
+				"stride_w":     2,
+				"pad_h":        1,
+				"pad_w":        1,
+			},
+			In:  []string{"image"},
+			Out: []string{"hidden"},
+		}), ShouldBeNil)
+		So(graph.addNode(&Node{
+			ID:   "nearest",
+			OpID: "shape.upsample_nearest2d",
+			Config: map[string]any{
+				"scale_h": 2,
+				"scale_w": 2,
+			},
+			In:  []string{"hidden"},
+			Out: []string{"nearest"},
+		}), ShouldBeNil)
+		So(graph.addNode(&Node{
+			ID:   "up",
+			OpID: "convolution.conv_transpose2d",
+			Config: map[string]any{
+				"out_channels": 4,
+				"kernel_h":     4,
+				"kernel_w":     4,
+				"stride_h":     2,
+				"stride_w":     2,
+				"pad_h":        1,
+				"pad_w":        1,
+			},
+			In:  []string{"nearest"},
+			Out: []string{"up"},
+		}), ShouldBeNil)
+		So(graph.rebuildEdgesFromNodes(), ShouldBeNil)
+
+		shape, err := tensor.NewShape([]int{1, 3, 32, 32})
+		So(err, ShouldBeNil)
+
+		Convey("It should infer convolution output shapes", func() {
+			irGraph, err := LowerGraphToIR(graph, shape)
+
+			So(err, ShouldBeNil)
+
+			index, err := irGraph.Index()
+			So(err, ShouldBeNil)
+
+			So(index.Node("conv").Shape().Dims(), ShouldResemble, []int{1, 8, 16, 16})
+			So(index.Node("nearest").Shape().Dims(), ShouldResemble, []int{1, 8, 32, 32})
+			So(index.Node("up").Shape().Dims(), ShouldResemble, []int{1, 4, 64, 64})
+		})
+	})
 }

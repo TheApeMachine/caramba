@@ -240,6 +240,12 @@ func outputShapeForNode(
 		if shape := configIntSlice(node.Config, "target_shape"); len(shape) > 0 {
 			return tensor.NewShape(shape)
 		}
+	case "shape.upsample_nearest2d":
+		return upsampleNearest2DShape(dimensions, node.Config)
+	case "convolution.conv2d":
+		return conv2DShape(dimensions, node.Config)
+	case "convolution.conv_transpose2d":
+		return convTranspose2DShape(dimensions, node.Config)
 	}
 
 	return opShape, nil
@@ -364,6 +370,126 @@ func mergeHeadsShape(dimensions []int) (tensor.Shape, error) {
 	return tensor.NewShape([]int{dimensions[0], dimensions[2], dimensions[1] * dimensions[3]})
 }
 
+func upsampleNearest2DShape(dimensions []int, config map[string]any) (tensor.Shape, error) {
+	if len(dimensions) != 4 {
+		return tensor.NewShape(dimensions)
+	}
+
+	scaleH := configIntAny(config, 0, "scale_h", "scale_factor")
+	scaleW := configIntAny(config, 0, "scale_w", "scale_factor")
+	outH := configIntAny(config, 0, "out_h", "height")
+	outW := configIntAny(config, 0, "out_w", "width")
+
+	if scaleH == 0 && outH > 0 {
+		if outH%dimensions[2] != 0 {
+			return tensor.Shape{}, fmt.Errorf(
+				"manifest: shape.upsample_nearest2d out_h %d is not divisible by input height %d",
+				outH,
+				dimensions[2],
+			)
+		}
+
+		scaleH = outH / dimensions[2]
+	}
+
+	if scaleW == 0 && outW > 0 {
+		if outW%dimensions[3] != 0 {
+			return tensor.Shape{}, fmt.Errorf(
+				"manifest: shape.upsample_nearest2d out_w %d is not divisible by input width %d",
+				outW,
+				dimensions[3],
+			)
+		}
+
+		scaleW = outW / dimensions[3]
+	}
+
+	if scaleH <= 0 || scaleW <= 0 {
+		return tensor.Shape{}, fmt.Errorf(
+			"manifest: shape.upsample_nearest2d scale_h and scale_w must be positive",
+		)
+	}
+
+	return tensor.NewShape([]int{
+		dimensions[0],
+		dimensions[1],
+		dimensions[2] * scaleH,
+		dimensions[3] * scaleW,
+	})
+}
+
+func conv2DShape(dimensions []int, config map[string]any) (tensor.Shape, error) {
+	if len(dimensions) != 4 {
+		return tensor.NewShape(dimensions)
+	}
+
+	outChannels := configIntAny(config, 0, "out_channels", "out_c")
+	kernelH := configIntAny(config, 0, "kernel_h", "k_h")
+	kernelW := configIntAny(config, 0, "kernel_w", "k_w")
+	strideH := configIntAny(config, 1, "stride_h", "s_h")
+	strideW := configIntAny(config, 1, "stride_w", "s_w")
+	padH := configIntAny(config, 0, "pad_h", "p_h")
+	padW := configIntAny(config, 0, "pad_w", "p_w")
+	dilationH := configIntAny(config, 1, "dil_h", "d_h")
+	dilationW := configIntAny(config, 1, "dil_w", "d_w")
+
+	if outChannels <= 0 || kernelH <= 0 || kernelW <= 0 ||
+		strideH <= 0 || strideW <= 0 || dilationH <= 0 || dilationW <= 0 {
+		return tensor.Shape{}, fmt.Errorf("manifest: convolution.conv2d dimensions must be positive")
+	}
+
+	heightOut := (dimensions[2]+2*padH-dilationH*(kernelH-1)-1)/strideH + 1
+	widthOut := (dimensions[3]+2*padW-dilationW*(kernelW-1)-1)/strideW + 1
+
+	if heightOut <= 0 || widthOut <= 0 {
+		return tensor.Shape{}, fmt.Errorf(
+			"manifest: convolution.conv2d output shape [%d,%d] must be positive",
+			heightOut,
+			widthOut,
+		)
+	}
+
+	return tensor.NewShape([]int{dimensions[0], outChannels, heightOut, widthOut})
+}
+
+func convTranspose2DShape(dimensions []int, config map[string]any) (tensor.Shape, error) {
+	if len(dimensions) != 4 {
+		return tensor.NewShape(dimensions)
+	}
+
+	outChannels := configIntAny(config, 0, "out_channels", "out_c")
+	kernelH := configIntAny(config, 0, "kernel_h", "k_h")
+	kernelW := configIntAny(config, 0, "kernel_w", "k_w")
+	strideH := configIntAny(config, 1, "stride_h", "s_h")
+	strideW := configIntAny(config, 1, "stride_w", "s_w")
+	padH := configIntAny(config, 0, "pad_h", "p_h")
+	padW := configIntAny(config, 0, "pad_w", "p_w")
+	outPadH := configInt(config, "out_pad_h", 0)
+	outPadW := configInt(config, "out_pad_w", 0)
+	dilationH := configIntAny(config, 1, "dil_h", "d_h")
+	dilationW := configIntAny(config, 1, "dil_w", "d_w")
+
+	if outChannels <= 0 || kernelH <= 0 || kernelW <= 0 ||
+		strideH <= 0 || strideW <= 0 || dilationH <= 0 || dilationW <= 0 {
+		return tensor.Shape{}, fmt.Errorf(
+			"manifest: convolution.conv_transpose2d dimensions must be positive",
+		)
+	}
+
+	heightOut := (dimensions[2]-1)*strideH - 2*padH + dilationH*(kernelH-1) + outPadH + 1
+	widthOut := (dimensions[3]-1)*strideW - 2*padW + dilationW*(kernelW-1) + outPadW + 1
+
+	if heightOut <= 0 || widthOut <= 0 {
+		return tensor.Shape{}, fmt.Errorf(
+			"manifest: convolution.conv_transpose2d output shape [%d,%d] must be positive",
+			heightOut,
+			widthOut,
+		)
+	}
+
+	return tensor.NewShape([]int{dimensions[0], outChannels, heightOut, widthOut})
+}
+
 func lastTokenShape(dimensions []int) (tensor.Shape, error) {
 	if len(dimensions) < 2 {
 		return tensor.Shape{}, fmt.Errorf(
@@ -397,6 +523,16 @@ func configInt(config map[string]any, key string, fallback int) int {
 	default:
 		return fallback
 	}
+}
+
+func configIntAny(config map[string]any, fallback int, keys ...string) int {
+	for _, key := range keys {
+		if value := configInt(config, key, fallback); value != fallback {
+			return value
+		}
+	}
+
+	return fallback
 }
 
 func configIntSlice(config map[string]any, key string) []int {

@@ -57,6 +57,8 @@ async function runTurn(
 			maxTokens: persona.maxTokens,
 			personaName: persona.name,
 			availableTools: toolNames,
+			adapterType: persona.adapterType,
+			endpointUrl: persona.endpointUrl,
 		},
 		abortSignal,
 	);

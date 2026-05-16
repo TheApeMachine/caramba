@@ -12,6 +12,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/config"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
 func init() {
@@ -24,13 +25,8 @@ func TestOrchestratorRun(t *testing.T) {
 		defer cancel()
 
 		watcher := newOrchestratorTestWatcher(errors.New("watch failed"))
-		orchestrator := &Orchestrator{
-			ctx:        ctx,
-			cancel:     cancel,
-			watcher:    watcher,
-			cardSem:    make(chan struct{}, 1),
-			subtaskSem: make(chan struct{}, 1),
-		}
+		orchestrator := newTestOrchestrator(ctx, cancel, watcher)
+		defer orchestrator.closePools()
 
 		Convey("It should return the watcher error instead of blocking", func() {
 			err := orchestrator.Run()
@@ -47,13 +43,8 @@ func TestOrchestratorRun(t *testing.T) {
 		watcher := newOrchestratorTestWatcher(nil)
 		watcher.closeEvents()
 
-		orchestrator := &Orchestrator{
-			ctx:        ctx,
-			cancel:     cancel,
-			watcher:    watcher,
-			cardSem:    make(chan struct{}, 1),
-			subtaskSem: make(chan struct{}, 1),
-		}
+		orchestrator := newTestOrchestrator(ctx, cancel, watcher)
+		defer orchestrator.closePools()
 
 		Convey("It should return instead of waiting forever", func() {
 			err := orchestrator.Run()
@@ -104,10 +95,8 @@ func TestIsRelevant(t *testing.T) {
 		}
 
 		orchestrator := &Orchestrator{
-			ctx:        context.Background(),
-			cfg:        cfg,
-			cardSem:    make(chan struct{}, 1),
-			subtaskSem: make(chan struct{}, 1),
+			ctx: context.Background(),
+			cfg: cfg,
 		}
 
 		Convey("It should accept todo events on the requests project", func() {
@@ -182,42 +171,54 @@ func TestOrchestrator_moveCard(t *testing.T) {
 }
 
 func TestOrchestratorConcurrency(t *testing.T) {
-	Convey("Given separate card and subtask semaphores", t, func() {
+	Convey("Given separate card and subtask pools", t, func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		orchestrator := &Orchestrator{
-			ctx:        ctx,
-			cardSem:    make(chan struct{}, 1),
-			subtaskSem: make(chan struct{}, 1),
+			ctx:         ctx,
+			cardPool:    newDevTeamPool(ctx, "card-test", 1),
+			subtaskPool: newDevTeamPool(ctx, "subtask-test", 1),
 		}
+		defer orchestrator.closePools()
 
-		Convey("It should acquire a subtask slot while a card slot is held", func() {
-			So(orchestrator.acquire(orchestrator.cardSem), ShouldBeNil)
-			defer orchestrator.release(orchestrator.cardSem)
+		Convey("It should run a subtask job while a card job is held", func() {
+			releaseCard := make(chan struct{})
+			cardResult := orchestrator.cardPool.Schedule(
+				"card-block",
+				func(context.Context) (any, error) {
+					<-releaseCard
 
-			done := make(chan error, 1)
-			go func() {
-				done <- orchestrator.acquire(orchestrator.subtaskSem)
-			}()
+					return nil, nil
+				},
+				qpool.WithExecTimeout(time.Second),
+			)
+			subtaskResult := orchestrator.subtaskPool.Schedule(
+				"subtask-independent",
+				func(context.Context) (any, error) {
+					return "done", nil
+				},
+				qpool.WithExecTimeout(time.Second),
+			)
 
 			select {
-			case err := <-done:
-				So(err, ShouldBeNil)
-				orchestrator.release(orchestrator.subtaskSem)
+			case result := <-subtaskResult:
+				So(result, ShouldNotBeNil)
+				So(result.Error, ShouldBeNil)
+				So(result.Value, ShouldEqual, "done")
 			case <-time.After(250 * time.Millisecond):
-				t.Fatal("subtask semaphore acquisition deadlocked behind card semaphore")
+				t.Fatal("subtask pool deadlocked behind card pool")
 			}
-		})
 
-		Convey("It should return context cancellation while waiting for capacity", func() {
-			So(orchestrator.acquire(orchestrator.cardSem), ShouldBeNil)
-			cancel()
+			close(releaseCard)
 
-			err := orchestrator.acquire(orchestrator.cardSem)
-
-			So(err, ShouldEqual, context.Canceled)
-			orchestrator.release(orchestrator.cardSem)
+			select {
+			case result := <-cardResult:
+				So(result, ShouldNotBeNil)
+				So(result.Error, ShouldBeNil)
+			case <-time.After(time.Second):
+				t.Fatal("card pool did not release")
+			}
 		})
 	})
 
@@ -246,10 +247,32 @@ func TestOrchestratorIntegrationLock(t *testing.T) {
 			done <- struct{}{}
 		}
 
-		go integrate(1)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		pool := newDevTeamPool(ctx, "integration-test", 2)
+		defer pool.Close()
+
+		firstResult := pool.Schedule(
+			"integrate-1",
+			func(context.Context) (any, error) {
+				integrate(1)
+
+				return nil, nil
+			},
+			qpool.WithExecTimeout(time.Second),
+		)
 		So(<-entered, ShouldEqual, 1)
 
-		go integrate(2)
+		secondResult := pool.Schedule(
+			"integrate-2",
+			func(context.Context) (any, error) {
+				integrate(2)
+
+				return nil, nil
+			},
+			qpool.WithExecTimeout(time.Second),
+		)
 
 		select {
 		case <-entered:
@@ -261,6 +284,9 @@ func TestOrchestratorIntegrationLock(t *testing.T) {
 		<-done
 		So(<-entered, ShouldEqual, 2)
 		<-done
+
+		So((<-firstResult).Error, ShouldBeNil)
+		So((<-secondResult).Error, ShouldBeNil)
 	})
 }
 
@@ -394,6 +420,7 @@ func (rows orchestratorTestRows) Next(dest []driver.Value) error {
 type orchestratorTestWatcher struct {
 	events chan ColumnEvent
 	errors chan error
+	done   chan struct{}
 	err    error
 }
 
@@ -401,7 +428,23 @@ func newOrchestratorTestWatcher(err error) *orchestratorTestWatcher {
 	return &orchestratorTestWatcher{
 		events: make(chan ColumnEvent),
 		errors: make(chan error, 1),
+		done:   make(chan struct{}),
 		err:    err,
+	}
+}
+
+func newTestOrchestrator(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	watcher *orchestratorTestWatcher,
+) *Orchestrator {
+	return &Orchestrator{
+		ctx:         ctx,
+		cancel:      cancel,
+		watcher:     watcher,
+		watcherPool: newDevTeamPool(ctx, "watcher-test", 1),
+		cardPool:    newDevTeamPool(ctx, "card-test", 1),
+		subtaskPool: newDevTeamPool(ctx, "subtask-test", 1),
 	}
 }
 
@@ -415,7 +458,9 @@ func (watcher *orchestratorTestWatcher) Errors() <-chan error {
 
 func (watcher *orchestratorTestWatcher) Watch() error {
 	if watcher.err == nil {
-		select {}
+		<-watcher.done
+
+		return nil
 	}
 
 	watcher.errors <- watcher.err
@@ -426,4 +471,5 @@ func (watcher *orchestratorTestWatcher) Watch() error {
 
 func (watcher *orchestratorTestWatcher) closeEvents() {
 	close(watcher.events)
+	close(watcher.done)
 }

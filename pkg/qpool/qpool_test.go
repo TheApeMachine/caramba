@@ -44,6 +44,57 @@ func TestQPoolScheduleSimple(t *testing.T) {
 	})
 }
 
+func TestQPoolTelemetryPublish(t *testing.T) {
+	Convey("Given a Q pool with telemetry publisher", t, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		events := make(chan Event, 8)
+
+		q := NewQ(ctx, 1, 1, &Config{
+			SchedulingTimeout: time.Second,
+			Scaler:            nil,
+			TelemetryPublish: func(event Event) {
+				events <- event
+			},
+		})
+
+		Reset(func() {
+			cancel()
+
+			if q != nil {
+				q.Close()
+			}
+		})
+
+		Convey("It should route pool events through the configured publisher", func() {
+			resultChannel := q.Schedule("telemetry-job", func(ctx context.Context) (any, error) {
+				return "ok", nil
+			})
+
+			select {
+			case result := <-resultChannel:
+				So(result, ShouldNotBeNil)
+				So(result.Error, ShouldBeNil)
+			case <-time.After(2 * time.Second):
+				So("telemetry job", ShouldEqual, "timed out")
+			}
+
+			observed := false
+
+			for !observed {
+				select {
+				case event := <-events:
+					observed = event.Component == "qpool"
+				case <-time.After(2 * time.Second):
+					So("qpool telemetry event", ShouldEqual, "timed out")
+					return
+				}
+			}
+
+			So(observed, ShouldBeTrue)
+		})
+	})
+}
+
 func TestSchedule_circuitBreakerOpenRejectsFurtherSchedules(t *testing.T) {
 	Convey("Given Q with circuit breaker jobs", t, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
