@@ -1,42 +1,15 @@
 import type { UIMessage } from "@tanstack/ai-client";
-import {
-	Bot,
-	CircleAlertIcon,
-	Maximize2,
-	Minimize2,
-	Plus,
-	Send,
-	Settings,
-	Square,
-	Trash2,
-	X,
-} from "lucide-react";
 import { useCallback, useState } from "react";
-import { Button } from "#/components/ui/button";
-import {
-	Card,
-	CardFrame,
-	CardFrameAction,
-	CardFrameDescription,
-	CardFrameFooter,
-	CardFrameHeader,
-	CardFrameTitle,
-	CardPanel,
-} from "#/components/ui/card";
-import { Field } from "#/components/ui/field";
-import { AnimatePresence, Flex } from "#/components/ui/flex";
-import { Form } from "#/components/ui/form";
-import { Input } from "#/components/ui/input";
-import { Tabs } from "#/components/ui/tabs";
+import { CardFrame } from "#/components/ui/card";
+import { Flex } from "#/components/ui/flex";
 import { cn } from "@/lib/utils";
-import { MessageFeed } from "./panels/messages";
-import { SettingsPanel } from "./panels/settings";
+import { Body } from "./body";
+import { Footer } from "./footer";
+import { Header } from "./header";
+import type { Mode } from "./types";
 import { usePageContext } from "./use-page-context";
 import { useSession } from "./use-session";
 import { useTeamChat } from "./use-team-chat";
-import { Header } from "./header";
-
-type Mode = "closed" | "mini" | "full";
 
 function useInput() {
 	const [value, setValue] = useState("");
@@ -72,7 +45,6 @@ export function Assistant() {
 
 	const input = useInput();
 	const { capture } = usePageContext();
-	const [tab, setTab] = useState<string>("chat");
 
 	const { send, stop, status, streamingPersonaId } = useTeamChat(
 		session,
@@ -115,175 +87,28 @@ export function Assistant() {
 					isClosed && "bg-primary text-primary-foreground",
 				)}
 			>
-				<Header />
+				<Header mode={mode} setMode={setMode} teamName={teamName} />
 				{!isClosed && (
-					<Card>
-						<CardPanel>
-							<Flex className="h-full min-h-0">
-								{isFull && (
-									<Flex.Column className="w-52 shrink-0 border-r">
-										<Flex.Row
-											align="center"
-											justify="between"
-											className="px-3 py-2"
-										>
-											<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-												Sessions
-											</span>
-											<Button
-												size="icon-xs"
-												variant="ghost"
-												onClick={createSession}
-												aria-label="New session"
-											>
-												<Plus />
-											</Button>
-										</Flex.Row>
-										<Flex.Column className="flex-1 overflow-y-auto">
-											<AnimatePresence initial={false}>
-												{sessions.map((s) => (
-													<Flex.Row
-														key={s.id}
-														align="center"
-														gap={1}
-														appear="slideRight"
-														className="group"
-														layout
-													>
-														<Button
-															variant={
-																s.id === session.id ? "secondary" : "ghost"
-															}
-															className="flex-1 justify-start truncate"
-															onClick={() => setActive(s.id)}
-														>
-															{s.title}
-														</Button>
-														{sessions.length > 1 && (
-															<Button
-																size="icon-xs"
-																variant="ghost"
-																onClick={() => deleteSession(s.id)}
-																aria-label="Delete session"
-															>
-																<Trash2 />
-															</Button>
-														)}
-													</Flex.Row>
-												))}
-											</AnimatePresence>
-										</Flex.Column>
-									</Flex.Column>
-								)}
-
-								<Flex.Column className="flex-1 min-w-0">
-									{isFull && (
-										<Flex.Row
-											align="center"
-											justify="between"
-											className="px-4 py-2 border-b"
-										>
-											<Tabs value={tab} onValueChange={setTab}>
-												<Tabs.List>
-													<Tabs.Tab value="chat">Chat</Tabs.Tab>
-													<Tabs.Tab value="settings">
-														<Settings />
-														Team
-													</Tabs.Tab>
-												</Tabs.List>
-											</Tabs>
-										</Flex.Row>
-									)}
-
-									<AnimatePresence mode="wait" initial={false}>
-										{(isMini || tab === "chat") && (
-											<Flex.Column
-												key="chat"
-												appear="fadeUp"
-												className="flex-1 min-h-0"
-											>
-												<MessageFeed
-													messages={session.messages}
-													streamingPersonaId={streamingPersonaId}
-													isSubmitted={busy}
-													compact={isMini}
-												/>
-
-												<Form
-													onSubmit={handleSubmit}
-													className="flex gap-2 border-t p-3"
-												>
-													<Field className="flex-1">
-														<Field.Label className="sr-only">
-															Message
-														</Field.Label>
-														<Input
-															value={input.value}
-															onChange={(e) => input.setValue(e.target.value)}
-															placeholder={
-																session.personas.length > 1 && !isMini
-																	? `Message your team (${session.personas.map((p) => p.name).join(", ")})…`
-																	: "Message…"
-															}
-															disabled={busy}
-														/>
-													</Field>
-													<AnimatePresence mode="wait" initial={false}>
-														{busy ? (
-															<Flex key="stop" appear="scaleIn">
-																<Button
-																	type="button"
-																	variant="outline"
-																	onClick={stop}
-																>
-																	<Square />
-																</Button>
-															</Flex>
-														) : (
-															<Flex key="send" appear="scaleIn">
-																<Button
-																	type="submit"
-																	disabled={!input.value.trim()}
-																>
-																	<Send />
-																</Button>
-															</Flex>
-														)}
-													</AnimatePresence>
-												</Form>
-											</Flex.Column>
-										)}
-
-										{isFull && tab === "settings" && (
-											<Flex
-												key="settings"
-												appear="fadeUp"
-												className="flex-1 min-h-0 overflow-y-auto"
-											>
-												<SettingsPanel
-													session={session}
-													onUpdatePersona={updatePersona}
-													onAddPersona={addPersona}
-													onRemovePersona={removePersona}
-													onWindowSizeChange={setWindowSize}
-												/>
-											</Flex>
-										)}
-									</AnimatePresence>
-								</Flex.Column>
-							</Flex>
-						</CardPanel>
-					</Card>
+					<Body
+						mode={mode}
+						session={session}
+						sessions={sessions}
+						streamingPersonaId={streamingPersonaId}
+						busy={busy}
+						inputValue={input.value}
+						onInputChange={input.setValue}
+						onSubmit={handleSubmit}
+						onStop={stop}
+						onSelectSession={setActive}
+						onCreateSession={createSession}
+						onDeleteSession={deleteSession}
+						onUpdatePersona={updatePersona}
+						onAddPersona={addPersona}
+						onRemovePersona={removePersona}
+						onWindowSizeChange={setWindowSize}
+					/>
 				)}
-
-				{isFull && (
-					<CardFrameFooter>
-						<Flex.Row gap={1} className="text-muted-foreground text-xs">
-							<CircleAlertIcon className="size-3 h-lh shrink-0" />
-							<p>Responses may be incomplete while the team is streaming.</p>
-						</Flex.Row>
-					</CardFrameFooter>
-				)}
+				{isFull && <Footer />}
 			</CardFrame>
 		</Flex>
 	);

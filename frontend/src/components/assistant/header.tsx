@@ -1,20 +1,26 @@
+import { Bot, Maximize2, Minimize2, X } from "lucide-react";
+import { Button } from "#/components/ui/button";
 import {
 	CardFrameAction,
 	CardFrameDescription,
 	CardFrameHeader,
-    CardFrameTitle,
+	CardFrameTitle,
 } from "#/components/ui/card";
 import { Flex } from "#/components/ui/flex";
-import {cn} from "#/lib/utils"
-import { Bot } from "lucide-react";
+import { cn } from "#/lib/utils";
+import type { Mode } from "./types";
 
 interface HeaderProps {
-	isClosed: boolean;
-	setMode: (Mode) => void;
-    teamName: string;
+	mode: Mode;
+	setMode: (mode: Mode) => void;
+	teamName: string;
 }
 
-export const Header = ({ isClosed, setMode, teamName }: HeaderProps) => {
+export const Header = ({ mode, setMode, teamName }: HeaderProps) => {
+	const isClosed = mode === "closed";
+	const isMini = mode === "mini";
+	const isFull = mode === "full";
+
 	return (
 		<CardFrameHeader
 			className={cn(isClosed && "p-0")}
