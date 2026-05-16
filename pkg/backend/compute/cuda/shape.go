@@ -9,7 +9,10 @@ import "C"
 import (
 	"fmt"
 	"math"
+	"slices"
 	"unsafe"
+
+	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
 // CUDAShapeOps dispatches shape manipulation kernels to the GPU via CUDA.
@@ -84,6 +87,386 @@ func (c *CUDAShapeOps) Copy(input []float64) ([]float64, error) {
 		return nil, fmt.Errorf("cuda_copy failed (rc=%d)", rc)
 	}
 	return dst, nil
+}
+
+func (tensorBackend *TensorBackend) CopyTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+) (computetensor.Float64Tensor, error) {
+	deviceInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if deviceInput.Len() != outputShape.Len() {
+		return nil, fmt.Errorf("cuda shape: reshape changes element count")
+	}
+
+	output, err := tensorBackend.empty(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if outputShape.Len() == 0 {
+		return output, nil
+	}
+
+	rc := C.cuda_copy_device(
+		(*C.double)(deviceInput.device),
+		(*C.double)(output.device),
+		C.int(outputShape.Len()),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("cuda_copy_device failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (tensorBackend *TensorBackend) TransposeTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	dim0 int,
+	dim1 int,
+) (computetensor.Float64Tensor, error) {
+	deviceInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	inputShape := deviceInput.Shape().Dims()
+
+	if len(inputShape) == 0 || len(inputShape) > 8 {
+		return nil, fmt.Errorf("cuda shape: transpose requires rank 1..8")
+	}
+
+	if dim0 < 0 || dim1 < 0 || dim0 >= len(inputShape) || dim1 >= len(inputShape) {
+		return nil, fmt.Errorf("cuda shape: transpose dimensions out of range")
+	}
+
+	if outputShape.Len() != deviceInput.Len() {
+		return nil, fmt.Errorf("cuda shape: transpose changes element count")
+	}
+
+	outputDims := outputShape.Dims()
+	expectedDims := slices.Clone(inputShape)
+	expectedDims[dim0], expectedDims[dim1] = expectedDims[dim1], expectedDims[dim0]
+
+	if !slices.Equal(outputDims, expectedDims) {
+		return nil, fmt.Errorf(
+			"cuda shape: transpose output shape %v does not match expected %v",
+			outputDims,
+			expectedDims,
+		)
+	}
+
+	shapeData := make([]C.int, len(inputShape))
+
+	for dimensionIndex, dimension := range inputShape {
+		shapeData[dimensionIndex] = C.int(dimension)
+	}
+
+	output, err := tensorBackend.empty(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if outputShape.Len() == 0 {
+		return output, nil
+	}
+
+	rc := C.cuda_transpose_device(
+		(*C.double)(deviceInput.device),
+		(*C.double)(output.device),
+		(*C.int)(unsafe.Pointer(&shapeData[0])),
+		C.int(len(shapeData)),
+		C.int(dim0),
+		C.int(dim1),
+		C.int(outputShape.Len()),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("cuda_transpose_device failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (tensorBackend *TensorBackend) ConcatTensor(
+	left computetensor.Float64Tensor,
+	right computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+) (computetensor.Float64Tensor, error) {
+	deviceLeft, err := tensorBackend.require(left)
+
+	if err != nil {
+		return nil, err
+	}
+
+	deviceRight, err := tensorBackend.require(right)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if outputShape.Len() != deviceLeft.Len()+deviceRight.Len() {
+		return nil, fmt.Errorf("cuda shape: concat output shape has invalid length")
+	}
+
+	output, err := tensorBackend.empty(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if outputShape.Len() == 0 {
+		return output, nil
+	}
+
+	rc := C.cuda_concat_device(
+		(*C.double)(deviceLeft.device),
+		C.int(deviceLeft.Len()),
+		(*C.double)(deviceRight.device),
+		C.int(deviceRight.Len()),
+		(*C.double)(output.device),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("cuda_concat_device failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (tensorBackend *TensorBackend) SplitTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	outer int,
+	dimSize int,
+	splitSize int,
+	inner int,
+) (computetensor.Float64Tensor, error) {
+	deviceInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateCUDASplitTensor(
+		deviceInput.Len(), outputShape.Len(), outer, dimSize, splitSize, inner,
+	); err != nil {
+		return nil, err
+	}
+
+	output, err := tensorBackend.empty(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.cuda_split_device(
+		(*C.double)(deviceInput.device),
+		(*C.double)(output.device),
+		C.int(outer),
+		C.int(dimSize),
+		C.int(splitSize),
+		C.int(inner),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("cuda_split_device failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (tensorBackend *TensorBackend) UpsampleNearest2DTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch int,
+	channels int,
+	height int,
+	width int,
+	scaleH int,
+	scaleW int,
+) (computetensor.Float64Tensor, error) {
+	deviceInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	inputLength := batch * channels * height * width
+	outputLength := inputLength * scaleH * scaleW
+
+	if deviceInput.Len() != inputLength || outputShape.Len() != outputLength {
+		return nil, fmt.Errorf("cuda shape: invalid upsample_nearest2d tensor shape")
+	}
+
+	output, err := tensorBackend.empty(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.cuda_upsample_nearest2d_device(
+		(*C.double)(deviceInput.device),
+		(*C.double)(output.device),
+		C.int(batch),
+		C.int(channels),
+		C.int(height),
+		C.int(width),
+		C.int(scaleH),
+		C.int(scaleW),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("cuda_upsample_nearest2d_device failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (tensorBackend *TensorBackend) ViewAsHeadsTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch int,
+	tokens int,
+	heads int,
+	headDim int,
+) (computetensor.Float64Tensor, error) {
+	deviceInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if deviceInput.Len() != batch*tokens*heads*headDim ||
+		outputShape.Len() != deviceInput.Len() {
+		return nil, fmt.Errorf("cuda shape: invalid view_as_heads tensor shape")
+	}
+
+	output, err := tensorBackend.empty(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.cuda_view_as_heads_device(
+		(*C.double)(deviceInput.device),
+		(*C.double)(output.device),
+		C.int(batch),
+		C.int(tokens),
+		C.int(heads),
+		C.int(headDim),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("cuda_view_as_heads_device failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (tensorBackend *TensorBackend) MergeHeadsTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch int,
+	heads int,
+	tokens int,
+	headDim int,
+) (computetensor.Float64Tensor, error) {
+	deviceInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if deviceInput.Len() != batch*heads*tokens*headDim ||
+		outputShape.Len() != deviceInput.Len() {
+		return nil, fmt.Errorf("cuda shape: invalid merge_heads tensor shape")
+	}
+
+	output, err := tensorBackend.empty(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.cuda_merge_heads_device(
+		(*C.double)(deviceInput.device),
+		(*C.double)(output.device),
+		C.int(batch),
+		C.int(heads),
+		C.int(tokens),
+		C.int(headDim),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("cuda_merge_heads_device failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (tensorBackend *TensorBackend) LastTokenTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	outer int,
+	sequenceLength int,
+	featureLength int,
+) (computetensor.Float64Tensor, error) {
+	deviceInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if deviceInput.Len() < outer*sequenceLength*featureLength ||
+		outputShape.Len() != outer*featureLength {
+		return nil, fmt.Errorf("cuda shape: invalid last_token tensor shape")
+	}
+
+	output, err := tensorBackend.empty(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.cuda_last_token_device(
+		(*C.double)(deviceInput.device),
+		(*C.double)(output.device),
+		C.int(outer),
+		C.int(sequenceLength),
+		C.int(featureLength),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("cuda_last_token_device failed (rc=%d)", rc)
+	}
+
+	return output, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -311,4 +694,29 @@ func (c *CUDAShapeOps) LastToken(
 	}
 
 	return dst, nil
+}
+
+func validateCUDASplitTensor(
+	inputLength int,
+	outputLength int,
+	outer int,
+	dimSize int,
+	splitSize int,
+	inner int,
+) error {
+	if outer <= 0 || dimSize <= 0 || splitSize <= 0 || inner <= 0 {
+		return fmt.Errorf("cuda shape: split dimensions must be positive")
+	}
+
+	if splitSize > dimSize || dimSize%splitSize != 0 {
+		return fmt.Errorf("cuda shape: invalid split size")
+	}
+
+	expected := outer * dimSize * inner
+
+	if inputLength != expected || outputLength != expected {
+		return fmt.Errorf("cuda shape: invalid split tensor shape")
+	}
+
+	return nil
 }

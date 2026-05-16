@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/dispatch"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
+	metalbackend "github.com/theapemachine/caramba/pkg/backend/compute/metal"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -36,6 +37,16 @@ func hostCapabilities(location tensor.Location) *StaticCapabilities {
 func cudaCapabilities(location tensor.Location) *StaticCapabilities {
 	capabilities := NewStaticCapabilities(location)
 	capabilities.Register(coreResidentOperationIDs()...)
+	capabilities.Register(
+		"shape.reshape",
+		"shape.transpose",
+		"shape.concat",
+		"shape.split",
+		"shape.upsample_nearest2d",
+		"shape.view_as_heads",
+		"shape.merge_heads",
+		"shape.last_token",
+	)
 	capabilities.RegisterFusion("matmul.activation", ir.OpFused)
 
 	return capabilities
@@ -43,27 +54,18 @@ func cudaCapabilities(location tensor.Location) *StaticCapabilities {
 
 func metalCapabilities(location tensor.Location) *StaticCapabilities {
 	capabilities := NewStaticCapabilities(location)
-	capabilities.Register(coreResidentOperationIDs()...)
-	capabilities.Register(
-		"embedding.token",
-		"math.rmsnorm",
-		"math.layernorm",
-		"math.groupnorm",
-		"shape.reshape",
-		"shape.transpose",
-		"shape.upsample_nearest2d",
-		"shape.view_as_heads",
-		"shape.merge_heads",
-		"shape.last_token",
-		"projection.linear",
-		"attention.sdpa",
-		"attention.gqa",
-		"positional.rope",
-		"convolution.conv2d",
-		"convolution.conv_transpose2d",
-	)
-	capabilities.RegisterFusion("matmul.activation", ir.OpFused)
-	capabilities.SetPrecision(tensor.Float32)
+
+	for _, operation := range metalbackend.ResidentOperationTable() {
+		capabilities.Register(operation.ID)
+
+		if len(operation.DTypes) > 0 {
+			capabilities.SetPrecision(operation.DTypes[0], operation.ID)
+		}
+
+		for _, fusionGroup := range operation.FusionGroups {
+			capabilities.RegisterFusion(fusionGroup, operation.ID)
+		}
+	}
 
 	return capabilities
 }
@@ -71,6 +73,16 @@ func metalCapabilities(location tensor.Location) *StaticCapabilities {
 func xlaCapabilities(location tensor.Location) *StaticCapabilities {
 	capabilities := NewStaticCapabilities(location)
 	capabilities.Register(coreResidentOperationIDs()...)
+	capabilities.Register(
+		"shape.reshape",
+		"shape.transpose",
+		"shape.concat",
+		"shape.split",
+		"shape.upsample_nearest2d",
+		"shape.view_as_heads",
+		"shape.merge_heads",
+		"shape.last_token",
+	)
 	capabilities.RegisterFusion("matmul.activation", ir.OpFused)
 
 	return capabilities

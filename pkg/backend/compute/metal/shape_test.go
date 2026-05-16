@@ -96,6 +96,70 @@ func TestMetalShapeOps_TransposeTensor(test *testing.T) {
 	})
 }
 
+func TestMetalShapeOps_ConcatTensor(test *testing.T) {
+	lib := metallibPathOrSkip(test, "shape.metallib")
+
+	Convey("Given resident Metal tensors to concatenate", test, func() {
+		tensorBackend := newMetalTensorBackendForTest(test)
+		shapeOps, err := NewShapeOps(lib)
+		So(err, ShouldBeNil)
+
+		leftShape, err := computetensor.NewShape([]int{3})
+		So(err, ShouldBeNil)
+		rightShape, err := computetensor.NewShape([]int{2})
+		So(err, ShouldBeNil)
+		outputShape, err := computetensor.NewShape([]int{5})
+		So(err, ShouldBeNil)
+		left := uploadMetalTensorForTest(test, tensorBackend, leftShape, []float64{1, 2, 3})
+		right := uploadMetalTensorForTest(test, tensorBackend, rightShape, []float64{4, 5})
+
+		Convey("It should concatenate without leaving Metal storage", func() {
+			output, err := shapeOps.ConcatTensor(left, right, outputShape)
+			So(err, ShouldBeNil)
+			defer func() {
+				So(output.Close(), ShouldBeNil)
+			}()
+
+			values, err := output.CloneFloat64()
+			So(err, ShouldBeNil)
+			So(values, ShouldResemble, []float64{1, 2, 3, 4, 5})
+		})
+	})
+}
+
+func TestMetalShapeOps_SplitTensor(test *testing.T) {
+	lib := metallibPathOrSkip(test, "shape.metallib")
+
+	Convey("Given a resident Metal tensor split", test, func() {
+		tensorBackend := newMetalTensorBackendForTest(test)
+		shapeOps, err := NewShapeOps(lib)
+		So(err, ShouldBeNil)
+
+		inputShape, err := computetensor.NewShape([]int{2, 4})
+		So(err, ShouldBeNil)
+		outputShape, err := computetensor.NewShape([]int{8})
+		So(err, ShouldBeNil)
+		input := uploadMetalTensorForTest(
+			test,
+			tensorBackend,
+			inputShape,
+			[]float64{1, 2, 3, 4, 5, 6, 7, 8},
+		)
+
+		Convey("It should split chunks without leaving Metal storage", func() {
+			output, err := shapeOps.SplitTensor(input, outputShape, 2, 4, 2, 1)
+			So(err, ShouldBeNil)
+			defer func() {
+				So(output.Close(), ShouldBeNil)
+			}()
+
+			values, err := output.CloneFloat64()
+			So(err, ShouldBeNil)
+			So(values, ShouldResemble, []float64{1, 2, 5, 6, 3, 4, 7, 8})
+		})
+	})
+}
+
 func TestMetalShapeOpsForwardParity(t *testing.T) {
 	lib := metallibPathOrSkip(t, "shape.metallib")
 

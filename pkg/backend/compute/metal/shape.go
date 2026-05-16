@@ -20,6 +20,7 @@ import (
 // MetalShapeOps dispatches shape manipulation kernels to the GPU via Metal.
 type MetalShapeOps struct {
 	metallib string
+	runtime  *MetalRuntime
 }
 
 type ShapeForwardRequest struct {
@@ -35,7 +36,13 @@ func NewShapeOps(metallib string) (*MetalShapeOps, error) {
 	if rc := C.metal_shape_init(cpath); rc != 0 {
 		return nil, fmt.Errorf("metal_shape_init failed (rc=%d): check %q exists", rc, metallib)
 	}
-	return &MetalShapeOps{metallib: metallib}, nil
+
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MetalShapeOps{metallib: metallib, runtime: runtime}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -456,7 +463,7 @@ func (m *MetalShapeOps) ViewAsHeadsTensor(
 		return nil, fmt.Errorf("metal shape: invalid view_as_heads tensor shape")
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -494,7 +501,7 @@ func (m *MetalShapeOps) CopyTensor(
 		return nil, fmt.Errorf("metal shape: reshape changes element count")
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -563,7 +570,7 @@ func (m *MetalShapeOps) TransposeTensor(
 		shapeData[dimensionIndex] = C.int(dimension)
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -592,6 +599,102 @@ func (m *MetalShapeOps) TransposeTensor(
 	return output, nil
 }
 
+func (m *MetalShapeOps) ConcatTensor(
+	left computetensor.Float64Tensor,
+	right computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+) (computetensor.Float64Tensor, error) {
+	metalLeft, err := requireMetalTensor(left)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalRight, err := requireMetalTensor(right)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if outputShape.Len() != metalLeft.Len()+metalRight.Len() {
+		return nil, fmt.Errorf("metal shape: concat output shape has invalid length")
+	}
+
+	if metalLeft.Len() == 0 {
+		return m.CopyTensor(right, outputShape)
+	}
+
+	if metalRight.Len() == 0 {
+		return m.CopyTensor(left, outputShape)
+	}
+
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_concat_tensor(
+		metalLeft.buffer,
+		C.int(metalLeft.Len()),
+		metalRight.buffer,
+		C.int(metalRight.Len()),
+		output.buffer,
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_concat_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (m *MetalShapeOps) SplitTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	outer int,
+	dimSize int,
+	splitSize int,
+	inner int,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateMetalSplitTensor(
+		metalInput.Len(), outputShape.Len(), outer, dimSize, splitSize, inner,
+	); err != nil {
+		return nil, err
+	}
+
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_split_tensor(
+		metalInput.buffer,
+		output.buffer,
+		C.int(outer),
+		C.int(dimSize),
+		C.int(splitSize),
+		C.int(inner),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_split_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
 func (m *MetalShapeOps) MergeHeadsTensor(
 	input computetensor.Float64Tensor,
 	outputShape computetensor.Shape,
@@ -607,7 +710,7 @@ func (m *MetalShapeOps) MergeHeadsTensor(
 		return nil, fmt.Errorf("metal shape: invalid merge_heads tensor shape")
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -647,7 +750,7 @@ func (m *MetalShapeOps) LastTokenTensor(
 		return nil, fmt.Errorf("metal shape: invalid last_token tensor shape")
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -693,7 +796,7 @@ func (m *MetalShapeOps) UpsampleNearest2DTensor(
 		return nil, fmt.Errorf("metal shape: invalid upsample_nearest2d tensor shape")
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -738,4 +841,29 @@ func metalIntConfig(node executor.NodeSpec, key string, fallback int) int {
 	default:
 		return fallback
 	}
+}
+
+func validateMetalSplitTensor(
+	inputLength int,
+	outputLength int,
+	outer int,
+	dimSize int,
+	splitSize int,
+	inner int,
+) error {
+	if outer <= 0 || dimSize <= 0 || splitSize <= 0 || inner <= 0 {
+		return fmt.Errorf("metal shape: split dimensions must be positive")
+	}
+
+	if splitSize > dimSize || dimSize%splitSize != 0 {
+		return fmt.Errorf("metal shape: invalid split size")
+	}
+
+	expected := outer * dimSize * inner
+
+	if inputLength != expected || outputLength != expected {
+		return fmt.Errorf("metal shape: invalid split tensor shape")
+	}
+
+	return nil
 }

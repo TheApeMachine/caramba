@@ -294,6 +294,10 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyReshape(ctx, node, inputs)
 	case "shape.transpose":
 		return tensorBackend.applyTranspose(ctx, node, inputs)
+	case "shape.concat":
+		return tensorBackend.applyConcat(ctx, node, inputs)
+	case "shape.split":
+		return tensorBackend.applySplit(ctx, node, inputs)
 	case "shape.view_as_heads":
 		return tensorBackend.applyViewAsHeads(ctx, node, inputs)
 	case "shape.merge_heads":
@@ -308,8 +312,12 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyGQA(ctx, node, inputs)
 	case "positional.rope":
 		return tensorBackend.applyRoPE(ctx, node, inputs)
+	case "convolution.conv1d":
+		return tensorBackend.applyConv1D(ctx, node, inputs)
 	case "convolution.conv2d":
 		return tensorBackend.applyConv2D(ctx, node, inputs)
+	case "convolution.conv3d":
+		return tensorBackend.applyConv3D(ctx, node, inputs)
 	case "convolution.conv_transpose2d":
 		return tensorBackend.applyConvTranspose2D(ctx, node, inputs)
 	default:
@@ -379,6 +387,119 @@ func (tensorBackend *TensorBackend) applyTranspose(
 		outputShape,
 		intConfig(node, "dim0", 0),
 		intConfig(node, "dim1", 1),
+	)
+}
+
+func (tensorBackend *TensorBackend) applyConcat(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) < 2 {
+		return nil, fmt.Errorf("metal tensor: concat node %q requires at least 2 inputs", node.ID)
+	}
+
+	outputShape, err := tensor.NewShape(node.Shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	shapeOps, err := tensorBackend.shape()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(inputs) == 2 {
+		return shapeOps.ConcatTensor(inputs[0], inputs[1], outputShape)
+	}
+
+	current := inputs[0]
+	var temporary tensor.Float64Tensor
+
+	for inputIndex := 1; inputIndex < len(inputs); inputIndex++ {
+		nextLength := current.Shape().Len() + inputs[inputIndex].Shape().Len()
+		nextShape := outputShape
+
+		if inputIndex != len(inputs)-1 {
+			nextShape, err = tensor.NewShape([]int{nextLength})
+
+			if err != nil {
+				if temporary != nil {
+					_ = temporary.Close()
+				}
+
+				return nil, err
+			}
+		}
+
+		next, err := shapeOps.ConcatTensor(current, inputs[inputIndex], nextShape)
+
+		if temporary != nil {
+			_ = temporary.Close()
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		current = next
+		temporary = next
+	}
+
+	return current, nil
+}
+
+func (tensorBackend *TensorBackend) applySplit(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("metal tensor: split node %q requires 1 input", node.ID)
+	}
+
+	inputShape := inputs[0].Shape().Dims()
+	dimension := intConfig(node, "dim", 0)
+
+	if dimension < 0 || dimension >= len(inputShape) {
+		return nil, fmt.Errorf("metal tensor: split node %q dimension out of range", node.ID)
+	}
+
+	outer, inner, err := metalSplitOuterInner(inputShape, dimension)
+
+	if err != nil {
+		return nil, err
+	}
+
+	outputShape, err := tensor.NewShape(node.Shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	shapeOps, err := tensorBackend.shape()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return shapeOps.SplitTensor(
+		inputs[0],
+		outputShape,
+		outer,
+		inputShape[dimension],
+		intConfig(node, "split_size", inputShape[dimension]),
+		inner,
 	)
 }
 
@@ -1459,13 +1580,19 @@ func (tensorBackend *TensorBackend) ensureResidentKVCapacity(
 		return nil, err
 	}
 
-	key, err := newMetalTensor(outputShape)
+	key, err := tensorBackend.runtime.NewFloat32Tensor(
+		outputShape,
+		MetalAllocationKVCache,
+	)
 
 	if err != nil {
 		return nil, err
 	}
 
-	value, err := newMetalTensor(outputShape)
+	value, err := tensorBackend.runtime.NewFloat32Tensor(
+		outputShape,
+		MetalAllocationKVCache,
+	)
 
 	if err != nil {
 		_ = key.Close()
@@ -1575,6 +1702,7 @@ func (tensorBackend *TensorBackend) activation() (*MetalActivation, error) {
 		return nil, err
 	}
 
+	activationOps.runtime = tensorBackend.runtime
 	tensorBackend.activationOps = activationOps
 
 	return activationOps, nil
@@ -1594,6 +1722,7 @@ func (tensorBackend *TensorBackend) math() (*MathOps, error) {
 		return nil, err
 	}
 
+	mathOps.runtime = tensorBackend.runtime
 	tensorBackend.mathOps = mathOps
 
 	return mathOps, nil
@@ -1613,6 +1742,7 @@ func (tensorBackend *TensorBackend) shape() (*MetalShapeOps, error) {
 		return nil, err
 	}
 
+	shapeOps.runtime = tensorBackend.runtime
 	tensorBackend.shapeOps = shapeOps
 
 	return shapeOps, nil
@@ -1632,6 +1762,7 @@ func (tensorBackend *TensorBackend) convolution() (*ConvolutionOps, error) {
 		return nil, err
 	}
 
+	convolutionOps.runtime = tensorBackend.runtime
 	tensorBackend.convolutionOps = convolutionOps
 
 	return convolutionOps, nil
@@ -1651,6 +1782,7 @@ func (tensorBackend *TensorBackend) attention() (*MetalAttention, error) {
 		return nil, err
 	}
 
+	attentionOps.runtime = tensorBackend.runtime
 	tensorBackend.attentionOps = attentionOps
 
 	return attentionOps, nil
@@ -1670,6 +1802,7 @@ func (tensorBackend *TensorBackend) positional() (*MetalPositional, error) {
 		return nil, err
 	}
 
+	positionalOps.runtime = tensorBackend.runtime
 	tensorBackend.positionalOps = positionalOps
 
 	return positionalOps, nil
@@ -1691,6 +1824,7 @@ func (tensorBackend *TensorBackend) embedding(vocabSize, dModel int) (*Embedding
 		return nil, err
 	}
 
+	embeddingOps.runtime = tensorBackend.runtime
 	tensorBackend.embeddingOps[key] = embeddingOps
 
 	return embeddingOps, nil
@@ -1875,6 +2009,30 @@ func intConfigAny(node executor.NodeSpec, fallback int, keys ...string) int {
 	}
 
 	return fallback
+}
+
+func metalSplitOuterInner(shape []int, dimension int) (int, int, error) {
+	outer := 1
+
+	for _, value := range shape[:dimension] {
+		if value <= 0 {
+			return 0, 0, fmt.Errorf("metal tensor: split outer dimensions must be positive")
+		}
+
+		outer *= value
+	}
+
+	inner := 1
+
+	for _, value := range shape[dimension+1:] {
+		if value <= 0 {
+			return 0, 0, fmt.Errorf("metal tensor: split inner dimensions must be positive")
+		}
+
+		inner *= value
+	}
+
+	return outer, inner, nil
 }
 
 func stringConfig(node executor.NodeSpec, key string, fallback string) string {

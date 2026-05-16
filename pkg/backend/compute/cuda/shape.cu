@@ -254,6 +254,48 @@ fail:
     return -1;
 }
 
+int cuda_transpose_device(const double* src, double* dst,
+                          const int* shape, int rank,
+                          int dim0, int dim1, int n)
+{
+    if (!src || !dst || !shape || rank <= 0 || rank > MAX_RANK || n <= 0) return -1;
+    if (dim0 < 0 || dim0 >= rank || dim1 < 0 || dim1 >= rank) return -1;
+
+    size_t total_items = 1;
+
+    for (int index = 0; index < rank; index++) {
+        if (shape[index] <= 0) return -1;
+        if (checked_mul_size(&total_items, (size_t)shape[index])) return -1;
+        if (total_items > INT_MAX) return -1;
+    }
+
+    if (total_items != (size_t)n) return -1;
+
+    int* d_shapepad = NULL;
+
+    if (cudaMalloc(&d_shapepad, MAX_RANK * sizeof(int)) != cudaSuccess) return -1;
+    if (cudaMemcpy(d_shapepad, shape, (size_t)rank * sizeof(int),
+                   cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
+
+    if (rank < MAX_RANK) {
+        if (cudaMemset(d_shapepad + rank, 0,
+                       (size_t)(MAX_RANK - rank) * sizeof(int)) != cudaSuccess) {
+            goto fail;
+        }
+    }
+
+    transpose_kernel<<<blocks(n), BLOCK>>>(src, dst, rank, dim0, dim1, d_shapepad, n);
+
+    if (cudaGetLastError()     != cudaSuccess) goto fail;
+    if (cudaDeviceSynchronize() != cudaSuccess) goto fail;
+
+    cudaFree(d_shapepad);
+    return 0;
+fail:
+    cudaFree(d_shapepad);
+    return -1;
+}
+
 int cuda_copy(const double* src, double* dst, int n) {
     if (!src || !dst || n <= 0) return -1;
 
@@ -274,6 +316,16 @@ int cuda_copy(const double* src, double* dst, int n) {
 fail:
     cudaFree(d_src); cudaFree(d_dst);
     return -1;
+}
+
+int cuda_copy_device(const double* src, double* dst, int n) {
+    if (!src || !dst || n <= 0) return -1;
+
+    copy_kernel<<<blocks(n), BLOCK>>>(src, dst, n);
+    if (cudaGetLastError()     != cudaSuccess) return -1;
+    if (cudaDeviceSynchronize() != cudaSuccess) return -1;
+
+    return 0;
 }
 
 int cuda_concat(const double* srcA, int n_a,
@@ -313,6 +365,27 @@ fail:
     return -1;
 }
 
+int cuda_concat_device(const double* srcA, int n_a,
+                       const double* srcB, int n_b,
+                       double* dst)
+{
+    if (!dst || n_a < 0 || n_b < 0) return -1;
+    if (n_a > 0 && !srcA) return -1;
+    if (n_b > 0 && !srcB) return -1;
+
+    size_t total_items = (size_t)n_a + (size_t)n_b;
+
+    if (total_items == 0 || total_items > INT_MAX) return -1;
+
+    int total = (int)total_items;
+
+    concat_kernel<<<blocks(total), BLOCK>>>(srcA, n_a, srcB, n_b, dst);
+    if (cudaGetLastError()     != cudaSuccess) return -1;
+    if (cudaDeviceSynchronize() != cudaSuccess) return -1;
+
+    return 0;
+}
+
 int cuda_split(const double* src, double* dst,
                int outer, int dim_size, int split_size, int inner)
 {
@@ -346,6 +419,30 @@ int cuda_split(const double* src, double* dst,
 fail:
     cudaFree(d_src); cudaFree(d_dst);
     return -1;
+}
+
+int cuda_split_device(const double* src, double* dst,
+                      int outer, int dim_size, int split_size, int inner)
+{
+    if (!src || !dst || outer <= 0 || dim_size <= 0 || split_size <= 0 || inner <= 0) {
+        return -1;
+    }
+
+    if (split_size > dim_size || dim_size % split_size != 0) return -1;
+
+    size_t total_items = (size_t)outer * (size_t)dim_size * (size_t)inner;
+
+    if (total_items > INT_MAX) return -1;
+
+    int total = (int)total_items;
+
+    split_kernel<<<blocks(total), BLOCK>>>(
+        src, dst, outer, dim_size, split_size, inner, total
+    );
+    if (cudaGetLastError()     != cudaSuccess) return -1;
+    if (cudaDeviceSynchronize() != cudaSuccess) return -1;
+
+    return 0;
 }
 
 int cuda_upsample_nearest2d(const double* src, double* dst,
@@ -389,6 +486,35 @@ fail:
     return -1;
 }
 
+int cuda_upsample_nearest2d_device(const double* src, double* dst,
+                                   int B, int C, int H, int W,
+                                   int scale_h, int scale_w)
+{
+    if (!src || !dst || B <= 0 || C <= 0 || H <= 0 || W <= 0 ||
+        scale_h <= 0 || scale_w <= 0) {
+        return -1;
+    }
+
+    size_t input_items = 0;
+
+    if (checked_total4(&input_items, B, C, H, W)) return -1;
+
+    size_t output_items = input_items;
+    if (checked_mul_size(&output_items, (size_t)scale_h)) return -1;
+    if (checked_mul_size(&output_items, (size_t)scale_w)) return -1;
+    if (output_items > INT_MAX) return -1;
+
+    int total = (int)output_items;
+
+    upsample_nearest2d_kernel<<<blocks(total), BLOCK>>>(
+        src, dst, B, C, H, W, scale_h, scale_w, total
+    );
+    if (cudaGetLastError()     != cudaSuccess) return -1;
+    if (cudaDeviceSynchronize() != cudaSuccess) return -1;
+
+    return 0;
+}
+
 int cuda_view_as_heads(const double* src, double* dst,
                        int B, int T, int H, int head_dim)
 {
@@ -418,6 +544,24 @@ fail:
     return -1;
 }
 
+int cuda_view_as_heads_device(const double* src, double* dst,
+                              int B, int T, int H, int head_dim)
+{
+    if (!src || !dst) return -1;
+
+    size_t total_items = 0;
+
+    if (checked_total4(&total_items, B, T, H, head_dim)) return -1;
+
+    int n = (int)total_items;
+
+    view_as_heads_kernel<<<blocks(n), BLOCK>>>(src, dst, B, T, H, head_dim, n);
+    if (cudaGetLastError()     != cudaSuccess) return -1;
+    if (cudaDeviceSynchronize() != cudaSuccess) return -1;
+
+    return 0;
+}
+
 int cuda_merge_heads(const double* src, double* dst,
                      int B, int H, int T, int head_dim)
 {
@@ -445,6 +589,24 @@ int cuda_merge_heads(const double* src, double* dst,
 fail:
     cudaFree(d_src); cudaFree(d_dst);
     return -1;
+}
+
+int cuda_merge_heads_device(const double* src, double* dst,
+                            int B, int H, int T, int head_dim)
+{
+    if (!src || !dst) return -1;
+
+    size_t total_items = 0;
+
+    if (checked_total4(&total_items, B, H, T, head_dim)) return -1;
+
+    int n = (int)total_items;
+
+    merge_heads_kernel<<<blocks(n), BLOCK>>>(src, dst, B, H, T, head_dim, n);
+    if (cudaGetLastError()     != cudaSuccess) return -1;
+    if (cudaDeviceSynchronize() != cudaSuccess) return -1;
+
+    return 0;
 }
 
 int cuda_last_token(const double* src, double* dst,
@@ -482,6 +644,31 @@ int cuda_last_token(const double* src, double* dst,
 fail:
     cudaFree(d_src); cudaFree(d_dst);
     return -1;
+}
+
+int cuda_last_token_device(const double* src, double* dst,
+                           int outer, int seq_len, int feature)
+{
+    if (!src || !dst || outer <= 0 || seq_len <= 0 || feature <= 0) return -1;
+
+    size_t input_items = (size_t)outer;
+
+    if (checked_mul_size(&input_items, (size_t)seq_len)) return -1;
+    if (checked_mul_size(&input_items, (size_t)feature)) return -1;
+    if (input_items > INT_MAX) return -1;
+
+    size_t output_items = (size_t)outer;
+
+    if (checked_mul_size(&output_items, (size_t)feature)) return -1;
+    if (output_items > INT_MAX) return -1;
+
+    int n = (int)output_items;
+
+    last_token_kernel<<<blocks(n), BLOCK>>>(src, dst, seq_len, feature, n);
+    if (cudaGetLastError()     != cudaSuccess) return -1;
+    if (cudaDeviceSynchronize() != cudaSuccess) return -1;
+
+    return 0;
 }
 
 } // extern "C"

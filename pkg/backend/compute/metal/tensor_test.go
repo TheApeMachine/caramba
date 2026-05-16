@@ -9,6 +9,7 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/qpool"
 )
@@ -41,6 +42,42 @@ func TestTensorBackend_UploadFloat64(t *testing.T) {
 			So(uploaded.Location(), ShouldEqual, computetensor.Metal)
 			So(uploaded.DType(), ShouldEqual, computetensor.Float32)
 			So(uploaded.Bytes(), ShouldEqual, 12)
+
+			metalTensor, ok := uploaded.(*Tensor)
+			So(ok, ShouldBeTrue)
+			So(metalTensor.StorageMode(), ShouldEqual, MetalStorageModePrivate)
+			So(metalTensor.Layout(), ShouldEqual, MetalLayoutContiguous)
+			So(metalTensor.Strides(), ShouldResemble, []int{1})
+		})
+	})
+}
+
+func TestRunner_ExecuteNoReadbackBeforeBoundary(t *testing.T) {
+	Convey("Given a Metal graph execution", t, func() {
+		tensorBackend := newMetalTensorBackendForTest(t)
+		runner := NewRunnerWithBackend(tensorBackend)
+		shape, err := computetensor.NewShape([]int{2})
+		So(err, ShouldBeNil)
+
+		input := ir.NewNode("input", ir.OpInput, shape)
+		input.SetMetadata("values", []float64{-1, 2})
+		output := ir.NewNode("relu", ir.OpReLU, shape)
+		output.AddInput(input)
+
+		graph := ir.NewGraph()
+		graph.AddNode(input)
+		graph.AddNode(output)
+
+		before := tensorBackend.runtime.Metrics()
+		results, err := runner.Execute(context.Background(), graph, []*ir.Node{output})
+		after := tensorBackend.runtime.Metrics()
+
+		Convey("It should keep intermediate and output tensors resident", func() {
+			So(err, ShouldBeNil)
+			So(results, ShouldHaveLength, 1)
+			So(results["relu"].Location(), ShouldEqual, computetensor.Metal)
+			So(after.TransferBytes-before.TransferBytes, ShouldEqual, int64(shape.Len()*4))
+			So(results["relu"].Close(), ShouldBeNil)
 		})
 	})
 }

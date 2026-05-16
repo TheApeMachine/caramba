@@ -46,6 +46,15 @@ int metal_tensor_init(void);
 void* metal_tensor_empty_float32(size_t n);
 
 /*
+ * metal_tensor_empty_float32_mode -- allocates a float32 buffer with explicit Metal storage mode.
+ *
+ * storage_mode values:
+ *   0 -- MTLResourceStorageModeShared
+ *   1 -- MTLResourceStorageModePrivate
+ */
+void* metal_tensor_empty_float32_mode(size_t n, int storage_mode);
+
+/*
  * metal_tensor_upload_float32 -- copies host float data into a new device buffer.
  *
  * Parameters:
@@ -56,6 +65,14 @@ void* metal_tensor_empty_float32(size_t n);
  * Ownership: same as metal_tensor_empty_float32.
  */
 void* metal_tensor_upload_float32(const float* src, size_t n);
+
+/*
+ * metal_tensor_upload_float32_mode -- uploads host float data to explicit Metal storage mode.
+ *
+ * Private storage uses a shared staging buffer and a blit pass. The returned handle is still an
+ * owned MTLBuffer released through metal_tensor_free.
+ */
+void* metal_tensor_upload_float32_mode(const float* src, size_t n, int storage_mode);
 
 /*
  * metal_tensor_download_float32 -- copies up to n floats from handle into dst.
@@ -86,6 +103,13 @@ int metal_tensor_free(void* handle);
  * Returns 0 if handle is NULL. Does not validate handle type; invalid pointers yield undefined behavior.
  */
 size_t metal_tensor_get_size(const void* handle);
+
+/*
+ * metal_tensor_get_storage_mode -- returns the MTLResourceStorageMode integer for handle.
+ *
+ * Returns -1 when handle is NULL.
+ */
+int metal_tensor_get_storage_mode(const void* handle);
 
 #ifdef __cplusplus
 }

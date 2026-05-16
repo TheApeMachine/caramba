@@ -15,6 +15,7 @@ import (
 // Metal is initialized before any dispatch.
 type MetalActivation struct {
 	metallib string
+	runtime  *MetalRuntime
 }
 
 // New creates and initializes a MetalActivation.
@@ -31,7 +32,13 @@ func New(metallib string) (*MetalActivation, error) {
 	if rc := C.metal_init(cpath); rc != 0 {
 		return nil, fmt.Errorf("metal_init failed (rc=%d): check that %q exists and Metal is available", rc, metallib)
 	}
-	return &MetalActivation{metallib: metallib}, nil
+
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MetalActivation{metallib: metallib, runtime: runtime}, nil
 }
 
 // ---------------------------------------------------------------------------

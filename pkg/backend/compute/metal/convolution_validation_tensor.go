@@ -4,88 +4,10 @@ package metal
 
 import "fmt"
 
-type metalConvolutionContract struct {
-	operation           string
-	inputLength         int
-	weightLength        int
-	biasLength          int
-	expectedInputLength int
-	expectedWeight      int
-	expectedBias        int
-	outputShape         []int
-	expectedOutputShape []int
-}
-
-func (contract metalConvolutionContract) Validate() error {
-	if err := contract.requireLength(
-		"input", contract.inputLength, contract.expectedInputLength,
-	); err != nil {
-		return err
-	}
-
-	if err := contract.requireLength(
-		"weight", contract.weightLength, contract.expectedWeight,
-	); err != nil {
-		return err
-	}
-
-	if err := contract.requireLength(
-		"bias", contract.biasLength, contract.expectedBias,
-	); err != nil {
-		return err
-	}
-
-	if len(contract.outputShape) != len(contract.expectedOutputShape) {
-		return fmt.Errorf(
-			"%s: output rank %d does not match expected rank %d",
-			contract.operation,
-			len(contract.outputShape),
-			len(contract.expectedOutputShape),
-		)
-	}
-
-	for axis, actual := range contract.outputShape {
-		expected := contract.expectedOutputShape[axis]
-
-		if expected <= 0 {
-			return fmt.Errorf(
-				"%s: output shape %v must be positive",
-				contract.operation,
-				contract.expectedOutputShape,
-			)
-		}
-
-		if actual == expected {
-			continue
-		}
-
-		return fmt.Errorf(
-			"%s: output shape %v does not match expected %v",
-			contract.operation,
-			contract.outputShape,
-			contract.expectedOutputShape,
-		)
-	}
-
-	return nil
-}
-
-func (contract metalConvolutionContract) requireLength(
-	name string,
-	actual int,
-	expected int,
-) error {
-	if actual == expected {
-		return nil
-	}
-
-	return fmt.Errorf("%s: len(%s)=%d, need %d", contract.operation, name, actual, expected)
-}
-
-func validateMetalConv1d(
-	input []float64,
-	weight []float64,
-	bias []float64,
+func validateMetalConv1dLengths(
+	inputLength int,
+	weightLength int,
+	biasLength int,
 	batch int,
 	inChannels int,
 	length int,
@@ -114,9 +36,9 @@ func validateMetalConv1d(
 
 	return metalConvolutionContract{
 		operation:           operation,
-		inputLength:         len(input),
-		weightLength:        len(weight),
-		biasLength:          len(bias),
+		inputLength:         inputLength,
+		weightLength:        weightLength,
+		biasLength:          biasLength,
 		expectedInputLength: batch * inChannels * length,
 		expectedWeight:      outChannels * (inChannels / groups) * kernelSize,
 		expectedBias:        outChannels,
@@ -125,10 +47,10 @@ func validateMetalConv1d(
 	}.Validate()
 }
 
-func validateMetalConv2d(
-	input []float64,
-	weight []float64,
-	bias []float64,
+func validateMetalConv2dLengths(
+	inputLength int,
+	weightLength int,
+	biasLength int,
 	batch int,
 	inChannels int,
 	height int,
@@ -166,9 +88,9 @@ func validateMetalConv2d(
 
 	return metalConvolutionContract{
 		operation:           operation,
-		inputLength:         len(input),
-		weightLength:        len(weight),
-		biasLength:          len(bias),
+		inputLength:         inputLength,
+		weightLength:        weightLength,
+		biasLength:          biasLength,
 		expectedInputLength: batch * inChannels * height * width,
 		expectedWeight: outChannels * (inChannels / groups) *
 			kernelHeight * kernelWidth,
@@ -178,10 +100,10 @@ func validateMetalConv2d(
 	}.Validate()
 }
 
-func validateMetalConv3d(
-	input []float64,
-	weight []float64,
-	bias []float64,
+func validateMetalConv3dLengths(
+	inputLength int,
+	weightLength int,
+	biasLength int,
 	batch int,
 	inChannels int,
 	depth int,
@@ -227,9 +149,9 @@ func validateMetalConv3d(
 
 	return metalConvolutionContract{
 		operation:           operation,
-		inputLength:         len(input),
-		weightLength:        len(weight),
-		biasLength:          len(bias),
+		inputLength:         inputLength,
+		weightLength:        weightLength,
+		biasLength:          biasLength,
 		expectedInputLength: batch * inChannels * depth * height * width,
 		expectedWeight: outChannels * (inChannels / groups) *
 			kernelDepth * kernelHeight * kernelWidth,
@@ -239,10 +161,10 @@ func validateMetalConv3d(
 	}.Validate()
 }
 
-func validateMetalConvTranspose2d(
-	input []float64,
-	weight []float64,
-	bias []float64,
+func validateMetalConvTranspose2dLengths(
+	inputLength int,
+	weightLength int,
+	biasLength int,
 	batch int,
 	inChannels int,
 	height int,
@@ -257,6 +179,8 @@ func validateMetalConvTranspose2d(
 	dilationHeight int,
 	dilationWidth int,
 	groups int,
+	outPadHeight int,
+	outPadWidth int,
 	heightOut int,
 	widthOut int,
 ) error {
@@ -276,15 +200,15 @@ func validateMetalConvTranspose2d(
 	}
 
 	expectedHeightOut := (height-1)*strideHeight - 2*padHeight +
-		dilationHeight*(kernelHeight-1) + 1
+		dilationHeight*(kernelHeight-1) + outPadHeight + 1
 	expectedWidthOut := (width-1)*strideWidth - 2*padWidth +
-		dilationWidth*(kernelWidth-1) + 1
+		dilationWidth*(kernelWidth-1) + outPadWidth + 1
 
 	return metalConvolutionContract{
 		operation:           operation,
-		inputLength:         len(input),
-		weightLength:        len(weight),
-		biasLength:          len(bias),
+		inputLength:         inputLength,
+		weightLength:        weightLength,
+		biasLength:          biasLength,
 		expectedInputLength: batch * inChannels * height * width,
 		expectedWeight: inChannels * (outChannels / groups) *
 			kernelHeight * kernelWidth,
@@ -292,23 +216,4 @@ func validateMetalConvTranspose2d(
 		outputShape:         []int{heightOut, widthOut},
 		expectedOutputShape: []int{expectedHeightOut, expectedWidthOut},
 	}.Validate()
-}
-
-func validateMetalConvGroups(
-	operation string,
-	inChannels int,
-	outChannels int,
-	groups int,
-) error {
-	if inChannels%groups == 0 && outChannels%groups == 0 {
-		return nil
-	}
-
-	return fmt.Errorf(
-		"%s: groups=%d must divide InC=%d and OutC=%d",
-		operation,
-		groups,
-		inChannels,
-		outChannels,
-	)
 }

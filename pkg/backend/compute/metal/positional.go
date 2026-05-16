@@ -19,6 +19,7 @@ import (
 // MetalPositional dispatches RoPE and ALiBi kernels to the Metal GPU.
 type MetalPositional struct {
 	metallib string
+	runtime  *MetalRuntime
 }
 
 const (
@@ -34,7 +35,13 @@ func NewPositional(metallib string) (*MetalPositional, error) {
 	if rc := C.metal_positional_init(cpath); rc != 0 {
 		return nil, fmt.Errorf("metal_positional_init failed (rc=%d)", rc)
 	}
-	return &MetalPositional{metallib: metallib}, nil
+
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MetalPositional{metallib: metallib, runtime: runtime}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +266,7 @@ func (m *MetalPositional) RoPETensorModeConfig(
 		return nil, err
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err

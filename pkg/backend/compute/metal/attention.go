@@ -17,6 +17,7 @@ import (
 // Metal pipeline state for all attention variants.
 type MetalAttention struct {
 	metallib string
+	runtime  *MetalRuntime
 	// Window is used only for SlidingWindow attention.
 	Window int
 }
@@ -34,7 +35,13 @@ func NewAttention(metallib string) (*MetalAttention, error) {
 	if rc := C.metal_init_attention(cpath); rc != 0 {
 		return nil, fmt.Errorf("metal_init_attention failed (rc=%d): check that %q exists and Metal is available", rc, metallib)
 	}
-	return &MetalAttention{metallib: metallib}, nil
+
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MetalAttention{metallib: metallib, runtime: runtime}, nil
 }
 
 // Forward dispatches to the appropriate attention variant based on len(shape).
@@ -179,7 +186,7 @@ func (m *MetalAttention) SDPATensor(
 		return nil, fmt.Errorf("metal_sdpa_tensor: output length mismatch")
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -406,13 +413,13 @@ func (m *MetalAttention) AppendKVTensor(
 		return nil, nil, fmt.Errorf("metal_kv_append_tensor: output length mismatch")
 	}
 
-	outputKey, err := newMetalTensor(outputShape)
+	outputKey, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationKVCache)
 
 	if err != nil {
 		return nil, nil, err
 	}
 
-	outputValue, err := newMetalTensor(outputShape)
+	outputValue, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationKVCache)
 
 	if err != nil {
 		_ = outputKey.Close()
@@ -572,7 +579,7 @@ func (m *MetalAttention) GQATensor(
 		return nil, fmt.Errorf("metal_gqa_tensor: output length mismatch")
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err

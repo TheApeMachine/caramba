@@ -222,17 +222,28 @@ const Gallery = () => {
 		[],
 	);
 
-	const donut = useMemo(() => donutSpec({ data: sampleDonut }), []);
+	const donut = useMemo(
+		() =>
+			donutSpec({
+				centerLabel: "GPU hours",
+				centerValue: "100",
+				data: sampleDonut,
+			}),
+		[],
+	);
 	const spider = useMemo(
 		() => spiderSpec({ data: sampleSpider, seriesLabel: "Score" }),
 		[],
 	);
-	const gauge = useMemo(
-		() => gaugeSpec({ maxValue: 100, suffix: "%", value: 72 }),
-		[],
-	);
+	const gauge = useMemo(() => gaugeSpec({ maxValue: 100, value: 62 }), []);
 	const metric = useMemo(
-		() => metricSpec({ label: "Active runs", value: 1284 }),
+		() =>
+			metricSpec({
+				delta: 12.4,
+				deltaSuffix: "%",
+				label: "Active runs",
+				value: 1284,
+			}),
 		[],
 	);
 

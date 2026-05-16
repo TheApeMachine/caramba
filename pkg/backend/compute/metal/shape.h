@@ -70,6 +70,13 @@ int metal_last_token_tensor(const void* src, void* dst,
 
 int metal_copy_tensor(const void* src, void* dst, int n);
 
+int metal_concat_tensor(const void* srcA, int n_a,
+                        const void* srcB, int n_b,
+                        void* dst);
+
+int metal_split_tensor(const void* src, void* dst,
+                       int outer, int dim_size, int split_size, int inner);
+
 int metal_transpose_tensor(const void* src, void* dst,
                            const int* shape, int rank,
                            int dim0, int dim1, int n);

@@ -16,6 +16,7 @@ import (
 // EmbeddingOps wraps the Metal token-embedding kernel.
 type EmbeddingOps struct {
 	metallib  string
+	runtime   *MetalRuntime
 	vocabSize int
 	dModel    int
 }
@@ -33,7 +34,18 @@ func NewEmbeddingOps(metallib string, vocabSize, dModel int) (*EmbeddingOps, err
 	if rc := C.metal_embedding_init(cpath); rc != 0 {
 		return nil, fmt.Errorf("metal_embedding_init failed (rc=%d): check that %q exists", rc, metallib)
 	}
-	return &EmbeddingOps{metallib: metallib, vocabSize: vocabSize, dModel: dModel}, nil
+
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &EmbeddingOps{
+		metallib:  metallib,
+		runtime:   runtime,
+		vocabSize: vocabSize,
+		dModel:    dModel,
+	}, nil
 }
 
 // Forward performs token embedding lookup.
@@ -147,7 +159,7 @@ func (e *EmbeddingOps) ForwardTensor(
 		)
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := e.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err

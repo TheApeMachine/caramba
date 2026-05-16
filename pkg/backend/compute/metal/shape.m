@@ -527,6 +527,71 @@ int metal_copy_tensor(const void* src, void* dst, int n)
     }
 }
 
+int metal_concat_tensor(const void* srcA, int n_a,
+                        const void* srcB, int n_b,
+                        void* dst)
+{
+    @autoreleasepool {
+        int n = n_a + n_b;
+        if (!sQueue || !sPSO_concat || !dst || n <= 0 ||
+            n_a < 0 || n_b < 0 || (n_a > 0 && !srcA) || (n_b > 0 && !srcB)) {
+            return -1;
+        }
+
+        id<MTLBuffer> bufA = (__bridge id)((void*)srcA);
+        id<MTLBuffer> bufB = (__bridge id)((void*)srcB);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        id<MTLCommandBuffer> cb = [sQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:sPSO_concat];
+        [enc setBuffer:bufA offset:0 atIndex:0];
+        [enc setBuffer:bufB offset:0 atIndex:1];
+        [enc setBuffer:bufDst offset:0 atIndex:2];
+        [enc setBytes:&n_a length:sizeof(int) atIndex:3];
+        NSUInteger tw = sPSO_concat.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+     threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+        return cb.error ? -1 : 0;
+    }
+}
+
+int metal_split_tensor(const void* src, void* dst,
+                       int outer, int dim_size, int split_size, int inner)
+{
+    @autoreleasepool {
+        if (!sQueue || !sPSO_split || !src || !dst || outer <= 0 ||
+            dim_size <= 0 || split_size <= 0 || inner <= 0 ||
+            split_size > dim_size || dim_size % split_size != 0) {
+            return -1;
+        }
+
+        int n = outer * dim_size * inner;
+        if (n <= 0) return -1;
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        id<MTLCommandBuffer> cb = [sQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:sPSO_split];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:&outer length:sizeof(int) atIndex:2];
+        [enc setBytes:&dim_size length:sizeof(int) atIndex:3];
+        [enc setBytes:&split_size length:sizeof(int) atIndex:4];
+        [enc setBytes:&inner length:sizeof(int) atIndex:5];
+        NSUInteger tw = sPSO_split.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+     threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+        return cb.error ? -1 : 0;
+    }
+}
+
 int metal_transpose_tensor(const void* src, void* dst,
                            const int* shape, int rank,
                            int dim0, int dim1, int n)

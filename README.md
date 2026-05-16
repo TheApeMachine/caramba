@@ -191,9 +191,9 @@ caramba image --manifest model/diffusion/flux-2-klein-4b.yml "a brass observator
 **One IR, four resident backends.** Every operation has a Go scalar reference, and accelerator graphs are only legal when the selected backend advertises a resident kernel for that operation:
 
 - **CPU** with hand-written AVX2, SSE2, and NEON assembly — each ISA has its own kernel, no scalar branches in disguise.
-- **CUDA** native `.cu` kernels for activations, attention, convolution, embeddings, causal masking, pooling.
-- **Metal** native `.metal` shaders with resident KV caches and on-device tensor lifecycle.
-- **XLA** via PJRT — your graph becomes a StableHLO module and runs through whichever plugin you point caramba at.
+- **CUDA** native `.cu` kernels for activations, shape transforms, attention, convolution, embeddings, causal masking, pooling.
+- **Metal** native `.metal` shaders with resident KV caches, shape transforms, and on-device tensor lifecycle.
+- **XLA** via PJRT — shape and math graph nodes become StableHLO modules and run through whichever plugin you point caramba at.
 
 **A real operation library.** Standard primitives — attention (SDPA, GQA, flash, causal), activations (GeLU exact, SwiGLU, Mish, …), normalization, convolution, pooling, projection, embedding (token, RoPE, ALiBi, sinusoidal), shape transforms and nearest-neighbor upsample — plus a set of operations you will not find in PyTorch: active inference, Hawkes processes, Markov blanket detection, predictive coding, vector symbolic architectures. Optimizers include SGD, Adam(W), Lion, LARS, LAMB, L-BFGS, each with native kernels on every backend. Diffusion decoder support now binds VAE convolution and GroupNorm tensors through the same SafeTensors-to-IR path.
 

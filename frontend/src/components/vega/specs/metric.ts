@@ -2,55 +2,87 @@ import type { Spec } from "./types";
 
 interface MetricSpecOptions {
 	label: string;
-	value: number;
+	value: number | string;
+	delta?: number;
+	deltaSuffix?: string;
 }
 
 /*
-metricSpec uses a Vega-Lite text mark to render a "big number" card with a
-small caption underneath. Keeping the metric inside the spec contract means
-the dashboard treats it identically to any other widget — no special case.
+metricSpec is a big-number card. No axes, no gridlines, no scale ticks —
+just a headline value, a small caption underneath, and an optional delta
+chip. Positions are signal-driven (width/2, height/2) so the layout fills
+whatever container the chart widget is sized to.
 */
-export const metricSpec = ({ label, value }: MetricSpecOptions): Spec =>
-	({
-		$schema: "https://vega.github.io/schema/vega-lite/v6.json",
+export const metricSpec = ({
+	label,
+	value,
+	delta,
+	deltaSuffix = "",
+}: MetricSpecOptions): Spec => {
+	const valueText = typeof value === "number" ? value.toLocaleString() : value;
+
+	const marks: Record<string, unknown>[] = [
+		{
+			encode: {
+				update: {
+					align: { value: "center" },
+					baseline: { value: "alphabetic" },
+					fill: { value: "var(--foreground)" },
+					fontSize: { value: 36 },
+					fontWeight: { value: 700 },
+					text: { value: valueText },
+					x: { signal: "width / 2" },
+					y: { signal: "height / 2 + 6" },
+				},
+			},
+			type: "text",
+		},
+		{
+			encode: {
+				update: {
+					align: { value: "center" },
+					baseline: { value: "top" },
+					fill: { value: "var(--muted-foreground)" },
+					fontSize: { value: 11 },
+					fontWeight: { value: 500 },
+					text: { value: label.toUpperCase() },
+					x: { signal: "width / 2" },
+					y: { signal: "height / 2 + 14" },
+				},
+			},
+			type: "text",
+		},
+	];
+
+	if (delta !== undefined && Number.isFinite(delta)) {
+		const positive = delta >= 0;
+		const sign = positive ? "+" : "";
+		marks.push({
+			encode: {
+				update: {
+					align: { value: "center" },
+					baseline: { value: "alphabetic" },
+					fill: {
+						value: positive ? "var(--color-chart-4)" : "var(--color-chart-3)",
+					},
+					fontSize: { value: 11 },
+					fontWeight: { value: 600 },
+					text: { value: `${sign}${delta.toFixed(2)}${deltaSuffix}` },
+					x: { signal: "width / 2" },
+					y: { signal: "height / 2 - 28" },
+				},
+			},
+			type: "text",
+		});
+	}
+
+	return {
+		$schema: "https://vega.github.io/schema/vega/v6.json",
 		autosize: { contains: "padding", resize: true, type: "fit" },
 		background: "transparent",
-		config: { view: { stroke: "transparent" } },
-		data: {
-			values: [
-				{ kind: "value", text: value.toLocaleString(), y: 0.4 },
-				{ kind: "label", text: label, y: 0.7 },
-			],
-		},
-		encoding: {
-			text: { field: "text", type: "nominal" },
-			x: { value: { expr: "width / 2" } },
-			y: { field: "y", scale: { domain: [0, 1] }, type: "quantitative" },
-		},
-		height: "container",
-		layer: [
-			{
-				mark: {
-					align: "center",
-					baseline: "middle",
-					fontSize: 36,
-					fontWeight: 700,
-					type: "text",
-				},
-				transform: [{ filter: "datum.kind === 'value'" }],
-			},
-			{
-				encoding: {
-					opacity: { value: 0.7 },
-				},
-				mark: {
-					align: "center",
-					baseline: "middle",
-					fontSize: 12,
-					type: "text",
-				},
-				transform: [{ filter: "datum.kind === 'label'" }],
-			},
-		],
-		width: "container",
-	}) as Spec;
+		height: 120,
+		marks,
+		padding: 8,
+		width: 200,
+	} as unknown as Spec;
+};

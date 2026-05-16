@@ -17,6 +17,7 @@ import (
 // metallib must be the absolute path to math.metallib compiled from math.metal.
 type MathOps struct {
 	metallib string
+	runtime  *MetalRuntime
 }
 
 // NewMathOps creates and initializes a MathOps instance.
@@ -26,7 +27,13 @@ func NewMathOps(metallib string) (*MathOps, error) {
 	if rc := C.metal_math_init(cpath); rc != 0 {
 		return nil, fmt.Errorf("metal_math_init failed (rc=%d): check %q exists", rc, metallib)
 	}
-	return &MathOps{metallib: metallib}, nil
+
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MathOps{metallib: metallib, runtime: runtime}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +181,7 @@ func (m *MathOps) MatmulTensor(
 		return nil, err
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -255,7 +262,7 @@ func (m *MathOps) MatmulFlatTensor(
 		)
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -333,7 +340,7 @@ func (m *MathOps) MatmulAddFlatTensor(
 		)
 	}
 
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -401,7 +408,7 @@ func (m *MathOps) LayerNormTensor(
 		)
 	}
 
-	output, err := newMetalTensor(metalInput.shape)
+	output, err := m.runtime.NewFloat32Tensor(metalInput.shape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -458,7 +465,7 @@ func (m *MathOps) RMSNormTensor(
 		return nil, fmt.Errorf("metal tensor: rmsnorm weight length must equal d_model=%d", dModel)
 	}
 
-	output, err := newMetalTensor(metalInput.shape)
+	output, err := m.runtime.NewFloat32Tensor(metalInput.shape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -532,7 +539,7 @@ func (m *MathOps) GroupNormTensor(
 		)
 	}
 
-	output, err := newMetalTensor(metalInput.shape)
+	output, err := m.runtime.NewFloat32Tensor(metalInput.shape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -579,7 +586,7 @@ func (m *MathOps) binaryTensor(
 		return nil, fmt.Errorf("metal tensor: binary operation shape mismatch")
 	}
 
-	output, err := newMetalTensor(metalLeft.shape)
+	output, err := m.runtime.NewFloat32Tensor(metalLeft.shape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err
@@ -620,7 +627,7 @@ func (m *MathOps) matmulAddTensor(
 
 	leftDims := metalLeft.shape.Dims()
 	rightDims := metalRight.shape.Dims()
-	output, err := newMetalTensor(outputShape)
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
 
 	if err != nil {
 		return nil, err

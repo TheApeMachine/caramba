@@ -89,7 +89,10 @@ go test ./pkg/backend/compute/cpu/...
 
 **Requirements:** Linux, NVIDIA CUDA toolkit, cgo enabled.
 
-The CUDA backend exposes resident device tensors. All computation stays on-device. Activation, math, and fused linear kernels dispatch CUDA kernels directly.
+The CUDA backend exposes resident device tensors. All computation stays on-device.
+Activation, math, shape, and fused linear kernels dispatch CUDA kernels directly.
+Resident shape coverage includes reshape, transpose, concat, split,
+nearest-neighbor upsample, view-as-heads, merge-heads, and last-token.
 
 ### Building
 
@@ -141,7 +144,10 @@ The build constraint is `//go:build darwin && cgo`. On non-Darwin platforms, the
 
 **Requirements:** XLA headers and a PJRT plugin library (CPU or GPU).
 
-XLA is accessed through the PJRT C API. The backend exposes resident PJRT buffers for activation, elementwise math, matmul, and fused matmul+bias(+GELU).
+XLA is accessed through the PJRT C API. The backend exposes resident PJRT buffers
+for activation, elementwise math, matmul, shape transforms, and fused
+matmul+bias(+GELU). Shape transforms are lowered to StableHLO reshape,
+transpose, concatenate, broadcast, and slice operations.
 
 ### Configuration
 

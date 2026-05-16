@@ -9,13 +9,12 @@ import "C"
 import (
 	"fmt"
 	"unsafe"
-
-	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
 // ConvolutionOps dispatches convolution kernels to the GPU via Metal.
 type ConvolutionOps struct {
 	metallib string
+	runtime  *MetalRuntime
 }
 
 // NewConvolutionOps creates and initializes a ConvolutionOps.
@@ -28,7 +27,13 @@ func NewConvolutionOps(metallib string) (*ConvolutionOps, error) {
 	if rc := C.metal_conv_init(cpath); rc != 0 {
 		return nil, fmt.Errorf("metal_conv_init failed (rc=%d): check that %q exists and Metal is available", rc, metallib)
 	}
-	return &ConvolutionOps{metallib: metallib}, nil
+
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &ConvolutionOps{metallib: metallib, runtime: runtime}, nil
 }
 
 // Forward dispatches to Conv2d with the universal signature.
@@ -108,112 +113,6 @@ func (m *ConvolutionOps) Conv2d(
 	return toFloat64(dst), nil
 }
 
-func (m *ConvolutionOps) Conv2dTensor(
-	input computetensor.Float64Tensor,
-	weight computetensor.Float64Tensor,
-	bias computetensor.Float64Tensor,
-	outputShape computetensor.Shape,
-	batch int,
-	inChannels int,
-	height int,
-	width int,
-	outChannels int,
-	kernelHeight int,
-	kernelWidth int,
-	strideHeight int,
-	strideWidth int,
-	padHeight int,
-	padWidth int,
-	dilationHeight int,
-	dilationWidth int,
-	groups int,
-) (computetensor.Float64Tensor, error) {
-	metalInput, err := requireMetalTensor(input)
-
-	if err != nil {
-		return nil, err
-	}
-
-	metalWeight, err := requireMetalTensor(weight)
-
-	if err != nil {
-		return nil, err
-	}
-
-	metalBias, err := requireMetalTensor(bias)
-
-	if err != nil {
-		return nil, err
-	}
-
-	outputDims := outputShape.Dims()
-
-	if len(outputDims) != 4 {
-		return nil, fmt.Errorf("metal.conv2d: output shape must be NCHW rank 4")
-	}
-
-	if err := validateMetalConv2dLengths(
-		metalInput.Len(),
-		metalWeight.Len(),
-		metalBias.Len(),
-		batch,
-		inChannels,
-		height,
-		width,
-		outChannels,
-		kernelHeight,
-		kernelWidth,
-		strideHeight,
-		strideWidth,
-		padHeight,
-		padWidth,
-		dilationHeight,
-		dilationWidth,
-		groups,
-		outputDims[2],
-		outputDims[3],
-	); err != nil {
-		return nil, err
-	}
-
-	output, err := newMetalTensor(outputShape)
-
-	if err != nil {
-		return nil, err
-	}
-
-	rc := C.metal_conv2d_tensor(
-		metalInput.buffer,
-		output.buffer,
-		C.int(batch),
-		C.int(inChannels),
-		C.int(height),
-		C.int(width),
-		C.int(outChannels),
-		C.int(kernelHeight),
-		C.int(kernelWidth),
-		C.int(strideHeight),
-		C.int(strideWidth),
-		C.int(padHeight),
-		C.int(padWidth),
-		C.int(dilationHeight),
-		C.int(dilationWidth),
-		C.int(groups),
-		C.int(outputDims[2]),
-		C.int(outputDims[3]),
-		metalWeight.buffer,
-		metalBias.buffer,
-	)
-
-	if rc != 0 {
-		_ = output.Close()
-
-		return nil, fmt.Errorf("metal_conv2d_tensor failed (rc=%d)", rc)
-	}
-
-	return output, nil
-}
-
 // Conv3d computes a 3-D convolution.
 func (m *ConvolutionOps) Conv3d(
 	x []float64,
@@ -252,116 +151,6 @@ func (m *ConvolutionOps) Conv3d(
 		return nil, fmt.Errorf("metal_conv3d failed (rc=%d)", rc)
 	}
 	return toFloat64(dst), nil
-}
-
-func (m *ConvolutionOps) ConvTranspose2dTensor(
-	input computetensor.Float64Tensor,
-	weight computetensor.Float64Tensor,
-	bias computetensor.Float64Tensor,
-	outputShape computetensor.Shape,
-	batch int,
-	inChannels int,
-	height int,
-	width int,
-	outChannels int,
-	kernelHeight int,
-	kernelWidth int,
-	strideHeight int,
-	strideWidth int,
-	padHeight int,
-	padWidth int,
-	dilationHeight int,
-	dilationWidth int,
-	groups int,
-	outPadHeight int,
-	outPadWidth int,
-) (computetensor.Float64Tensor, error) {
-	metalInput, err := requireMetalTensor(input)
-
-	if err != nil {
-		return nil, err
-	}
-
-	metalWeight, err := requireMetalTensor(weight)
-
-	if err != nil {
-		return nil, err
-	}
-
-	metalBias, err := requireMetalTensor(bias)
-
-	if err != nil {
-		return nil, err
-	}
-
-	outputDims := outputShape.Dims()
-
-	if len(outputDims) != 4 {
-		return nil, fmt.Errorf("metal.conv_transpose2d: output shape must be NCHW rank 4")
-	}
-
-	if err := validateMetalConvTranspose2dLengths(
-		metalInput.Len(),
-		metalWeight.Len(),
-		metalBias.Len(),
-		batch,
-		inChannels,
-		height,
-		width,
-		outChannels,
-		kernelHeight,
-		kernelWidth,
-		strideHeight,
-		strideWidth,
-		padHeight,
-		padWidth,
-		dilationHeight,
-		dilationWidth,
-		groups,
-		outPadHeight,
-		outPadWidth,
-		outputDims[2],
-		outputDims[3],
-	); err != nil {
-		return nil, err
-	}
-
-	output, err := newMetalTensor(outputShape)
-
-	if err != nil {
-		return nil, err
-	}
-
-	rc := C.metal_conv_transpose2d_tensor(
-		metalInput.buffer,
-		output.buffer,
-		C.int(batch),
-		C.int(inChannels),
-		C.int(height),
-		C.int(width),
-		C.int(outChannels),
-		C.int(kernelHeight),
-		C.int(kernelWidth),
-		C.int(strideHeight),
-		C.int(strideWidth),
-		C.int(padHeight),
-		C.int(padWidth),
-		C.int(dilationHeight),
-		C.int(dilationWidth),
-		C.int(groups),
-		C.int(outputDims[2]),
-		C.int(outputDims[3]),
-		metalWeight.buffer,
-		metalBias.buffer,
-	)
-
-	if rc != 0 {
-		_ = output.Close()
-
-		return nil, fmt.Errorf("metal_conv_transpose2d_tensor failed (rc=%d)", rc)
-	}
-
-	return output, nil
 }
 
 // ConvTranspose2d computes a 2-D transposed convolution.

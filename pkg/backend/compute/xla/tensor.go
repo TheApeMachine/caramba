@@ -293,6 +293,392 @@ func (tensorBackend *TensorBackend) MatmulAddGELU(
 	return tensorBackend.matmulAdd(left, right, bias, true)
 }
 
+/*
+ReshapeTensor executes a StableHLO reshape against a resident PJRT buffer.
+*/
+func (tensorBackend *TensorBackend) ReshapeTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+) (computetensor.Float64Tensor, error) {
+	xlaInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if xlaInput.Len() != outputShape.Len() {
+		return nil, fmt.Errorf("xla tensor: reshape changes element count")
+	}
+
+	cDims := cShapeDims(outputShape)
+	var cDimsPointer *C.int64_t
+
+	if len(cDims) > 0 {
+		cDimsPointer = &cDims[0]
+	}
+
+	var output *C.XLA_Tensor
+
+	rc := C.xla_tensor_reshape(
+		xlaInput.handle,
+		cDimsPointer,
+		C.int(len(cDims)),
+		&output,
+	)
+
+	if rc != 0 || output == nil {
+		return nil, fmt.Errorf("xla tensor: reshape execution failed")
+	}
+
+	return newXLATensor(outputShape, output)
+}
+
+/*
+TransposeTensor executes a StableHLO transpose against a resident PJRT buffer.
+*/
+func (tensorBackend *TensorBackend) TransposeTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	dim0 int,
+	dim1 int,
+) (computetensor.Float64Tensor, error) {
+	xlaInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	inputDims := xlaInput.shape.Dims()
+
+	if len(inputDims) == 0 {
+		return nil, fmt.Errorf("xla tensor: transpose requires rank >= 1")
+	}
+
+	if dim0 < 0 || dim1 < 0 || dim0 >= len(inputDims) || dim1 >= len(inputDims) {
+		return nil, fmt.Errorf("xla tensor: transpose dimensions out of range")
+	}
+
+	if xlaInput.Len() != outputShape.Len() {
+		return nil, fmt.Errorf("xla tensor: transpose changes element count")
+	}
+
+	outputDims := outputShape.Dims()
+	expectedDims := slices.Clone(inputDims)
+	expectedDims[dim0], expectedDims[dim1] = expectedDims[dim1], expectedDims[dim0]
+
+	if !slices.Equal(outputDims, expectedDims) {
+		return nil, fmt.Errorf(
+			"xla tensor: transpose output shape %v does not match expected %v",
+			outputDims,
+			expectedDims,
+		)
+	}
+
+	cDims := cShapeDims(outputShape)
+	var cDimsPointer *C.int64_t
+
+	if len(cDims) > 0 {
+		cDimsPointer = &cDims[0]
+	}
+
+	var output *C.XLA_Tensor
+
+	rc := C.xla_tensor_transpose(
+		xlaInput.handle,
+		cDimsPointer,
+		C.int(len(cDims)),
+		C.int(dim0),
+		C.int(dim1),
+		&output,
+	)
+
+	if rc != 0 || output == nil {
+		return nil, fmt.Errorf("xla tensor: transpose execution failed")
+	}
+
+	return newXLATensor(outputShape, output)
+}
+
+func (tensorBackend *TensorBackend) ConcatTensor(
+	left computetensor.Float64Tensor,
+	right computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+) (computetensor.Float64Tensor, error) {
+	xlaLeft, err := tensorBackend.require(left)
+
+	if err != nil {
+		return nil, err
+	}
+
+	xlaRight, err := tensorBackend.require(right)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if outputShape.Len() != xlaLeft.Len()+xlaRight.Len() {
+		return nil, fmt.Errorf("xla tensor: concat output shape has invalid length")
+	}
+
+	cDims := cShapeDims(outputShape)
+	var cDimsPointer *C.int64_t
+
+	if len(cDims) > 0 {
+		cDimsPointer = &cDims[0]
+	}
+
+	var output *C.XLA_Tensor
+
+	rc := C.xla_tensor_concat(
+		xlaLeft.handle,
+		xlaRight.handle,
+		cDimsPointer,
+		C.int(len(cDims)),
+		&output,
+	)
+
+	if rc != 0 || output == nil {
+		return nil, fmt.Errorf("xla tensor: concat execution failed")
+	}
+
+	return newXLATensor(outputShape, output)
+}
+
+func (tensorBackend *TensorBackend) SplitTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	outer int,
+	dimSize int,
+	splitSize int,
+	inner int,
+) (computetensor.Float64Tensor, error) {
+	xlaInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateXLASplitTensor(
+		xlaInput.Len(), outputShape.Len(), outer, dimSize, splitSize, inner,
+	); err != nil {
+		return nil, err
+	}
+
+	cDims := cShapeDims(outputShape)
+	var cDimsPointer *C.int64_t
+
+	if len(cDims) > 0 {
+		cDimsPointer = &cDims[0]
+	}
+
+	var output *C.XLA_Tensor
+
+	rc := C.xla_tensor_split(
+		xlaInput.handle,
+		cDimsPointer,
+		C.int(len(cDims)),
+		C.int(outer),
+		C.int(dimSize),
+		C.int(splitSize),
+		C.int(inner),
+		&output,
+	)
+
+	if rc != 0 || output == nil {
+		return nil, fmt.Errorf("xla tensor: split execution failed")
+	}
+
+	return newXLATensor(outputShape, output)
+}
+
+func (tensorBackend *TensorBackend) UpsampleNearest2DTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch int,
+	channels int,
+	height int,
+	width int,
+	scaleH int,
+	scaleW int,
+) (computetensor.Float64Tensor, error) {
+	xlaInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	inputLength := batch * channels * height * width
+	outputLength := inputLength * scaleH * scaleW
+
+	if xlaInput.Len() != inputLength || outputShape.Len() != outputLength {
+		return nil, fmt.Errorf("xla tensor: invalid upsample_nearest2d tensor shape")
+	}
+
+	cDims := cShapeDims(outputShape)
+	var cDimsPointer *C.int64_t
+
+	if len(cDims) > 0 {
+		cDimsPointer = &cDims[0]
+	}
+
+	var output *C.XLA_Tensor
+
+	rc := C.xla_tensor_upsample_nearest2d(
+		xlaInput.handle,
+		cDimsPointer,
+		C.int(len(cDims)),
+		C.int(batch),
+		C.int(channels),
+		C.int(height),
+		C.int(width),
+		C.int(scaleH),
+		C.int(scaleW),
+		&output,
+	)
+
+	if rc != 0 || output == nil {
+		return nil, fmt.Errorf("xla tensor: upsample_nearest2d execution failed")
+	}
+
+	return newXLATensor(outputShape, output)
+}
+
+func (tensorBackend *TensorBackend) ViewAsHeadsTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch int,
+	tokens int,
+	heads int,
+	headDim int,
+) (computetensor.Float64Tensor, error) {
+	xlaInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if xlaInput.Len() != batch*tokens*heads*headDim ||
+		outputShape.Len() != xlaInput.Len() {
+		return nil, fmt.Errorf("xla tensor: invalid view_as_heads tensor shape")
+	}
+
+	cDims := cShapeDims(outputShape)
+	var cDimsPointer *C.int64_t
+
+	if len(cDims) > 0 {
+		cDimsPointer = &cDims[0]
+	}
+
+	var output *C.XLA_Tensor
+
+	rc := C.xla_tensor_view_as_heads(
+		xlaInput.handle,
+		cDimsPointer,
+		C.int(len(cDims)),
+		C.int(batch),
+		C.int(tokens),
+		C.int(heads),
+		C.int(headDim),
+		&output,
+	)
+
+	if rc != 0 || output == nil {
+		return nil, fmt.Errorf("xla tensor: view_as_heads execution failed")
+	}
+
+	return newXLATensor(outputShape, output)
+}
+
+func (tensorBackend *TensorBackend) MergeHeadsTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch int,
+	heads int,
+	tokens int,
+	headDim int,
+) (computetensor.Float64Tensor, error) {
+	xlaInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if xlaInput.Len() != batch*heads*tokens*headDim ||
+		outputShape.Len() != xlaInput.Len() {
+		return nil, fmt.Errorf("xla tensor: invalid merge_heads tensor shape")
+	}
+
+	cDims := cShapeDims(outputShape)
+	var cDimsPointer *C.int64_t
+
+	if len(cDims) > 0 {
+		cDimsPointer = &cDims[0]
+	}
+
+	var output *C.XLA_Tensor
+
+	rc := C.xla_tensor_merge_heads(
+		xlaInput.handle,
+		cDimsPointer,
+		C.int(len(cDims)),
+		C.int(batch),
+		C.int(heads),
+		C.int(tokens),
+		C.int(headDim),
+		&output,
+	)
+
+	if rc != 0 || output == nil {
+		return nil, fmt.Errorf("xla tensor: merge_heads execution failed")
+	}
+
+	return newXLATensor(outputShape, output)
+}
+
+func (tensorBackend *TensorBackend) LastTokenTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	outer int,
+	sequenceLength int,
+	featureLength int,
+) (computetensor.Float64Tensor, error) {
+	xlaInput, err := tensorBackend.require(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if xlaInput.Len() < outer*sequenceLength*featureLength ||
+		outputShape.Len() != outer*featureLength {
+		return nil, fmt.Errorf("xla tensor: invalid last_token tensor shape")
+	}
+
+	cDims := cShapeDims(outputShape)
+	var cDimsPointer *C.int64_t
+
+	if len(cDims) > 0 {
+		cDimsPointer = &cDims[0]
+	}
+
+	var output *C.XLA_Tensor
+
+	rc := C.xla_tensor_last_token(
+		xlaInput.handle,
+		cDimsPointer,
+		C.int(len(cDims)),
+		C.int(outer),
+		C.int(sequenceLength),
+		C.int(featureLength),
+		&output,
+	)
+
+	if rc != 0 || output == nil {
+		return nil, fmt.Errorf("xla tensor: last_token execution failed")
+	}
+
+	return newXLATensor(outputShape, output)
+}
+
 func (tensorBackend *TensorBackend) unary(
 	input computetensor.Float64Tensor, name string, alpha float64,
 ) (computetensor.Float64Tensor, error) {
@@ -520,6 +906,31 @@ func xlaSwiGLUOutputShape(shape computetensor.Shape) (computetensor.Shape, error
 	dimsCopy[lastDimensionIndex] /= 2
 
 	return computetensor.NewShape(dimsCopy)
+}
+
+func validateXLASplitTensor(
+	inputLength int,
+	outputLength int,
+	outer int,
+	dimSize int,
+	splitSize int,
+	inner int,
+) error {
+	if outer <= 0 || dimSize <= 0 || splitSize <= 0 || inner <= 0 {
+		return fmt.Errorf("xla tensor: split dimensions must be positive")
+	}
+
+	if splitSize > dimSize || dimSize%splitSize != 0 {
+		return fmt.Errorf("xla tensor: invalid split size")
+	}
+
+	expected := outer * dimSize * inner
+
+	if inputLength != expected || outputLength != expected {
+		return fmt.Errorf("xla tensor: invalid split tensor shape")
+	}
+
+	return nil
 }
 
 /*

@@ -5,6 +5,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
+	metalbackend "github.com/theapemachine/caramba/pkg/backend/compute/metal"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -27,12 +28,34 @@ func TestBackendCapabilityParity(test *testing.T) {
 			xlaCapabilities := CapabilitiesForLocation(tensor.XLA)
 
 			So(cudaCapabilities.Supports(ir.OpMatmul), ShouldBeTrue)
+			So(cudaCapabilities.Supports("shape.reshape"), ShouldBeTrue)
+			So(cudaCapabilities.Supports("shape.transpose"), ShouldBeTrue)
+			So(cudaCapabilities.Supports("shape.concat"), ShouldBeTrue)
+			So(cudaCapabilities.Supports("shape.last_token"), ShouldBeTrue)
 			So(cudaCapabilities.Supports("attention.sdpa"), ShouldBeFalse)
 			So(metalCapabilities.Supports("attention.sdpa"), ShouldBeTrue)
 			So(metalCapabilities.Supports("convolution.conv2d"), ShouldBeTrue)
-			So(metalCapabilities.Supports("convolution.conv1d"), ShouldBeFalse)
+			So(metalCapabilities.Supports("shape.concat"), ShouldBeTrue)
+			So(metalCapabilities.Supports("shape.split"), ShouldBeTrue)
+			So(metalCapabilities.Supports("convolution.conv1d"), ShouldBeTrue)
+			So(metalCapabilities.Supports("convolution.conv3d"), ShouldBeTrue)
 			So(xlaCapabilities.Supports(ir.OpGELU), ShouldBeTrue)
+			So(xlaCapabilities.Supports("shape.reshape"), ShouldBeTrue)
+			So(xlaCapabilities.Supports("shape.transpose"), ShouldBeTrue)
+			So(xlaCapabilities.Supports("shape.concat"), ShouldBeTrue)
+			So(xlaCapabilities.Supports("shape.last_token"), ShouldBeTrue)
 			So(xlaCapabilities.Supports("projection.linear"), ShouldBeFalse)
+		})
+
+		Convey("It should generate Metal capabilities from the resident operation table", func() {
+			capabilities := CapabilitiesForLocation(tensor.Metal)
+
+			for _, operation := range metalbackend.ResidentOperationTable() {
+				So(capabilities.Supports(operation.ID), ShouldBeTrue)
+				So(capabilities.Precision(operation.ID), ShouldEqual, tensor.Float32)
+			}
+
+			So(capabilities.CanFuse("matmul.activation", ir.OpFused), ShouldBeTrue)
 		})
 
 		Convey("It should not use wildcard support as a substitute for explicit coverage", func() {

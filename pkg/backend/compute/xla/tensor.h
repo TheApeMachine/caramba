@@ -79,6 +79,86 @@ int xla_tensor_add(const XLA_Tensor* left, const XLA_Tensor* right, XLA_Tensor**
 int xla_tensor_mul(const XLA_Tensor* left, const XLA_Tensor* right, XLA_Tensor** output);
 int xla_tensor_matmul(const XLA_Tensor* left, const XLA_Tensor* right, XLA_Tensor** output);
 
+int xla_tensor_reshape(
+	const XLA_Tensor* input,
+	const int64_t* output_dims,
+	int output_rank,
+	XLA_Tensor** output
+);
+
+int xla_tensor_transpose(
+	const XLA_Tensor* input,
+	const int64_t* output_dims,
+	int output_rank,
+	int dim0,
+	int dim1,
+	XLA_Tensor** output
+);
+
+int xla_tensor_concat(
+	const XLA_Tensor* left,
+	const XLA_Tensor* right,
+	const int64_t* output_dims,
+	int output_rank,
+	XLA_Tensor** output
+);
+
+int xla_tensor_split(
+	const XLA_Tensor* input,
+	const int64_t* output_dims,
+	int output_rank,
+	int outer,
+	int dim_size,
+	int split_size,
+	int inner,
+	XLA_Tensor** output
+);
+
+int xla_tensor_upsample_nearest2d(
+	const XLA_Tensor* input,
+	const int64_t* output_dims,
+	int output_rank,
+	int batch,
+	int channels,
+	int height,
+	int width,
+	int scale_h,
+	int scale_w,
+	XLA_Tensor** output
+);
+
+int xla_tensor_view_as_heads(
+	const XLA_Tensor* input,
+	const int64_t* output_dims,
+	int output_rank,
+	int batch,
+	int tokens,
+	int heads,
+	int head_dim,
+	XLA_Tensor** output
+);
+
+int xla_tensor_merge_heads(
+	const XLA_Tensor* input,
+	const int64_t* output_dims,
+	int output_rank,
+	int batch,
+	int heads,
+	int tokens,
+	int head_dim,
+	XLA_Tensor** output
+);
+
+int xla_tensor_last_token(
+	const XLA_Tensor* input,
+	const int64_t* output_dims,
+	int output_rank,
+	int outer,
+	int seq_len,
+	int feature,
+	XLA_Tensor** output
+);
+
 /**
  * @brief Fused matmul(left, right) + bias; optionally GELU on each output element.
  * @param apply_gelu If true, apply GELU to the fused result.

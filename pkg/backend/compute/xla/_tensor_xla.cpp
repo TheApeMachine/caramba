@@ -26,6 +26,8 @@ struct XLA_Tensor {
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_tensor_execs;
 static std::mutex                                       g_tensor_execs_mutex;
 
+static int tensor_destroy_buffer(PJRT_Buffer* buffer);
+
 /*
 tensor_count_elements returns the product of dims, or 0 if any dimension is 0.
 Returns -1 if the product overflows int64_t (callers must abort / fail the operation).
@@ -83,6 +85,26 @@ static std::string tensor_type(const std::vector<int64_t>& dims, const char* sca
 
 static std::string tensor_flat_type(int64_t elements) {
     return "tensor<" + std::to_string(elements) + "xf64>";
+}
+
+static std::string tensor_permutation(int rank, int dim0, int dim1) {
+    std::string permutation = "[";
+
+    for (int dimension_index = 0; dimension_index < rank; dimension_index++) {
+        if (dimension_index > 0) permutation += ", ";
+
+        if (dimension_index == dim0) {
+            permutation += std::to_string(dim1);
+        } else if (dimension_index == dim1) {
+            permutation += std::to_string(dim0);
+        } else {
+            permutation += std::to_string(dimension_index);
+        }
+    }
+
+    permutation += "]";
+
+    return permutation;
 }
 
 static bool tensor_same_shape(const XLA_Tensor* left, const XLA_Tensor* right) {
@@ -370,6 +392,239 @@ static std::string tensor_build_matmul(const XLA_Tensor* left, const XLA_Tensor*
         "module @tensor_matmul {\n"
         "  func.func @main(%left: " + left_type + ", %right: " + right_type + ") -> " + output_type + " {\n"
         "    %out = stablehlo.dot_general %left, %right, contracting_dims = [1] x [0] : (" + left_type + ", " + right_type + ") -> " + output_type + "\n"
+        "    return %out : " + output_type + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string tensor_build_reshape(
+    const std::vector<int64_t>& input_dims,
+    const std::vector<int64_t>& output_dims
+) {
+    std::string input_type = tensor_type(input_dims, "f64");
+    std::string output_type = tensor_type(output_dims, "f64");
+
+    return
+        "module @tensor_reshape {\n"
+        "  func.func @main(%arg0: " + input_type + ") -> " + output_type + " {\n"
+        "    %out = stablehlo.reshape %arg0 : (" + input_type + ") -> " + output_type + "\n"
+        "    return %out : " + output_type + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string tensor_build_transpose(
+    const std::vector<int64_t>& input_dims,
+    const std::vector<int64_t>& output_dims,
+    int dim0,
+    int dim1
+) {
+    std::string input_type = tensor_type(input_dims, "f64");
+    std::string output_type = tensor_type(output_dims, "f64");
+    std::string permutation = tensor_permutation((int)input_dims.size(), dim0, dim1);
+
+    return
+        "module @tensor_transpose {\n"
+        "  func.func @main(%arg0: " + input_type + ") -> " + output_type + " {\n"
+        "    %out = stablehlo.transpose %arg0, dims = " + permutation + " : (" + input_type + ") -> " + output_type + "\n"
+        "    return %out : " + output_type + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string tensor_build_concat(
+    const XLA_Tensor* left,
+    const XLA_Tensor* right,
+    const std::vector<int64_t>& output_dims
+) {
+    std::string left_type = tensor_type(left->dims, "f64");
+    std::string right_type = tensor_type(right->dims, "f64");
+    std::string output_type = tensor_type(output_dims, "f64");
+    std::string left_flat = tensor_flat_type(left->elements);
+    std::string right_flat = tensor_flat_type(right->elements);
+    std::string output_flat = tensor_flat_type(left->elements + right->elements);
+
+    return
+        "module @tensor_concat {\n"
+        "  func.func @main(%left: " + left_type + ", %right: " + right_type + ") -> " + output_type + " {\n"
+        "    %left_flat = stablehlo.reshape %left : (" + left_type + ") -> " + left_flat + "\n"
+        "    %right_flat = stablehlo.reshape %right : (" + right_type + ") -> " + right_flat + "\n"
+        "    %flat = stablehlo.concatenate %left_flat, %right_flat, dim = 0 : (" + left_flat + ", " + right_flat + ") -> " + output_flat + "\n"
+        "    %out = stablehlo.reshape %flat : (" + output_flat + ") -> " + output_type + "\n"
+        "    return %out : " + output_type + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string tensor_build_split(
+    const std::vector<int64_t>& input_dims,
+    const std::vector<int64_t>& output_dims,
+    int outer,
+    int dim_size,
+    int split_size,
+    int inner
+) {
+    int chunks = dim_size / split_size;
+    std::string input_type = tensor_type(input_dims, "f64");
+    std::string output_type = tensor_type(output_dims, "f64");
+    std::string logical_type =
+        "tensor<" +
+        std::to_string(outer) + "x" +
+        std::to_string(chunks) + "x" +
+        std::to_string(split_size) + "x" +
+        std::to_string(inner) + "xf64>";
+    std::string split_type =
+        "tensor<" +
+        std::to_string(chunks) + "x" +
+        std::to_string(outer) + "x" +
+        std::to_string(split_size) + "x" +
+        std::to_string(inner) + "xf64>";
+
+    return
+        "module @tensor_split {\n"
+        "  func.func @main(%arg0: " + input_type + ") -> " + output_type + " {\n"
+        "    %logical = stablehlo.reshape %arg0 : (" + input_type + ") -> " + logical_type + "\n"
+        "    %split = stablehlo.transpose %logical, dims = [1, 0, 2, 3] : (" + logical_type + ") -> " + split_type + "\n"
+        "    %out = stablehlo.reshape %split : (" + split_type + ") -> " + output_type + "\n"
+        "    return %out : " + output_type + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string tensor_build_upsample_nearest2d(
+    const std::vector<int64_t>& output_dims,
+    int batch,
+    int channels,
+    int height,
+    int width,
+    int scale_h,
+    int scale_w
+) {
+    std::string input_type =
+        "tensor<" +
+        std::to_string(batch) + "x" +
+        std::to_string(channels) + "x" +
+        std::to_string(height) + "x" +
+        std::to_string(width) + "xf64>";
+    std::string expanded_type =
+        "tensor<" +
+        std::to_string(batch) + "x" +
+        std::to_string(channels) + "x" +
+        std::to_string(height) + "x" +
+        std::to_string(scale_h) + "x" +
+        std::to_string(width) + "x" +
+        std::to_string(scale_w) + "xf64>";
+    std::string output_type = tensor_type(output_dims, "f64");
+
+    return
+        "module @tensor_upsample_nearest2d {\n"
+        "  func.func @main(%arg0: " + input_type + ") -> " + output_type + " {\n"
+        "    %expanded = stablehlo.broadcast_in_dim %arg0, dims = [0, 1, 2, 4] : (" + input_type + ") -> " + expanded_type + "\n"
+        "    %out = stablehlo.reshape %expanded : (" + expanded_type + ") -> " + output_type + "\n"
+        "    return %out : " + output_type + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string tensor_build_view_as_heads(
+    const std::vector<int64_t>& input_dims,
+    const std::vector<int64_t>& output_dims,
+    int batch,
+    int tokens,
+    int heads,
+    int head_dim
+) {
+    std::string input_type = tensor_type(input_dims, "f64");
+    std::string output_type = tensor_type(output_dims, "f64");
+    std::string logical_type =
+        "tensor<" +
+        std::to_string(batch) + "x" +
+        std::to_string(tokens) + "x" +
+        std::to_string(heads) + "x" +
+        std::to_string(head_dim) + "xf64>";
+    std::string heads_type =
+        "tensor<" +
+        std::to_string(batch) + "x" +
+        std::to_string(heads) + "x" +
+        std::to_string(tokens) + "x" +
+        std::to_string(head_dim) + "xf64>";
+
+    return
+        "module @tensor_view_as_heads {\n"
+        "  func.func @main(%arg0: " + input_type + ") -> " + output_type + " {\n"
+        "    %logical = stablehlo.reshape %arg0 : (" + input_type + ") -> " + logical_type + "\n"
+        "    %heads = stablehlo.transpose %logical, dims = [0, 2, 1, 3] : (" + logical_type + ") -> " + heads_type + "\n"
+        "    %out = stablehlo.reshape %heads : (" + heads_type + ") -> " + output_type + "\n"
+        "    return %out : " + output_type + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string tensor_build_merge_heads(
+    const std::vector<int64_t>& input_dims,
+    const std::vector<int64_t>& output_dims,
+    int batch,
+    int heads,
+    int tokens,
+    int head_dim
+) {
+    std::string input_type = tensor_type(input_dims, "f64");
+    std::string output_type = tensor_type(output_dims, "f64");
+    std::string logical_type =
+        "tensor<" +
+        std::to_string(batch) + "x" +
+        std::to_string(heads) + "x" +
+        std::to_string(tokens) + "x" +
+        std::to_string(head_dim) + "xf64>";
+    std::string merged_type =
+        "tensor<" +
+        std::to_string(batch) + "x" +
+        std::to_string(tokens) + "x" +
+        std::to_string(heads) + "x" +
+        std::to_string(head_dim) + "xf64>";
+
+    return
+        "module @tensor_merge_heads {\n"
+        "  func.func @main(%arg0: " + input_type + ") -> " + output_type + " {\n"
+        "    %logical = stablehlo.reshape %arg0 : (" + input_type + ") -> " + logical_type + "\n"
+        "    %merged = stablehlo.transpose %logical, dims = [0, 2, 1, 3] : (" + logical_type + ") -> " + merged_type + "\n"
+        "    %out = stablehlo.reshape %merged : (" + merged_type + ") -> " + output_type + "\n"
+        "    return %out : " + output_type + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string tensor_build_last_token(
+    const std::vector<int64_t>& input_dims,
+    const std::vector<int64_t>& output_dims,
+    int outer,
+    int seq_len,
+    int feature
+) {
+    std::string input_type = tensor_type(input_dims, "f64");
+    std::string output_type = tensor_type(output_dims, "f64");
+    int64_t input_elements = tensor_count_elements(input_dims.data(), (int)input_dims.size());
+    int64_t logical_elements = (int64_t)outer * (int64_t)seq_len * (int64_t)feature;
+    std::string input_flat_type = tensor_flat_type(input_elements);
+    std::string logical_flat_type = tensor_flat_type(logical_elements);
+    std::string logical_type =
+        "tensor<" +
+        std::to_string(outer) + "x" +
+        std::to_string(seq_len) + "x" +
+        std::to_string(feature) + "xf64>";
+    std::string slice_type =
+        "tensor<" +
+        std::to_string(outer) + "x1x" +
+        std::to_string(feature) + "xf64>";
+
+    return
+        "module @tensor_last_token {\n"
+        "  func.func @main(%arg0: " + input_type + ") -> " + output_type + " {\n"
+        "    %flat = stablehlo.reshape %arg0 : (" + input_type + ") -> " + input_flat_type + "\n"
+        "    %prefix = stablehlo.slice %flat [0:" + std::to_string(logical_elements) + "] : (" + input_flat_type + ") -> " + logical_flat_type + "\n"
+        "    %logical = stablehlo.reshape %prefix : (" + logical_flat_type + ") -> " + logical_type + "\n"
+        "    %last = stablehlo.slice %logical [0:" + std::to_string(outer) + ", " + std::to_string(seq_len - 1) + ":" + std::to_string(seq_len) + ", 0:" + std::to_string(feature) + "] : (" + logical_type + ") -> " + slice_type + "\n"
+        "    %out = stablehlo.reshape %last : (" + slice_type + ") -> " + output_type + "\n"
         "    return %out : " + output_type + "\n"
         "  }\n"
         "}\n";
@@ -685,6 +940,376 @@ int xla_tensor_matmul(const XLA_Tensor* left, const XLA_Tensor* right, XLA_Tenso
     std::string key = "matmul:" + tensor_dims_key(left->dims) + ":" + tensor_dims_key(right->dims);
     PJRT_LoadedExecutable* executable = tensor_compile(key, tensor_build_matmul(left, right));
     XLA_Tensor* result = tensor_execute(executable, { left, right }, output_dims);
+
+    return tensor_finish_output(result, output);
+}
+
+int xla_tensor_reshape(
+    const XLA_Tensor* input,
+    const int64_t* output_dims,
+    int output_rank,
+    XLA_Tensor** output
+) {
+    if (!input || !output || output_rank < 0) return -1;
+
+    std::vector<int64_t> owned_output_dims;
+
+    for (int dimension_index = 0; dimension_index < output_rank; dimension_index++) {
+        int64_t dimension = output_dims[dimension_index];
+
+        if (dimension < 0) return -1;
+
+        owned_output_dims.push_back(dimension);
+    }
+
+    int64_t output_elements = tensor_count_elements(
+        owned_output_dims.data(),
+        (int)owned_output_dims.size()
+    );
+
+    if (output_elements < 0 || output_elements != input->elements) return -1;
+
+    std::string key =
+        "reshape:" +
+        tensor_dims_key(input->dims) + ":" +
+        tensor_dims_key(owned_output_dims);
+    PJRT_LoadedExecutable* executable = tensor_compile(
+        key,
+        tensor_build_reshape(input->dims, owned_output_dims)
+    );
+    XLA_Tensor* result = tensor_execute(executable, { input }, owned_output_dims);
+
+    return tensor_finish_output(result, output);
+}
+
+int xla_tensor_transpose(
+    const XLA_Tensor* input,
+    const int64_t* output_dims,
+    int output_rank,
+    int dim0,
+    int dim1,
+    XLA_Tensor** output
+) {
+    if (!input || !output || output_rank <= 0) return -1;
+    if (input->dims.size() != (size_t)output_rank) return -1;
+    if (dim0 < 0 || dim1 < 0 || dim0 >= output_rank || dim1 >= output_rank) return -1;
+
+    std::vector<int64_t> owned_output_dims;
+
+    for (int dimension_index = 0; dimension_index < output_rank; dimension_index++) {
+        int64_t dimension = output_dims[dimension_index];
+
+        if (dimension < 0) return -1;
+
+        owned_output_dims.push_back(dimension);
+    }
+
+    std::vector<int64_t> expected_dims = input->dims;
+    expected_dims[dim0] = input->dims[dim1];
+    expected_dims[dim1] = input->dims[dim0];
+
+    if (owned_output_dims != expected_dims) return -1;
+
+    std::string key =
+        "transpose:" +
+        tensor_dims_key(input->dims) + ":" +
+        tensor_dims_key(owned_output_dims) + ":" +
+        std::to_string(dim0) + ":" +
+        std::to_string(dim1);
+    PJRT_LoadedExecutable* executable = tensor_compile(
+        key,
+        tensor_build_transpose(input->dims, owned_output_dims, dim0, dim1)
+    );
+    XLA_Tensor* result = tensor_execute(executable, { input }, owned_output_dims);
+
+    return tensor_finish_output(result, output);
+}
+
+int xla_tensor_concat(
+    const XLA_Tensor* left,
+    const XLA_Tensor* right,
+    const int64_t* output_dims,
+    int output_rank,
+    XLA_Tensor** output
+) {
+    if (!left || !right || !output || output_rank < 0) return -1;
+
+    std::vector<int64_t> owned_output_dims;
+
+    for (int dimension_index = 0; dimension_index < output_rank; dimension_index++) {
+        int64_t dimension = output_dims[dimension_index];
+
+        if (dimension < 0) return -1;
+
+        owned_output_dims.push_back(dimension);
+    }
+
+    int64_t output_elements = tensor_count_elements(
+        owned_output_dims.data(),
+        (int)owned_output_dims.size()
+    );
+
+    if (output_elements != left->elements + right->elements) return -1;
+
+    std::string key =
+        "concat:" +
+        tensor_dims_key(left->dims) + ":" +
+        tensor_dims_key(right->dims) + ":" +
+        tensor_dims_key(owned_output_dims);
+    PJRT_LoadedExecutable* executable = tensor_compile(
+        key,
+        tensor_build_concat(left, right, owned_output_dims)
+    );
+    XLA_Tensor* result = tensor_execute(executable, { left, right }, owned_output_dims);
+
+    return tensor_finish_output(result, output);
+}
+
+int xla_tensor_split(
+    const XLA_Tensor* input,
+    const int64_t* output_dims,
+    int output_rank,
+    int outer,
+    int dim_size,
+    int split_size,
+    int inner,
+    XLA_Tensor** output
+) {
+    if (!input || !output || output_rank < 0 || outer <= 0 ||
+        dim_size <= 0 || split_size <= 0 || inner <= 0) {
+        return -1;
+    }
+
+    if (split_size > dim_size || dim_size % split_size != 0) return -1;
+
+    int64_t expected = (int64_t)outer * (int64_t)dim_size * (int64_t)inner;
+
+    if (input->elements != expected) return -1;
+
+    std::vector<int64_t> owned_output_dims;
+
+    for (int dimension_index = 0; dimension_index < output_rank; dimension_index++) {
+        int64_t dimension = output_dims[dimension_index];
+
+        if (dimension < 0) return -1;
+
+        owned_output_dims.push_back(dimension);
+    }
+
+    int64_t output_elements = tensor_count_elements(
+        owned_output_dims.data(),
+        (int)owned_output_dims.size()
+    );
+
+    if (output_elements != expected) return -1;
+
+    std::string key =
+        "split:" +
+        tensor_dims_key(input->dims) + ":" +
+        tensor_dims_key(owned_output_dims) + ":" +
+        std::to_string(outer) + ":" +
+        std::to_string(dim_size) + ":" +
+        std::to_string(split_size) + ":" +
+        std::to_string(inner);
+    PJRT_LoadedExecutable* executable = tensor_compile(
+        key,
+        tensor_build_split(input->dims, owned_output_dims, outer, dim_size, split_size, inner)
+    );
+    XLA_Tensor* result = tensor_execute(executable, { input }, owned_output_dims);
+
+    return tensor_finish_output(result, output);
+}
+
+int xla_tensor_upsample_nearest2d(
+    const XLA_Tensor* input,
+    const int64_t* output_dims,
+    int output_rank,
+    int batch,
+    int channels,
+    int height,
+    int width,
+    int scale_h,
+    int scale_w,
+    XLA_Tensor** output
+) {
+    if (!input || !output || output_rank < 0 || batch <= 0 || channels <= 0 ||
+        height <= 0 || width <= 0 || scale_h <= 0 || scale_w <= 0) {
+        return -1;
+    }
+
+    int64_t input_elements =
+        (int64_t)batch * (int64_t)channels * (int64_t)height * (int64_t)width;
+    int64_t output_elements =
+        input_elements * (int64_t)scale_h * (int64_t)scale_w;
+
+    if (input->elements != input_elements) return -1;
+
+    std::vector<int64_t> owned_output_dims;
+
+    for (int dimension_index = 0; dimension_index < output_rank; dimension_index++) {
+        int64_t dimension = output_dims[dimension_index];
+
+        if (dimension < 0) return -1;
+
+        owned_output_dims.push_back(dimension);
+    }
+
+    if (tensor_count_elements(owned_output_dims.data(), output_rank) != output_elements) {
+        return -1;
+    }
+
+    std::string key =
+        "upsample_nearest2d:" +
+        tensor_dims_key(input->dims) + ":" +
+        tensor_dims_key(owned_output_dims) + ":" +
+        std::to_string(scale_h) + ":" +
+        std::to_string(scale_w);
+    PJRT_LoadedExecutable* executable = tensor_compile(
+        key,
+        tensor_build_upsample_nearest2d(
+            owned_output_dims, batch, channels, height, width, scale_h, scale_w
+        )
+    );
+    XLA_Tensor* result = tensor_execute(executable, { input }, owned_output_dims);
+
+    return tensor_finish_output(result, output);
+}
+
+int xla_tensor_view_as_heads(
+    const XLA_Tensor* input,
+    const int64_t* output_dims,
+    int output_rank,
+    int batch,
+    int tokens,
+    int heads,
+    int head_dim,
+    XLA_Tensor** output
+) {
+    if (!input || !output || output_rank < 0 || batch <= 0 ||
+        tokens <= 0 || heads <= 0 || head_dim <= 0) return -1;
+
+    int64_t expected =
+        (int64_t)batch * (int64_t)tokens * (int64_t)heads * (int64_t)head_dim;
+
+    if (input->elements != expected) return -1;
+
+    std::vector<int64_t> owned_output_dims;
+
+    for (int dimension_index = 0; dimension_index < output_rank; dimension_index++) {
+        int64_t dimension = output_dims[dimension_index];
+
+        if (dimension < 0) return -1;
+
+        owned_output_dims.push_back(dimension);
+    }
+
+    if (tensor_count_elements(owned_output_dims.data(), output_rank) != expected) {
+        return -1;
+    }
+
+    std::string key =
+        "view_as_heads:" +
+        tensor_dims_key(input->dims) + ":" +
+        tensor_dims_key(owned_output_dims) + ":" +
+        std::to_string(heads);
+    PJRT_LoadedExecutable* executable = tensor_compile(
+        key,
+        tensor_build_view_as_heads(
+            input->dims, owned_output_dims, batch, tokens, heads, head_dim
+        )
+    );
+    XLA_Tensor* result = tensor_execute(executable, { input }, owned_output_dims);
+
+    return tensor_finish_output(result, output);
+}
+
+int xla_tensor_merge_heads(
+    const XLA_Tensor* input,
+    const int64_t* output_dims,
+    int output_rank,
+    int batch,
+    int heads,
+    int tokens,
+    int head_dim,
+    XLA_Tensor** output
+) {
+    if (!input || !output || output_rank < 0 || batch <= 0 ||
+        heads <= 0 || tokens <= 0 || head_dim <= 0) return -1;
+
+    int64_t expected =
+        (int64_t)batch * (int64_t)heads * (int64_t)tokens * (int64_t)head_dim;
+
+    if (input->elements != expected) return -1;
+
+    std::vector<int64_t> owned_output_dims;
+
+    for (int dimension_index = 0; dimension_index < output_rank; dimension_index++) {
+        int64_t dimension = output_dims[dimension_index];
+
+        if (dimension < 0) return -1;
+
+        owned_output_dims.push_back(dimension);
+    }
+
+    if (tensor_count_elements(owned_output_dims.data(), output_rank) != expected) {
+        return -1;
+    }
+
+    std::string key =
+        "merge_heads:" +
+        tensor_dims_key(input->dims) + ":" +
+        tensor_dims_key(owned_output_dims);
+    PJRT_LoadedExecutable* executable = tensor_compile(
+        key,
+        tensor_build_merge_heads(
+            input->dims, owned_output_dims, batch, heads, tokens, head_dim
+        )
+    );
+    XLA_Tensor* result = tensor_execute(executable, { input }, owned_output_dims);
+
+    return tensor_finish_output(result, output);
+}
+
+int xla_tensor_last_token(
+    const XLA_Tensor* input,
+    const int64_t* output_dims,
+    int output_rank,
+    int outer,
+    int seq_len,
+    int feature,
+    XLA_Tensor** output
+) {
+    if (!input || !output || output_rank < 0 || outer <= 0 ||
+        seq_len <= 0 || feature <= 0) return -1;
+
+    int64_t input_elements = (int64_t)outer * (int64_t)seq_len * (int64_t)feature;
+    int64_t output_elements = (int64_t)outer * (int64_t)feature;
+
+    if (input->elements < input_elements) return -1;
+
+    std::vector<int64_t> owned_output_dims;
+
+    for (int dimension_index = 0; dimension_index < output_rank; dimension_index++) {
+        int64_t dimension = output_dims[dimension_index];
+
+        if (dimension < 0) return -1;
+
+        owned_output_dims.push_back(dimension);
+    }
+
+    if (tensor_count_elements(owned_output_dims.data(), output_rank) != output_elements) {
+        return -1;
+    }
+
+    std::string key =
+        "last_token:" +
+        tensor_dims_key(input->dims) + ":" +
+        tensor_dims_key(owned_output_dims);
+    PJRT_LoadedExecutable* executable = tensor_compile(
+        key,
+        tensor_build_last_token(input->dims, owned_output_dims, outer, seq_len, feature)
+    );
+    XLA_Tensor* result = tensor_execute(executable, { input }, owned_output_dims);
 
     return tensor_finish_output(result, output);
 }
