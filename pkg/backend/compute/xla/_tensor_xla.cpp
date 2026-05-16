@@ -262,17 +262,12 @@ static std::string tensor_build_gelu(const std::vector<int64_t>& dims) {
         dims,
         "    %half = stablehlo.constant dense<5.000000e-01> : " + t + "\n"
         "    %one = stablehlo.constant dense<1.0> : " + t + "\n"
-        "    %c044 = stablehlo.constant dense<4.471500e-02> : " + t + "\n"
-        "    %sqrt2pi = stablehlo.constant dense<0.7978845608028654> : " + t + "\n"
-        "    %x2 = stablehlo.multiply %arg0, %arg0 : " + t + "\n"
-        "    %x3 = stablehlo.multiply %x2, %arg0 : " + t + "\n"
-        "    %t1 = stablehlo.multiply %c044, %x3 : " + t + "\n"
-        "    %t2 = stablehlo.add %arg0, %t1 : " + t + "\n"
-        "    %t3 = stablehlo.multiply %sqrt2pi, %t2 : " + t + "\n"
-        "    %th = stablehlo.tanh %t3 : " + t + "\n"
-        "    %t4 = stablehlo.add %one, %th : " + t + "\n"
-        "    %t5 = stablehlo.multiply %arg0, %t4 : " + t + "\n"
-        "    %out = stablehlo.multiply %half, %t5 : " + t + "\n"
+        "    %rsqrt2 = stablehlo.constant dense<0.7071067811865476> : " + t + "\n"
+        "    %scaled = stablehlo.multiply %arg0, %rsqrt2 : " + t + "\n"
+        "    %erf = stablehlo.erf %scaled : " + t + "\n"
+        "    %gate = stablehlo.add %one, %erf : " + t + "\n"
+        "    %weighted = stablehlo.multiply %arg0, %gate : " + t + "\n"
+        "    %out = stablehlo.multiply %half, %weighted : " + t + "\n"
     );
 }
 
@@ -384,17 +379,12 @@ static std::string tensor_gelu_body(const std::string& t, const char* input_name
     return
         "    %half = stablehlo.constant dense<5.000000e-01> : " + t + "\n"
         "    %one = stablehlo.constant dense<1.0> : " + t + "\n"
-        "    %c044 = stablehlo.constant dense<4.471500e-02> : " + t + "\n"
-        "    %sqrt2pi = stablehlo.constant dense<0.7978845608028654> : " + t + "\n"
-        "    %x2 = stablehlo.multiply " + input_name + ", " + input_name + " : " + t + "\n"
-        "    %x3 = stablehlo.multiply %x2, " + input_name + " : " + t + "\n"
-        "    %t1 = stablehlo.multiply %c044, %x3 : " + t + "\n"
-        "    %t2 = stablehlo.add " + input_name + ", %t1 : " + t + "\n"
-        "    %t3 = stablehlo.multiply %sqrt2pi, %t2 : " + t + "\n"
-        "    %th = stablehlo.tanh %t3 : " + t + "\n"
-        "    %t4 = stablehlo.add %one, %th : " + t + "\n"
-        "    %t5 = stablehlo.multiply " + input_name + ", %t4 : " + t + "\n"
-        "    %out = stablehlo.multiply %half, %t5 : " + t + "\n";
+        "    %rsqrt2 = stablehlo.constant dense<0.7071067811865476> : " + t + "\n"
+        "    %scaled = stablehlo.multiply " + input_name + ", %rsqrt2 : " + t + "\n"
+        "    %erf = stablehlo.erf %scaled : " + t + "\n"
+        "    %gate = stablehlo.add %one, %erf : " + t + "\n"
+        "    %weighted = stablehlo.multiply " + input_name + ", %gate : " + t + "\n"
+        "    %out = stablehlo.multiply %half, %weighted : " + t + "\n";
 }
 
 static std::string tensor_build_matmul_add(

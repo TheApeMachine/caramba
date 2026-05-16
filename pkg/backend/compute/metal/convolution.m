@@ -124,6 +124,51 @@ static int conv_dispatch(id<MTLComputePipelineState> pso, const ConvDispatchArgs
     }
 }
 
+typedef struct {
+    const void* src;
+    void*       dst;
+    const void* params;
+    NSUInteger  params_bytes;
+    const void* weight;
+    const void* bias;
+    int         grid_n;
+} ConvTensorDispatchArgs;
+
+static int conv_dispatch_tensor(id<MTLComputePipelineState> pso, const ConvTensorDispatchArgs* a)
+{
+    @autoreleasepool {
+        if (!gConvQueue || !pso || !a->src || !a->dst || !a->weight ||
+            !a->bias || !a->params || a->grid_n <= 0) {
+            return -1;
+        }
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)a->src);
+        id<MTLBuffer> bufDst = (__bridge id)((void*)a->dst);
+        id<MTLBuffer> bufWeight = (__bridge id)((void*)a->weight);
+        id<MTLBuffer> bufBias = (__bridge id)((void*)a->bias);
+        id<MTLCommandBuffer> cb = [gConvQueue commandBuffer];
+        if (!cb) return -1;
+
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        if (!enc) return -1;
+
+        [enc setComputePipelineState:pso];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:a->params length:a->params_bytes atIndex:2];
+        [enc setBuffer:bufWeight offset:0 atIndex:3];
+        [enc setBuffer:bufBias offset:0 atIndex:4];
+
+        NSUInteger tw = pso.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)a->grid_n, 1, 1)
+     threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+        return cb.error ? -1 : 0;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Params structs (must match Metal shader layout byte-for-byte)
 // ---------------------------------------------------------------------------
@@ -160,6 +205,27 @@ int metal_conv1d(
     return conv_dispatch(gPSO_conv1d, &a);
 }
 
+int metal_conv1d_tensor(
+    const void* x, void* dst,
+    int N, int InC, int L,
+    int OutC, int K,
+    int stride, int pad, int dilation, int groups,
+    int L_out,
+    const void* weight, const void* bias)
+{
+    MetalConv1dP p = { N, InC, L, OutC, K, stride, pad, dilation, groups, L_out };
+    ConvTensorDispatchArgs a = {
+        .src = x,
+        .dst = dst,
+        .params = &p,
+        .params_bytes = sizeof(p),
+        .weight = weight,
+        .bias = bias,
+        .grid_n = N * OutC * L_out,
+    };
+    return conv_dispatch_tensor(gPSO_conv1d, &a);
+}
+
 int metal_conv2d(
     const float* x, float* dst,
     int N, int InC, int H, int W,
@@ -183,6 +249,27 @@ int metal_conv2d(
         .grid_n      = N * OutC * Hout * Wout,
     };
     return conv_dispatch(gPSO_conv2d, &a);
+}
+
+int metal_conv2d_tensor(
+    const void* x, void* dst,
+    int N, int InC, int H, int W,
+    int OutC, int KH, int KW,
+    int sH, int sW, int pH, int pW, int dH, int dW, int groups,
+    int Hout, int Wout,
+    const void* weight, const void* bias)
+{
+    MetalConv2dP p = { N,InC,H,W,OutC,KH,KW,sH,sW,pH,pW,dH,dW,groups,Hout,Wout };
+    ConvTensorDispatchArgs a = {
+        .src = x,
+        .dst = dst,
+        .params = &p,
+        .params_bytes = sizeof(p),
+        .weight = weight,
+        .bias = bias,
+        .grid_n = N * OutC * Hout * Wout,
+    };
+    return conv_dispatch_tensor(gPSO_conv2d, &a);
 }
 
 int metal_conv3d(
@@ -209,6 +296,30 @@ int metal_conv3d(
         .grid_n      = N * OutC * Dout * Hout * Wout,
     };
     return conv_dispatch(gPSO_conv3d, &a);
+}
+
+int metal_conv3d_tensor(
+    const void* x, void* dst,
+    int N, int InC, int D, int H, int W,
+    int OutC, int KD, int KH, int KW,
+    int sD, int sH, int sW, int pD, int pH, int pW,
+    int dD, int dH, int dW, int groups,
+    int Dout, int Hout, int Wout,
+    const void* weight, const void* bias)
+{
+    MetalConv3dP p = {
+        N,InC,D,H,W,OutC,KD,KH,KW,sD,sH,sW,pD,pH,pW,dD,dH,dW,groups,Dout,Hout,Wout
+    };
+    ConvTensorDispatchArgs a = {
+        .src = x,
+        .dst = dst,
+        .params = &p,
+        .params_bytes = sizeof(p),
+        .weight = weight,
+        .bias = bias,
+        .grid_n = N * OutC * Dout * Hout * Wout,
+    };
+    return conv_dispatch_tensor(gPSO_conv3d, &a);
 }
 
 static int conv_transpose2d_dispatch(const ConvDispatchArgs* a, int out_total)
@@ -280,6 +391,54 @@ static int conv_transpose2d_dispatch(const ConvDispatchArgs* a, int out_total)
     }
 }
 
+static int conv_transpose2d_dispatch_tensor(const ConvTensorDispatchArgs* a, int out_total)
+{
+    @autoreleasepool {
+        if (!gConvQueue || !gPSO_convt2d_init || !gPSO_convt2d ||
+            !a->src || !a->dst || !a->weight || !a->bias ||
+            !a->params || a->grid_n <= 0 || out_total <= 0) {
+            return -1;
+        }
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)a->src);
+        id<MTLBuffer> bufDst = (__bridge id)((void*)a->dst);
+        id<MTLBuffer> bufWeight = (__bridge id)((void*)a->weight);
+        id<MTLBuffer> bufBias = (__bridge id)((void*)a->bias);
+        id<MTLCommandBuffer> commandBuffer = [gConvQueue commandBuffer];
+        if (!commandBuffer) return -1;
+
+        NSUInteger initWidth = gPSO_convt2d_init.threadExecutionWidth;
+        id<MTLComputeCommandEncoder> initEncoder = [commandBuffer computeCommandEncoder];
+        if (!initEncoder) return -1;
+
+        [initEncoder setComputePipelineState:gPSO_convt2d_init];
+        [initEncoder setBuffer:bufDst offset:0 atIndex:0];
+        [initEncoder setBytes:a->params length:a->params_bytes atIndex:1];
+        [initEncoder setBuffer:bufBias offset:0 atIndex:2];
+        [initEncoder dispatchThreads:MTLSizeMake((NSUInteger)out_total, 1, 1)
+              threadsPerThreadgroup:MTLSizeMake(initWidth, 1, 1)];
+        [initEncoder endEncoding];
+
+        NSUInteger scatterWidth = gPSO_convt2d.threadExecutionWidth;
+        id<MTLComputeCommandEncoder> scatterEncoder = [commandBuffer computeCommandEncoder];
+        if (!scatterEncoder) return -1;
+
+        [scatterEncoder setComputePipelineState:gPSO_convt2d];
+        [scatterEncoder setBuffer:bufSrc offset:0 atIndex:0];
+        [scatterEncoder setBuffer:bufDst offset:0 atIndex:1];
+        [scatterEncoder setBytes:a->params length:a->params_bytes atIndex:2];
+        [scatterEncoder setBuffer:bufWeight offset:0 atIndex:3];
+        [scatterEncoder setBuffer:bufBias offset:0 atIndex:4];
+        [scatterEncoder dispatchThreads:MTLSizeMake((NSUInteger)a->grid_n, 1, 1)
+                threadsPerThreadgroup:MTLSizeMake(scatterWidth, 1, 1)];
+        [scatterEncoder endEncoding];
+
+        [commandBuffer commit];
+        [commandBuffer waitUntilCompleted];
+        return commandBuffer.error ? -1 : 0;
+    }
+}
+
 int metal_conv_transpose2d(
     const float* x, float* dst,
     int N, int InC, int H, int W,
@@ -305,4 +464,27 @@ int metal_conv_transpose2d(
         .grid_n      = N * InC * H * W,
     };
     return conv_transpose2d_dispatch(&a, outTotal);
+}
+
+int metal_conv_transpose2d_tensor(
+    const void* x, void* dst,
+    int N, int InC, int H, int W,
+    int OutC, int KH, int KW,
+    int sH, int sW, int pH, int pW, int dH, int dW, int groups,
+    int Hout, int Wout,
+    const void* weight, const void* bias)
+{
+    int outTotal = N * OutC * Hout * Wout;
+
+    MetalConvT2dP p = { N,InC,H,W,OutC,KH,KW,sH,sW,pH,pW,dH,dW,groups,Hout,Wout };
+    ConvTensorDispatchArgs a = {
+        .src = x,
+        .dst = dst,
+        .params = &p,
+        .params_bytes = sizeof(p),
+        .weight = weight,
+        .bias = bias,
+        .grid_n = N * InC * H * W,
+    };
+    return conv_transpose2d_dispatch_tensor(&a, outTotal);
 }

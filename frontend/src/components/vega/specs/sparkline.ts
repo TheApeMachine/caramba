@@ -13,7 +13,7 @@ that fits whatever container it is given.
 */
 export const sparklineSpec = ({
 	values,
-	color = "oklch(var(--chart-1))",
+	color = "var(--color-chart-1)",
 	fill = true,
 }: SparklineSpecOptions): Spec => {
 	const data = values.map((value, index) => ({ index, value }));
@@ -67,5 +67,5 @@ export const sparklineSpec = ({
 		layer: marks,
 		padding: 0,
 		width: "container",
-	} as Spec;
+	} as unknown as Spec;
 };

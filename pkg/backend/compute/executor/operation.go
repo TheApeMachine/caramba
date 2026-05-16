@@ -23,6 +23,10 @@ func RunOperation(
 		return nil, err
 	}
 
+	if err := requireHostStagedBackend(backend, node); err != nil {
+		return nil, err
+	}
+
 	values, err := InputValues(backend, inputs)
 	if err != nil {
 		return nil, err
@@ -46,6 +50,10 @@ func RunOptimizer(
 	optimizer state.Optimizer,
 ) (tensor.Float64Tensor, error) {
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := requireHostStagedBackend(backend, node); err != nil {
 		return nil, err
 	}
 
@@ -315,6 +323,10 @@ func RunErrorOperation(
 		return nil, err
 	}
 
+	if err := requireHostStagedBackend(backend, node); err != nil {
+		return nil, err
+	}
+
 	values, err := InputValues(backend, inputs)
 	if err != nil {
 		return nil, err
@@ -338,6 +350,10 @@ func RunForwardErrorOperation(
 	},
 ) (tensor.Float64Tensor, error) {
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := requireHostStagedBackend(backend, node); err != nil {
 		return nil, err
 	}
 
@@ -398,6 +414,25 @@ func InputValues(
 	}
 
 	return values, nil
+}
+
+func requireHostStagedBackend(backend Backend, node NodeSpec) error {
+	if backend == nil {
+		return fmt.Errorf("executor: backend is required for host-staged operation %q", node.Op)
+	}
+
+	location := backend.Location()
+
+	if location == tensor.Host {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"executor: %s backend cannot execute %q node %q through host-staged dispatch; resident kernel required",
+		location,
+		node.Op,
+		node.ID,
+	)
 }
 
 func OutputShape(node NodeSpec, inputs []tensor.Float64Tensor) []int {

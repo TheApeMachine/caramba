@@ -104,8 +104,8 @@ func TestTensorBackend_MatmulAddGELU(t *testing.T) {
 
 			values, err := tensorBackend.DownloadFloat64(output)
 			So(err, ShouldBeNil)
-			So(values[0], ShouldAlmostEqual, geluApprox(13.5), 1e-9)
-			So(values[1], ShouldAlmostEqual, geluApprox(15.5), 1e-9)
+			So(values[0], ShouldAlmostEqual, geluExact(13.5), 1e-9)
+			So(values[1], ShouldAlmostEqual, geluExact(15.5), 1e-9)
 		})
 	})
 }
@@ -227,6 +227,6 @@ func mustXLAShape(t *testing.T, dims []int) computetensor.Shape {
 	return shape
 }
 
-func geluApprox(value float64) float64 {
-	return 0.5 * value * (1 + math.Tanh(0.7978845608028654*(value+0.044715*value*value*value)))
+func geluExact(value float64) float64 {
+	return 0.5 * value * (1 + math.Erf(value/math.Sqrt2))
 }

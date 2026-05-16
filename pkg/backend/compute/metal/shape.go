@@ -9,6 +9,7 @@ import "C"
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"unsafe"
 
@@ -474,6 +475,118 @@ func (m *MetalShapeOps) ViewAsHeadsTensor(
 		_ = output.Close()
 
 		return nil, fmt.Errorf("metal_view_as_heads_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (m *MetalShapeOps) CopyTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if metalInput.Len() != outputShape.Len() {
+		return nil, fmt.Errorf("metal shape: reshape changes element count")
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if outputShape.Len() == 0 {
+		return output, nil
+	}
+
+	rc := C.metal_copy_tensor(
+		metalInput.buffer,
+		output.buffer,
+		C.int(outputShape.Len()),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_copy_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (m *MetalShapeOps) TransposeTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	dim0 int,
+	dim1 int,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	inputShape := metalInput.Shape().Dims()
+
+	if len(inputShape) == 0 || len(inputShape) > 8 {
+		return nil, fmt.Errorf("metal shape: transpose requires rank 1..8")
+	}
+
+	if dim0 < 0 || dim1 < 0 || dim0 >= len(inputShape) || dim1 >= len(inputShape) {
+		return nil, fmt.Errorf("metal shape: transpose dimensions out of range")
+	}
+
+	if outputShape.Len() != metalInput.Len() {
+		return nil, fmt.Errorf("metal shape: transpose changes element count")
+	}
+
+	outputDims := outputShape.Dims()
+	expectedDims := append([]int(nil), inputShape...)
+	expectedDims[dim0], expectedDims[dim1] = expectedDims[dim1], expectedDims[dim0]
+
+	if !slices.Equal(outputDims, expectedDims) {
+		return nil, fmt.Errorf(
+			"metal shape: transpose output shape %v does not match expected %v",
+			outputDims,
+			expectedDims,
+		)
+	}
+
+	shapeData := make([]C.int, len(inputShape))
+
+	for dimensionIndex, dimension := range inputShape {
+		shapeData[dimensionIndex] = C.int(dimension)
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if outputShape.Len() == 0 {
+		return output, nil
+	}
+
+	rc := C.metal_transpose_tensor(
+		metalInput.buffer,
+		output.buffer,
+		(*C.int)(unsafe.Pointer(&shapeData[0])),
+		C.int(len(shapeData)),
+		C.int(dim0),
+		C.int(dim1),
+		C.int(outputShape.Len()),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_transpose_tensor failed (rc=%d)", rc)
 	}
 
 	return output, nil

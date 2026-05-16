@@ -11,7 +11,8 @@ import (
 
 func TestNewBackend(test *testing.T) {
 	Convey("Given a compute backend", test, func() {
-		backend := NewBackend(CPU)
+		backend, err := NewBackend(CPU)
+		So(err, ShouldBeNil)
 		defer func() {
 			So(backend.Close(), ShouldBeNil)
 		}()
@@ -36,14 +37,22 @@ func TestNewBackend(test *testing.T) {
 		})
 
 		Convey("It should reject unsupported backend types instead of silently using CPU", func() {
-			So(func() { NewBackend(BackendType(255)) }, ShouldPanic)
+			backend, err := NewBackend(BackendType(255))
+
+			So(backend, ShouldBeNil)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "unsupported backend type")
 		})
 	})
 }
 
 func BenchmarkNewBackend(benchmark *testing.B) {
 	for benchmark.Loop() {
-		backend := NewBackend(CPU)
+		backend, err := NewBackend(CPU)
+		if err != nil {
+			benchmark.Fatal(err)
+		}
+
 		_ = backend.Close()
 	}
 }

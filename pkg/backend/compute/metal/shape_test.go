@@ -8,6 +8,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	cpushape "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/shape"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
+	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
 func TestMetalShapeOpsForward(t *testing.T) {
@@ -23,6 +24,74 @@ func TestMetalShapeOpsForward(t *testing.T) {
 
 			So(err, ShouldNotBeNil)
 			So(output, ShouldBeNil)
+		})
+	})
+}
+
+func TestMetalShapeOps_CopyTensor(test *testing.T) {
+	lib := metallibPathOrSkip(test, "shape.metallib")
+
+	Convey("Given a resident Metal tensor reshape", test, func() {
+		tensorBackend := newMetalTensorBackendForTest(test)
+		shapeOps, err := NewShapeOps(lib)
+		So(err, ShouldBeNil)
+
+		inputShape, err := computetensor.NewShape([]int{2, 3})
+		So(err, ShouldBeNil)
+		outputShape, err := computetensor.NewShape([]int{3, 2})
+		So(err, ShouldBeNil)
+		input := uploadMetalTensorForTest(
+			test,
+			tensorBackend,
+			inputShape,
+			[]float64{1, 2, 3, 4, 5, 6},
+		)
+
+		Convey("It should copy elements without leaving Metal storage", func() {
+			output, err := shapeOps.CopyTensor(input, outputShape)
+			So(err, ShouldBeNil)
+			defer func() {
+				So(output.Close(), ShouldBeNil)
+			}()
+
+			values, err := output.CloneFloat64()
+			So(err, ShouldBeNil)
+			So(output.Shape().Dims(), ShouldResemble, []int{3, 2})
+			So(values, ShouldResemble, []float64{1, 2, 3, 4, 5, 6})
+		})
+	})
+}
+
+func TestMetalShapeOps_TransposeTensor(test *testing.T) {
+	lib := metallibPathOrSkip(test, "shape.metallib")
+
+	Convey("Given a resident Metal tensor transpose", test, func() {
+		tensorBackend := newMetalTensorBackendForTest(test)
+		shapeOps, err := NewShapeOps(lib)
+		So(err, ShouldBeNil)
+
+		inputShape, err := computetensor.NewShape([]int{2, 3})
+		So(err, ShouldBeNil)
+		outputShape, err := computetensor.NewShape([]int{3, 2})
+		So(err, ShouldBeNil)
+		input := uploadMetalTensorForTest(
+			test,
+			tensorBackend,
+			inputShape,
+			[]float64{1, 2, 3, 4, 5, 6},
+		)
+
+		Convey("It should transpose dimensions without leaving Metal storage", func() {
+			output, err := shapeOps.TransposeTensor(input, outputShape, 0, 1)
+			So(err, ShouldBeNil)
+			defer func() {
+				So(output.Close(), ShouldBeNil)
+			}()
+
+			values, err := output.CloneFloat64()
+			So(err, ShouldBeNil)
+			So(output.Shape().Dims(), ShouldResemble, []int{3, 2})
+			So(values, ShouldResemble, []float64{1, 4, 2, 5, 3, 6})
 		})
 	})
 }

@@ -83,7 +83,7 @@ func (config Config) ComputeBackend() (*compute.Backend, error) {
 		return nil, err
 	}
 
-	return compute.NewBackend(backendType), nil
+	return compute.NewBackend(backendType)
 }
 
 func backendType(backendName string) (compute.BackendType, error) {

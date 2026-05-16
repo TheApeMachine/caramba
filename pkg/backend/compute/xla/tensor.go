@@ -165,7 +165,7 @@ func (tensorBackend *TensorBackend) LeakyReLU(
 }
 
 /*
-GELU executes tanh-approximate GELU against a resident PJRT buffer.
+GELU executes exact erf-based GELU against a resident PJRT buffer.
 */
 func (tensorBackend *TensorBackend) GELU(
 	input computetensor.Float64Tensor,

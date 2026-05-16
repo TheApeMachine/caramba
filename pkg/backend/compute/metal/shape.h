@@ -68,6 +68,12 @@ int metal_merge_heads_tensor(const void* src, void* dst,
 int metal_last_token_tensor(const void* src, void* dst,
                             int outer, int seq_len, int feature);
 
+int metal_copy_tensor(const void* src, void* dst, int n);
+
+int metal_transpose_tensor(const void* src, void* dst,
+                           const int* shape, int rank,
+                           int dim0, int dim1, int n);
+
 int metal_upsample_nearest2d_tensor(const void* src, void* dst,
                                     int B, int C, int H, int W,
                                     int scale_h, int scale_w);

@@ -188,7 +188,7 @@ caramba image --manifest model/diffusion/flux-2-klein-4b.yml "a brass observator
 
 ## What you get
 
-**One IR, four backends.** Every operation has a Go scalar reference and a real kernel for each accelerator path:
+**One IR, four resident backends.** Every operation has a Go scalar reference, and accelerator graphs are only legal when the selected backend advertises a resident kernel for that operation:
 
 - **CPU** with hand-written AVX2, SSE2, and NEON assembly — each ISA has its own kernel, no scalar branches in disguise.
 - **CUDA** native `.cu` kernels for activations, attention, convolution, embeddings, causal masking, pooling.
@@ -265,7 +265,7 @@ type Runner interface {
 }
 ```
 
-Backend kernels upload values once into a resident tensor store and only download at real boundaries. The executor releases owned dependencies after their last graph consumer; the host arena reuses released spans.
+Backend kernels upload values once into a resident tensor store and only download at real boundaries. The executor releases owned dependencies after their last graph consumer; the host arena reuses released spans. Host-staged dispatch is restricted to the host backend, so Metal, CUDA, and XLA paths cannot silently route through CPU slices.
 
 → [Compute Backends](./docs/compute.md)
 
@@ -291,7 +291,7 @@ Backend kernels upload values once into a resident tensor store and only downloa
 | VSA               | Hyperdimensional binding, bundling, cleanup memory  |
 | Optimizers        | SGD, Adam(W), Lion, LARS, LAMB, L-BFGS              |
 
-If a kernel is missing for a backend, the build fails. There is no silent fallback.
+If a kernel is missing for a backend, lowering or execution fails loudly at that backend boundary. There is no silent fallback.
 
 → [Operations](./docs/operations.md)
 

@@ -505,6 +505,58 @@ int metal_last_token_tensor(const void* src, void* dst,
     }
 }
 
+int metal_copy_tensor(const void* src, void* dst, int n)
+{
+    @autoreleasepool {
+        if (!sQueue || !sPSO_copy || !src || !dst || n <= 0) return -1;
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        id<MTLCommandBuffer> cb = [sQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:sPSO_copy];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        NSUInteger tw = sPSO_copy.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+     threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+        return cb.error ? -1 : 0;
+    }
+}
+
+int metal_transpose_tensor(const void* src, void* dst,
+                           const int* shape, int rank,
+                           int dim0, int dim1, int n)
+{
+    @autoreleasepool {
+        if (!sQueue || !sPSO_transpose || !src || !dst || !shape ||
+            rank <= 0 || rank > 8 || dim0 < 0 || dim1 < 0 ||
+            dim0 >= rank || dim1 >= rank || n <= 0) return -1;
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        id<MTLCommandBuffer> cb = [sQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:sPSO_transpose];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:shape length:(NSUInteger)rank * sizeof(int) atIndex:2];
+        [enc setBytes:&rank length:sizeof(int) atIndex:3];
+        [enc setBytes:&dim0 length:sizeof(int) atIndex:4];
+        [enc setBytes:&dim1 length:sizeof(int) atIndex:5];
+        NSUInteger tw = sPSO_transpose.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+     threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+        return cb.error ? -1 : 0;
+    }
+}
+
 int metal_upsample_nearest2d_tensor(const void* src, void* dst,
                                     int B, int C, int H, int W,
                                     int scale_h, int scale_w)

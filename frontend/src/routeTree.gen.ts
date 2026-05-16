@@ -19,10 +19,14 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResearchIndexRouteImport } from './routes/research/index'
 import { Route as KanbanIndexRouteImport } from './routes/kanban/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
+import { Route as BenchmarksIndexRouteImport } from './routes/benchmarks/index'
 import { Route as ResearchPaperRouteImport } from './routes/research/paper'
 import { Route as ResearchNewRouteImport } from './routes/research/new'
 import { Route as ProjectEditRouteImport } from './routes/project/edit'
 import { Route as PaperEditRouteImport } from './routes/paper/edit'
+import { Route as BenchmarksNewRouteImport } from './routes/benchmarks/new'
+import { Route as BenchmarksChartsRouteImport } from './routes/benchmarks/charts'
+import { Route as BenchmarksRunIdRouteImport } from './routes/benchmarks/$runId'
 import { Route as ApiAssistantRouteImport } from './routes/api/assistant'
 import { Route as ResearchEditRouteRouteImport } from './routes/research/edit/route'
 import { Route as ResearchEditIndexRouteImport } from './routes/research/edit/index'
@@ -87,6 +91,11 @@ const DocsIndexRoute = DocsIndexRouteImport.update({
   path: '/docs/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BenchmarksIndexRoute = BenchmarksIndexRouteImport.update({
+  id: '/benchmarks/',
+  path: '/benchmarks/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResearchPaperRoute = ResearchPaperRouteImport.update({
   id: '/research/paper',
   path: '/research/paper',
@@ -105,6 +114,21 @@ const ProjectEditRoute = ProjectEditRouteImport.update({
 const PaperEditRoute = PaperEditRouteImport.update({
   id: '/paper/edit',
   path: '/paper/edit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BenchmarksNewRoute = BenchmarksNewRouteImport.update({
+  id: '/benchmarks/new',
+  path: '/benchmarks/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BenchmarksChartsRoute = BenchmarksChartsRouteImport.update({
+  id: '/benchmarks/charts',
+  path: '/benchmarks/charts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BenchmarksRunIdRoute = BenchmarksRunIdRouteImport.update({
+  id: '/benchmarks/$runId',
+  path: '/benchmarks/$runId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAssistantRoute = ApiAssistantRouteImport.update({
@@ -190,10 +214,14 @@ export interface FileRoutesByFullPath {
   '/sign-up': typeof SignUpRoute
   '/research/edit': typeof ResearchEditRouteRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
+  '/benchmarks/$runId': typeof BenchmarksRunIdRoute
+  '/benchmarks/charts': typeof BenchmarksChartsRoute
+  '/benchmarks/new': typeof BenchmarksNewRoute
   '/paper/edit': typeof PaperEditRoute
   '/project/edit': typeof ProjectEditRoute
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
+  '/benchmarks/': typeof BenchmarksIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/kanban/': typeof KanbanIndexRoute
   '/research/': typeof ResearchIndexRoute
@@ -218,10 +246,14 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
   '/api/assistant': typeof ApiAssistantRoute
+  '/benchmarks/$runId': typeof BenchmarksRunIdRoute
+  '/benchmarks/charts': typeof BenchmarksChartsRoute
+  '/benchmarks/new': typeof BenchmarksNewRoute
   '/paper/edit': typeof PaperEditRoute
   '/project/edit': typeof ProjectEditRoute
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
+  '/benchmarks': typeof BenchmarksIndexRoute
   '/docs': typeof DocsIndexRoute
   '/kanban': typeof KanbanIndexRoute
   '/research': typeof ResearchIndexRoute
@@ -248,10 +280,14 @@ export interface FileRoutesById {
   '/sign-up': typeof SignUpRoute
   '/research/edit': typeof ResearchEditRouteRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
+  '/benchmarks/$runId': typeof BenchmarksRunIdRoute
+  '/benchmarks/charts': typeof BenchmarksChartsRoute
+  '/benchmarks/new': typeof BenchmarksNewRoute
   '/paper/edit': typeof PaperEditRoute
   '/project/edit': typeof ProjectEditRoute
   '/research/new': typeof ResearchNewRoute
   '/research/paper': typeof ResearchPaperRoute
+  '/benchmarks/': typeof BenchmarksIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/kanban/': typeof KanbanIndexRoute
   '/research/': typeof ResearchIndexRoute
@@ -279,10 +315,14 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/research/edit'
     | '/api/assistant'
+    | '/benchmarks/$runId'
+    | '/benchmarks/charts'
+    | '/benchmarks/new'
     | '/paper/edit'
     | '/project/edit'
     | '/research/new'
     | '/research/paper'
+    | '/benchmarks/'
     | '/docs/'
     | '/kanban/'
     | '/research/'
@@ -307,10 +347,14 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/api/assistant'
+    | '/benchmarks/$runId'
+    | '/benchmarks/charts'
+    | '/benchmarks/new'
     | '/paper/edit'
     | '/project/edit'
     | '/research/new'
     | '/research/paper'
+    | '/benchmarks'
     | '/docs'
     | '/kanban'
     | '/research'
@@ -336,10 +380,14 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/research/edit'
     | '/api/assistant'
+    | '/benchmarks/$runId'
+    | '/benchmarks/charts'
+    | '/benchmarks/new'
     | '/paper/edit'
     | '/project/edit'
     | '/research/new'
     | '/research/paper'
+    | '/benchmarks/'
     | '/docs/'
     | '/kanban/'
     | '/research/'
@@ -366,10 +414,14 @@ export interface RootRouteChildren {
   SignUpRoute: typeof SignUpRoute
   ResearchEditRouteRoute: typeof ResearchEditRouteRouteWithChildren
   ApiAssistantRoute: typeof ApiAssistantRoute
+  BenchmarksRunIdRoute: typeof BenchmarksRunIdRoute
+  BenchmarksChartsRoute: typeof BenchmarksChartsRoute
+  BenchmarksNewRoute: typeof BenchmarksNewRoute
   PaperEditRoute: typeof PaperEditRoute
   ProjectEditRoute: typeof ProjectEditRoute
   ResearchNewRoute: typeof ResearchNewRoute
   ResearchPaperRoute: typeof ResearchPaperRoute
+  BenchmarksIndexRoute: typeof BenchmarksIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
   KanbanIndexRoute: typeof KanbanIndexRoute
   ResearchIndexRoute: typeof ResearchIndexRoute
@@ -455,6 +507,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/benchmarks/': {
+      id: '/benchmarks/'
+      path: '/benchmarks'
+      fullPath: '/benchmarks/'
+      preLoaderRoute: typeof BenchmarksIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/research/paper': {
       id: '/research/paper'
       path: '/research/paper'
@@ -481,6 +540,27 @@ declare module '@tanstack/react-router' {
       path: '/paper/edit'
       fullPath: '/paper/edit'
       preLoaderRoute: typeof PaperEditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/benchmarks/new': {
+      id: '/benchmarks/new'
+      path: '/benchmarks/new'
+      fullPath: '/benchmarks/new'
+      preLoaderRoute: typeof BenchmarksNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/benchmarks/charts': {
+      id: '/benchmarks/charts'
+      path: '/benchmarks/charts'
+      fullPath: '/benchmarks/charts'
+      preLoaderRoute: typeof BenchmarksChartsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/benchmarks/$runId': {
+      id: '/benchmarks/$runId'
+      path: '/benchmarks/$runId'
+      fullPath: '/benchmarks/$runId'
+      preLoaderRoute: typeof BenchmarksRunIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/assistant': {
@@ -602,10 +682,14 @@ const rootRouteChildren: RootRouteChildren = {
   SignUpRoute: SignUpRoute,
   ResearchEditRouteRoute: ResearchEditRouteRouteWithChildren,
   ApiAssistantRoute: ApiAssistantRoute,
+  BenchmarksRunIdRoute: BenchmarksRunIdRoute,
+  BenchmarksChartsRoute: BenchmarksChartsRoute,
+  BenchmarksNewRoute: BenchmarksNewRoute,
   PaperEditRoute: PaperEditRoute,
   ProjectEditRoute: ProjectEditRoute,
   ResearchNewRoute: ResearchNewRoute,
   ResearchPaperRoute: ResearchPaperRoute,
+  BenchmarksIndexRoute: BenchmarksIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
   KanbanIndexRoute: KanbanIndexRoute,
   ResearchIndexRoute: ResearchIndexRoute,

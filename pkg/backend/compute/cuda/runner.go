@@ -14,12 +14,17 @@ Runner implements the runner.Runner interface for CUDA execution.
 */
 type Runner struct {
 	backend *TensorBackend
+	err     error
 }
 
 /*
 NewRunner instantiates a new CUDA runner.
 */
 func NewRunner() *Runner {
+	if err := Available(); err != nil {
+		return &Runner{err: err}
+	}
+
 	return NewRunnerWithBackend(NewTensorBackend())
 }
 
@@ -39,6 +44,10 @@ func (runner *Runner) Execute(ctx context.Context, graph *ir.Graph, targets []*i
 
 	if len(targets) == 0 {
 		return nil, fmt.Errorf("cuda runner: no execution targets provided")
+	}
+
+	if runner.err != nil {
+		return nil, runner.err
 	}
 
 	nodes, tensors, err := runner.specs(graph, targets)
@@ -63,10 +72,30 @@ func (runner *Runner) Location() tensor.Location {
 	return tensor.CUDA
 }
 
+func (runner *Runner) Err() error {
+	if runner == nil {
+		return fmt.Errorf("cuda runner: runner is required")
+	}
+
+	if runner.err != nil {
+		return runner.err
+	}
+
+	if runner.backend == nil {
+		return fmt.Errorf("cuda runner: tensor backend is required")
+	}
+
+	return nil
+}
+
 /*
 Close cleans up any allocated resources.
 */
 func (runner *Runner) Close() error {
+	if runner.backend == nil {
+		return nil
+	}
+
 	return runner.backend.Close()
 }
 

@@ -4,6 +4,8 @@ import {
 	BotIcon,
 	ChevronRightIcon,
 	CpuIcon,
+	FlaskConicalIcon,
+	GaugeIcon,
 	KanbanIcon,
 	LightbulbIcon,
 	MicroscopeIcon,
@@ -18,7 +20,11 @@ import {
 import { Button } from "#/components/ui/button";
 import { Flex } from "../ui/flex";
 
-export const Navigation = ({ onNavigate }: { onNavigate?: () => void } = {}) => {
+export const Navigation = ({
+	onNavigate,
+}: {
+	onNavigate?: () => void;
+} = {}) => {
 	return (
 		<Accordion className="w-full">
 			<AccordionItem value="item-1">
@@ -79,6 +85,42 @@ export const Navigation = ({ onNavigate }: { onNavigate?: () => void } = {}) => 
 								<h3>Architecture</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
 									Build and manage your research architectures
+								</p>
+							</Flex.Column>
+							<ChevronRightIcon
+								aria-hidden="true"
+								className="in-[[data-slot=button]:hover]:translate-x-0.5 transition-transform"
+							/>
+						</Button>
+					</Link>
+					<Link to={"/benchmarks"} onClick={onNavigate}>
+						<Button
+							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
+							variant="outline"
+						>
+							<GaugeIcon className="shrink-0" />
+							<Flex.Column gap={1} className="text-left" fullWidth>
+								<h3>Benchmarks</h3>
+								<p className="whitespace-break-spaces font-normal text-muted-foreground">
+									Run evaluations and watch them live
+								</p>
+							</Flex.Column>
+							<ChevronRightIcon
+								aria-hidden="true"
+								className="in-[[data-slot=button]:hover]:translate-x-0.5 transition-transform"
+							/>
+						</Button>
+					</Link>
+					<Link to={"/benchmarks/new"} onClick={onNavigate}>
+						<Button
+							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
+							variant="outline"
+						>
+							<FlaskConicalIcon className="shrink-0" />
+							<Flex.Column gap={1} className="text-left" fullWidth>
+								<h3>New benchmark</h3>
+								<p className="whitespace-break-spaces font-normal text-muted-foreground">
+									Pick a preset or configure from scratch
 								</p>
 							</Flex.Column>
 							<ChevronRightIcon

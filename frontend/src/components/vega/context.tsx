@@ -23,32 +23,58 @@ here means a single edit retones every widget.
 */
 export const defaultVegaConfig: Record<string, unknown> = {
 	axis: {
-		domainColor: "oklch(var(--muted-foreground))",
-		gridColor: "oklch(var(--border))",
-		labelColor: "oklch(var(--foreground))",
-		tickColor: "oklch(var(--muted-foreground))",
-		titleColor: "oklch(var(--foreground))",
+		domainColor: "var(--muted-foreground)",
+		gridColor: "var(--border)",
+		labelColor: "var(--foreground)",
+		labelFont: "Inter, sans-serif",
+		labelFontSize: 10,
+		tickColor: "var(--muted-foreground)",
+		titleColor: "var(--muted-foreground)",
+		titleFont: "Inter, sans-serif",
+		titleFontSize: 10,
+		titleFontWeight: 500,
 	},
 	legend: {
-		labelColor: "oklch(var(--foreground))",
-		titleColor: "oklch(var(--foreground))",
+		labelColor: "var(--foreground)",
+		labelFont: "Inter, sans-serif",
+		labelFontSize: 11,
+		symbolStrokeWidth: 2,
+		titleColor: "var(--muted-foreground)",
+		titleFont: "Inter, sans-serif",
+		titleFontSize: 10,
 	},
 	range: {
 		category: [
-			"oklch(var(--chart-1))",
-			"oklch(var(--chart-2))",
-			"oklch(var(--chart-3))",
-			"oklch(var(--chart-4))",
-			"oklch(var(--chart-5))",
+			"var(--color-chart-1)",
+			"var(--color-chart-2)",
+			"var(--color-chart-3)",
+			"var(--color-chart-4)",
+			"var(--color-chart-5)",
+			"var(--color-chart-6)",
+			"var(--color-chart-7)",
+			"var(--color-chart-8)",
+			"var(--color-chart-9)",
+			"var(--color-chart-10)",
 		],
+		heatmap: { scheme: "blues" },
+		ramp: { scheme: "blues" },
+	},
+	style: {
+		"guide-label": { fill: "var(--foreground)" },
+		"guide-title": { fill: "var(--muted-foreground)" },
+	},
+	title: {
+		color: "var(--foreground)",
+		font: "Inter, sans-serif",
+		subtitleColor: "var(--muted-foreground)",
 	},
 	view: { stroke: "transparent" },
 };
 
 const VegaContext = createContext<VegaContextValue>({
 	config: defaultVegaConfig,
-	options: { actions: false, renderer: "canvas" },
-	renderer: "canvas",
+	options: { actions: false, renderer: "svg" },
+	renderer: "svg",
 });
 
 interface VegaProviderProps {
@@ -67,10 +93,10 @@ export const VegaProvider = ({ value, children }: VegaProviderProps) => {
 			config: { ...defaultVegaConfig, ...(value?.config ?? {}) },
 			options: {
 				actions: false,
-				renderer: value?.renderer ?? "canvas",
+				renderer: value?.renderer ?? "svg",
 				...(value?.options ?? {}),
 			},
-			renderer: value?.renderer ?? "canvas",
+			renderer: value?.renderer ?? "svg",
 			scheme: value?.scheme,
 			signals: value?.signals,
 		}),

@@ -105,7 +105,7 @@ export const gaugeSpec = ({
 					enter: {
 						align: { value: "center" },
 						baseline: { value: "top" },
-						fill: { value: "oklch(var(--foreground))" },
+						fill: { value: "var(--foreground)" },
 						fontSize: { value: 28 },
 						text: {
 							signal:
@@ -125,9 +125,9 @@ export const gaugeSpec = ({
 				domain: [1, 2, 3],
 				name: "gaugeColor",
 				range: [
-					"oklch(var(--chart-1))",
-					"oklch(var(--chart-3))",
-					"oklch(var(--chart-4))",
+					"var(--color-chart-1)",
+					"var(--color-chart-3)",
+					"var(--color-chart-4)",
 				],
 				type: "ordinal",
 			},

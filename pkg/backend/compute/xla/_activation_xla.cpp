@@ -285,27 +285,20 @@ static std::string build_leaky_relu(int n, double alpha) {
 
 static std::string build_gelu(int n) {
     std::string t = f64_type(n);
-    // GELU(x) = 0.5*x*(1+tanh(sqrt(2/pi)*(x+0.044715*x^3)))
-    // Using tanh approximation via stablehlo.tanh
-    const double sqrt2pi = 0.7978845608028654;
+    const double rsqrt2 = 0.7071067811865476;
     char cbuf[64];
-    snprintf(cbuf, sizeof(cbuf), "%.17g", sqrt2pi);
+    snprintf(cbuf, sizeof(cbuf), "%.17g", rsqrt2);
     return
         "module @gelu {\n"
         "  func.func @main(%arg0: " + t + ") -> " + t + " {\n"
         "    %half    = stablehlo.constant dense<5.000000e-01>   : " + t + "\n"
         "    %one     = stablehlo.constant dense<1.0>             : " + t + "\n"
-        "    %c044    = stablehlo.constant dense<4.471500e-02>   : " + t + "\n"
-        "    %sqrt2pi = stablehlo.constant dense<" + cbuf + "> : " + t + "\n"
-        "    %x3  = stablehlo.multiply %arg0, %arg0 : " + t + "\n"
-        "    %x3b = stablehlo.multiply %x3, %arg0  : " + t + "\n"
-        "    %t1  = stablehlo.multiply %c044, %x3b : " + t + "\n"
-        "    %t2  = stablehlo.add %arg0, %t1        : " + t + "\n"
-        "    %t3  = stablehlo.multiply %sqrt2pi, %t2: " + t + "\n"
-        "    %th  = stablehlo.tanh %t3              : " + t + "\n"
-        "    %t4  = stablehlo.add %one, %th         : " + t + "\n"
-        "    %t5  = stablehlo.multiply %arg0, %t4   : " + t + "\n"
-        "    %out = stablehlo.multiply %half, %t5   : " + t + "\n"
+        "    %rsqrt2  = stablehlo.constant dense<" + cbuf + "> : " + t + "\n"
+        "    %scaled  = stablehlo.multiply %arg0, %rsqrt2 : " + t + "\n"
+        "    %erf     = stablehlo.erf %scaled : " + t + "\n"
+        "    %gate    = stablehlo.add %one, %erf : " + t + "\n"
+        "    %weighted = stablehlo.multiply %arg0, %gate : " + t + "\n"
+        "    %out     = stablehlo.multiply %half, %weighted : " + t + "\n"
         "    return %out : " + t + "\n"
         "  }\n"
         "}\n";

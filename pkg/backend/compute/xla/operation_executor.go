@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/dispatch"
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
@@ -91,13 +90,10 @@ func (tensorBackend *TensorBackend) Apply(
 
 		return tensorBackend.MatmulAdd(inputs[0], inputs[1], inputs[2])
 	default:
-		return dispatch.RunOperation(
-			ctx,
-			tensorBackend,
-			node,
-			inputs,
-			NewOperationRegistry(),
-			NewOptimizerRegistryForPlatform(tensorBackend.platform),
+		return nil, fmt.Errorf(
+			"xla tensor: operation %q node %q has no resident XLA implementation",
+			node.Op,
+			node.ID,
 		)
 	}
 }

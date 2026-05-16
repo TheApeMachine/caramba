@@ -29,6 +29,7 @@ type TensorBackend struct {
 	shapeOps      *MetalShapeOps
 	attentionOps  *MetalAttention
 	positionalOps *MetalPositional
+	convolutionOps *ConvolutionOps
 	embeddingOps  map[string]*EmbeddingOps
 	kvEntries     map[string]*residentKVEntry
 	resident      map[string]computetensor.Float64Tensor

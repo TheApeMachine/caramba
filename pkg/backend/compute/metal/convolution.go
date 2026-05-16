@@ -9,6 +9,8 @@ import "C"
 import (
 	"fmt"
 	"unsafe"
+
+	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
 // ConvolutionOps dispatches convolution kernels to the GPU via Metal.
@@ -106,6 +108,112 @@ func (m *ConvolutionOps) Conv2d(
 	return toFloat64(dst), nil
 }
 
+func (m *ConvolutionOps) Conv2dTensor(
+	input computetensor.Float64Tensor,
+	weight computetensor.Float64Tensor,
+	bias computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch int,
+	inChannels int,
+	height int,
+	width int,
+	outChannels int,
+	kernelHeight int,
+	kernelWidth int,
+	strideHeight int,
+	strideWidth int,
+	padHeight int,
+	padWidth int,
+	dilationHeight int,
+	dilationWidth int,
+	groups int,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalWeight, err := requireMetalTensor(weight)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalBias, err := requireMetalTensor(bias)
+
+	if err != nil {
+		return nil, err
+	}
+
+	outputDims := outputShape.Dims()
+
+	if len(outputDims) != 4 {
+		return nil, fmt.Errorf("metal.conv2d: output shape must be NCHW rank 4")
+	}
+
+	if err := validateMetalConv2dLengths(
+		metalInput.Len(),
+		metalWeight.Len(),
+		metalBias.Len(),
+		batch,
+		inChannels,
+		height,
+		width,
+		outChannels,
+		kernelHeight,
+		kernelWidth,
+		strideHeight,
+		strideWidth,
+		padHeight,
+		padWidth,
+		dilationHeight,
+		dilationWidth,
+		groups,
+		outputDims[2],
+		outputDims[3],
+	); err != nil {
+		return nil, err
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_conv2d_tensor(
+		metalInput.buffer,
+		output.buffer,
+		C.int(batch),
+		C.int(inChannels),
+		C.int(height),
+		C.int(width),
+		C.int(outChannels),
+		C.int(kernelHeight),
+		C.int(kernelWidth),
+		C.int(strideHeight),
+		C.int(strideWidth),
+		C.int(padHeight),
+		C.int(padWidth),
+		C.int(dilationHeight),
+		C.int(dilationWidth),
+		C.int(groups),
+		C.int(outputDims[2]),
+		C.int(outputDims[3]),
+		metalWeight.buffer,
+		metalBias.buffer,
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_conv2d_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
 // Conv3d computes a 3-D convolution.
 func (m *ConvolutionOps) Conv3d(
 	x []float64,
@@ -146,6 +254,116 @@ func (m *ConvolutionOps) Conv3d(
 	return toFloat64(dst), nil
 }
 
+func (m *ConvolutionOps) ConvTranspose2dTensor(
+	input computetensor.Float64Tensor,
+	weight computetensor.Float64Tensor,
+	bias computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	batch int,
+	inChannels int,
+	height int,
+	width int,
+	outChannels int,
+	kernelHeight int,
+	kernelWidth int,
+	strideHeight int,
+	strideWidth int,
+	padHeight int,
+	padWidth int,
+	dilationHeight int,
+	dilationWidth int,
+	groups int,
+	outPadHeight int,
+	outPadWidth int,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalWeight, err := requireMetalTensor(weight)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalBias, err := requireMetalTensor(bias)
+
+	if err != nil {
+		return nil, err
+	}
+
+	outputDims := outputShape.Dims()
+
+	if len(outputDims) != 4 {
+		return nil, fmt.Errorf("metal.conv_transpose2d: output shape must be NCHW rank 4")
+	}
+
+	if err := validateMetalConvTranspose2dLengths(
+		metalInput.Len(),
+		metalWeight.Len(),
+		metalBias.Len(),
+		batch,
+		inChannels,
+		height,
+		width,
+		outChannels,
+		kernelHeight,
+		kernelWidth,
+		strideHeight,
+		strideWidth,
+		padHeight,
+		padWidth,
+		dilationHeight,
+		dilationWidth,
+		groups,
+		outPadHeight,
+		outPadWidth,
+		outputDims[2],
+		outputDims[3],
+	); err != nil {
+		return nil, err
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_conv_transpose2d_tensor(
+		metalInput.buffer,
+		output.buffer,
+		C.int(batch),
+		C.int(inChannels),
+		C.int(height),
+		C.int(width),
+		C.int(outChannels),
+		C.int(kernelHeight),
+		C.int(kernelWidth),
+		C.int(strideHeight),
+		C.int(strideWidth),
+		C.int(padHeight),
+		C.int(padWidth),
+		C.int(dilationHeight),
+		C.int(dilationWidth),
+		C.int(groups),
+		C.int(outputDims[2]),
+		C.int(outputDims[3]),
+		metalWeight.buffer,
+		metalBias.buffer,
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_conv_transpose2d_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
 // ConvTranspose2d computes a 2-D transposed convolution.
 func (m *ConvolutionOps) ConvTranspose2d(
 	x []float64,
@@ -180,334 +398,4 @@ func (m *ConvolutionOps) ConvTranspose2d(
 		return nil, fmt.Errorf("metal_conv_transpose2d failed (rc=%d)", rc)
 	}
 	return toFloat64(dst), nil
-}
-
-func validateMetalConv1d(
-	input []float64,
-	weight []float64,
-	bias []float64,
-	batch int,
-	inChannels int,
-	length int,
-	outChannels int,
-	kernelSize int,
-	stride int,
-	padding int,
-	dilation int,
-	groups int,
-	lengthOut int,
-) error {
-	const operation = "metal.conv1d"
-
-	if batch <= 0 || inChannels <= 0 || length <= 0 || outChannels <= 0 ||
-		kernelSize <= 0 || stride <= 0 || dilation <= 0 || groups <= 0 {
-		return fmt.Errorf("%s: invalid dimensions", operation)
-	}
-
-	if inChannels%groups != 0 || outChannels%groups != 0 {
-		return fmt.Errorf(
-			"%s: groups=%d must divide InC=%d and OutC=%d",
-			operation, groups, inChannels, outChannels,
-		)
-	}
-
-	expectedInput := batch * inChannels * length
-
-	if err := requireMetalConvLength(
-		operation, "input", len(input), expectedInput,
-	); err != nil {
-		return err
-	}
-
-	expectedWeight := outChannels * (inChannels / groups) * kernelSize
-
-	if err := requireMetalConvLength(
-		operation, "weight", len(weight), expectedWeight,
-	); err != nil {
-		return err
-	}
-
-	if err := requireMetalConvLength(
-		operation, "bias", len(bias), outChannels,
-	); err != nil {
-		return err
-	}
-
-	expectedLengthOut := (length+2*padding-dilation*(kernelSize-1)-1)/stride + 1
-
-	if expectedLengthOut <= 0 {
-		return fmt.Errorf("%s: output length=%d must be positive", operation, expectedLengthOut)
-	}
-
-	if lengthOut != expectedLengthOut {
-		return fmt.Errorf(
-			"%s: LOut=%d does not match expected output length %d",
-			operation, lengthOut, expectedLengthOut,
-		)
-	}
-
-	return nil
-}
-
-func validateMetalConv2d(
-	input []float64,
-	weight []float64,
-	bias []float64,
-	batch int,
-	inChannels int,
-	height int,
-	width int,
-	outChannels int,
-	kernelHeight int,
-	kernelWidth int,
-	strideHeight int,
-	strideWidth int,
-	padHeight int,
-	padWidth int,
-	dilationHeight int,
-	dilationWidth int,
-	groups int,
-	heightOut int,
-	widthOut int,
-) error {
-	const operation = "metal.conv2d"
-
-	if batch <= 0 || inChannels <= 0 || height <= 0 || width <= 0 ||
-		outChannels <= 0 || kernelHeight <= 0 || kernelWidth <= 0 ||
-		strideHeight <= 0 || strideWidth <= 0 ||
-		dilationHeight <= 0 || dilationWidth <= 0 || groups <= 0 {
-		return fmt.Errorf("%s: invalid dimensions", operation)
-	}
-
-	if inChannels%groups != 0 || outChannels%groups != 0 {
-		return fmt.Errorf(
-			"%s: groups=%d must divide InC=%d and OutC=%d",
-			operation, groups, inChannels, outChannels,
-		)
-	}
-
-	expectedInput := batch * inChannels * height * width
-
-	if err := requireMetalConvLength(
-		operation, "input", len(input), expectedInput,
-	); err != nil {
-		return err
-	}
-
-	expectedWeight := outChannels * (inChannels / groups) * kernelHeight * kernelWidth
-
-	if err := requireMetalConvLength(
-		operation, "weight", len(weight), expectedWeight,
-	); err != nil {
-		return err
-	}
-
-	if err := requireMetalConvLength(
-		operation, "bias", len(bias), outChannels,
-	); err != nil {
-		return err
-	}
-
-	expectedHeightOut := (height+2*padHeight-dilationHeight*(kernelHeight-1)-1)/strideHeight + 1
-	expectedWidthOut := (width+2*padWidth-dilationWidth*(kernelWidth-1)-1)/strideWidth + 1
-
-	if expectedHeightOut <= 0 || expectedWidthOut <= 0 {
-		return fmt.Errorf(
-			"%s: output shape [%d,%d] must be positive",
-			operation, expectedHeightOut, expectedWidthOut,
-		)
-	}
-
-	if heightOut != expectedHeightOut || widthOut != expectedWidthOut {
-		return fmt.Errorf(
-			"%s: output shape [%d,%d] does not match expected [%d,%d]",
-			operation, heightOut, widthOut, expectedHeightOut, expectedWidthOut,
-		)
-	}
-
-	return nil
-}
-
-func validateMetalConv3d(
-	input []float64,
-	weight []float64,
-	bias []float64,
-	batch int,
-	inChannels int,
-	depth int,
-	height int,
-	width int,
-	outChannels int,
-	kernelDepth int,
-	kernelHeight int,
-	kernelWidth int,
-	strideDepth int,
-	strideHeight int,
-	strideWidth int,
-	padDepth int,
-	padHeight int,
-	padWidth int,
-	dilationDepth int,
-	dilationHeight int,
-	dilationWidth int,
-	groups int,
-	depthOut int,
-	heightOut int,
-	widthOut int,
-) error {
-	const operation = "metal.conv3d"
-
-	if batch <= 0 || inChannels <= 0 || depth <= 0 || height <= 0 || width <= 0 ||
-		outChannels <= 0 || kernelDepth <= 0 || kernelHeight <= 0 ||
-		kernelWidth <= 0 || strideDepth <= 0 || strideHeight <= 0 ||
-		strideWidth <= 0 || dilationDepth <= 0 || dilationHeight <= 0 ||
-		dilationWidth <= 0 || groups <= 0 {
-		return fmt.Errorf("%s: invalid dimensions", operation)
-	}
-
-	if inChannels%groups != 0 || outChannels%groups != 0 {
-		return fmt.Errorf(
-			"%s: groups=%d must divide InC=%d and OutC=%d",
-			operation, groups, inChannels, outChannels,
-		)
-	}
-
-	expectedInput := batch * inChannels * depth * height * width
-
-	if err := requireMetalConvLength(
-		operation, "input", len(input), expectedInput,
-	); err != nil {
-		return err
-	}
-
-	expectedWeight := outChannels * (inChannels / groups) * kernelDepth *
-		kernelHeight * kernelWidth
-
-	if err := requireMetalConvLength(
-		operation, "weight", len(weight), expectedWeight,
-	); err != nil {
-		return err
-	}
-
-	if err := requireMetalConvLength(
-		operation, "bias", len(bias), outChannels,
-	); err != nil {
-		return err
-	}
-
-	expectedDepthOut := (depth+2*padDepth-dilationDepth*(kernelDepth-1)-1)/strideDepth + 1
-	expectedHeightOut := (height+2*padHeight-dilationHeight*(kernelHeight-1)-1)/strideHeight + 1
-	expectedWidthOut := (width+2*padWidth-dilationWidth*(kernelWidth-1)-1)/strideWidth + 1
-
-	if expectedDepthOut <= 0 || expectedHeightOut <= 0 || expectedWidthOut <= 0 {
-		return fmt.Errorf(
-			"%s: output shape [%d,%d,%d] must be positive",
-			operation, expectedDepthOut, expectedHeightOut, expectedWidthOut,
-		)
-	}
-
-	if depthOut != expectedDepthOut || heightOut != expectedHeightOut ||
-		widthOut != expectedWidthOut {
-		return fmt.Errorf(
-			"%s: output shape [%d,%d,%d] does not match expected [%d,%d,%d]",
-			operation, depthOut, heightOut, widthOut,
-			expectedDepthOut, expectedHeightOut, expectedWidthOut,
-		)
-	}
-
-	return nil
-}
-
-func validateMetalConvTranspose2d(
-	input []float64,
-	weight []float64,
-	bias []float64,
-	batch int,
-	inChannels int,
-	height int,
-	width int,
-	outChannels int,
-	kernelHeight int,
-	kernelWidth int,
-	strideHeight int,
-	strideWidth int,
-	padHeight int,
-	padWidth int,
-	dilationHeight int,
-	dilationWidth int,
-	groups int,
-	heightOut int,
-	widthOut int,
-) error {
-	const operation = "metal.conv_transpose2d"
-
-	if batch <= 0 || inChannels <= 0 || height <= 0 || width <= 0 ||
-		outChannels <= 0 || kernelHeight <= 0 || kernelWidth <= 0 ||
-		strideHeight <= 0 || strideWidth <= 0 ||
-		dilationHeight <= 0 || dilationWidth <= 0 || groups <= 0 {
-		return fmt.Errorf("%s: invalid dimensions", operation)
-	}
-
-	if inChannels%groups != 0 || outChannels%groups != 0 {
-		return fmt.Errorf(
-			"%s: groups=%d must divide InC=%d and OutC=%d",
-			operation, groups, inChannels, outChannels,
-		)
-	}
-
-	expectedInput := batch * inChannels * height * width
-
-	if err := requireMetalConvLength(
-		operation, "input", len(input), expectedInput,
-	); err != nil {
-		return err
-	}
-
-	expectedWeight := inChannels * (outChannels / groups) * kernelHeight * kernelWidth
-
-	if err := requireMetalConvLength(
-		operation, "weight", len(weight), expectedWeight,
-	); err != nil {
-		return err
-	}
-
-	if err := requireMetalConvLength(
-		operation, "bias", len(bias), outChannels,
-	); err != nil {
-		return err
-	}
-
-	expectedHeightOut := (height-1)*strideHeight - 2*padHeight +
-		dilationHeight*(kernelHeight-1) + 1
-	expectedWidthOut := (width-1)*strideWidth - 2*padWidth +
-		dilationWidth*(kernelWidth-1) + 1
-
-	if expectedHeightOut <= 0 || expectedWidthOut <= 0 {
-		return fmt.Errorf(
-			"%s: output shape [%d,%d] must be positive",
-			operation, expectedHeightOut, expectedWidthOut,
-		)
-	}
-
-	if heightOut != expectedHeightOut || widthOut != expectedWidthOut {
-		return fmt.Errorf(
-			"%s: output shape [%d,%d] does not match expected [%d,%d]",
-			operation, heightOut, widthOut, expectedHeightOut, expectedWidthOut,
-		)
-	}
-
-	return nil
-}
-
-func requireMetalConvLength(
-	operation string,
-	name string,
-	actual int,
-	expected int,
-) error {
-	if actual == expected {
-		return nil
-	}
-
-	return fmt.Errorf("%s: len(%s)=%d, need %d", operation, name, actual, expected)
 }

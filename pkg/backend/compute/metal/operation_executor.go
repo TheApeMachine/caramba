@@ -8,7 +8,6 @@ import (
 	"math"
 	"strings"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/dispatch"
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/kv"
@@ -291,6 +290,10 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyGroupNorm(ctx, node, inputs)
 	case "shape.upsample_nearest2d":
 		return tensorBackend.applyUpsampleNearest2D(ctx, node, inputs)
+	case "shape.reshape":
+		return tensorBackend.applyReshape(ctx, node, inputs)
+	case "shape.transpose":
+		return tensorBackend.applyTranspose(ctx, node, inputs)
 	case "shape.view_as_heads":
 		return tensorBackend.applyViewAsHeads(ctx, node, inputs)
 	case "shape.merge_heads":
@@ -305,16 +308,78 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyGQA(ctx, node, inputs)
 	case "positional.rope":
 		return tensorBackend.applyRoPE(ctx, node, inputs)
+	case "convolution.conv2d":
+		return tensorBackend.applyConv2D(ctx, node, inputs)
+	case "convolution.conv_transpose2d":
+		return tensorBackend.applyConvTranspose2D(ctx, node, inputs)
 	default:
-		return dispatch.RunOperation(
-			ctx,
-			tensorBackend,
-			node,
-			inputs,
-			NewOperationRegistry(),
-			NewOptimizerRegistry(),
+		return nil, fmt.Errorf(
+			"metal tensor: operation %q node %q has no resident Metal implementation",
+			node.Op,
+			node.ID,
 		)
 	}
+}
+
+func (tensorBackend *TensorBackend) applyReshape(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("metal tensor: reshape node %q requires 1 input", node.ID)
+	}
+
+	outputShape, err := tensor.NewShape(node.Shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	shapeOps, err := tensorBackend.shape()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return shapeOps.CopyTensor(inputs[0], outputShape)
+}
+
+func (tensorBackend *TensorBackend) applyTranspose(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("metal tensor: transpose node %q requires 1 input", node.ID)
+	}
+
+	outputShape, err := tensor.NewShape(node.Shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	shapeOps, err := tensorBackend.shape()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return shapeOps.TransposeTensor(
+		inputs[0],
+		outputShape,
+		intConfig(node, "dim0", 0),
+		intConfig(node, "dim1", 1),
+	)
 }
 
 func (tensorBackend *TensorBackend) applyTokenEmbedding(
@@ -781,6 +846,268 @@ func (tensorBackend *TensorBackend) applyLinear(
 
 	return mathOps.MatmulAddFlatTensor(
 		inputs[0], weightTensor, biasTensor, outputShape, M, inFeatures, outFeatures,
+	)
+}
+
+func (tensorBackend *TensorBackend) applyConv2D(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("metal tensor: conv2d node %q requires 1 input", node.ID)
+	}
+
+	inputShape := inputs[0].Shape().Dims()
+
+	if len(inputShape) != 4 {
+		return nil, fmt.Errorf("metal tensor: conv2d node %q expects NCHW rank 4", node.ID)
+	}
+
+	outputShape, err := tensor.NewShape(node.Shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	outputDims := outputShape.Dims()
+
+	if len(outputDims) != 4 {
+		return nil, fmt.Errorf("metal tensor: conv2d node %q output must be rank 4", node.ID)
+	}
+
+	outChannels := intConfigAny(node, 0, "out_channels", "out_c")
+	kernelHeight := intConfigAny(node, intConfig(node, "kernel_size", 0), "kernel_h", "k_h")
+	kernelWidth := intConfigAny(node, intConfig(node, "kernel_size", 0), "kernel_w", "k_w")
+	stride := intConfig(node, "stride", 1)
+	strideHeight := intConfigAny(node, stride, "stride_h", "s_h")
+	strideWidth := intConfigAny(node, stride, "stride_w", "s_w")
+	padding := intConfig(node, "padding", 0)
+	padHeight := intConfigAny(node, padding, "pad_h", "p_h")
+	padWidth := intConfigAny(node, padding, "pad_w", "p_w")
+	dilation := intConfig(node, "dilation", 1)
+	dilationHeight := intConfigAny(node, dilation, "dilation_h", "dil_h", "d_h")
+	dilationWidth := intConfigAny(node, dilation, "dilation_w", "dil_w", "d_w")
+	groups := intConfig(node, "groups", 1)
+	groups = intConfig(node, "num_groups", groups)
+
+	if outChannels == 0 {
+		outChannels = outputDims[1]
+	}
+
+	if err := validateMetalConvNode(
+		node.ID,
+		"conv2d",
+		inputShape[1],
+		outputDims[1],
+		outChannels,
+		kernelHeight,
+		kernelWidth,
+		strideHeight,
+		strideWidth,
+		dilationHeight,
+		dilationWidth,
+		groups,
+	); err != nil {
+		return nil, err
+	}
+
+	weightTensor, biasTensor, err := tensorBackend.convolutionTensors(
+		node,
+		"conv2d",
+		[]int{outChannels, inputShape[1] / groups, kernelHeight, kernelWidth},
+		[]int{outChannels},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	convolutionOps, err := tensorBackend.convolution()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return convolutionOps.Conv2dTensor(
+		inputs[0],
+		weightTensor,
+		biasTensor,
+		outputShape,
+		inputShape[0],
+		inputShape[1],
+		inputShape[2],
+		inputShape[3],
+		outChannels,
+		kernelHeight,
+		kernelWidth,
+		strideHeight,
+		strideWidth,
+		padHeight,
+		padWidth,
+		dilationHeight,
+		dilationWidth,
+		groups,
+	)
+}
+
+func (tensorBackend *TensorBackend) applyConvTranspose2D(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("metal tensor: conv_transpose2d node %q requires 1 input", node.ID)
+	}
+
+	inputShape := inputs[0].Shape().Dims()
+
+	if len(inputShape) != 4 {
+		return nil, fmt.Errorf(
+			"metal tensor: conv_transpose2d node %q expects NCHW rank 4",
+			node.ID,
+		)
+	}
+
+	outputShape, err := tensor.NewShape(node.Shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	outputDims := outputShape.Dims()
+
+	if len(outputDims) != 4 {
+		return nil, fmt.Errorf(
+			"metal tensor: conv_transpose2d node %q output must be rank 4",
+			node.ID,
+		)
+	}
+
+	outChannels := intConfigAny(node, outputDims[1], "out_channels", "out_c")
+	kernelHeight := intConfigAny(node, intConfig(node, "kernel_size", 0), "kernel_h", "k_h")
+	kernelWidth := intConfigAny(node, intConfig(node, "kernel_size", 0), "kernel_w", "k_w")
+	stride := intConfig(node, "stride", 1)
+	strideHeight := intConfigAny(node, stride, "stride_h", "s_h")
+	strideWidth := intConfigAny(node, stride, "stride_w", "s_w")
+	padding := intConfig(node, "padding", 0)
+	padHeight := intConfigAny(node, padding, "pad_h", "p_h")
+	padWidth := intConfigAny(node, padding, "pad_w", "p_w")
+	dilation := intConfig(node, "dilation", 1)
+	dilationHeight := intConfigAny(node, dilation, "dilation_h", "dil_h", "d_h")
+	dilationWidth := intConfigAny(node, dilation, "dilation_w", "dil_w", "d_w")
+	groups := intConfig(node, "groups", 1)
+	groups = intConfig(node, "num_groups", groups)
+	outPadHeight := intConfig(node, "out_pad_h", 0)
+	outPadWidth := intConfig(node, "out_pad_w", 0)
+
+	if err := validateMetalConvNode(
+		node.ID,
+		"conv_transpose2d",
+		inputShape[1],
+		outputDims[1],
+		outChannels,
+		kernelHeight,
+		kernelWidth,
+		strideHeight,
+		strideWidth,
+		dilationHeight,
+		dilationWidth,
+		groups,
+	); err != nil {
+		return nil, err
+	}
+
+	weightTensor, biasTensor, err := tensorBackend.convolutionTensors(
+		node,
+		"conv_transpose2d",
+		[]int{inputShape[1], outChannels / groups, kernelHeight, kernelWidth},
+		[]int{outChannels},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	convolutionOps, err := tensorBackend.convolution()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return convolutionOps.ConvTranspose2dTensor(
+		inputs[0],
+		weightTensor,
+		biasTensor,
+		outputShape,
+		inputShape[0],
+		inputShape[1],
+		inputShape[2],
+		inputShape[3],
+		outChannels,
+		kernelHeight,
+		kernelWidth,
+		strideHeight,
+		strideWidth,
+		padHeight,
+		padWidth,
+		dilationHeight,
+		dilationWidth,
+		groups,
+		outPadHeight,
+		outPadWidth,
+	)
+}
+
+func validateMetalConvNode(
+	nodeID string,
+	operation string,
+	inputChannels int,
+	outputChannelsFromShape int,
+	outputChannels int,
+	kernelHeight int,
+	kernelWidth int,
+	strideHeight int,
+	strideWidth int,
+	dilationHeight int,
+	dilationWidth int,
+	groups int,
+) error {
+	if outputChannels != outputChannelsFromShape {
+		return fmt.Errorf(
+			"metal tensor: %s node %q out_channels=%d does not match output shape channels=%d",
+			operation,
+			nodeID,
+			outputChannels,
+			outputChannelsFromShape,
+		)
+	}
+
+	if inputChannels <= 0 || outputChannels <= 0 || kernelHeight <= 0 ||
+		kernelWidth <= 0 || strideHeight <= 0 || strideWidth <= 0 ||
+		dilationHeight <= 0 || dilationWidth <= 0 || groups <= 0 {
+		return fmt.Errorf("metal tensor: %s node %q has invalid dimensions", operation, nodeID)
+	}
+
+	if inputChannels%groups == 0 && outputChannels%groups == 0 {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"metal tensor: %s node %q groups=%d must divide InC=%d and OutC=%d",
+		operation,
+		nodeID,
+		groups,
+		inputChannels,
+		outputChannels,
 	)
 }
 
@@ -1291,6 +1618,25 @@ func (tensorBackend *TensorBackend) shape() (*MetalShapeOps, error) {
 	return shapeOps, nil
 }
 
+func (tensorBackend *TensorBackend) convolution() (*ConvolutionOps, error) {
+	tensorBackend.cacheMu.Lock()
+	defer tensorBackend.cacheMu.Unlock()
+
+	if tensorBackend.convolutionOps != nil {
+		return tensorBackend.convolutionOps, nil
+	}
+
+	convolutionOps, err := NewConvolutionOps(metalLibrary(nil, "convolution.metallib"))
+
+	if err != nil {
+		return nil, err
+	}
+
+	tensorBackend.convolutionOps = convolutionOps
+
+	return convolutionOps, nil
+}
+
 func (tensorBackend *TensorBackend) attention() (*MetalAttention, error) {
 	tensorBackend.cacheMu.Lock()
 	defer tensorBackend.cacheMu.Unlock()
@@ -1381,6 +1727,47 @@ func (tensorBackend *TensorBackend) cachedTensor(
 	tensorBackend.resident[key] = value
 
 	return value, nil
+}
+
+func (tensorBackend *TensorBackend) convolutionTensors(
+	node executor.NodeSpec,
+	name string,
+	weightShape []int,
+	biasShape []int,
+) (tensor.Float64Tensor, tensor.Float64Tensor, error) {
+	weight, err := floatSliceConfigRequired(node, "weight")
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	bias, err := floatSliceConfigRequired(node, "bias")
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	weightTensor, err := tensorBackend.cachedTensor(
+		node.ID+":"+name+":weight",
+		weightShape,
+		weight,
+	)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	biasTensor, err := tensorBackend.cachedTensor(
+		node.ID+":"+name+":bias",
+		biasShape,
+		bias,
+	)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return weightTensor, biasTensor, nil
 }
 
 func floatSliceConfigRequired(node executor.NodeSpec, key string) ([]float64, error) {
@@ -1476,6 +1863,18 @@ func intConfig(node executor.NodeSpec, key string, fallback int) int {
 	default:
 		return fallback
 	}
+}
+
+func intConfigAny(node executor.NodeSpec, fallback int, keys ...string) int {
+	for _, key := range keys {
+		value := intConfig(node, key, fallback)
+
+		if value != fallback {
+			return value
+		}
+	}
+
+	return fallback
 }
 
 func stringConfig(node executor.NodeSpec, key string, fallback string) string {

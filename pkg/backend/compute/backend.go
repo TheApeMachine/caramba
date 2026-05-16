@@ -41,35 +41,57 @@ type Backend struct {
 	Runner     runner.Runner
 }
 
-func NewBackend(backendType BackendType) *Backend {
+func NewBackend(backendType BackendType) (*Backend, error) {
 	switch backendType {
 	case CPU:
 		return &Backend{
 			Optimizers: NewOptimizerRegistry(cpuoptimizer.NewOptimizerRegistry()),
 			Operations: NewOperationRegistry(cpuoperation.NewOperationRegistry()),
 			Runner:     computecpu.NewRunner(),
-		}
+		}, nil
 	case CUDA:
-		return &Backend{
+		backend := &Backend{
 			Optimizers: NewOptimizerRegistry(cuda.NewOptimizerRegistry()),
 			Operations: NewOperationRegistry(cuda.NewOperationRegistry()),
 			Runner:     cuda.NewRunner(),
 		}
+
+		return backend, backend.Available()
 	case METAL:
-		return &Backend{
+		backend := &Backend{
 			Optimizers: NewOptimizerRegistry(metal.NewOptimizerRegistry()),
 			Operations: NewOperationRegistry(metal.NewOperationRegistry()),
 			Runner:     metal.NewRunner(),
 		}
+
+		return backend, backend.Available()
 	case XLA:
-		return &Backend{
+		backend := &Backend{
 			Optimizers: NewOptimizerRegistry(xla.NewOptimizerRegistry()),
 			Operations: NewOperationRegistry(xla.NewOperationRegistry()),
 			Runner:     xla.NewRunner(),
 		}
+
+		return backend, backend.Available()
 	}
 
-	panic(fmt.Sprintf("compute: unsupported backend type %d", backendType))
+	return nil, fmt.Errorf("compute: unsupported backend type %d", backendType)
+}
+
+func (backend *Backend) Available() error {
+	if backend == nil || backend.Runner == nil {
+		return ErrBackendRunnerRequired
+	}
+
+	availability, ok := backend.Runner.(interface {
+		Err() error
+	})
+
+	if !ok {
+		return nil
+	}
+
+	return availability.Err()
 }
 
 func (backend *Backend) Execute(

@@ -9,6 +9,7 @@ import (
 	computecpu "github.com/theapemachine/caramba/pkg/backend/compute/cpu"
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -156,9 +157,55 @@ func TestWithDerivedMetadata(t *testing.T) {
 	})
 }
 
+func TestRunOperation(test *testing.T) {
+	Convey("Given the host-staged operation executor", test, func() {
+		backend := newRecordingBackend()
+		backend.location = tensor.Metal
+		shape, err := tensor.NewShape([]int{1})
+		So(err, ShouldBeNil)
+
+		input := newRecordingTensor(
+			"input",
+			shape,
+			[]float64{1},
+			backend.closed,
+		)
+		node := executor.NodeSpec{
+			ID:    "relu",
+			Op:    ir.OpReLU,
+			Shape: shape.Dims(),
+		}
+
+		Convey("It should reject accelerator execution before downloading inputs", func() {
+			output, err := executor.RunOperation(
+				context.Background(),
+				backend,
+				node,
+				[]tensor.Float64Tensor{input},
+				hostStagedOperation{},
+			)
+
+			So(output, ShouldBeNil)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "resident kernel required")
+			So(backend.downloads, ShouldEqual, 0)
+		})
+	})
+}
+
+type hostStagedOperation struct{}
+
+func (operation hostStagedOperation) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	stateDict.SetOperationOutput([]float64{1})
+
+	return stateDict, nil
+}
+
 type recordingBackend struct {
-	uploads int
-	closed  map[string]int
+	uploads   int
+	downloads int
+	location  tensor.Location
+	closed    map[string]int
 }
 
 func newRecordingBackend() *recordingBackend {
@@ -168,7 +215,11 @@ func newRecordingBackend() *recordingBackend {
 }
 
 func (recordingBackend *recordingBackend) Location() tensor.Location {
-	return tensor.Host
+	if recordingBackend.location == "" {
+		return tensor.Host
+	}
+
+	return recordingBackend.location
 }
 
 func (recordingBackend *recordingBackend) UploadFloat64(
@@ -183,6 +234,8 @@ func (recordingBackend *recordingBackend) UploadFloat64(
 func (recordingBackend *recordingBackend) DownloadFloat64(
 	value tensor.Float64Tensor,
 ) ([]float64, error) {
+	recordingBackend.downloads++
+
 	return value.CloneFloat64()
 }
 

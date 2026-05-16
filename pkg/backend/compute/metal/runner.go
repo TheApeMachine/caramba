@@ -76,6 +76,22 @@ func (runner *Runner) Location() tensor.Location {
 	return tensor.Metal
 }
 
+func (runner *Runner) Err() error {
+	if runner == nil {
+		return fmt.Errorf("metal runner: runner is required")
+	}
+
+	if runner.err != nil {
+		return runner.err
+	}
+
+	if runner.backend == nil {
+		return fmt.Errorf("metal runner: tensor backend is required")
+	}
+
+	return nil
+}
+
 /*
 Close cleans up any allocated resources.
 */

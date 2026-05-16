@@ -280,7 +280,7 @@ func (config ModelConfig) ComputeBackend() (*compute.Backend, error) {
 		return nil, err
 	}
 
-	return compute.NewBackend(backendType), nil
+	return compute.NewBackend(backendType)
 }
 
 /*
