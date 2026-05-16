@@ -1,18 +1,31 @@
-import type { UIMessage } from "@tanstack/ai-client";
+import type { UIMessage as TanstackUIMessage } from "@tanstack/ai-client";
+
+export type UIMessage = TanstackUIMessage & {
+	personaId?: string;
+	personaName?: string;
+};
 
 export type Mode = "closed" | "mini" | "full";
 
+export type PersonaScope = "global" | "team" | "personal";
+export type SessionScope = "team" | "personal";
+export type AdapterType = "openai" | "ollama" | "openai-compat";
+
 export type Persona = {
 	id: string;
+	scope: PersonaScope;
 	name: string;
 	systemPrompt: string;
 	model: string;
 	temperature: number;
 	maxTokens: number;
+	adapterType: AdapterType;
+	endpointUrl: string;
 };
 
 export type Session = {
 	id: string;
+	scope: SessionScope;
 	title: string;
 	createdAt: number;
 	messages: UIMessage[];
@@ -20,14 +33,19 @@ export type Session = {
 	windowSize: number;
 };
 
+export type { TanstackUIMessage };
+
 export const DEFAULT_PERSONA: Persona = {
-	id: "default",
+	id: "00000000-0000-0000-0000-000000000001",
+	scope: "global",
 	name: "Assistant",
 	systemPrompt:
 		"You are a helpful research assistant. You can search arXiv for papers when relevant.",
-	model: "gpt-4o-mini",
+	model: "gpt-5.4-mini",
 	temperature: 0.7,
 	maxTokens: 2048,
+	adapterType: "openai",
+	endpointUrl: "",
 };
 
 export const AVAILABLE_MODELS = [

@@ -23,7 +23,7 @@ export const Header = ({ mode, setMode, teamName }: HeaderProps) => {
 
 	return (
 		<CardFrameHeader
-			className={cn(isClosed && "p-0")}
+			className={cn("shrink-0", isClosed && "p-0")}
 			onClick={isClosed ? () => setMode("mini") : undefined}
 		>
 			<Flex.Row align="center" gap={2}>

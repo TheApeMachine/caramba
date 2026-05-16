@@ -1,6 +1,7 @@
 package weights
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"math"
@@ -40,6 +41,45 @@ func TestOpen(test *testing.T) {
 			So(info.Shape, ShouldResemble, []int{2, 2})
 
 			values, err := store.Values("token_embedding.weight")
+			So(err, ShouldBeNil)
+			So(values, ShouldResemble, []float64{1, 2, 3, 4})
+		})
+	})
+}
+
+func TestResolve(test *testing.T) {
+	Convey("Given a local checkpoint with a component-scoped safetensors index", test, func() {
+		root := test.TempDir()
+		component := filepath.Join(root, "text_encoder")
+		So(os.MkdirAll(component, 0o755), ShouldBeNil)
+
+		shard := filepath.Join(component, "model-00001-of-00001.safetensors")
+		err := writeTestSafeTensors(shard, []testTensor{
+			{
+				name:   "model.embed_tokens.weight",
+				shape:  []int{2, 2},
+				values: []float64{1, 2, 3, 4},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		indexPath := filepath.Join(component, "model.safetensors.index.json")
+		indexData, err := json.Marshal(safeTensorsIndex{
+			WeightMap: map[string]string{
+				"model.embed_tokens.weight": "model-00001-of-00001.safetensors",
+			},
+		})
+		So(err, ShouldBeNil)
+		So(os.WriteFile(indexPath, indexData, 0o644), ShouldBeNil)
+
+		Convey("It should resolve the explicit file relative to the component directory", func() {
+			store, err := Resolve(context.Background(), Source{
+				Source: root,
+				File:   "text_encoder/model.safetensors.index.json",
+			})
+			So(err, ShouldBeNil)
+
+			values, err := store.Values("model.embed_tokens.weight")
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{1, 2, 3, 4})
 		})

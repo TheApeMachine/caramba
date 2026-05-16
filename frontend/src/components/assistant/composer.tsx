@@ -23,7 +23,7 @@ export const Composer = ({
 	placeholder,
 }: ComposerProps) => {
 	return (
-		<Form onSubmit={onSubmit} className="flex w-full border-t">
+		<Form onSubmit={onSubmit} className="flex w-full border-t shrink-0">
 			<Field className="w-full flex-1">
 				<Field.Label className="sr-only">Message</Field.Label>
 				<Input

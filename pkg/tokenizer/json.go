@@ -113,5 +113,25 @@ func validateNormalizer(raw json.RawMessage) error {
 		return nil
 	}
 
+	if typed.Type == "NFC" {
+		return nil
+	}
+
 	return fmt.Errorf("tokenizer: normalizer %q is not supported", typed.Type)
+}
+
+func normalizerType(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+
+	var typed struct {
+		Type string `json:"type"`
+	}
+
+	if err := json.Unmarshal(raw, &typed); err != nil {
+		return ""
+	}
+
+	return typed.Type
 }

@@ -35,6 +35,7 @@ type ModelConfig struct {
 	Runtime           string
 	Backend           string
 	Model             string
+	ModelFile         string
 	Tokenizer         string
 	TokenizerFile     string
 	Manifest          string
@@ -639,6 +640,7 @@ func modelWeightSource(config ModelConfig) modelweights.Source {
 
 	return modelweights.Source{
 		Source:   source,
+		File:     strings.TrimSpace(config.ModelFile),
 		Cache:    firstText(config.ModelCache, config.Cache),
 		Revision: firstText(config.ModelRevision, config.Revision),
 		RepoType: firstText(config.ModelRepoType, config.RepoType),

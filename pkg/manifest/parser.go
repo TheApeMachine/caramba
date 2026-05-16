@@ -262,12 +262,12 @@ func (ctx *parseContext) resolveNode(yamlNode *yaml.Node) (any, error) {
 
 			return ctx.loadIncludeTarget(dotPath, vars)
 		}
-		if count, indexVar, templateNode, ok, err := ctx.extractRepeatMapping(yamlNode); ok || err != nil {
+		if count, indexVar, offset, templateNode, ok, err := ctx.extractRepeatMapping(yamlNode); ok || err != nil {
 			if err != nil {
 				return nil, err
 			}
 
-			return ctx.expandRepeat(count, indexVar, templateNode)
+			return ctx.expandRepeat(count, indexVar, offset, templateNode)
 		}
 	}
 
@@ -299,7 +299,7 @@ func (ctx *parseContext) resolveNode(yamlNode *yaml.Node) (any, error) {
 			}
 
 			if child.Kind == yaml.MappingNode {
-				if _, _, _, ok, _ := ctx.extractRepeatMapping(child); ok {
+				if _, _, _, _, ok, _ := ctx.extractRepeatMapping(child); ok {
 					if expSeq, ok := element.([]any); ok {
 						sequence = append(sequence, expSeq...)
 						continue
@@ -404,7 +404,14 @@ Returns the count, index variable name, template node, and true when found.
 */
 func (ctx *parseContext) extractRepeatMapping(
 	yamlNode *yaml.Node,
-) (count int, indexVar string, templateNode *yaml.Node, ok bool, err error) {
+) (
+	count int,
+	indexVar string,
+	offset int,
+	templateNode *yaml.Node,
+	ok bool,
+	err error,
+) {
 	rawMap := make(map[string]*yaml.Node, len(yamlNode.Content)/2)
 
 	for pairIndex := 0; pairIndex < len(yamlNode.Content)-1; pairIndex += 2 {
@@ -415,29 +422,29 @@ func (ctx *parseContext) extractRepeatMapping(
 	repeatNode, hasRepeat := rawMap["repeat"]
 
 	if !hasRepeat {
-		return 0, "", nil, false, nil
+		return 0, "", 0, nil, false, nil
 	}
 
 	templateNode, hasTemplate := rawMap["template"]
 
 	if !hasTemplate {
-		return 0, "", nil, false, fmt.Errorf("manifest: repeat block requires template")
+		return 0, "", 0, nil, false, fmt.Errorf("manifest: repeat block requires template")
 	}
 
 	resolvedCount, err := ctx.resolveNode(repeatNode)
 
 	if err != nil {
-		return 0, "", nil, false, err
+		return 0, "", 0, nil, false, err
 	}
 
 	count, err = parseRepeatCount(resolvedCount)
 
 	if err != nil {
-		return 0, "", nil, false, err
+		return 0, "", 0, nil, false, err
 	}
 
 	if count > ctx.parser.maxRepeat {
-		return 0, "", nil, false, fmt.Errorf("manifest: repeat count %d exceeds limit %d", count, ctx.parser.maxRepeat)
+		return 0, "", 0, nil, false, fmt.Errorf("manifest: repeat count %d exceeds limit %d", count, ctx.parser.maxRepeat)
 	}
 
 	indexNode, hasIndex := rawMap["index"]
@@ -448,7 +455,23 @@ func (ctx *parseContext) extractRepeatMapping(
 		indexVar = "i"
 	}
 
-	return count, indexVar, templateNode, true, nil
+	offsetNode, hasOffset := rawMap["offset"]
+
+	if hasOffset {
+		resolvedOffset, err := ctx.resolveNode(offsetNode)
+
+		if err != nil {
+			return 0, "", 0, nil, false, err
+		}
+
+		offset, err = parseRepeatCount(resolvedOffset)
+
+		if err != nil {
+			return 0, "", 0, nil, false, fmt.Errorf("manifest: repeat offset: %w", err)
+		}
+	}
+
+	return count, indexVar, offset, templateNode, true, nil
 }
 
 func parseRepeatCount(value any) (int, error) {
@@ -478,7 +501,12 @@ func parseRepeatCount(value any) (int, error) {
 expandRepeat evaluates the template node 'count' times, injecting the current
 iteration index into the parser variables under 'indexVar'.
 */
-func (ctx *parseContext) expandRepeat(count int, indexVar string, templateNode *yaml.Node) (any, error) {
+func (ctx *parseContext) expandRepeat(
+	count int,
+	indexVar string,
+	offset int,
+	templateNode *yaml.Node,
+) (any, error) {
 	if count < 0 {
 		return nil, fmt.Errorf("manifest: repeat count must be non-negative")
 	}
@@ -497,6 +525,8 @@ func (ctx *parseContext) expandRepeat(count int, indexVar string, templateNode *
 		maps.Copy(child.vars, ctx.vars)
 		child.vars[indexVar] = i
 		child.vars["next_"+indexVar] = i + 1
+		child.vars["offset_"+indexVar] = i + offset
+		child.vars["next_offset_"+indexVar] = i + offset + 1
 
 		resolved, err := child.resolveNode(templateNode)
 		ctx.expansions = child.expansions

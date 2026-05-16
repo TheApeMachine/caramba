@@ -58,8 +58,8 @@ export const Body = ({
 			: "Message…";
 
 	return (
-		<Card className="w-full h-full">
-			<CardPanel className="w-full h-full">
+		<Card className="w-full flex-1 min-h-0">
+			<CardPanel className="w-full flex-1 min-h-0">
 				<Flex gap={6} className="min-h-0" fullWidth fullHeight>
 					{isFull && (
 						<Sidebar
@@ -71,7 +71,7 @@ export const Body = ({
 						/>
 					)}
 
-					<Flex.Column className="flex-1 min-w-0" fullWidth fullHeight>
+					<Flex.Column className="flex-1 min-w-0 min-h-0" fullWidth fullHeight>
 						{isFull && (
 							<Flex.Row
 								align="center"
@@ -96,11 +96,10 @@ export const Body = ({
 
 						<AnimatePresence mode="wait" initial={false}>
 							{(isMini || tab === "chat") && (
-								<Flex.Column
+								<Flex
 									key="chat"
 									appear="fadeUp"
-									className="flex-1 min-h-0"
-									fullHeight
+									className="flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)_auto]"
 								>
 									<MessageFeed
 										messages={session.messages}
@@ -117,7 +116,7 @@ export const Body = ({
 										busy={busy}
 										placeholder={placeholder}
 									/>
-								</Flex.Column>
+								</Flex>
 							)}
 
 							{isFull && tab === "settings" && (

@@ -1,9 +1,9 @@
 import { EventType } from "@tanstack/ai";
-import type { MessagePart, UIMessage } from "@tanstack/ai-client";
+import type { MessagePart } from "@tanstack/ai-client";
 import { fetchServerSentEvents } from "@tanstack/ai-react";
 import { useCallback, useRef, useState } from "react";
 import { paperEditorTools } from "./tools/paper-editor";
-import type { Persona, Session } from "./types";
+import type { Persona, Session, UIMessage } from "./types";
 import { windowedMessages } from "./storage";
 
 export type TeamChatStatus = "idle" | "running" | "error";
@@ -74,10 +74,7 @@ async function runTurn(
 			parts.push({ type: "thinking", content: reasoningContent } as MessagePart);
 		}
 		if (textContent) {
-			parts.push({
-				type: "text",
-				content: `**${persona.name}**: ${textContent}`,
-			} as MessagePart);
+			parts.push({ type: "text", content: textContent } as MessagePart);
 		}
 		if (parts.length === 0) return;
 		hasStreamingMessage = true;
@@ -86,6 +83,8 @@ async function runTurn(
 			role: "assistant",
 			parts,
 			createdAt: new Date(),
+			personaId: persona.id,
+			personaName: persona.name,
 		});
 	};
 
@@ -169,7 +168,7 @@ async function runTurn(
 		if (textContent) {
 			finalParts.push({
 				type: "text",
-				content: `**${persona.name}**: ${textContent}`,
+				content: textContent,
 			} as MessagePart);
 		}
 		generated.push({
@@ -177,6 +176,8 @@ async function runTurn(
 			role: "assistant",
 			parts: finalParts,
 			createdAt: new Date(),
+			personaId: persona.id,
+			personaName: persona.name,
 		});
 	}
 

@@ -4,7 +4,7 @@ import { Flex } from "#/components/ui/flex";
 
 export const Footer = () => {
 	return (
-		<CardFrameFooter>
+		<CardFrameFooter className="shrink-0">
 			<Flex.Row gap={1} className="text-muted-foreground text-xs">
 				<CircleAlertIcon className="size-3 h-lh shrink-0" />
 				<p>Responses may be incomplete while the team is streaming.</p>

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 var ErrInvalidUTF8 = errors.New("tokenizer: decoded bytes are not valid UTF-8")
@@ -25,6 +27,7 @@ type ByteLevelBPE struct {
 	trimOffsets       bool
 	continuingSubword string
 	ignoreMerges      bool
+	normalizer        string
 }
 
 type tokenPair struct {
@@ -62,6 +65,7 @@ func NewByteLevelBPE(document document) (*ByteLevelBPE, error) {
 		byteToRune:      byteToRune,
 		runeToByte:      runeToByte,
 		ignoreMerges:    document.Model.IgnoreMerges,
+		normalizer:      normalizerType(document.Normalizer),
 	}
 
 	for token, tokenID := range document.Model.Vocab {
@@ -92,6 +96,10 @@ func NewByteLevelBPE(document document) (*ByteLevelBPE, error) {
 Encode converts text to token IDs.
 */
 func (tokenizer *ByteLevelBPE) Encode(text string) ([]int, error) {
+	if tokenizer.normalizer == "NFC" {
+		text = norm.NFC.String(text)
+	}
+
 	if tokenizer.addPrefixSpace && text != "" && !startsWithSpace(text) {
 		text = " " + text
 	}

@@ -69,6 +69,7 @@ type MathOperationRegistry interface {
 	Dropout(*state.Dict) (Operation, error)
 	RMSNorm(*state.Dict) (Operation, error)
 	LayerNorm(*state.Dict) (Operation, error)
+	GroupNorm(*state.Dict) (Operation, error)
 }
 
 type ShapeOperationRegistry interface {

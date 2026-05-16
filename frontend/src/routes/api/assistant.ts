@@ -299,6 +299,16 @@ export const Route = createFileRoute("/api/assistant")({
 							messages,
 							conversationId: normalizedConversationId,
 							abortController,
+							debug: {
+								logger: {
+									debug: () => {},
+									info: () => {},
+									warn: (msg, meta) =>
+										logAssistantEvent({ level: "warn", message: msg, meta }),
+									error: (msg, meta) =>
+										logAssistantEvent({ level: "error", message: msg, meta }),
+								},
+							},
 							...(systemPrompts && systemPrompts.length > 0
 								? { systemPrompts }
 								: {}),

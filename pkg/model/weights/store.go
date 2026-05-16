@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -21,6 +22,7 @@ const (
 
 type Source struct {
 	Source   string
+	File     string
 	Cache    string
 	Revision string
 	RepoType string
@@ -186,21 +188,25 @@ func (store *Store) Has(name string) bool {
 
 func (source Source) localPaths() ([]string, error) {
 	if filepath.IsAbs(source.Source) || strings.HasPrefix(source.Source, "./") {
-		return localPaths(source.Source)
+		return localPaths(source.Source, source.File)
 	}
 
 	if _, err := os.Stat(source.Source); err == nil {
-		return localPaths(source.Source)
+		return localPaths(source.Source, source.File)
 	}
 
 	return nil, os.ErrNotExist
 }
 
-func localPaths(source string) ([]string, error) {
+func localPaths(source string, file string) ([]string, error) {
 	info, err := os.Stat(source)
 
 	if err != nil {
 		return nil, err
+	}
+
+	if strings.TrimSpace(file) != "" {
+		return explicitLocalPaths(source, file, info)
 	}
 
 	if !info.IsDir() {
@@ -232,6 +238,20 @@ func localPaths(source string) ([]string, error) {
 	sort.Strings(matches)
 
 	return matches, nil
+}
+
+func explicitLocalPaths(source string, file string, info os.FileInfo) ([]string, error) {
+	if !info.IsDir() {
+		return nil, fmt.Errorf("weights: source %s is a file but explicit file %s was requested", source, file)
+	}
+
+	path := filepath.Join(source, file)
+
+	if strings.HasSuffix(path, ".json") {
+		return pathsFromIndex(filepath.Dir(path), path)
+	}
+
+	return []string{path}, nil
 }
 
 func pathsFromIndex(root string, indexPath string) ([]string, error) {
@@ -267,6 +287,10 @@ func pathsFromIndex(root string, indexPath string) ([]string, error) {
 }
 
 func (source Source) resolveHub(ctx context.Context) (*Store, error) {
+	if strings.TrimSpace(source.File) != "" {
+		return source.resolveExplicitHubFile(ctx)
+	}
+
 	monolith, err := source.download(ctx, defaultSafeTensorsFile)
 
 	if err == nil {
@@ -288,7 +312,30 @@ func (source Source) resolveHub(ctx context.Context) (*Store, error) {
 	return Open(paths...)
 }
 
-func (source Source) downloadIndexShards(ctx context.Context, indexPath string) ([]string, error) {
+func (source Source) resolveExplicitHubFile(ctx context.Context) (*Store, error) {
+	filename := strings.TrimSpace(source.File)
+	path, err := source.download(ctx, filename)
+
+	if err != nil {
+		return nil, fmt.Errorf("weights: download %s: %w", filename, err)
+	}
+
+	if strings.HasSuffix(filename, ".json") {
+		paths, err := source.downloadIndexShards(ctx, path, filename)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return Open(paths...)
+	}
+
+	return Open(path)
+}
+
+func (source Source) downloadIndexShards(
+	ctx context.Context, indexPath string, indexFilename ...string,
+) ([]string, error) {
 	data, err := os.ReadFile(indexPath)
 
 	if err != nil {
@@ -303,15 +350,30 @@ func (source Source) downloadIndexShards(ctx context.Context, indexPath string) 
 
 	seen := make(map[string]bool, len(index.WeightMap))
 	paths := make([]string, 0, len(index.WeightMap))
+	base := ""
+
+	if len(indexFilename) > 0 {
+		base = pathpkg.Dir(indexFilename[0])
+
+		if base == "." {
+			base = ""
+		}
+	}
 
 	for _, filename := range index.WeightMap {
-		if seen[filename] {
+		repoFilename := filename
+
+		if base != "" && !strings.Contains(filename, "/") {
+			repoFilename = base + "/" + filename
+		}
+
+		if seen[repoFilename] {
 			continue
 		}
 
-		seen[filename] = true
+		seen[repoFilename] = true
 
-		path, err := source.download(ctx, filename)
+		path, err := source.download(ctx, repoFilename)
 
 		if err != nil {
 			return nil, err

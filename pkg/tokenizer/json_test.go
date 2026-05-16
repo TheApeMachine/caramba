@@ -23,6 +23,24 @@ func TestParse(test *testing.T) {
 			So(artifact.Backend, ShouldEqual, "bytelevel_bpe")
 		})
 	})
+
+	Convey("Given BPE tokenizer JSON with an NFC normalizer", test, func() {
+		data := []byte(strings.Replace(
+			string(testTokenizerJSON()),
+			`"normalizer": null`,
+			`"normalizer": {"type": "NFC"}`,
+			1,
+		))
+
+		Convey("It should preserve the normalizer on the byte-level tokenizer", func() {
+			artifact, err := Parse(data)
+
+			So(err, ShouldBeNil)
+			tokenizer, ok := artifact.Tokenizer.(*ByteLevelBPE)
+			So(ok, ShouldBeTrue)
+			So(tokenizer.normalizer, ShouldEqual, "NFC")
+		})
+	})
 }
 
 func BenchmarkParse(benchmark *testing.B) {

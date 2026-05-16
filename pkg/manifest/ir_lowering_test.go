@@ -135,4 +135,38 @@ func TestLowerGraphToIR(t *testing.T) {
 			So(lastToken.Metadata()["op_shape"], ShouldResemble, []int{1, 3, 4})
 		})
 	})
+
+	Convey("Given a manifest graph with multiple input shapes", t, func() {
+		graph := newGraph()
+		graph.externalInputs["left"] = true
+		graph.externalInputs["right"] = true
+		So(graph.addNode(&Node{
+			ID:     "concat",
+			OpID:   "shape.concat",
+			Config: map[string]any{"dim": 2},
+			In:     []string{"left", "right"},
+			Out:    []string{"joined"},
+		}), ShouldBeNil)
+		So(graph.rebuildEdgesFromNodes(), ShouldBeNil)
+
+		defaultShape, err := tensor.NewShape([]int{1, 4, 3})
+		So(err, ShouldBeNil)
+		rightShape, err := tensor.NewShape([]int{1, 4, 5})
+		So(err, ShouldBeNil)
+
+		Convey("It should infer concat output from each input shape", func() {
+			irGraph, err := LowerGraphToIRWithInputShapes(
+				graph,
+				defaultShape,
+				map[string]tensor.Shape{"right": rightShape},
+			)
+			So(err, ShouldBeNil)
+
+			index, err := irGraph.Index()
+			So(err, ShouldBeNil)
+
+			So(index.Node("concat").Shape().Dims(), ShouldResemble, []int{1, 4, 8})
+			So(index.Node("right").Shape().Dims(), ShouldResemble, []int{1, 4, 5})
+		})
+	})
 }

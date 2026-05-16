@@ -31,6 +31,10 @@ import { Route as ResearchEditModelScopeRouteImport } from './routes/research/ed
 import { Route as KanbanProjectProjectIdRouteImport } from './routes/kanban/project.$projectId'
 import { Route as KanbanOrgOrganizationSlugRouteImport } from './routes/kanban/org.$organizationSlug'
 import { Route as ApiShapeResearchProjectsRouteImport } from './routes/api/shape/research-projects'
+import { Route as ApiShapeAssistantSessionsRouteImport } from './routes/api/shape/assistant-sessions'
+import { Route as ApiShapeAssistantSessionPersonasRouteImport } from './routes/api/shape/assistant-session-personas'
+import { Route as ApiShapeAssistantPersonasRouteImport } from './routes/api/shape/assistant-personas'
+import { Route as ApiShapeAssistantMessagesRouteImport } from './routes/api/shape/assistant-messages'
 import { Route as ApiComputeOptimizerRouteImport } from './routes/api/compute/optimizer'
 
 const SignUpRoute = SignUpRouteImport.update({
@@ -146,6 +150,30 @@ const ApiShapeResearchProjectsRoute =
     path: '/api/shape/research-projects',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiShapeAssistantSessionsRoute =
+  ApiShapeAssistantSessionsRouteImport.update({
+    id: '/api/shape/assistant-sessions',
+    path: '/api/shape/assistant-sessions',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiShapeAssistantSessionPersonasRoute =
+  ApiShapeAssistantSessionPersonasRouteImport.update({
+    id: '/api/shape/assistant-session-personas',
+    path: '/api/shape/assistant-session-personas',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiShapeAssistantPersonasRoute =
+  ApiShapeAssistantPersonasRouteImport.update({
+    id: '/api/shape/assistant-personas',
+    path: '/api/shape/assistant-personas',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiShapeAssistantMessagesRoute =
+  ApiShapeAssistantMessagesRouteImport.update({
+    id: '/api/shape/assistant-messages',
+    path: '/api/shape/assistant-messages',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
   id: '/api/compute/optimizer',
   path: '/api/compute/optimizer',
@@ -170,6 +198,10 @@ export interface FileRoutesByFullPath {
   '/kanban/': typeof KanbanIndexRoute
   '/research/': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/api/shape/assistant-messages': typeof ApiShapeAssistantMessagesRoute
+  '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
+  '/api/shape/assistant-session-personas': typeof ApiShapeAssistantSessionPersonasRoute
+  '/api/shape/assistant-sessions': typeof ApiShapeAssistantSessionsRoute
   '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
   '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
@@ -194,6 +226,10 @@ export interface FileRoutesByTo {
   '/kanban': typeof KanbanIndexRoute
   '/research': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/api/shape/assistant-messages': typeof ApiShapeAssistantMessagesRoute
+  '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
+  '/api/shape/assistant-session-personas': typeof ApiShapeAssistantSessionPersonasRoute
+  '/api/shape/assistant-sessions': typeof ApiShapeAssistantSessionsRoute
   '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
   '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
@@ -220,6 +256,10 @@ export interface FileRoutesById {
   '/kanban/': typeof KanbanIndexRoute
   '/research/': typeof ResearchIndexRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
+  '/api/shape/assistant-messages': typeof ApiShapeAssistantMessagesRoute
+  '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
+  '/api/shape/assistant-session-personas': typeof ApiShapeAssistantSessionPersonasRoute
+  '/api/shape/assistant-sessions': typeof ApiShapeAssistantSessionsRoute
   '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
   '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
@@ -247,6 +287,10 @@ export interface FileRouteTypes {
     | '/kanban/'
     | '/research/'
     | '/api/compute/optimizer'
+    | '/api/shape/assistant-messages'
+    | '/api/shape/assistant-personas'
+    | '/api/shape/assistant-session-personas'
+    | '/api/shape/assistant-sessions'
     | '/api/shape/research-projects'
     | '/kanban/org/$organizationSlug'
     | '/kanban/project/$projectId'
@@ -271,6 +315,10 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/research'
     | '/api/compute/optimizer'
+    | '/api/shape/assistant-messages'
+    | '/api/shape/assistant-personas'
+    | '/api/shape/assistant-session-personas'
+    | '/api/shape/assistant-sessions'
     | '/api/shape/research-projects'
     | '/kanban/org/$organizationSlug'
     | '/kanban/project/$projectId'
@@ -296,6 +344,10 @@ export interface FileRouteTypes {
     | '/kanban/'
     | '/research/'
     | '/api/compute/optimizer'
+    | '/api/shape/assistant-messages'
+    | '/api/shape/assistant-personas'
+    | '/api/shape/assistant-session-personas'
+    | '/api/shape/assistant-sessions'
     | '/api/shape/research-projects'
     | '/kanban/org/$organizationSlug'
     | '/kanban/project/$projectId'
@@ -322,6 +374,10 @@ export interface RootRouteChildren {
   KanbanIndexRoute: typeof KanbanIndexRoute
   ResearchIndexRoute: typeof ResearchIndexRoute
   ApiComputeOptimizerRoute: typeof ApiComputeOptimizerRoute
+  ApiShapeAssistantMessagesRoute: typeof ApiShapeAssistantMessagesRoute
+  ApiShapeAssistantPersonasRoute: typeof ApiShapeAssistantPersonasRoute
+  ApiShapeAssistantSessionPersonasRoute: typeof ApiShapeAssistantSessionPersonasRoute
+  ApiShapeAssistantSessionsRoute: typeof ApiShapeAssistantSessionsRoute
   ApiShapeResearchProjectsRoute: typeof ApiShapeResearchProjectsRoute
   KanbanOrgOrganizationSlugRoute: typeof KanbanOrgOrganizationSlugRoute
   KanbanProjectProjectIdRoute: typeof KanbanProjectProjectIdRoute
@@ -483,6 +539,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiShapeResearchProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/shape/assistant-sessions': {
+      id: '/api/shape/assistant-sessions'
+      path: '/api/shape/assistant-sessions'
+      fullPath: '/api/shape/assistant-sessions'
+      preLoaderRoute: typeof ApiShapeAssistantSessionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/shape/assistant-session-personas': {
+      id: '/api/shape/assistant-session-personas'
+      path: '/api/shape/assistant-session-personas'
+      fullPath: '/api/shape/assistant-session-personas'
+      preLoaderRoute: typeof ApiShapeAssistantSessionPersonasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/shape/assistant-personas': {
+      id: '/api/shape/assistant-personas'
+      path: '/api/shape/assistant-personas'
+      fullPath: '/api/shape/assistant-personas'
+      preLoaderRoute: typeof ApiShapeAssistantPersonasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/shape/assistant-messages': {
+      id: '/api/shape/assistant-messages'
+      path: '/api/shape/assistant-messages'
+      fullPath: '/api/shape/assistant-messages'
+      preLoaderRoute: typeof ApiShapeAssistantMessagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/compute/optimizer': {
       id: '/api/compute/optimizer'
       path: '/api/compute/optimizer'
@@ -526,6 +610,10 @@ const rootRouteChildren: RootRouteChildren = {
   KanbanIndexRoute: KanbanIndexRoute,
   ResearchIndexRoute: ResearchIndexRoute,
   ApiComputeOptimizerRoute: ApiComputeOptimizerRoute,
+  ApiShapeAssistantMessagesRoute: ApiShapeAssistantMessagesRoute,
+  ApiShapeAssistantPersonasRoute: ApiShapeAssistantPersonasRoute,
+  ApiShapeAssistantSessionPersonasRoute: ApiShapeAssistantSessionPersonasRoute,
+  ApiShapeAssistantSessionsRoute: ApiShapeAssistantSessionsRoute,
   ApiShapeResearchProjectsRoute: ApiShapeResearchProjectsRoute,
   KanbanOrgOrganizationSlugRoute: KanbanOrgOrganizationSlugRoute,
   KanbanProjectProjectIdRoute: KanbanProjectProjectIdRoute,

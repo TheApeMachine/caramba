@@ -8,6 +8,14 @@ import (
 )
 
 func LowerGraphToIR(graph *Graph, defaultShape tensor.Shape) (*ir.Graph, error) {
+	return LowerGraphToIRWithInputShapes(graph, defaultShape, nil)
+}
+
+func LowerGraphToIRWithInputShapes(
+	graph *Graph,
+	defaultShape tensor.Shape,
+	inputShapeOverrides map[string]tensor.Shape,
+) (*ir.Graph, error) {
 	if graph == nil {
 		return nil, fmt.Errorf("manifest: nil graph")
 	}
@@ -30,13 +38,19 @@ func LowerGraphToIR(graph *Graph, defaultShape tensor.Shape) (*ir.Graph, error) 
 			)
 		}
 
-		node := ir.NewNode(input, ir.OpInput, defaultShape)
+		inputShape, err := externalInputShape(input, defaultShape, inputShapeOverrides)
+
+		if err != nil {
+			return nil, err
+		}
+
+		node := ir.NewNode(input, ir.OpInput, inputShape)
 		node.SetOperationID(ir.OpID("data.input"))
 		node.SetMetadata("binding", input)
 		node.SetAttribute("out.0", ir.StringAttribute(input))
 
 		nodes[input] = node
-		bindingShapes[input] = defaultShape
+		bindingShapes[input] = inputShape
 		irGraph.AddNode(node)
 	}
 
@@ -57,7 +71,7 @@ func LowerGraphToIR(graph *Graph, defaultShape tensor.Shape) (*ir.Graph, error) 
 		}
 
 		opShape := operationShapeForNode(inputShapes, defaultShape)
-		outputShape, err := outputShapeForNode(manifestNode, opShape)
+		outputShape, err := outputShapeForNode(manifestNode, opShape, inputShapes)
 
 		if err != nil {
 			return nil, err
@@ -128,6 +142,24 @@ func LowerGraphToIR(graph *Graph, defaultShape tensor.Shape) (*ir.Graph, error) 
 	return irGraph, irGraph.Verify()
 }
 
+func externalInputShape(
+	input string,
+	defaultShape tensor.Shape,
+	inputShapeOverrides map[string]tensor.Shape,
+) (tensor.Shape, error) {
+	shape, ok := inputShapeOverrides[input]
+
+	if !ok {
+		return defaultShape, nil
+	}
+
+	if !shape.Valid() {
+		return tensor.Shape{}, fmt.Errorf("manifest: external input %q has invalid shape", input)
+	}
+
+	return shape, nil
+}
+
 func inputShapesForNode(
 	node *Node, bindingShapes map[string]tensor.Shape, fallback tensor.Shape,
 ) ([]tensor.Shape, error) {
@@ -158,7 +190,11 @@ func operationShapeForNode(inputShapes []tensor.Shape, fallback tensor.Shape) te
 	return inputShapes[0]
 }
 
-func outputShapeForNode(node *Node, opShape tensor.Shape) (tensor.Shape, error) {
+func outputShapeForNode(
+	node *Node,
+	opShape tensor.Shape,
+	inputShapes []tensor.Shape,
+) (tensor.Shape, error) {
 	dimensions := opShape.Dims()
 
 	switch node.OpID {
@@ -188,6 +224,14 @@ func outputShapeForNode(node *Node, opShape tensor.Shape) (tensor.Shape, error) 
 		return lastTokenShape(dimensions)
 	case "shape.merge_heads":
 		return mergeHeadsShape(dimensions)
+	case "shape.concat":
+		return concatShape(inputShapes, configInt(node.Config, "dim", 0))
+	case "shape.transpose":
+		return transposeShape(
+			dimensions,
+			configInt(node.Config, "dim0", 0),
+			configInt(node.Config, "dim1", 0),
+		)
 	case "shape.reshape":
 		if shape := configIntSlice(node.Config, "shape"); len(shape) > 0 {
 			return tensor.NewShape(shape)
@@ -207,6 +251,73 @@ func appendShapeDim(dimensions []int, dimension int) (tensor.Shape, error) {
 	}
 
 	out := append(append([]int(nil), dimensions...), dimension)
+
+	return tensor.NewShape(out)
+}
+
+func concatShape(inputShapes []tensor.Shape, dim int) (tensor.Shape, error) {
+	if len(inputShapes) == 0 {
+		return tensor.Shape{}, fmt.Errorf("manifest: shape.concat requires at least one input")
+	}
+
+	dimensions := inputShapes[0].Dims()
+
+	if dim < 0 || dim >= len(dimensions) {
+		return tensor.Shape{}, fmt.Errorf(
+			"manifest: shape.concat dim %d out of range rank %d",
+			dim,
+			len(dimensions),
+		)
+	}
+
+	out := append([]int(nil), dimensions...)
+
+	for inputIndex, inputShape := range inputShapes[1:] {
+		inputDimensions := inputShape.Dims()
+
+		if len(inputDimensions) != len(dimensions) {
+			return tensor.Shape{}, fmt.Errorf(
+				"manifest: shape.concat input %d rank %d does not match rank %d",
+				inputIndex+1,
+				len(inputDimensions),
+				len(dimensions),
+			)
+		}
+
+		for dimensionIndex, dimension := range inputDimensions {
+			if dimensionIndex == dim {
+				out[dim] += dimension
+
+				continue
+			}
+
+			if dimension != dimensions[dimensionIndex] {
+				return tensor.Shape{}, fmt.Errorf(
+					"manifest: shape.concat input %d dimension %d is %d, expected %d",
+					inputIndex+1,
+					dimensionIndex,
+					dimension,
+					dimensions[dimensionIndex],
+				)
+			}
+		}
+	}
+
+	return tensor.NewShape(out)
+}
+
+func transposeShape(dimensions []int, dim0 int, dim1 int) (tensor.Shape, error) {
+	if dim0 < 0 || dim0 >= len(dimensions) || dim1 < 0 || dim1 >= len(dimensions) {
+		return tensor.Shape{}, fmt.Errorf(
+			"manifest: shape.transpose dims %d,%d out of range rank %d",
+			dim0,
+			dim1,
+			len(dimensions),
+		)
+	}
+
+	out := append([]int(nil), dimensions...)
+	out[dim0], out[dim1] = out[dim1], out[dim0]
 
 	return tensor.NewShape(out)
 }

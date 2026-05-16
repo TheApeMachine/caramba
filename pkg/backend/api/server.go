@@ -21,11 +21,13 @@ import (
 Server is the main server for the API.
 */
 type Server struct {
-	app              *fiber.App
-	compute          *compute.Service
-	architecture     *architecture.Service
-	modelscope       *modelscope.Service
-	researchProjects *ResearchProjectService
+	app               *fiber.App
+	compute           *compute.Service
+	architecture      *architecture.Service
+	modelscope        *modelscope.Service
+	researchProjects  *ResearchProjectService
+	assistantPersonas *AssistantPersonaService
+	assistantSessions *AssistantSessionService
 }
 
 /*
@@ -42,7 +44,9 @@ func NewServer() *Server {
 		compute:          compute.NewService(),
 		architecture:     architecture.NewService(),
 		modelscope:       modelscope.NewService(),
-		researchProjects: NewResearchProjectService(config.NewDevTeamConfig().DatabaseURL),
+		researchProjects:  NewResearchProjectService(config.NewDevTeamConfig().DatabaseURL),
+		assistantPersonas: NewAssistantPersonaService(config.NewDevTeamConfig().DatabaseURL),
+		assistantSessions: NewAssistantSessionService(config.NewDevTeamConfig().DatabaseURL),
 	}
 }
 
@@ -78,6 +82,15 @@ func (server *Server) Up() error {
 	server.app.Get("/backend/architecture/:name", wrap(server.architecture.Load))
 	server.app.Post("/backend/architecture/:name", RequireClerkAdmin(), wrap(server.architecture.Save))
 	server.app.Post("/backend/research-projects", RequireClerkAdmin(), wrap(server.researchProjects.Create))
+
+	server.app.Post("/backend/assistant/personas", wrap(server.assistantPersonas.Create))
+	server.app.Put("/backend/assistant/personas", wrap(server.assistantPersonas.Update))
+	server.app.Delete("/backend/assistant/personas", wrap(server.assistantPersonas.Delete))
+
+	server.app.Post("/backend/assistant/sessions", wrap(server.assistantSessions.CreateSession))
+	server.app.Put("/backend/assistant/sessions", wrap(server.assistantSessions.UpdateSession))
+	server.app.Delete("/backend/assistant/sessions", wrap(server.assistantSessions.DeleteSession))
+	server.app.Post("/backend/assistant/messages", wrap(server.assistantSessions.CreateMessage))
 
 	devteamCfg := config.NewDevTeamConfig()
 

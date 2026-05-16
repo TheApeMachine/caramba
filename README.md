@@ -105,6 +105,16 @@ Startup publishes `qpool` progress events for manifest resolution, backend selec
 
 You did not write a model class. You did not write a forward pass. You described an architecture, and the substrate ran it.
 
+Diffusion models use the same manifest path. The FLUX.2 Klein 4B denoiser
+template lives at `model/diffusion/flux-2-klein-4b.yml`; its Qwen3 prompt
+encoder lives at `model/diffusion/flux-2-klein-4b-text-encoder.yml`. The image
+command resolves those assets from the manifest, encodes the prompt, runs the
+FlowMatch Euler denoising loop, and writes the current latent preview as PNG:
+
+```bash
+caramba image --manifest model/diffusion/flux-2-klein-4b.yml "a brass observatory on a storm cliff"
+```
+
 ---
 
 ## What you get

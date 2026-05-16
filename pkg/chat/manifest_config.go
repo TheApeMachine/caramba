@@ -127,6 +127,7 @@ func applyManifestModelSource(
 	}
 
 	config.Model = modelSource.source
+	config.ModelFile = modelSource.file
 	config.ModelCache = modelSource.cache
 	config.ModelRevision = modelSource.revision
 	config.ModelRepoType = firstText(modelSource.repoType, manifestDefaultRepoType)

@@ -10,9 +10,18 @@ import {
 	SelectValue,
 } from "#/components/ui/select";
 import { Slider } from "#/components/ui/slider";
+import { Switch } from "#/components/ui/switch";
 import { Textarea } from "#/components/ui/textarea";
-import type { Persona, Provider, Session } from "../types";
-import { AVAILABLE_MODELS, DEFAULT_PERSONA } from "../types";
+import { useAssistantMode } from "../use-assistant-mode";
+import {
+	type AdapterType,
+	AVAILABLE_MODELS,
+	DEFAULT_PERSONA,
+	type Persona,
+	type PersonaScope,
+	type Provider,
+	type Session,
+} from "../types";
 
 const PROVIDER_LABELS: Record<Provider, string> = {
 	openai: "OpenAI",
@@ -25,11 +34,20 @@ const PROVIDERS = Array.from(
 	new Set(AVAILABLE_MODELS.map((m) => m.provider)),
 ) as Provider[];
 
-function sliderScalar(next: number | readonly number[]): number | undefined {
-	if (typeof next === "number") {
-		return next;
-	}
+const SCOPE_LABELS: Record<PersonaScope, string> = {
+	global: "Global",
+	team: "Team",
+	personal: "Personal",
+};
 
+const ADAPTER_LABELS: Record<AdapterType, string> = {
+	openai: "OpenAI (cloud)",
+	ollama: "Ollama (local)",
+	"openai-compat": "OpenAI-compatible",
+};
+
+function sliderScalar(next: number | readonly number[]): number | undefined {
+	if (typeof next === "number") return next;
 	return next[0];
 }
 
@@ -52,6 +70,9 @@ function PersonaCard({
 	onUpdate: (p: Persona) => void;
 	onRemove: () => void;
 }) {
+	const showEndpoint =
+		persona.adapterType === "ollama" || persona.adapterType === "openai-compat";
+
 	return (
 		<div className="rounded-xl border bg-muted/30 p-4 flex flex-col gap-3">
 			<div className="flex items-center gap-2">
@@ -67,6 +88,64 @@ function PersonaCard({
 					</Button>
 				)}
 			</div>
+
+			<div className="grid grid-cols-2 gap-2">
+				<div className="flex flex-col gap-1">
+					<Label className="text-xs text-muted-foreground">Scope</Label>
+					<Select
+						value={persona.scope}
+						onValueChange={(v) =>
+							v && onUpdate({ ...persona, scope: v as PersonaScope })
+						}
+					>
+						<SelectTrigger size="sm" className="w-full">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectPopup>
+							<SelectItem value="personal">{SCOPE_LABELS.personal}</SelectItem>
+							<SelectItem value="team">{SCOPE_LABELS.team}</SelectItem>
+							<SelectItem value="global">{SCOPE_LABELS.global}</SelectItem>
+						</SelectPopup>
+					</Select>
+				</div>
+
+				<div className="flex flex-col gap-1">
+					<Label className="text-xs text-muted-foreground">Adapter</Label>
+					<Select
+						value={persona.adapterType}
+						onValueChange={(v) =>
+							v && onUpdate({ ...persona, adapterType: v as AdapterType })
+						}
+					>
+						<SelectTrigger size="sm" className="w-full">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectPopup>
+							<SelectItem value="openai">{ADAPTER_LABELS.openai}</SelectItem>
+							<SelectItem value="ollama">{ADAPTER_LABELS.ollama}</SelectItem>
+							<SelectItem value="openai-compat">
+								{ADAPTER_LABELS["openai-compat"]}
+							</SelectItem>
+						</SelectPopup>
+					</Select>
+				</div>
+			</div>
+
+			{showEndpoint && (
+				<div className="flex flex-col gap-1">
+					<Label className="text-xs text-muted-foreground">Endpoint URL</Label>
+					<Input
+						value={persona.endpointUrl}
+						onChange={(e) => onUpdate({ ...persona, endpointUrl: e.target.value })}
+						placeholder={
+							persona.adapterType === "ollama"
+								? "http://localhost:11434"
+								: "http://localhost:8000/v1"
+						}
+						className="h-7 text-xs"
+					/>
+				</div>
+			)}
 
 			<Textarea
 				value={persona.systemPrompt}
@@ -149,10 +228,13 @@ export function SettingsPanel({
 	onRemovePersona,
 	onWindowSizeChange,
 }: Props) {
+	const { mode, toggle, endpoint, updateEndpoint } = useAssistantMode();
+
 	const handleAdd = () => {
 		onAddPersona({
 			...DEFAULT_PERSONA,
 			id: crypto.randomUUID(),
+			scope: "personal",
 			name: `Researcher ${session.personas.length + 1}`,
 			systemPrompt:
 				"You are a specialist researcher. Build on the conversation and add new insights.",
@@ -161,6 +243,48 @@ export function SettingsPanel({
 
 	return (
 		<div className="flex flex-col gap-6 p-4 overflow-y-auto">
+			<div className="flex flex-col gap-3 rounded-xl border bg-muted/30 p-4">
+				<div className="flex items-center justify-between">
+					<div className="flex flex-col">
+						<span className="text-sm font-medium">Local-only mode</span>
+						<span className="text-xs text-muted-foreground">
+							Store everything in browser storage. Chat goes to per-persona local endpoints.
+						</span>
+					</div>
+					<Switch
+						checked={mode === "local"}
+						onCheckedChange={() => toggle()}
+					/>
+				</div>
+
+				{mode === "local" && (
+					<div className="flex flex-col gap-2 pt-2 border-t">
+						<div className="flex flex-col gap-1">
+							<Label className="text-xs text-muted-foreground">
+								Default local endpoint
+							</Label>
+							<Input
+								value={endpoint.baseURL}
+								onChange={(e) => updateEndpoint({ baseURL: e.target.value })}
+								placeholder="http://localhost:11434"
+								className="h-7 text-xs"
+							/>
+						</div>
+						<div className="flex flex-col gap-1">
+							<Label className="text-xs text-muted-foreground">
+								Auth header (optional)
+							</Label>
+							<Input
+								value={endpoint.authHeader}
+								onChange={(e) => updateEndpoint({ authHeader: e.target.value })}
+								placeholder="Bearer sk-…"
+								className="h-7 text-xs"
+							/>
+						</div>
+					</div>
+				)}
+			</div>
+
 			<div className="flex flex-col gap-3">
 				<div className="flex items-center justify-between">
 					<span className="text-sm font-medium">Personas</span>
@@ -195,9 +319,7 @@ export function SettingsPanel({
 					value={[session.windowSize]}
 					onValueChange={(next) => {
 						const v = sliderScalar(next);
-						if (v !== undefined) {
-							onWindowSizeChange(v);
-						}
+						if (v !== undefined) onWindowSizeChange(v);
 					}}
 				/>
 				<p className="text-xs text-muted-foreground">

@@ -1,12 +1,15 @@
-import type { MessagePart, UIMessage } from "@tanstack/ai-client";
+import type { MessagePart } from "@tanstack/ai-client";
 import { Brain, ChevronDown, Sparkles, Wrench } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { Avatar, AvatarFallback } from "#/components/ui/avatar";
 import {
 	Collapsible,
 	CollapsiblePanel,
 	CollapsibleTrigger,
 } from "#/components/ui/collapsible";
+import { ScrollArea } from "#/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import type { UIMessage } from "../types";
 
 function partKey(messageId: string, part: MessagePart, index: number): string {
 	if (part.type === "tool-call") return `${messageId}:tool-call:${part.id}`;
@@ -168,64 +171,98 @@ export function MessageFeed({
 	compact,
 }: Props) {
 	return (
-		<section
-			className={cn(
-				"flex flex-col-reverse overflow-y-auto min-h-0 h-full",
-				compact ? "flex-1 px-4 py-3" : "flex-1 px-6 py-4",
-			)}
-			aria-label="Conversation"
-		>
-			{isSubmitted && (
-				<div className="mb-4 mr-auto">
-					<div className="bg-muted rounded-xl px-3 py-2 flex items-center gap-2">
-						{reasoningActive ? (
-							<>
-								<Sparkles className="size-3.5 text-violet-400 animate-pulse" />
-								<span className="text-xs italic bg-linear-to-r from-muted-foreground/40 via-foreground to-muted-foreground/40 bg-size-[200%_100%] bg-clip-text text-transparent animate-[shimmer_2s_linear_infinite]">
-									Thinking…
+		<ScrollArea aria-label="Conversation">
+			<section className="flex flex-col-reverse">
+				{isSubmitted && (
+					<div className="mb-4 mr-auto">
+						<div className="bg-muted rounded-xl px-3 py-2 flex items-center gap-2">
+							{reasoningActive ? (
+								<>
+									<Sparkles className="size-3.5 text-violet-400 animate-pulse" />
+									<span className="text-xs italic bg-linear-to-r from-muted-foreground/40 via-foreground to-muted-foreground/40 bg-size-[200%_100%] bg-clip-text text-transparent animate-[shimmer_2s_linear_infinite]">
+										Thinking…
+									</span>
+								</>
+							) : (
+								<span className="flex gap-1">
+									<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
+									<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
+									<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
 								</span>
-							</>
-						) : (
-							<span className="flex gap-1">
-								<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
-								<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
-								<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
-							</span>
-						)}
+							)}
+						</div>
 					</div>
-				</div>
-			)}
+				)}
 
-			{[...messages].reverse().map((message) => (
-				<div
-					key={message.id}
-					className={cn(
-						"mb-4",
-						message.role === "user"
-							? "ml-auto max-w-[80%] text-right"
-							: "mr-auto max-w-[88%] w-full",
-					)}
-				>
-					<div
-						className={cn(
-							"rounded-xl px-3 py-2 text-sm",
-							message.role === "user"
-								? "inline-block bg-primary text-primary-foreground"
-								: "bg-muted",
-						)}
-					>
-						<MessageParts message={message} />
-					</div>
-				</div>
-			))}
+				{[...messages].reverse().map((message) => {
+					const isUser = message.role === "user";
+					const label = isUser ? "You" : (message.personaName ?? "Assistant");
+					const initials = label
+						.split(/\s+/)
+						.map((w) => w[0])
+						.slice(0, 2)
+						.join("")
+						.toUpperCase();
+					return (
+						<div
+							key={message.id}
+							className={cn(
+								"mb-4 flex gap-2 items-start",
+								isUser ? "flex-row-reverse" : "flex-row",
+							)}
+						>
+							<Avatar
+								className={cn(
+									"size-7 shrink-0 mt-0.5",
+									isUser
+										? "bg-primary text-primary-foreground"
+										: "bg-violet-500/15 text-violet-600 dark:text-violet-300",
+								)}
+							>
+								<AvatarFallback
+									className={cn(
+										isUser
+											? "bg-primary text-primary-foreground"
+											: "bg-violet-500/15 text-violet-600 dark:text-violet-300",
+									)}
+								>
+									{initials}
+								</AvatarFallback>
+							</Avatar>
+							<div
+								className={cn(
+									"flex flex-col min-w-0",
+									isUser
+										? "items-end max-w-[80%]"
+										: "items-start max-w-[85%] w-full",
+								)}
+							>
+								<span className="text-[11px] text-muted-foreground mb-0.5 px-1">
+									{label}
+								</span>
+								<div
+									className={cn(
+										"rounded-xl px-3 py-2 text-sm",
+										isUser
+											? "bg-primary text-primary-foreground rounded-tr-sm"
+											: "bg-muted rounded-tl-sm",
+									)}
+								>
+									<MessageParts message={message} />
+								</div>
+							</div>
+						</div>
+					);
+				})}
 
-			{messages.length === 0 && (
-				<p className="text-xs text-muted-foreground text-center mt-8">
-					{compact
-						? "Ask anything — I'm ready."
-						: "Ask anything — your research team is ready."}
-				</p>
-			)}
-		</section>
+				{messages.length === 0 && (
+					<p className="text-xs text-muted-foreground text-center mt-8">
+						{compact
+							? "Ask anything — I'm ready."
+							: "Ask anything — your research team is ready."}
+					</p>
+				)}
+			</section>
+		</ScrollArea>
 	);
 }

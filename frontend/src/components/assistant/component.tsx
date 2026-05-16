@@ -76,13 +76,13 @@ export function Assistant() {
 			className={cn(
 				"fixed z-50",
 				isClosed && "bottom-6 right-6 size-14",
-				isMini && "bottom-6 right-6 w-80 max-h-[70vh]",
+				isMini && "bottom-6 right-6 w-80 h-[70vh]",
 				isFull && "inset-4",
 			)}
 		>
 			<CardFrame
 				className={cn(
-					"w-full flex-1 min-h-0 shadow-2xl",
+					"w-full flex-1 min-h-0 overflow-hidden shadow-2xl",
 					isClosed && "bg-primary text-primary-foreground",
 				)}
 			>

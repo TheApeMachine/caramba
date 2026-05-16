@@ -54,3 +54,42 @@ nodes:
 		})
 	})
 }
+
+func TestParser_RepeatOffset(t *testing.T) {
+	Convey("Given a Parser and a repeat block with a state offset", t, func() {
+		root := t.TempDir()
+		parser := NewParser(root)
+
+		content := `
+nodes:
+  - repeat: 2
+    index: block
+    offset: 5
+    template:
+      - id: block_${block}
+        in: ["state_${offset_block}"]
+        out: ["state_${next_offset_block}"]
+`
+		path := filepath.Join(root, "repeat-offset.yml")
+		So(os.WriteFile(path, []byte(content), 0o644), ShouldBeNil)
+
+		Convey("It should keep block IDs local while offsetting state bindings", func() {
+			doc, err := parser.Parse("repeat-offset.yml")
+			So(err, ShouldBeNil)
+
+			nodes, ok := doc["nodes"].([]any)
+			So(ok, ShouldBeTrue)
+			So(nodes, ShouldHaveLength, 2)
+
+			first := nodes[0].(map[string]any)
+			So(first["id"], ShouldEqual, "block_0")
+			So(first["in"], ShouldResemble, []any{"state_5"})
+			So(first["out"], ShouldResemble, []any{"state_6"})
+
+			second := nodes[1].(map[string]any)
+			So(second["id"], ShouldEqual, "block_1")
+			So(second["in"], ShouldResemble, []any{"state_6"})
+			So(second["out"], ShouldResemble, []any{"state_7"})
+		})
+	})
+}
