@@ -1,5 +1,5 @@
-import { Link } from "@tanstack/react-router";
-import { FoldersIcon, Menu as MenuIcon } from "lucide-react";
+import { Link, useLocation } from "@tanstack/react-router";
+import { Menu as MenuIcon } from "lucide-react";
 import type React from "react";
 import {
 	Breadcrumb,
@@ -10,7 +10,6 @@ import {
 	BreadcrumbSeparator,
 } from "#/components/ui/breadcrumb";
 import { Button } from "#/components/ui/button";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "#/components/ui/menu";
 import {
 	Sheet,
 	SheetClose,
@@ -23,6 +22,44 @@ import {
 	SheetTrigger,
 } from "#/components/ui/sheet";
 import { Navigation } from "./navigation";
+
+const humanize = (segment: string) =>
+	decodeURIComponent(segment)
+		.replace(/[-_]+/g, " ")
+		.replace(/\b\w/g, (character) => character.toUpperCase());
+
+const useRouteCrumbs = () => {
+	const { pathname } = useLocation();
+	const segments = pathname.split("/").filter(Boolean);
+
+	return segments.map((segment, index) => ({
+		href: `/${segments.slice(0, index + 1).join("/")}`,
+		label: humanize(segment),
+	}));
+};
+
+const RouteCrumb = ({
+	href,
+	label,
+	isLast,
+}: {
+	href: string;
+	label: string;
+	isLast: boolean;
+}) => {
+	return (
+		<>
+			<BreadcrumbSeparator />
+			<BreadcrumbItem>
+				{isLast ? (
+					<BreadcrumbPage>{label}</BreadcrumbPage>
+				) : (
+					<BreadcrumbLink href={href}>{label}</BreadcrumbLink>
+				)}
+			</BreadcrumbItem>
+		</>
+	);
+};
 
 export const Page = ({ children }: { children?: React.ReactNode }) => {
 	return <>{children ?? null}</>;
@@ -60,38 +97,14 @@ Page.Header = ({ children }: { children?: React.ReactNode }) => {
 					<BreadcrumbItem>
 						<BreadcrumbLink render={<Link to={"/"} />}>Home</BreadcrumbLink>
 					</BreadcrumbItem>
-					<BreadcrumbSeparator />
-					<BreadcrumbItem>
-						<Menu>
-							<MenuTrigger
-								aria-label="More pages"
-								render={
-									<Button
-										className="-m-1.5 text-muted-foreground"
-										size="icon-sm"
-										variant="ghost"
-									/>
-								}
-							>
-								<FoldersIcon aria-hidden="true" />
-							</MenuTrigger>
-							<MenuPopup align="start">
-								<MenuItem>
-									<Link to={"/docs"} />
-								</MenuItem>
-							</MenuPopup>
-						</Menu>
-					</BreadcrumbItem>
-					<BreadcrumbSeparator />
-					<BreadcrumbItem>
-						<BreadcrumbLink render={<Link to={"/docs"} />}>
-							Components
-						</BreadcrumbLink>
-					</BreadcrumbItem>
-					<BreadcrumbSeparator />
-					<BreadcrumbItem>
-						<BreadcrumbPage>Breadcrumb</BreadcrumbPage>
-					</BreadcrumbItem>
+					{useRouteCrumbs().map((crumb, index, all) => (
+						<RouteCrumb
+							key={crumb.href}
+							href={crumb.href}
+							isLast={index === all.length - 1}
+							label={crumb.label}
+						/>
+					))}
 				</BreadcrumbList>
 			</Breadcrumb>
 

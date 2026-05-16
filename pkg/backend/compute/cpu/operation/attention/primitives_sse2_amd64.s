@@ -20,7 +20,9 @@ loop_dp2:
 	CMPQ BX, $2
 	JGE  loop_dp2
 scalar_dp2:
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 	CMPQ BX, $0
 	JLE  done_dp2
 tail_dp2:
@@ -119,7 +121,9 @@ loop_rs2:
 	CMPQ BX, $2
 	JGE  loop_rs2
 done_rs2:
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 	CMPQ BX, $0
 	JLE  done_rs2_ret
 tail_rs2:

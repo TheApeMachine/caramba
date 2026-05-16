@@ -6,8 +6,8 @@
 //   v     = α*v + (1-α)*geff²
 //   gAvg  = α*gAvg + (1-α)*geff
 //   denom = sqrt(v - gAvg²) + eps
-//   buf   = μ*buf + lr*geff/denom
-//   out   = p - buf
+//   buf   = μ*buf + geff/denom
+//   out   = p - lr*buf
 TEXT ·rmspropCenteredMomentumAVX2(SB), NOSPLIT, $0-192
 	MOVQ out+0(FP), AX
 	MOVQ v+24(FP), R8
@@ -52,10 +52,11 @@ rmscm_avx2_loop:
 	VDIVPD  Y6, Y4, Y7
 
 	VMULPD      Y12, Y14, Y14
-	VFMADD231PD Y8, Y7, Y14
+	VADDPD      Y7, Y14, Y14
 	VMOVUPD     Y14, (R12)
 
-	VSUBPD  Y14, Y2, Y2
+	VMULPD  Y8, Y14, Y7
+	VSUBPD  Y7, Y2, Y2
 	VMOVUPD Y2, (AX)
 
 	ADDQ $32, AX
@@ -119,12 +120,12 @@ rmscm_avx2_tail:
 	DIVPD X7, X15
 
 	MULPD X12, X14
-	MOVAPD X15, X7
-	MULPD X8, X7
-	ADDPD X7, X14
+	ADDPD X15, X14
 	MOVUPD X14, (R12)
 
-	SUBPD X14, X2
+	MOVAPD X14, X7
+	MULPD X8, X7
+	SUBPD X7, X2
 	MOVUPD X2, (AX)
 
 	ADDQ $16, AX
@@ -180,12 +181,12 @@ rmscm_avx2_scalar:
 	DIVSD X7, X15
 
 	MULSD X12, X14
-	MOVAPD X15, X7
-	MULSD X8, X7
-	ADDSD X7, X14
+	ADDSD X15, X14
 	MOVSD X14, (R12)
 
-	SUBSD X14, X2
+	MOVAPD X14, X7
+	MULSD X8, X7
+	SUBSD X7, X2
 	MOVSD X2, (AX)
 
 rmscm_avx2_done:

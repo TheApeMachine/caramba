@@ -1,5 +1,8 @@
 #include "textflag.h"
 
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
+
 // conv3dNEON — full conv3d forward pass using ARM NEON/FP.
 //
 // func conv3dNEON(out, x, weight, bias []float64,
@@ -194,20 +197,25 @@ n3_loop_kh:
 	LSL $3, R4, R4; MOVD n3WROWP(RSP), R5; ADD R5, R4, R4
 
 	MOVD n3KW(RSP), R5
-	FMOVD n3SUM(RSP), F0; FMOVD $0.0, F9
+	FMOVD n3SUM(RSP), F0; VEOR V9.B16, V9.B16, V9.B16
 
 n3_neon_kw:
-	CMP $4, R5; BLT n3_neon_kw_tail
-	FMOVD.P 8(R3), F1; FMOVD.P 8(R4), F2; FMADDD F1, F2, F9, F9
-	FMOVD.P 8(R3), F3; FMOVD.P 8(R4), F4; FMADDD F3, F4, F9, F9
-	FMOVD.P 8(R3), F5; FMOVD.P 8(R4), F6; FMADDD F5, F6, F9, F9
-	FMOVD.P 8(R3), F7; FMOVD.P 8(R4), F8; FMADDD F7, F8, F9, F9
-	SUB $4, R5, R5; B n3_neon_kw
+	CMP $2, R5; BLT n3_neon_kw_tail
+	VLD1.P 16(R3), [V1.D2]
+	VLD1.P 16(R4), [V2.D2]
+	VFMUL_D2(2, 1, 3)
+	VFADD_D2(3, 9, 9)
+	SUB $2, R5, R5; B n3_neon_kw
 n3_neon_kw_tail:
+	ADD $608, RSP, R6
+	VST1.P [V9.D2], 16(R6)
+	FMOVD 608(RSP), F9
+	FMOVD 616(RSP), F10
+	FADDD F10, F9, F9
 	FADDD F9, F0, F0
 	CBZ R5, n3_neon_kw_done
 n3_neon_kw_sc:
-	FMOVD.P 8(R3), F1; FMOVD.P 8(R4), F2; FMADDD F1, F2, F0, F0
+	FMOVD.P 8(R3), F1; FMOVD.P 8(R4), F2; FMADDD F1, F0, F2, F0
 	SUBS $1, R5, R5; BNE n3_neon_kw_sc
 n3_neon_kw_done:
 	FMOVD F0, n3SUM(RSP); B n3_next_kh
@@ -233,7 +241,7 @@ n3_kw_sc_loop:
 	MOVD n3KD_IDX(RSP), R5; MOVD n3KH(RSP), R6; MUL R6, R5, R5; MOVD n3KW(RSP), R6; MUL R6, R5, R5; ADD R5, R4, R4
 	MOVD n3KH_IDX(RSP), R5; MOVD n3KW(RSP), R6; MUL R6, R5, R5; ADD R5, R4, R4; ADD R2, R4, R4
 	LSL $3, R4, R4; MOVD n3WROWP(RSP), R5; FMOVD (R5)(R4), F2
-	FMADDD F1, F2, F0, F0
+	FMADDD F1, F0, F2, F0
 n3_kw_sc_next:
 	ADD $1, R2, R2; B n3_kw_sc_loop
 n3_kw_sc_done:

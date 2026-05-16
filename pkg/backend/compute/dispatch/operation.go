@@ -101,9 +101,16 @@ type OperationRegistry interface {
 type OptimizerRegistry interface {
 	Adam(*state.Dict) (state.Optimizer, error)
 	AdamW(*state.Dict) (state.Optimizer, error)
+	AdaMax(*state.Dict) (state.Optimizer, error)
 	SGD(*state.Dict) (state.Optimizer, error)
 	Lion(*state.Dict) (state.Optimizer, error)
 	RMSProp(*state.Dict) (state.Optimizer, error)
+	Hebbian(*state.Dict) (state.Optimizer, error)
+	Lars(*state.Dict) (state.Optimizer, error)
+	Lamb(*state.Dict) (state.Optimizer, error)
+	AdaGrad(*state.Dict) (state.Optimizer, error)
+	AdaDelta(*state.Dict) (state.Optimizer, error)
+	LBFGS(*state.Dict) (state.Optimizer, error)
 }
 
 func SupportedIDSet() map[ir.OpType]bool {
@@ -349,16 +356,30 @@ func BuildOptimizer(
 	config := executor.OperationConfig(node)
 
 	switch strings.ToLower(string(node.Op)) {
-	case "train.optimizer.adam":
+	case "train.optimizer.adam", "optimizer.adam":
 		return registry.Adam(config)
-	case "train.optimizer.adamw":
+	case "train.optimizer.adamw", "optimizer.adamw":
 		return registry.AdamW(config)
-	case "train.optimizer.sgd":
+	case "train.optimizer.adamax", "optimizer.adamax":
+		return registry.AdaMax(config)
+	case "train.optimizer.sgd", "optimizer.sgd":
 		return registry.SGD(config)
-	case "train.optimizer.lion":
+	case "train.optimizer.lion", "optimizer.lion":
 		return registry.Lion(config)
-	case "train.optimizer.rmsprop":
+	case "train.optimizer.rmsprop", "optimizer.rmsprop":
 		return registry.RMSProp(config)
+	case "train.optimizer.hebbian", "optimizer.hebbian":
+		return registry.Hebbian(config)
+	case "train.optimizer.lars", "optimizer.lars":
+		return registry.Lars(config)
+	case "train.optimizer.lamb", "optimizer.lamb":
+		return registry.Lamb(config)
+	case "train.optimizer.adagrad", "optimizer.adagrad":
+		return registry.AdaGrad(config)
+	case "train.optimizer.adadelta", "optimizer.adadelta":
+		return registry.AdaDelta(config)
+	case "train.optimizer.lbfgs", "optimizer.lbfgs":
+		return registry.LBFGS(config)
 	default:
 		return nil, fmt.Errorf("dispatch: unsupported optimizer operation %q", node.Op)
 	}
@@ -367,10 +388,29 @@ func BuildOptimizer(
 func IsOptimizerOperation(operationID ir.OpType) bool {
 	switch strings.ToLower(string(operationID)) {
 	case "train.optimizer.adam",
+		"optimizer.adam",
 		"train.optimizer.adamw",
+		"optimizer.adamw",
+		"train.optimizer.adamax",
+		"optimizer.adamax",
 		"train.optimizer.sgd",
+		"optimizer.sgd",
 		"train.optimizer.lion",
-		"train.optimizer.rmsprop":
+		"optimizer.lion",
+		"train.optimizer.rmsprop",
+		"optimizer.rmsprop",
+		"train.optimizer.hebbian",
+		"optimizer.hebbian",
+		"train.optimizer.lars",
+		"optimizer.lars",
+		"train.optimizer.lamb",
+		"optimizer.lamb",
+		"train.optimizer.adagrad",
+		"optimizer.adagrad",
+		"train.optimizer.adadelta",
+		"optimizer.adadelta",
+		"train.optimizer.lbfgs",
+		"optimizer.lbfgs":
 		return true
 	default:
 		return false

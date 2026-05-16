@@ -133,9 +133,16 @@ func (operationDispatchContract OperationDispatchContract) SupportedIDSet() map[
 		"train.grad.cross_entropy":                true,
 		"train.optimizer.adam":                    true,
 		"train.optimizer.adamw":                   true,
+		"train.optimizer.adamax":                  true,
 		"train.optimizer.sgd":                     true,
 		"train.optimizer.lion":                    true,
 		"train.optimizer.rmsprop":                 true,
+		"train.optimizer.hebbian":                 true,
+		"train.optimizer.lars":                    true,
+		"train.optimizer.lamb":                    true,
+		"train.optimizer.adagrad":                 true,
+		"train.optimizer.adadelta":                true,
+		"train.optimizer.lbfgs":                   true,
 		"bench.accuracy":                          true,
 		"bench.perplexity":                        true,
 		"bench.f1":                                true,
@@ -461,33 +468,69 @@ func (tensorBackend *TensorBackend) applyOperation(
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewMSEGrad())
 	case "train.loss.cross_entropy_grad", "train.grad.cross_entropy":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewCrossEntropyGrad())
-	case "train.optimizer.adam":
+	case "train.optimizer.adam", "optimizer.adam":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewAdamStep(
 			floatConfig(node, "lr", 1e-3), floatConfig(node, "beta1", 0.9),
 			floatConfig(node, "beta2", 0.999), floatConfig(node, "eps", 1e-8),
 			floatConfig(node, "wd", 0),
 		))
-	case "train.optimizer.adamw":
+	case "train.optimizer.adamw", "optimizer.adamw":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewAdamWStep(
 			floatConfig(node, "lr", 1e-3), floatConfig(node, "beta1", 0.9),
 			floatConfig(node, "beta2", 0.999), floatConfig(node, "eps", 1e-8),
 			floatConfig(node, "wd", 0),
 		))
-	case "train.optimizer.sgd":
+	case "train.optimizer.adamax", "optimizer.adamax":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewAdaMaxStep(
+			floatConfig(node, "lr", 2e-3), floatConfig(node, "beta1", 0.9),
+			floatConfig(node, "beta2", 0.999), floatConfig(node, "eps", 1e-8),
+		))
+	case "train.optimizer.sgd", "optimizer.sgd":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewSGDStep(
 			floatConfig(node, "lr", 1e-3), floatConfig(node, "momentum", 0),
 			floatConfig(node, "wd", 0), boolConfig(node, "nesterov", false),
 		))
-	case "train.optimizer.lion":
+	case "train.optimizer.lion", "optimizer.lion":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewLionStep(
 			floatConfig(node, "lr", 1e-4), floatConfig(node, "beta1", 0.9),
 			floatConfig(node, "beta2", 0.99), floatConfig(node, "wd", 0),
 		))
-	case "train.optimizer.rmsprop":
+	case "train.optimizer.rmsprop", "optimizer.rmsprop":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewRMSPropStep(
 			floatConfig(node, "lr", 1e-2), floatConfig(node, "alpha", 0.99),
 			floatConfig(node, "eps", 1e-8), floatConfig(node, "momentum", 0),
 			floatConfig(node, "wd", 0),
+		))
+	case "train.optimizer.hebbian", "optimizer.hebbian":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewHebbianStep(
+			floatConfig(node, "lr", 1e-3), floatConfig(node, "max_norm", 0),
+		))
+	case "train.optimizer.lars", "optimizer.lars":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewLARSStep(
+			floatConfig(node, "lr", 1e-2), floatConfig(node, "eta", 1e-3),
+			floatConfig(node, "momentum", 0.9), floatConfig(node, "wd", 0),
+			floatConfig(node, "eps", 1e-8),
+		))
+	case "train.optimizer.lamb", "optimizer.lamb":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewLAMBStep(
+			floatConfig(node, "lr", 1e-3), floatConfig(node, "beta1", 0.9),
+			floatConfig(node, "beta2", 0.999), floatConfig(node, "eps", 1e-6),
+			floatConfig(node, "wd", 0),
+		))
+	case "train.optimizer.adagrad", "optimizer.adagrad":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewAdaGradStep(
+			floatConfig(node, "lr", 1e-2), floatConfig(node, "eps", 1e-10),
+			floatConfig(node, "wd", 0), floatConfig(node, "lr_decay", 0),
+		))
+	case "train.optimizer.adadelta", "optimizer.adadelta":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewAdaDeltaStep(
+			floatConfig(node, "rho", 0.9), floatConfig(node, "eps", 1e-6),
+			floatConfig(node, "wd", 0),
+		))
+	case "train.optimizer.lbfgs", "optimizer.lbfgs":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewLBFGSStep(
+			floatConfig(node, "lr", 1.0), intConfig(node, "hist_size", 10),
+			boolConfig(node, "line_search", false), floatConfig(node, "c1", 1e-4),
 		))
 	case "bench.accuracy", "bench.metric.accuracy":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, bench.NewAccuracy())

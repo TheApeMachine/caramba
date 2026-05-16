@@ -20,7 +20,9 @@ loop_rs2:
 	CMPQ BX, $2
 	JGE  loop_rs2
 done_rs2:
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 	MOVSD  X0, ret+24(FP)
 	RET
 
@@ -145,7 +147,9 @@ loop_ssq2:
 	CMPQ BX, $2
 	JGE  loop_ssq2
 done_ssq2:
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 	MOVSD  X0, ret+24(FP)
 	RET
 

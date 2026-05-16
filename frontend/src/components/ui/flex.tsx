@@ -1,5 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import { motion } from "motion/react";
+import { type HTMLMotionProps, motion } from "motion/react";
 import type React from "react";
 import { cn } from "@/lib/utils";
 
@@ -106,7 +106,7 @@ export const Flex = ({
 	fullHeight,
 	fullWidth,
 	...props
-}: React.ComponentProps<"div"> &
+}: HTMLMotionProps<"div"> &
 	Omit<FlexVariantProps, "fullHeight" | "fullWidth"> & {
 		direction?: "row" | "column" | "rowReverse" | "columnReverse";
 		justify?:

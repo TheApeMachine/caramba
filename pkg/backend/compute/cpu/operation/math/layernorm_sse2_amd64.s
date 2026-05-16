@@ -24,7 +24,9 @@ lns_sum_loop:
 	SUBQ   $2, CX
 	CMPQ   CX, $2
 	JGE    lns_sum_loop
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 
 lns_sum_tail:
 	CMPQ CX, $0
@@ -54,7 +56,9 @@ lns_var_loop:
 	SUBQ   $2, CX
 	CMPQ   CX, $2
 	JGE    lns_var_loop
-	HADDPD X4, X4
+	MOVAPD X4, X5
+	UNPCKHPD X4, X5
+	ADDSD X5, X4
 
 lns_var_tail:
 	CMPQ CX, $0

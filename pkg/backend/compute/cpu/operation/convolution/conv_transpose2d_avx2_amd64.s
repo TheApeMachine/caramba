@@ -223,6 +223,8 @@ ctA_kh:
 	MOVQ ctADSTP(SP), DI     // dst ptr
 	MOVQ ctAWROWP(SP), SI    // weight ptr
 	MOVQ ctAKW(SP), CX       // count
+	VMOVSD ctAXVAL(SP), X14
+	VBROADCASTSD X14, Y14
 ctA_fma:
 	CMPQ CX, $4; JL ctA_fma_tail
 	VMOVUPD (DI), Y0

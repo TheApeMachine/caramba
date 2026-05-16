@@ -236,7 +236,9 @@ ll2_sse2_loop:
 	SUBQ $2, CX
 	CMPQ CX, $2
 	JGE ll2_sse2_loop
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 ll2_sse2_tail:
 	CMPQ CX, $0
 	JLE ll2_sse2_done
@@ -293,7 +295,9 @@ luns_sse2_loop:
 	SUBQ $2, CX
 	CMPQ CX, $2
 	JGE luns_sse2_loop
-	HADDPD X15, X15
+	MOVAPD X15, X14
+	UNPCKHPD X15, X14
+	ADDSD X14, X15
 
 luns_sse2_tail:
 	CMPQ CX, $0

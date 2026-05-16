@@ -40,6 +40,35 @@ func TestLion_Step(t *testing.T) {
 					So(diff, ShouldAlmostEqual, 0.01, 1e-9)
 				}
 			})
+
+			Convey("It should match scalar parity across SIMD lengths", func() {
+				optimizer := NewLion()
+
+				for _, parameterCount := range []int{1, 7, 64, 1024, 8192} {
+					params, grads, momenta := lionParityState(parameterCount)
+					initialMomenta := append([]float64(nil), momenta...)
+					stateDict := lionState(params, grads, 0.001, 0.9, 0.99, 0.01).
+						WithM(momenta)
+
+					updated, err := optimizer.Step(stateDict)
+
+					So(err, ShouldBeNil)
+
+					for parameterIndex := range parameterCount {
+						expectedParam, expectedMomentum := lionReferenceStep(
+							params[parameterIndex],
+							grads[parameterIndex],
+							initialMomenta[parameterIndex],
+							0.001,
+							0.9,
+							0.99,
+							0.01,
+						)
+						So(updated.Out[parameterIndex], ShouldAlmostEqual, expectedParam, 1e-12)
+						So(updated.M[parameterIndex], ShouldAlmostEqual, expectedMomentum, 1e-12)
+					}
+				}
+			})
 		})
 	})
 }
@@ -72,4 +101,44 @@ func lionState(params, grads []float64, lr, beta1, beta2, wd float64) *state.Dic
 		WithWD(wd).
 		WithParams(params).
 		WithGrads(grads)
+}
+
+func lionParityState(parameterCount int) ([]float64, []float64, []float64) {
+	params := make([]float64, parameterCount)
+	grads := make([]float64, parameterCount)
+	momenta := make([]float64, parameterCount)
+
+	for parameterIndex := range parameterCount {
+		params[parameterIndex] = float64(parameterIndex%17-8) * 0.125
+		grads[parameterIndex] = float64(parameterIndex%11-5) * 0.0625
+		momenta[parameterIndex] = float64(parameterIndex%7-3) * 0.03125
+	}
+
+	return params, grads, momenta
+}
+
+func lionReferenceStep(
+	param float64,
+	grad float64,
+	momentum float64,
+	learningRate float64,
+	beta1 float64,
+	beta2 float64,
+	weightDecay float64,
+) (float64, float64) {
+	interpolated := beta1*momentum + (1-beta1)*grad
+	updateSign := 0.0
+
+	if interpolated > 0 {
+		updateSign = 1.0
+	}
+
+	if interpolated < 0 {
+		updateSign = -1.0
+	}
+
+	updatedParam := param - learningRate*updateSign - learningRate*weightDecay*param
+	updatedMomentum := beta2*momentum + (1-beta2)*grad
+
+	return updatedParam, updatedMomentum
 }

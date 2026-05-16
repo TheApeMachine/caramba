@@ -44,7 +44,9 @@ bns_ss_loop:
 	SUBQ $2, CX
 	CMPQ CX, $2
 	JGE bns_ss_loop
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 bns_ss_tail:
 	CMPQ CX, $0
 	JLE bns_have_sumsq

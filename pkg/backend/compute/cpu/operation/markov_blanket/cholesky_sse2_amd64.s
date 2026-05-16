@@ -30,7 +30,9 @@ chol_sumsq_loop:
 	SUBQ $2, CX
 	CMPQ CX, $2
 	JGE chol_sumsq_loop
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 chol_sumsq_scalar:
 	CMPQ CX, $0
 	JLE chol_diag
@@ -87,7 +89,9 @@ chol_dot_loop:
 	SUBQ $2, CX
 	CMPQ CX, $2
 	JGE chol_dot_loop
-	HADDPD X0, X0
+	MOVAPD X0, X2
+	UNPCKHPD X0, X2
+	ADDSD X2, X0
 chol_dot_scalar:
 	CMPQ CX, $0
 	JLE chol_dot_done

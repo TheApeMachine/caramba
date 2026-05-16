@@ -26,7 +26,9 @@ col_loop_mv_sse2:
 	CMPQ DI, $2
 	JGE  col_loop_mv_sse2
 tail_mv_sse2:
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 	TESTQ DI, DI
 	JZ    store_mv_sse2
 scalar_mv_sse2:
@@ -103,7 +105,9 @@ loop_dot_sse2:
 	CMPQ BX, $2
 	JGE  loop_dot_sse2
 tail_dot_sse2:
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 	TESTQ BX, BX
 	JZ    done_dot_sse2
 scalar_dot_sse2:

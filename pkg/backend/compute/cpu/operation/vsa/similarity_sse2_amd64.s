@@ -21,6 +21,8 @@ loop:
 	JGE  loop
 
 done:
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 	MOVSD  X0, ret+48(FP)
 	RET

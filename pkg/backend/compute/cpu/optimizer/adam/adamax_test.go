@@ -48,6 +48,21 @@ func TestAdaMax_Step(t *testing.T) {
 				So(stdmath.Abs(params[0]), ShouldBeLessThan, 0.5)
 			})
 
+			Convey("It should match scalar parity across SIMD lengths", func() {
+				for _, parameterCount := range []int{1, 7, 64, 1024, 8192} {
+					params, grads := adamParityVectors(parameterCount)
+					stateDict := adaMaxState(params, grads)
+					opt := NewAdaMax()
+
+					updated, err := opt.Step(stateDict)
+
+					So(err, ShouldBeNil)
+					assertFloat64Values(updated.Out, adaMaxExpectedParams(params, grads))
+					assertFloat64Values(updated.M, scaled(grads, 0.1))
+					assertFloat64Values(updated.V, absValues(grads))
+				}
+			})
+
 			Convey("It should reject mismatched params and gradients", func() {
 				stateDict := adaMaxState([]float64{1.0, 2.0}, []float64{1.0})
 				opt := NewAdaMax()

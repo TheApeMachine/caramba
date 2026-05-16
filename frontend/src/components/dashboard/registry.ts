@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
 	areaSpec,
 	barSpec,
@@ -10,15 +11,16 @@ import {
 } from "@/components/vega";
 
 /*
-WidgetDescriptor is the toolbox entry for a single widget kind. The factory
-builds a fresh spec each time the widget is instantiated, so the dashboard
-can mint multiple independent copies from the same toolbox tile.
+WidgetDescriptor is the toolbox entry for a single widget kind. A descriptor
+either supplies a Vega `build()` (rendered through ChartWidget) or a `render()`
+that returns arbitrary React content. Exactly one of the two is set.
 */
 export interface WidgetDescriptor {
 	kind: string;
 	title: string;
 	description: string;
-	build: () => Spec;
+	build?: () => Spec;
+	render?: () => ReactNode;
 }
 
 const today = Date.now();

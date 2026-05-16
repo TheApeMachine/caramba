@@ -1,5 +1,8 @@
 #include "textflag.h"
 
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
+
 // convTranspose2dNEON — full transposed-conv2d forward pass using ARM NEON/FP.
 //
 // func convTranspose2dNEON(out, x, wt, bias []float64,
@@ -86,10 +89,16 @@ ctn_init_oc:
 	MOVD ctnHOUT(RSP), R2; MUL R2, R1, R1; MOVD ctnWOUT(RSP), R2; MUL R2, R1, R1
 	LSL $3, R1, R1; MOVD ctnOUTP(RSP), R2; ADD R2, R1, R1  // R1 = &out[base]
 	MOVD ctnHOUT(RSP), R2; MOVD ctnWOUT(RSP), R3; MUL R3, R2, R2  // count
+	ADD $480, RSP, R6
+	FMOVD F15, (R6)
+	VLD1R (R6), [V15.D2]
 ctn_fill:
+	CMP $2, R2; BLT ctn_fill_tail
+	VST1.P [V15.D2], 16(R1)
+	SUB $2, R2, R2; B ctn_fill
+ctn_fill_tail:
 	CBZ R2, ctn_init_next_oc
 	FMOVD.P F15, 8(R1)
-	SUB $1, R2, R2; B ctn_fill
 ctn_init_next_oc:
 	MOVD ctnOC(RSP), R0; ADD $1, R0, R0; MOVD R0, ctnOC(RSP); B ctn_init_oc
 ctn_init_next_ni:
@@ -152,17 +161,21 @@ ctn_kh:
 	MOVD ctnWROWP(RSP), R4     // weight ptr
 	MOVD ctnKW(RSP), R5        // count
 	FMOVD ctnXVAL(RSP), F13
-ctn_fma4:
-	CMP $4, R5; BLT ctn_fma_tail
-	FMOVD.P 8(R4), F0; FMOVD (R3), F1; FMADDD F13, F0, F1, F1; FMOVD.P F1, 8(R3)
-	FMOVD.P 8(R4), F2; FMOVD (R3), F3; FMADDD F13, F2, F3, F3; FMOVD.P F3, 8(R3)
-	FMOVD.P 8(R4), F4; FMOVD (R3), F5; FMADDD F13, F4, F5, F5; FMOVD.P F5, 8(R3)
-	FMOVD.P 8(R4), F6; FMOVD (R3), F7; FMADDD F13, F6, F7, F7; FMOVD.P F7, 8(R3)
-	SUB $4, R5, R5; B ctn_fma4
+	ADD $480, RSP, R6
+	FMOVD F13, (R6)
+	VLD1R (R6), [V16.D2]
+ctn_fma2:
+	CMP $2, R5; BLT ctn_fma_tail
+	VLD1.P 16(R4), [V0.D2]
+	VLD1 (R3), [V1.D2]
+	VFMUL_D2(16, 0, 0)
+	VFADD_D2(0, 1, 1)
+	VST1.P [V1.D2], 16(R3)
+	SUB $2, R5, R5; B ctn_fma2
 ctn_fma_tail:
 	CBZ R5, ctn_kh_next
 ctn_fma_scalar:
-	FMOVD.P 8(R4), F0; FMOVD (R3), F1; FMADDD F13, F0, F1, F1; FMOVD.P F1, 8(R3)
+	FMOVD.P 8(R4), F0; FMOVD (R3), F1; FMADDD F13, F1, F0, F1; FMOVD.P F1, 8(R3)
 	SUBS $1, R5, R5; BNE ctn_fma_scalar
 
 ctn_kh_next:

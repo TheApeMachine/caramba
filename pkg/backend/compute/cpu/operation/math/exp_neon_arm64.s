@@ -1,5 +1,14 @@
 #include "textflag.h"
 
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFSUB_D2(m, n, d) WORD $(0x4EE0D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMINNM_D2(m, n, d) WORD $(0x4EE0C400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMAXNM_D2(m, n, d) WORD $(0x4E60C400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFRINTN_D2(n, d) WORD $(0x4E618800 | ((n) << 5) | (d))
+#define VFCVTZS_D2(n, d) WORD $(0x4EE1B800 | ((n) << 5) | (d))
+#define VLOADDUP(sym, addr, vec) MOVD $sym, addr; VLD1R (addr), [vec.D2]
+
 // Constants identical to amd64 path.
 DATA ·expLog2E+0(SB)/8, $1.4426950408889634
 GLOBL ·expLog2E(SB), RODATA, $8
@@ -37,99 +46,76 @@ GLOBL ·expC10(SB), RODATA, $8
 DATA ·expC11+0(SB)/8, $2.5052108385441718e-8
 GLOBL ·expC11(SB), RODATA, $8
 
-// Plan 9 ARM64 operand semantics:
-//   FMADDD A, B, C, D  →  D = A*C + B
-//   FMSUBD A, B, C, D  →  D = B - A*C
-//
 // expVecNEON(dst, src []float64)
-// Scalar-FP ARM64 implementation. Two interleaved chains for ILP.
+// Two-lane NEON implementation with scalar odd-tail handling.
 TEXT ·expVecNEON(SB), NOSPLIT, $0-48
 	MOVD dst+0(FP), R0
 	MOVD src+24(FP), R1
 	MOVD src_len+32(FP), R2
 
-	FMOVD ·expLog2E(SB), F20
-	FMOVD ·expLn2Hi(SB), F21
-	FMOVD ·expLn2Lo(SB), F22
-	FMOVD ·expMaxArg(SB), F23
-	FMOVD ·expMinArg(SB), F24
-	FMOVD ·expC7(SB), F25
-	FMOVD ·expC6(SB), F26
-	FMOVD ·expC5(SB), F27
-	FMOVD ·expC4(SB), F28
-	FMOVD ·expC3(SB), F29
+	VLOADDUP(·expLog2E(SB), R9, V20)
+	VLOADDUP(·expLn2Hi(SB), R9, V21)
+	VLOADDUP(·expLn2Lo(SB), R9, V22)
+	VLOADDUP(·expMaxArg(SB), R9, V23)
+	VLOADDUP(·expMinArg(SB), R9, V24)
+	VLOADDUP(·expC0(SB), R9, V25)
 	MOVD  $1023, R7
+	VDUP R7, V27.D2
 
 	LSR  $1, R2, R3
 	CBZ  R3, done_exp_neon
 
 loop_exp_neon:
-	FMOVD.P 8(R1), F0
-	FMOVD.P 8(R1), F10
+	VLD1.P 16(R1), [V0.D2]
+	VFMINNM_D2(23, 0, 0)
+	VFMAXNM_D2(24, 0, 0)
 
-	FMINNMD F23, F0, F0
-	FMAXNMD F24, F0, F0
-	FMINNMD F23, F10, F10
-	FMAXNMD F24, F10, F10
+	VFMUL_D2(20, 0, 1)
+	VFRINTN_D2(1, 1)
+	VFMUL_D2(21, 1, 3)
+	VFSUB_D2(3, 0, 0)
+	VFMUL_D2(22, 1, 3)
+	VFSUB_D2(3, 0, 0)
 
-	FMULD   F20, F0, F1                   // r = x*log2e
-	FMULD   F20, F10, F11
-	FRINTND F1, F1                        // r = round(r)
-	FRINTND F11, F11
+	VLOADDUP(·expC11(SB), R9, V2)
+	VLOADDUP(·expC10(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·expC9(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·expC8(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·expC7(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·expC6(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·expC5(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·expC4(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·expC3(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·expC2(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·expC1(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(25, 2, 2)
 
-	FMSUBD F1, F0, F21, F0                // x = x - r*ln2_hi
-	FMSUBD F11, F10, F21, F10
-	FMSUBD F1, F0, F22, F0                // x = x - r*ln2_lo  (=f)
-	FMSUBD F11, F10, F22, F10
-
-	// Horner: y = y*f + c.   FMADDD y, c, f, y  =>  y = y*f + c
-	FMOVD  ·expC11(SB), F2                // y = c11
-	FMOVD  ·expC11(SB), F12
-	FMOVD  ·expC10(SB), F3
-	FMADDD F2, F3, F0, F2                 // y = y*f + c10
-	FMADDD F12, F3, F10, F12
-	FMOVD  ·expC9(SB), F3
-	FMADDD F2, F3, F0, F2
-	FMADDD F12, F3, F10, F12
-	FMOVD  ·expC8(SB), F3
-	FMADDD F2, F3, F0, F2
-	FMADDD F12, F3, F10, F12
-	FMADDD F2, F25, F0, F2                // y*f + c7
-	FMADDD F12, F25, F10, F12
-	FMADDD F2, F26, F0, F2                // y*f + c6
-	FMADDD F12, F26, F10, F12
-	FMADDD F2, F27, F0, F2
-	FMADDD F12, F27, F10, F12
-	FMADDD F2, F28, F0, F2
-	FMADDD F12, F28, F10, F12
-	FMADDD F2, F29, F0, F2
-	FMADDD F12, F29, F10, F12
-
-	FMOVD  ·expC2(SB), F3
-	FMADDD F2, F3, F0, F2
-	FMADDD F12, F3, F10, F12
-	FMOVD  ·expC1(SB), F3
-	FMADDD F2, F3, F0, F2
-	FMADDD F12, F3, F10, F12
-	FMOVD  ·expC0(SB), F3
-	FMADDD F2, F3, F0, F2                 // y = exp(f)
-	FMADDD F12, F3, F10, F12
-
-	// 2^r via integer bit-manipulation.
-	FCVTZSD F1, R4
-	FCVTZSD F11, R5
-	ADD R7, R4, R4
-	ADD R7, R5, R5
-	LSL $52, R4, R4
-	LSL $52, R5, R5
-	FMOVD R4, F3                          // F3 = 2^r as double
-	FMOVD R5, F13
-
-	FMULD F3, F2, F2
-	FMULD F13, F12, F12
-
-	FMOVD.P F2, 8(R0)
-	FMOVD.P F12, 8(R0)
+	VFCVTZS_D2(1, 1)
+	VADD V27.D2, V1.D2, V1.D2
+	VSHL $52, V1.D2, V1.D2
+	VFMUL_D2(1, 2, 2)
+	VST1.P [V2.D2], 16(R0)
 
 	SUBS $1, R3, R3
 	BNE  loop_exp_neon
@@ -152,11 +138,16 @@ done_exp_neon:
 	FMADDD  F2, F3, F0, F2
 	FMOVD   ·expC8(SB), F3
 	FMADDD  F2, F3, F0, F2
-	FMADDD  F2, F25, F0, F2
-	FMADDD  F2, F26, F0, F2
-	FMADDD  F2, F27, F0, F2
-	FMADDD  F2, F28, F0, F2
-	FMADDD  F2, F29, F0, F2
+	FMOVD   ·expC7(SB), F3
+	FMADDD  F2, F3, F0, F2
+	FMOVD   ·expC6(SB), F3
+	FMADDD  F2, F3, F0, F2
+	FMOVD   ·expC5(SB), F3
+	FMADDD  F2, F3, F0, F2
+	FMOVD   ·expC4(SB), F3
+	FMADDD  F2, F3, F0, F2
+	FMOVD   ·expC3(SB), F3
+	FMADDD  F2, F3, F0, F2
 	FMOVD   ·expC2(SB), F3
 	FMADDD  F2, F3, F0, F2
 	FMOVD   ·expC1(SB), F3

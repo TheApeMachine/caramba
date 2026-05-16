@@ -43,7 +43,9 @@ vec_loop_mvs:
 	CMPQ CX, $2
 	JGE  vec_loop_mvs
 tail_mvs:
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 scalar_rem_mvs:
 	TESTQ  CX, CX
 	JZ     write_mvs

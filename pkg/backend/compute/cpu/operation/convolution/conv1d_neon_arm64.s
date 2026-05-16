@@ -1,5 +1,8 @@
 #include "textflag.h"
 
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
+
 // conv1dNEON — full conv1d forward pass using ARM NEON/FP.
 //
 // func conv1dNEON(out, x, weight, bias []float64,
@@ -224,32 +227,29 @@ neon1d_loop_ic:
 
 	MOVD nN_KSIZE(RSP), R6
 	FMOVD nN_SUM(RSP), F0
-	FMOVD $0.0, F9         // accumulator
+	VEOR V9.B16, V9.B16, V9.B16
 
 neon1d_fast_k:
-	CMP  $4, R6
+	CMP  $2, R6
 	BLT  neon1d_fast_tail
-	FMOVD.P 8(R4), F1
-	FMOVD.P 8(R5), F2
-	FMADDD F1, F2, F9, F9
-	FMOVD.P 8(R4), F3
-	FMOVD.P 8(R5), F4
-	FMADDD F3, F4, F9, F9
-	FMOVD.P 8(R4), F5
-	FMOVD.P 8(R5), F6
-	FMADDD F5, F6, F9, F9
-	FMOVD.P 8(R4), F7
-	FMOVD.P 8(R5), F8
-	FMADDD F7, F8, F9, F9
-	SUB  $4, R6, R6
+	VLD1.P 16(R4), [V1.D2]
+	VLD1.P 16(R5), [V2.D2]
+	VFMUL_D2(2, 1, 3)
+	VFADD_D2(3, 9, 9)
+	SUB  $2, R6, R6
 	B    neon1d_fast_k
 neon1d_fast_tail:
+	ADD  $224, RSP, R7
+	VST1.P [V9.D2], 16(R7)
+	FMOVD 224(RSP), F9
+	FMOVD 232(RSP), F10
+	FADDD F10, F9, F9
 	FADDD F9, F0, F0
 	CBZ  R6, neon1d_fast_done
 neon1d_fast_scalar:
 	FMOVD.P 8(R4), F1
 	FMOVD.P 8(R5), F2
-	FMADDD F1, F2, F0, F0
+	FMADDD F1, F0, F2, F0
 	SUBS $1, R6, R6
 	BNE  neon1d_fast_scalar
 neon1d_fast_done:
@@ -293,7 +293,7 @@ neon1d_sk:
 	LSL  $3, R6, R6
 	MOVD nN_WROWP(RSP), R7
 	FMOVD (R7)(R6), F2
-	FMADDD F1, F2, F0, F0
+	FMADDD F1, F0, F2, F0
 neon1d_sk_next:
 	ADD  $1, R4, R4
 	B    neon1d_sk

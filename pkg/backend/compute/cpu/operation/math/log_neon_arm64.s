@@ -1,5 +1,13 @@
 #include "textflag.h"
 
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFSUB_D2(m, n, d) WORD $(0x4EE0D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
+#define VFDIV_D2(m, n, d) WORD $(0x6E60FC00 | ((m) << 16) | ((n) << 5) | (d))
+#define VFCMEQ_D2(m, n, d) WORD $(0x6E20E400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFCMGT_D2(m, n, d) WORD $(0x6EE0E400 | ((m) << 16) | ((n) << 5) | (d))
+#define VLOADDUP(sym, addr, vec) MOVD $sym, addr; VLD1R (addr), [vec.D2]
+
 DATA ·logOne+0(SB)/8, $1.0
 GLOBL ·logOne(SB), RODATA, $8
 DATA ·logHalf+0(SB)/8, $0.5
@@ -24,10 +32,94 @@ DATA ·logA6+0(SB)/8, $0.07692307692307693
 GLOBL ·logA6(SB), RODATA, $8
 
 // logVecNEON(dst, src []float64)
-TEXT ·logVecNEON(SB), NOSPLIT, $0-48
+TEXT ·logVecNEON(SB), NOSPLIT, $32-48
 	MOVD dst+0(FP), R0
 	MOVD src+24(FP), R1
 	MOVD src_len+32(FP), R2
+
+	VLOADDUP(·logOne(SB), R9, V10)
+	VLOADDUP(·logHalf(SB), R9, V11)
+	VLOADDUP(·logSqrt2(SB), R9, V12)
+	VLOADDUP(·logLn2(SB), R9, V13)
+
+	MOVD $0x000FFFFFFFFFFFFF, R8
+	MOVD R8, 0(RSP)
+	VLD1R (RSP), [V14.D2]
+	MOVD $0x3FF0000000000000, R8
+	MOVD R8, 0(RSP)
+	VLD1R (RSP), [V15.D2]
+	MOVD $0x7FF, R8
+	MOVD R8, 0(RSP)
+	VLD1R (RSP), [V16.D2]
+	FMOVD $1023.0, F17
+	FMOVD F17, 0(RSP)
+	VLD1R (RSP), [V17.D2]
+	MOVD $0x4330000000000000, R8
+	MOVD R8, 0(RSP)
+	VLD1R (RSP), [V18.D2]
+	VEOR V31.B16, V31.B16, V31.B16
+	VFCMEQ_D2(31, 31, 30)
+
+	LSR $1, R2, R3
+	CBZ R3, log_neon_tail
+
+log_neon_loop:
+	VLD1.P 16(R1), [V0.D2]
+
+	VAND V14.B16, V0.B16, V3.B16
+	VORR  V15.B16, V3.B16, V3.B16
+	VUSHR $52, V0.D2, V4.D2
+	VAND  V16.B16, V4.B16, V4.B16
+	VADD  V18.D2, V4.D2, V4.D2
+	VFSUB_D2(18, 4, 4)
+	VFSUB_D2(17, 4, 4)
+
+	VFCMGT_D2(12, 3, 5)
+	VFMUL_D2(11, 3, 6)
+	VAND V5.B16, V6.B16, V6.B16
+	VEOR V5.B16, V30.B16, V7.B16
+	VAND V7.B16, V3.B16, V3.B16
+	VORR V6.B16, V3.B16, V3.B16
+	VAND V10.B16, V5.B16, V5.B16
+	VFADD_D2(5, 4, 4)
+
+	VFSUB_D2(10, 3, 6)
+	VFADD_D2(10, 3, 7)
+	VFDIV_D2(7, 6, 6)
+	VFMUL_D2(6, 6, 7)
+
+	VLOADDUP(·logA6(SB), R9, V2)
+	VLOADDUP(·logA5(SB), R9, V8)
+	VFMUL_D2(7, 2, 2)
+	VFADD_D2(8, 2, 2)
+	VLOADDUP(·logA4(SB), R9, V8)
+	VFMUL_D2(7, 2, 2)
+	VFADD_D2(8, 2, 2)
+	VLOADDUP(·logA3(SB), R9, V8)
+	VFMUL_D2(7, 2, 2)
+	VFADD_D2(8, 2, 2)
+	VLOADDUP(·logA2(SB), R9, V8)
+	VFMUL_D2(7, 2, 2)
+	VFADD_D2(8, 2, 2)
+	VLOADDUP(·logA1(SB), R9, V8)
+	VFMUL_D2(7, 2, 2)
+	VFADD_D2(8, 2, 2)
+	VLOADDUP(·logA0(SB), R9, V8)
+	VFMUL_D2(7, 2, 2)
+	VFADD_D2(8, 2, 2)
+
+	VFMUL_D2(6, 2, 2)
+	VFADD_D2(2, 2, 2)
+	VFMUL_D2(13, 4, 4)
+	VFADD_D2(4, 2, 2)
+	VST1.P [V2.D2], 16(R0)
+
+	SUBS $1, R3, R3
+	BNE log_neon_loop
+
+log_neon_tail:
+	TST $1, R2
+	BEQ done_log_neon
 
 	FMOVD ·logOne(SB), F10
 	FMOVD ·logHalf(SB), F11
@@ -46,49 +138,35 @@ TEXT ·logVecNEON(SB), NOSPLIT, $0-48
 	MOVD $1023, R10
 	MOVD $0x7FF, R11
 
-	CBZ R2, done_log_neon
-
-loop_log_neon:
-	FMOVD.P 8(R1), F0                   // x
-	FMOVD   F0, R3                      // bits
-
+	FMOVD (R1), F0
+	FMOVD F0, R3
 	LSR $52, R3, R4
 	AND R11, R4, R4
-	SUB R10, R4, R4                     // R4 = raw_exp - 1023 (signed int64)
-
+	SUB R10, R4, R4
 	AND R8, R3, R5
 	ORR R9, R5, R5
-	FMOVD R5, F1                        // m
-
+	FMOVD R5, F1
 	FCMPD F12, F1
-	BLE skip_norm
-	FMULD F11, F1, F1                   // m *= 0.5
+	BLE log_tail_skip_norm
+	FMULD F11, F1, F1
 	ADD $1, R4, R4
-skip_norm:
-
-	FSUBD F10, F1, F3                   // t numerator = m - 1
-	FADDD F10, F1, F4                   // denom = m + 1
-	FDIVD F4, F3, F3                    // t
-	FMULD F3, F3, F4                    // t^2
-
-	// Horner Pp = a6 + u*(a5 + u*(... + u*a0))
-	FMOVD F20, F5                       // P = a6
-	FMADDD F5, F19, F4, F5              // P = P*u + a5
-	FMADDD F5, F18, F4, F5              // P = P*u + a4
+log_tail_skip_norm:
+	FSUBD F10, F1, F3
+	FADDD F10, F1, F4
+	FDIVD F4, F3, F3
+	FMULD F3, F3, F4
+	FMOVD F20, F5
+	FMADDD F5, F19, F4, F5
+	FMADDD F5, F18, F4, F5
 	FMADDD F5, F17, F4, F5
 	FMADDD F5, F16, F4, F5
 	FMADDD F5, F15, F4, F5
-	FMADDD F5, F14, F4, F5              // P = P*u + a0
-
-	FMULD F3, F5, F5                    // t*P
-	FADDD F5, F5, F5                    // 2*t*P = log(m)
-
-	SCVTFD R4, F6                       // e as double
-	FMADDD F6, F5, F13, F5              // F5 = F6*F13 + F5 = e*ln2 + log(m)
-
-	FMOVD.P F5, 8(R0)
-	SUBS $1, R2, R2
-	BNE  loop_log_neon
+	FMADDD F5, F14, F4, F5
+	FMULD F3, F5, F5
+	FADDD F5, F5, F5
+	SCVTFD R4, F6
+	FMADDD F6, F5, F13, F5
+	FMOVD F5, (R0)
 
 done_log_neon:
 	RET

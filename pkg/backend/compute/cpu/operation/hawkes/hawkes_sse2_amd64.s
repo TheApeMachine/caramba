@@ -17,7 +17,9 @@ loop_es_sse:
 	JGE    loop_es_sse
 
 done_es_sse:
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 	TESTQ  BX, BX
 	JZ     end_es_sse
 

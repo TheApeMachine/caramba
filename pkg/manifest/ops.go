@@ -495,6 +495,14 @@ func registerTrain() {
 			floatParamDefault(config, "wd", 1e-2),
 		), nil
 	})
+	Register("train.optimizer.adamax", func(config map[string]any) (operation.Operation, error) {
+		return train.NewAdaMaxStep(
+			floatParamDefault(config, "lr", 2e-3),
+			floatParamDefault(config, "beta1", 0.9),
+			floatParamDefault(config, "beta2", 0.999),
+			floatParamDefault(config, "eps", 1e-8),
+		), nil
+	})
 	Register("train.optimizer.sgd", func(config map[string]any) (operation.Operation, error) {
 		return train.NewSGDStep(
 			floatParamDefault(config, "lr", 1e-2),
@@ -520,6 +528,75 @@ func registerTrain() {
 			floatParamDefault(config, "wd", 0),
 		), nil
 	})
+	Register("train.optimizer.hebbian", func(config map[string]any) (operation.Operation, error) {
+		return train.NewHebbianStep(
+			floatParamDefault(config, "lr", 1e-3),
+			floatParamDefault(config, "max_norm", 0),
+		), nil
+	})
+	Register("train.optimizer.lars", func(config map[string]any) (operation.Operation, error) {
+		return train.NewLARSStep(
+			floatParamDefault(config, "lr", 1e-2),
+			floatParamDefault(config, "eta", 1e-3),
+			floatParamDefault(config, "momentum", 0.9),
+			floatParamDefault(config, "wd", 0),
+			floatParamDefault(config, "eps", 1e-8),
+		), nil
+	})
+	Register("train.optimizer.lamb", func(config map[string]any) (operation.Operation, error) {
+		return train.NewLAMBStep(
+			floatParamDefault(config, "lr", 1e-3),
+			floatParamDefault(config, "beta1", 0.9),
+			floatParamDefault(config, "beta2", 0.999),
+			floatParamDefault(config, "eps", 1e-6),
+			floatParamDefault(config, "wd", 0),
+		), nil
+	})
+	Register("train.optimizer.adagrad", func(config map[string]any) (operation.Operation, error) {
+		return train.NewAdaGradStep(
+			floatParamDefault(config, "lr", 1e-2),
+			floatParamDefault(config, "eps", 1e-10),
+			floatParamDefault(config, "wd", 0),
+			floatParamDefault(config, "lr_decay", 0),
+		), nil
+	})
+	Register("train.optimizer.adadelta", func(config map[string]any) (operation.Operation, error) {
+		return train.NewAdaDeltaStep(
+			floatParamDefault(config, "rho", 0.9),
+			floatParamDefault(config, "eps", 1e-6),
+			floatParamDefault(config, "wd", 0),
+		), nil
+	})
+	Register("train.optimizer.lbfgs", func(config map[string]any) (operation.Operation, error) {
+		return train.NewLBFGSStep(
+			floatParamDefault(config, "lr", 1.0),
+			intParamDefault(config, "hist_size", 10),
+			boolParam(config, "line_search"),
+			floatParamDefault(config, "c1", 1e-4),
+		), nil
+	})
+
+	for aliasID, targetID := range map[string]string{
+		"optimizer.adam":     "train.optimizer.adam",
+		"optimizer.adamw":    "train.optimizer.adamw",
+		"optimizer.adamax":   "train.optimizer.adamax",
+		"optimizer.sgd":      "train.optimizer.sgd",
+		"optimizer.lion":     "train.optimizer.lion",
+		"optimizer.rmsprop":  "train.optimizer.rmsprop",
+		"optimizer.hebbian":  "train.optimizer.hebbian",
+		"optimizer.lars":     "train.optimizer.lars",
+		"optimizer.lamb":     "train.optimizer.lamb",
+		"optimizer.adagrad":  "train.optimizer.adagrad",
+		"optimizer.adadelta": "train.optimizer.adadelta",
+		"optimizer.lbfgs":    "train.optimizer.lbfgs",
+	} {
+		targetID := targetID
+
+		Register(aliasID, func(config map[string]any) (operation.Operation, error) {
+			return Build(targetID, config)
+		})
+	}
+
 	Register("train.checkpoint.save", func(config map[string]any) (operation.Operation, error) {
 		dir, _ := config["dir"].(string)
 		prefix, _ := config["prefix"].(string)

@@ -63,7 +63,9 @@ hebbn_sse2_loop:
 	CMPQ CX, $2
 	JGE hebbn_sse2_loop
 
-	HADDPD X10, X10
+	MOVAPD X10, X11
+	UNPCKHPD X10, X11
+	ADDSD X11, X10
 
 hebbn_sse2_tail:
 	CMPQ CX, $0
@@ -168,7 +170,9 @@ rss_sse2_loop:
 	SUBQ $2, CX
 	CMPQ CX, $2
 	JGE rss_sse2_loop
-	HADDPD X0, X0
+	MOVAPD X0, X2
+	UNPCKHPD X0, X2
+	ADDSD X2, X0
 rss_sse2_tail:
 	CMPQ CX, $0
 	JLE rss_sse2_done

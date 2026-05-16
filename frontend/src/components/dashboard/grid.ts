@@ -112,31 +112,32 @@ export class Grid {
 		return { grid: new Grid(kept), dropped };
 	}
 
-	move(id: string, col: number, row: number): Grid {
+	move(
+		id: string,
+		col: number,
+		row: number,
+	): { grid: Grid; dropped: PlacedWidget[] } {
 		const widget = this.widgets.find((entry) => entry.id === id);
-		if (!widget) return this;
+		if (!widget) return { grid: this, dropped: [] };
 
 		const target = this.get(col, row);
+		if (target?.id === id) return { grid: this, dropped: [] };
 
-		if (!target) {
-			return new Grid(
-				this.widgets.map((entry) =>
-					entry.id === id ? { ...entry, col, row } : entry,
-				),
-			);
-		}
+		const anchorCol = target ? target.col : col;
+		const anchorRow = target ? target.row : row;
 
-		if (target.id === id) return this;
+		const colSpan = clamp(widget.colSpan, 1, GRID_COLS - anchorCol);
+		const rowSpan = clamp(widget.rowSpan, 1, GRID_ROWS - anchorRow);
 
-		return new Grid(
-			this.widgets.map((entry) => {
-				if (entry.id === id)
-					return { ...entry, col: target.col, row: target.row };
-				if (entry.id === target.id)
-					return { ...entry, col: widget.col, row: widget.row };
-				return entry;
-			}),
-		);
+		const moved: PlacedWidget = {
+			...widget,
+			col: anchorCol,
+			row: anchorRow,
+			colSpan,
+			rowSpan,
+		};
+
+		return new Grid(this.without(new Set([id]))).place(moved);
 	}
 
 	resize(

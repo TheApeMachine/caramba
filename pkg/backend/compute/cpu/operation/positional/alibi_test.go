@@ -37,6 +37,29 @@ func TestALiBi(t *testing.T) {
 				}
 			})
 
+			Convey("It should match scalar row parity across SIMD lengths", func() {
+				slopes := buildSlopes(1)
+
+				for _, sequenceLength := range []int{1, 7, 64, 1024, 8192} {
+					stateDict := state.NewDict().WithShape([]int{1, 1, sequenceLength})
+					stateDict.Causal = true
+
+					outputState, err := op.Forward(stateDict)
+
+					So(err, ShouldBeNil)
+					So(outputState.Out, ShouldHaveLength, sequenceLength)
+
+					for keyIndex := range sequenceLength {
+						expected := slopes[0] * float64(keyIndex)
+						So(
+							math.Float64bits(outputState.Out[keyIndex]),
+							ShouldEqual,
+							math.Float64bits(expected),
+						)
+					}
+				}
+			})
+
 			Convey("It should build absolute distance bias when causal is false", func() {
 				stateDict := state.NewDict().WithShape([]int{1, 3, 3})
 				stateDict.Causal = false

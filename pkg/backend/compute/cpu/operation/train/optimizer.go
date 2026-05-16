@@ -1,7 +1,11 @@
 package train
 
 import (
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer/adagrad"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer/adam"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer/hebbian"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer/lars"
+	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer/lbfgs"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer/lion"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer/rmsprop"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer/sgd"
@@ -73,6 +77,15 @@ func NewAdamWStep(lr, beta1, beta2, eps, wd float64) *OptimizerStep {
 }
 
 /*
+NewAdaMaxStep creates an AdaMax optimizer node.
+*/
+func NewAdaMaxStep(lr, beta1, beta2, eps float64) *OptimizerStep {
+	stateDict := optimizerState(lr, beta1, beta2, eps, 0)
+
+	return newOptimizerStep(adam.NewAdaMax(), stateDict)
+}
+
+/*
 NewSGDStep creates an SGD optimizer node.
 */
 func NewSGDStep(lr, momentum, wd float64, nesterov bool) *OptimizerStep {
@@ -106,6 +119,78 @@ func NewRMSPropStep(lr, alpha, eps, momentum, wd float64) *OptimizerStep {
 		WithWD(wd)
 
 	return newOptimizerStep(rmsprop.NewRMSProp(), stateDict)
+}
+
+/*
+NewHebbianStep creates a Hebbian optimizer node.
+*/
+func NewHebbianStep(lr, maxNorm float64) *OptimizerStep {
+	stateDict := state.NewDict().
+		WithLR(lr).
+		WithMaxNorm(maxNorm)
+
+	return newOptimizerStep(hebbian.NewHebbian(), stateDict)
+}
+
+/*
+NewLARSStep creates a LARS optimizer node.
+*/
+func NewLARSStep(lr, eta, momentum, wd, eps float64) *OptimizerStep {
+	stateDict := state.NewDict().
+		WithLR(lr).
+		WithEta(eta).
+		WithMomentum(momentum).
+		WithWD(wd).
+		WithEps(eps)
+
+	return newOptimizerStep(lars.NewLARS(), stateDict)
+}
+
+/*
+NewLAMBStep creates a LAMB optimizer node.
+*/
+func NewLAMBStep(lr, beta1, beta2, eps, wd float64) *OptimizerStep {
+	stateDict := optimizerState(lr, beta1, beta2, eps, wd)
+
+	return newOptimizerStep(lars.NewLAMB(lr, beta1, beta2, eps, wd), stateDict)
+}
+
+/*
+NewAdaGradStep creates an AdaGrad optimizer node.
+*/
+func NewAdaGradStep(lr, eps, wd, lrDecay float64) *OptimizerStep {
+	stateDict := state.NewDict().
+		WithLR(lr).
+		WithEps(eps).
+		WithWD(wd).
+		WithLRDecay(lrDecay)
+
+	return newOptimizerStep(adagrad.NewAdaGrad(), stateDict)
+}
+
+/*
+NewAdaDeltaStep creates an AdaDelta optimizer node.
+*/
+func NewAdaDeltaStep(rho, eps, wd float64) *OptimizerStep {
+	stateDict := state.NewDict().
+		WithRho(rho).
+		WithEps(eps).
+		WithWD(wd)
+
+	return newOptimizerStep(adagrad.NewAdaDelta(rho, eps, wd), stateDict)
+}
+
+/*
+NewLBFGSStep creates an L-BFGS optimizer node.
+*/
+func NewLBFGSStep(lr float64, histSize int, lineSearch bool, c1 float64) *OptimizerStep {
+	stateDict := state.NewDict().
+		WithLR(lr).
+		WithHistSize(histSize).
+		WithLineSearch(lineSearch)
+	stateDict.C1 = c1
+
+	return newOptimizerStep(lbfgs.NewLBFGS(), stateDict)
 }
 
 func optimizerState(lr, beta1, beta2, eps, wd float64) *state.Dict {

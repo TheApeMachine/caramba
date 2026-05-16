@@ -23,7 +23,9 @@ fe2_loop2:
 	CMPQ BX, $2
 	JGE  fe2_loop2
 
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 
 fe2_scalar:
 	TESTQ BX, BX

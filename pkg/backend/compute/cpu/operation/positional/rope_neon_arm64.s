@@ -1,8 +1,12 @@
 #include "textflag.h"
 
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFSUB_D2(m, n, d) WORD $(0x4EE0D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
+
 // RoPENEON(dst, src, cosTable, sinTable []float64, numPairs int)
 // ABI0: dst+0, src+24, cosTable+48, sinTable+72, numPairs+96
-// Processes one pair per iteration using ARM64 scalar float64.
+// Processes two rotary pairs per iteration using ARM64 NEON.
 
 TEXT ·RoPENEON(SB), NOSPLIT, $0-104
 	MOVD dst+0(FP),      R0
@@ -11,7 +15,24 @@ TEXT ·RoPENEON(SB), NOSPLIT, $0-104
 	MOVD sinTable+72(FP), R3
 	MOVD numPairs+96(FP), R4
 
-loop:
+vector_loop:
+	CMP $2, R4
+	BLT scalar_tail
+
+	VLD2.P 32(R1), [V0.D2, V1.D2]       // even x, odd x
+	VLD1.P 16(R2), [V2.D2]              // cos
+	VLD1.P 16(R3), [V3.D2]              // sin
+	VFMUL_D2(2, 0, 4)                   // even*cos
+	VFMUL_D2(3, 1, 5)                   // odd*sin
+	VFSUB_D2(5, 4, 4)
+	VFMUL_D2(3, 0, 5)                   // even*sin
+	VFMUL_D2(2, 1, 6)                   // odd*cos
+	VFADD_D2(6, 5, 5)
+	VST2.P [V4.D2, V5.D2], 32(R0)
+	SUB $2, R4, R4
+	B vector_loop
+
+scalar_tail:
 	CBZ   R4, done
 
 	FMOVD (R1), F0      // x[2i]
@@ -36,7 +57,7 @@ loop:
 	ADD $8,  R2
 	ADD $8,  R3
 	SUB $1,  R4
-	B   loop
+	B   scalar_tail
 
 done:
 	RET

@@ -230,7 +230,9 @@ sse2_k_loop:
 	SUBQ $2, R11
 	JMP  sse2_k_loop
 sse2_k_tail:
-	HADDPD X8, X8
+	MOVAPD X8, X9
+	UNPCKHPD X8, X9
+	ADDSD X9, X8
 	ADDSD  X8, X0
 	CMPQ R11, $0
 	JLE  sse2_k_done

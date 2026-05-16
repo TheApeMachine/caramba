@@ -35,7 +35,9 @@ arss_dot_loop:
 	SUBQ $2, CX
 	CMPQ CX, $2
 	JGE arss_dot_loop
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 arss_dot_tail:
 	CMPQ CX, $0
 	JLE arss_dot_done

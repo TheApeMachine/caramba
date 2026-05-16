@@ -68,6 +68,21 @@ func TestAdam_Step(t *testing.T) {
 				So(stdmath.Abs(params[0]), ShouldBeLessThan, 0.1)
 			})
 
+			Convey("It should match scalar parity across SIMD lengths", func() {
+				for _, parameterCount := range []int{1, 7, 64, 1024, 8192} {
+					params, grads := adamParityVectors(parameterCount)
+					stateDict := adamState(params, grads, 0)
+					opt := NewAdam()
+
+					updated, err := opt.Step(stateDict)
+
+					So(err, ShouldBeNil)
+					assertFloat64Values(updated.Out, adamExpectedParams(params, grads, 0))
+					assertFloat64Values(updated.M, scaled(grads, 0.1))
+					assertFloat64Values(updated.V, squaredScaled(grads, 0.001))
+				}
+			})
+
 			Convey("It should reject mismatched params and gradients", func() {
 				stateDict := adamState([]float64{1.0, 2.0}, []float64{1.0}, 0)
 				opt := NewAdam()
@@ -147,6 +162,21 @@ func TestAdamW_Step(t *testing.T) {
 
 				So(stateDict.Step, ShouldEqual, 2000)
 				So(stdmath.Abs(params[0]), ShouldBeLessThan, 0.1)
+			})
+
+			Convey("It should match scalar parity across SIMD lengths", func() {
+				for _, parameterCount := range []int{1, 7, 64, 1024, 8192} {
+					params, grads := adamParityVectors(parameterCount)
+					stateDict := adamState(params, grads, 0.01)
+					opt := NewAdamW()
+
+					updated, err := opt.Step(stateDict)
+
+					So(err, ShouldBeNil)
+					assertFloat64Values(updated.Out, adamExpectedParams(params, grads, 0.01))
+					assertFloat64Values(updated.M, scaled(grads, 0.1))
+					assertFloat64Values(updated.V, squaredScaled(grads, 0.001))
+				}
 			})
 
 			Convey("It should reject mismatched params and gradients", func() {
@@ -308,6 +338,18 @@ func benchmarkVectors(size int) ([]float64, []float64) {
 	for index := range params {
 		params[index] = 1e-3
 		grads[index] = 1e-4
+	}
+
+	return params, grads
+}
+
+func adamParityVectors(size int) ([]float64, []float64) {
+	params := make([]float64, size)
+	grads := make([]float64, size)
+
+	for index := range params {
+		params[index] = float64(index%17-8) * 0.125
+		grads[index] = float64(index%11-5) * 0.0625
 	}
 
 	return params, grads

@@ -415,6 +415,10 @@ func (registry optimizerRegistry) AdamW(*state.Dict) (state.Optimizer, error) {
 	return fakeOptimizer{}, nil
 }
 
+func (registry optimizerRegistry) AdaMax(*state.Dict) (state.Optimizer, error) {
+	return fakeOptimizer{}, nil
+}
+
 func (registry optimizerRegistry) SGD(*state.Dict) (state.Optimizer, error) {
 	return fakeOptimizer{}, nil
 }
@@ -424,5 +428,29 @@ func (registry optimizerRegistry) Lion(*state.Dict) (state.Optimizer, error) {
 }
 
 func (registry optimizerRegistry) RMSProp(*state.Dict) (state.Optimizer, error) {
+	return fakeOptimizer{}, nil
+}
+
+func (registry optimizerRegistry) Hebbian(*state.Dict) (state.Optimizer, error) {
+	return fakeOptimizer{}, nil
+}
+
+func (registry optimizerRegistry) Lars(*state.Dict) (state.Optimizer, error) {
+	return fakeOptimizer{}, nil
+}
+
+func (registry optimizerRegistry) Lamb(*state.Dict) (state.Optimizer, error) {
+	return fakeOptimizer{}, nil
+}
+
+func (registry optimizerRegistry) AdaGrad(*state.Dict) (state.Optimizer, error) {
+	return fakeOptimizer{}, nil
+}
+
+func (registry optimizerRegistry) AdaDelta(*state.Dict) (state.Optimizer, error) {
+	return fakeOptimizer{}, nil
+}
+
+func (registry optimizerRegistry) LBFGS(*state.Dict) (state.Optimizer, error) {
 	return fakeOptimizer{}, nil
 }

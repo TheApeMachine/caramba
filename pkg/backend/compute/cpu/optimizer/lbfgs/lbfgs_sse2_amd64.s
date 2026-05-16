@@ -47,7 +47,9 @@ dot_sse2_loop:
 	SUBQ $2, CX
 	CMPQ CX, $2
 	JGE dot_sse2_loop
-	HADDPD X0, X0
+	MOVAPD X0, X1
+	UNPCKHPD X0, X1
+	ADDSD X1, X0
 dot_sse2_tail:
 	CMPQ CX, $0
 	JLE dot_sse2_done

@@ -606,8 +606,13 @@ func TestDAGMarkovFactorization(t *testing.T) {
 				copy(xOOD, xIn)
 
 				for obsIdx := 0; obsIdx < obs; obsIdx++ {
-					xOOD[obsIdx*n] += 50.0
-					xOOD[obsIdx*n+1] += 50.0
+					offset := -30.0
+
+					if obsIdx%2 == 0 {
+						offset = 30.0
+					}
+
+					xOOD[obsIdx*n+1] += offset
 				}
 
 				outIn := forwardCausal(op, []int{n, obs}, xIn, adj)
