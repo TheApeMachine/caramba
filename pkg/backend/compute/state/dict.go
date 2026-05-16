@@ -537,7 +537,7 @@ func (dict *Dict) GQALayout(name string) (
 		)
 	}
 
-	if dict.NumKVHeads != 0 && dict.NumKVHeads != numKVHeads {
+	if len(shape) == 5 && dict.NumKVHeads != 0 && dict.NumKVHeads != numKVHeads {
 		return 0, 0, 0, 0, 0, fmt.Errorf(
 			"%s: num_kv_heads %d does not match layout kv heads %d",
 			name,

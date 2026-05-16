@@ -127,6 +127,38 @@ func TestGQA(test *testing.T) {
 				So(math.Abs(outputState.Out[index]-expected[index]), ShouldBeLessThan, 1e-9)
 			}
 		})
+
+		Convey("It should match non-causal scalar reference for Llama-sized head dimensions", func() {
+			batch, heads, kvHeads, seqLen, headDim := 1, 32, 8, 4, 64
+			query := deterministicAttentionValues(batch*heads*seqLen*headDim, 17)
+			key := deterministicAttentionValues(batch*kvHeads*seqLen*headDim, 13)
+			value := deterministicAttentionValues(batch*kvHeads*seqLen*headDim, 11)
+			dict := state.NewDict().
+				WithShape([]int{batch, heads, seqLen, headDim}).
+				WithInputs(query, key, value)
+			dict.NumKVHeads = kvHeads
+			dict.HeadDim = headDim
+			dict.Causal = false
+
+			outputState, err := operation.Forward(dict)
+
+			So(err, ShouldBeNil)
+
+			expected := scalarGQAReference(
+				query,
+				key,
+				value,
+				batch,
+				heads,
+				kvHeads,
+				seqLen,
+				headDim,
+				false,
+			)
+			for index := range expected {
+				So(math.Abs(outputState.Out[index]-expected[index]), ShouldBeLessThan, 1e-9)
+			}
+		})
 	})
 }
 

@@ -205,9 +205,17 @@ func (x *XLAPositionalOps) RoPEForwardAtModeConfig(
 	totalHeads := batch * numHeads
 
 	input := data[0]
+	expectedLength := totalHeads * seqLen * headDim
 
-	if len(input) != totalHeads*seqLen*headDim {
-		return nil, fmt.Errorf("xla_rope: input length mismatch")
+	if len(input) != expectedLength {
+		return nil, fmt.Errorf(
+			"xla_rope: input length mismatch: expected %d values for total_heads=%d seq_len=%d head_dim=%d, got %d",
+			expectedLength,
+			totalHeads,
+			seqLen,
+			headDim,
+			len(input),
+		)
 	}
 
 	if err := x.ensureCompiledRoPE(totalHeads, seqLen, headDim); err != nil {
@@ -245,12 +253,10 @@ func (x *XLAPositionalOps) RoPEForwardAtModeConfig(
 
 func xlaRoPEMode(mode string) (int, error) {
 	switch strings.ToLower(mode) {
-	case "", "adjacent":
-		return xlaRoPEModeAdjacent, nil
 	case "half":
 		return xlaRoPEModeHalf, nil
 	default:
-		return 0, fmt.Errorf("xla_rope: unsupported mode %q", mode)
+		return 0, fmt.Errorf("xla_rope: unsupported mode %q; XLA backend supports half RoPE only", mode)
 	}
 }
 

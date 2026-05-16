@@ -42,7 +42,7 @@ func BenchmarkPromptTemplate_Apply(benchmark *testing.B) {
 		benchmark.Fatal(err)
 	}
 
-	for benchmark.Loop() {
+	for index := 0; index < benchmark.N; index++ {
 		_ = template.Apply("hello")
 	}
 }

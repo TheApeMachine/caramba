@@ -39,6 +39,7 @@ vector_loop:
 scalar_tail:
 	CBZ R4, done
 
+scalar_loop:
 	FMOVD (R1), F0
 	FMOVD (R6), F1
 	FMOVD (R2), F2
@@ -53,6 +54,15 @@ scalar_tail:
 	FMULD F2, F1, F8
 	FADDD F8, F7, F9
 	FMOVD F9, (R7)
+
+	ADD $8, R1, R1
+	ADD $8, R6, R6
+	ADD $8, R2, R2
+	ADD $8, R3, R3
+	ADD $8, R0, R0
+	ADD $8, R7, R7
+	SUB $1, R4, R4
+	CBNZ R4, scalar_loop
 
 done:
 	RET

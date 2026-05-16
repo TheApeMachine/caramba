@@ -808,7 +808,11 @@ func (tensorBackend *TensorBackend) applyGQA(
 
 	if cache != nil {
 		if !boolConfig(node, "causal", false) {
-			return nil, fmt.Errorf("metal tensor: KV cache requires causal GQA node %q", node.ID)
+			return nil, fmt.Errorf(
+				"metal tensor: KV cache is only supported for causal/autoregressive GQA nodes %q "+
+					"because it relies on incremental decoding/stateful attention",
+				node.ID,
+			)
 		}
 
 		cacheEntry, err := tensorBackend.appendResidentKV(

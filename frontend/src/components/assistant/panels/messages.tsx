@@ -1,5 +1,6 @@
 import type { MessagePart, UIMessage } from "@tanstack/ai-client";
-import { Brain, ChevronDown, Wrench } from "lucide-react";
+import { Brain, ChevronDown, Sparkles, Wrench } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import {
 	Collapsible,
 	CollapsiblePanel,
@@ -23,9 +24,9 @@ function ThinkingPart({ content }: { content: string }) {
 				<ChevronDown className="size-3 transition-transform group-data-open:rotate-180" />
 			</CollapsibleTrigger>
 			<CollapsiblePanel>
-				<pre className="mt-1.5 text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed border-l-2 border-violet-300/40 pl-2.5">
-					{content}
-				</pre>
+				<div className="mt-1.5 text-xs text-muted-foreground leading-relaxed border-l-2 border-violet-300/40 pl-2.5 prose prose-xs dark:prose-invert max-w-none prose-p:my-1">
+					<ReactMarkdown>{content}</ReactMarkdown>
+				</div>
 			</CollapsiblePanel>
 		</Collapsible>
 	);
@@ -124,12 +125,12 @@ function MessageParts({ message }: { message: UIMessage }) {
 				}
 				if (part.type === "text") {
 					return (
-						<p
+						<div
 							key={key}
-							className="text-sm leading-relaxed whitespace-pre-wrap"
+							className="text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-pre:my-2 prose-ul:my-2 prose-ol:my-2 prose-headings:my-2"
 						>
-							{part.content}
-						</p>
+							<ReactMarkdown>{part.content}</ReactMarkdown>
+						</div>
 					);
 				}
 				if (part.type === "tool-call") {
@@ -155,11 +156,17 @@ function MessageParts({ message }: { message: UIMessage }) {
 type Props = {
 	messages: UIMessage[];
 	streamingPersonaId?: string | null;
+	reasoningActive?: boolean;
 	isSubmitted?: boolean;
 	compact?: boolean;
 };
 
-export function MessageFeed({ messages, isSubmitted, compact }: Props) {
+export function MessageFeed({
+	messages,
+	reasoningActive,
+	isSubmitted,
+	compact,
+}: Props) {
 	return (
 		<section
 			className={cn(
@@ -170,12 +177,21 @@ export function MessageFeed({ messages, isSubmitted, compact }: Props) {
 		>
 			{isSubmitted && (
 				<div className="mb-4 mr-auto">
-					<div className="bg-muted rounded-xl px-3 py-2">
-						<span className="flex gap-1">
-							<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
-							<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
-							<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
-						</span>
+					<div className="bg-muted rounded-xl px-3 py-2 flex items-center gap-2">
+						{reasoningActive ? (
+							<>
+								<Sparkles className="size-3.5 text-violet-400 animate-pulse" />
+								<span className="text-xs italic bg-linear-to-r from-muted-foreground/40 via-foreground to-muted-foreground/40 bg-size-[200%_100%] bg-clip-text text-transparent animate-[shimmer_2s_linear_infinite]">
+									Thinking…
+								</span>
+							</>
+						) : (
+							<span className="flex gap-1">
+								<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
+								<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
+								<span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
+							</span>
+						)}
 					</div>
 				</div>
 			)}

@@ -387,7 +387,7 @@ static int dispatch_gqa_buffers(id<MTLBuffer> bufQ, id<MTLBuffer> bufK,
 {
     if (!gAttnQueue || !gPSO_gqa || !bufQ || !bufK || !bufV || !bufOut) return -1;
     if (batch <= 0 || num_heads <= 0 || num_kv_heads <= 0 ||
-        query_len <= 0 || key_value_len < query_len ||
+        query_len <= 0 ||
         key_value_stride < key_value_len || head_dim <= 0 ||
         num_heads % num_kv_heads != 0) return -1;
 

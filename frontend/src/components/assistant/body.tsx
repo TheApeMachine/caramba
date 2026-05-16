@@ -14,6 +14,7 @@ interface BodyProps {
 	session: Session;
 	sessions: Session[];
 	streamingPersonaId: string | null | undefined;
+	reasoningActive: boolean;
 	busy: boolean;
 	inputValue: string;
 	onInputChange: (value: string) => void;
@@ -33,6 +34,7 @@ export const Body = ({
 	session,
 	sessions,
 	streamingPersonaId,
+	reasoningActive,
 	busy,
 	inputValue,
 	onInputChange,
@@ -103,6 +105,7 @@ export const Body = ({
 									<MessageFeed
 										messages={session.messages}
 										streamingPersonaId={streamingPersonaId}
+										reasoningActive={reasoningActive}
 										isSubmitted={busy}
 										compact={isMini}
 									/>

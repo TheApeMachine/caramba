@@ -286,6 +286,11 @@ int xla_rope(
     int           rope_mode,
     int           total_heads)
 {
+    if (rope_mode != 1) {
+        fprintf(stderr, "xla_rope: unsupported RoPE mode %d; only half mode is supported\n", rope_mode);
+        return -1;
+    }
+
     int num_pairs = head_dim / 2;
     int n         = total_heads * seq_len * num_pairs;
 
@@ -293,12 +298,8 @@ int xla_rope(
     std::vector<double> x_even(n), x_odd(n);
     for (int slot = 0; slot < total_heads * seq_len; slot++) {
         for (int i = 0; i < num_pairs; i++) {
-            int first_idx = slot * head_dim + i * 2;
-            int second_idx = first_idx + 1;
-            if (rope_mode == 1) {
-                first_idx = slot * head_dim + i;
-                second_idx = first_idx + num_pairs;
-            }
+            int first_idx = slot * head_dim + i;
+            int second_idx = first_idx + num_pairs;
             x_even[slot * num_pairs + i] = x[first_idx];
             x_odd [slot * num_pairs + i] = x[second_idx];
         }
@@ -343,12 +344,8 @@ int xla_rope(
 
     for (int slot = 0; slot < total_heads * seq_len; slot++) {
         for (int i = 0; i < num_pairs; i++) {
-            int first_idx = slot * head_dim + i * 2;
-            int second_idx = first_idx + 1;
-            if (rope_mode == 1) {
-                first_idx = slot * head_dim + i;
-                second_idx = first_idx + num_pairs;
-            }
+            int first_idx = slot * head_dim + i;
+            int second_idx = first_idx + num_pairs;
             out[first_idx] = out_even[slot * num_pairs + i];
             out[second_idx] = out_odd[slot * num_pairs + i];
         }

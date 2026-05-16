@@ -540,9 +540,24 @@ func (m *MetalAttention) GQATensor(
 	queryLength := batch * numHeads * queryLen * headDim
 	keyValueLength := batch * numKVHeads * keyValueStride * headDim
 
-	if queryLength <= 0 || keyValueLength <= 0 || keyValueStride < keyValueLen ||
-		keyValueLen < queryLen || numHeads%numKVHeads != 0 {
-		return nil, fmt.Errorf("metal_gqa_tensor: dimensions must be positive")
+	if queryLength <= 0 {
+		return nil, fmt.Errorf("metal_gqa_tensor: queryLength must be > 0")
+	}
+
+	if keyValueLength <= 0 {
+		return nil, fmt.Errorf("metal_gqa_tensor: keyValueLength must be > 0")
+	}
+
+	if keyValueStride < keyValueLen {
+		return nil, fmt.Errorf("metal_gqa_tensor: keyValueStride must be >= keyValueLen")
+	}
+
+	if keyValueLen < queryLen {
+		return nil, fmt.Errorf("metal_gqa_tensor: keyValueLen must be >= queryLen")
+	}
+
+	if numHeads%numKVHeads != 0 {
+		return nil, fmt.Errorf("metal_gqa_tensor: numHeads must be divisible by numKVHeads")
 	}
 
 	if metalQ.Len() != queryLength {

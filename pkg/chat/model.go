@@ -22,6 +22,12 @@ import (
 
 const DefaultModelManifest = "model/llm/gpt2.yml"
 
+const (
+	opIDAttentionGQA      ir.OpID = "attention.gqa"
+	opIDAttentionSDPA     ir.OpID = "attention.sdpa"
+	opIDRoPEPositionStart ir.OpID = "positional.rope"
+)
+
 /*
 ModelConfig configures the manifest-backed chat generator.
 */
@@ -538,7 +544,7 @@ func (generator *ModelGenerator) lower(tokenIDs []int, positionStart int) (*ir.G
 
 func bindRoPEPositionStart(irGraph *ir.Graph, positionStart int) {
 	for _, node := range irGraph.Nodes() {
-		if string(node.OperationID()) != "positional.rope" {
+		if node.OperationID() != opIDRoPEPositionStart {
 			continue
 		}
 
@@ -552,9 +558,9 @@ func (generator *ModelGenerator) bindKVCache(irGraph *ir.Graph) {
 	}
 
 	for _, node := range irGraph.Nodes() {
-		operationID := string(node.OperationID())
+		operationID := node.OperationID()
 
-		if operationID != "attention.sdpa" && operationID != "attention.gqa" {
+		if operationID != opIDAttentionSDPA && operationID != opIDAttentionGQA {
 			continue
 		}
 

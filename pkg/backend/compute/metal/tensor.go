@@ -286,6 +286,7 @@ func (metalActivation *MetalActivation) SwiGLUTensor(
 	inputDims := metalInput.shape.Dims()
 	inputWidth := metalInput.Len()
 
+	// Rankless tensors are treated as one row, so the flat length is the row width.
 	if len(inputDims) > 0 {
 		inputWidth = inputDims[len(inputDims)-1]
 	}

@@ -37,6 +37,7 @@ export function Assistant() {
 		createSession,
 		deleteSession,
 		appendMessages,
+		upsertMessage,
 		updatePersona,
 		addPersona,
 		removePersona,
@@ -46,10 +47,8 @@ export function Assistant() {
 	const input = useInput();
 	const { capture } = usePageContext();
 
-	const { send, stop, status, streamingPersonaId } = useTeamChat(
-		session,
-		appendMessages,
-	);
+	const { send, stop, status, streamingPersonaId, reasoningActive } =
+		useTeamChat(session, appendMessages, upsertMessage);
 	const busy = status === "running";
 
 	const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -94,6 +93,7 @@ export function Assistant() {
 						session={session}
 						sessions={sessions}
 						streamingPersonaId={streamingPersonaId}
+						reasoningActive={reasoningActive}
 						busy={busy}
 						inputValue={input.value}
 						onInputChange={input.setValue}

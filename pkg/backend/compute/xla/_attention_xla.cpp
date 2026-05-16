@@ -304,34 +304,30 @@ static std::string build_sdpa_module(
         "    %scale   = stablehlo.broadcast_in_dim %scale_c, dims = [] : (tensor<f64>) -> " + tSc + "\n"
         "    %scores_scaled = stablehlo.multiply %scores_raw, %scale : " + tSc + "\n";
 
-    if (causal) {
-        std::string mask_vals = "";
-        for (int query = 0; query < seq_len; query++) {
-            for (int key = 0; key < seq_len; key++) {
-                if (key > 0 || query > 0) mask_vals += ", ";
-                mask_vals += (key > query) ? "-1.79769e+308" : "0.0";
-            }
-        }
+    std::string scores_ref = "%scores_scaled";
 
+    if (causal) {
         std::string tMask2d = "tensor<" + si(seq_len) + "x" + si(seq_len) + "xf64>";
+        std::string tMaskBool = "tensor<" + si(seq_len) + "x" + si(seq_len) + "xi1>";
 
         module +=
-        "    %mask2d = stablehlo.constant dense<[" + mask_vals + "]> : " + tMask2d + "\n"
+        "    %mask_row = stablehlo.iota dim = 0 : " + tMask2d + "\n"
+        "    %mask_col = stablehlo.iota dim = 1 : " + tMask2d + "\n"
+        "    %mask_keep = stablehlo.compare LE, %mask_col, %mask_row, TOTALORDER : (" + tMask2d + ", " + tMask2d + ") -> " + tMaskBool + "\n"
+        "    %mask_zero = stablehlo.constant dense<0.0> : " + tMask2d + "\n"
+        "    %mask_ninf = stablehlo.constant dense<-1.79769e+308> : " + tMask2d + "\n"
+        "    %mask2d = stablehlo.select %mask_keep, %mask_zero, %mask_ninf : " + tMaskBool + ", " + tMask2d + ", " + tMask2d + "\n"
         "    %mask4d = stablehlo.broadcast_in_dim %mask2d, dims = [2, 3] : (" + tMask2d + ") -> " + tSc + "\n"
         "    %scores = stablehlo.add %scores_scaled, %mask4d : " + tSc + "\n";
-    } else {
-        module +=
-        "    %zero_scores_c = stablehlo.constant dense<0.0> : tensor<f64>\n"
-        "    %zero_scores = stablehlo.broadcast_in_dim %zero_scores_c, dims = [] : (tensor<f64>) -> " + tSc + "\n"
-        "    %scores = stablehlo.add %scores_scaled, %zero_scores : " + tSc + "\n";
+        scores_ref = "%scores";
     }
 
     module +=
         // Softmax: reduce max over last dim
         "    %neg_inf  = stablehlo.constant dense<-1.79769e+308> : tensor<f64>\n"
-        "    %sc_max_r = stablehlo.reduce(%scores init: %neg_inf) applies stablehlo.maximum across dimensions = [3] : (" + tSc + ", tensor<f64>) -> tensor<" + si(batch) + "x" + si(num_heads) + "x" + si(seq_len) + "xf64>\n"
+        "    %sc_max_r = stablehlo.reduce(" + scores_ref + " init: %neg_inf) applies stablehlo.maximum across dimensions = [3] : (" + tSc + ", tensor<f64>) -> tensor<" + si(batch) + "x" + si(num_heads) + "x" + si(seq_len) + "xf64>\n"
         "    %sc_max   = stablehlo.broadcast_in_dim %sc_max_r, dims = [0, 1, 2] : (tensor<" + si(batch) + "x" + si(num_heads) + "x" + si(seq_len) + "xf64>) -> " + tSc + "\n"
-        "    %sc_shift = stablehlo.subtract %scores, %sc_max : " + tSc + "\n"
+        "    %sc_shift = stablehlo.subtract " + scores_ref + ", %sc_max : " + tSc + "\n"
         "    %sc_exp   = stablehlo.exponential %sc_shift : " + tSc + "\n"
         "    %zero_f   = stablehlo.constant dense<0.0> : tensor<f64>\n"
         "    %sc_sum_r = stablehlo.reduce(%sc_exp init: %zero_f) applies stablehlo.add across dimensions = [3] : (" + tSc + ", tensor<f64>) -> tensor<" + si(batch) + "x" + si(num_heads) + "x" + si(seq_len) + "xf64>\n"
@@ -367,18 +363,9 @@ static std::string build_sliding_window_module(
     char scale_buf[64];
     snprintf(scale_buf, sizeof(scale_buf), "%.17g", 1.0 / sqrt((double)head_dim));
 
-    // We build the mask as a constant dense tensor of shape [seq_len, seq_len]
-    // then broadcast it.  For large seq_len this could be large, but it's
-    // correct.  mask[i][j] = -inf if j < i-window || j > i, else 0.
-    std::string mask_vals = "";
-    for (int i = 0; i < seq_len; i++) {
-        for (int j = 0; j < seq_len; j++) {
-            bool masked = (j < i - window || j > i);
-            if (j > 0 || i > 0) mask_vals += ", ";
-            mask_vals += masked ? "-1.79769e+308" : "0.0";
-        }
-    }
     std::string tMask2d = "tensor<" + si(seq_len) + "x" + si(seq_len) + "xf64>";
+    std::string tMaskBool = "tensor<" + si(seq_len) + "x" + si(seq_len) + "xi1>";
+    std::string window_str = si(window) + ".0";
 
     return
         "module @sliding_window {\n"
@@ -396,7 +383,16 @@ static std::string build_sliding_window_module(
         "    %scale_c = stablehlo.constant dense<" + std::string(scale_buf) + "> : tensor<f64>\n"
         "    %scale   = stablehlo.broadcast_in_dim %scale_c, dims = [] : (tensor<f64>) -> " + tSc + "\n"
         "    %scores_s = stablehlo.multiply %scores_raw, %scale : " + tSc + "\n"
-        "    %mask2d  = stablehlo.constant dense<[" + mask_vals + "]> : " + tMask2d + "\n"
+        "    %mask_row = stablehlo.iota dim = 0 : " + tMask2d + "\n"
+        "    %mask_col = stablehlo.iota dim = 1 : " + tMask2d + "\n"
+        "    %window = stablehlo.constant dense<" + window_str + "> : " + tMask2d + "\n"
+        "    %window_floor = stablehlo.subtract %mask_row, %window : " + tMask2d + "\n"
+        "    %after_floor = stablehlo.compare GE, %mask_col, %window_floor, TOTALORDER : (" + tMask2d + ", " + tMask2d + ") -> " + tMaskBool + "\n"
+        "    %before_query = stablehlo.compare LE, %mask_col, %mask_row, TOTALORDER : (" + tMask2d + ", " + tMask2d + ") -> " + tMaskBool + "\n"
+        "    %mask_keep = stablehlo.and %after_floor, %before_query : " + tMaskBool + "\n"
+        "    %mask_zero = stablehlo.constant dense<0.0> : " + tMask2d + "\n"
+        "    %mask_ninf = stablehlo.constant dense<-1.79769e+308> : " + tMask2d + "\n"
+        "    %mask2d = stablehlo.select %mask_keep, %mask_zero, %mask_ninf : " + tMaskBool + ", " + tMask2d + ", " + tMask2d + "\n"
         "    %mask4d  = stablehlo.broadcast_in_dim %mask2d, dims = [2, 3] : (" + tMask2d + ") -> " + tSc + "\n"
         "    %scores  = stablehlo.add %scores_s, %mask4d : " + tSc + "\n"
         "    %neg_inf  = stablehlo.constant dense<-1.79769e+308> : tensor<f64>\n"

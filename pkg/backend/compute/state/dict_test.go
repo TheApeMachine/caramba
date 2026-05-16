@@ -30,6 +30,26 @@ func TestDict_RoPELayout(test *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "expected [batch, num_heads, seq_len, head_dim]")
 		})
+
+		Convey("It should reject odd RoPE head dimensions", func() {
+			dict := NewDict().WithShape([]int{1, 2, 4, 15})
+			dict.HeadDim = 15
+
+			_, _, _, _, err := dict.RoPELayout("rope")
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "expected even head_dim")
+		})
+
+		Convey("It should reject configured head dimensions that disagree with shape", func() {
+			dict := NewDict().WithShape([]int{1, 2, 4, 16})
+			dict.HeadDim = 8
+
+			_, _, _, _, err := dict.RoPELayout("rope")
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "does not match shape head dim")
+		})
 	})
 }
 
@@ -59,6 +79,30 @@ func TestDict_GQALayout(test *testing.T) {
 			So(err, ShouldBeNil)
 			So(numHeads, ShouldEqual, 32)
 			So(numKVHeads, ShouldEqual, 8)
+		})
+
+		Convey("It should reject non-divisible grouped heads", func() {
+			dict := NewDict().WithShape([]int{1, 10, 7, 64})
+			dict.NumHeads = 10
+			dict.NumKVHeads = 4
+			dict.HeadDim = 64
+
+			_, _, _, _, _, err := dict.GQALayout("gqa")
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "num_heads must be divisible")
+		})
+
+		Convey("It should reject configured heads that disagree with shape", func() {
+			dict := NewDict().WithShape([]int{1, 32, 7, 64})
+			dict.NumHeads = 16
+			dict.NumKVHeads = 8
+			dict.HeadDim = 64
+
+			_, _, _, _, _, err := dict.GQALayout("gqa")
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "does not match shape heads")
 		})
 	})
 }

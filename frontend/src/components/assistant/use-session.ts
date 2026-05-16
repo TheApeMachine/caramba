@@ -84,6 +84,25 @@ export function useSession() {
 		[],
 	);
 
+	const upsertMessage = useCallback(
+		(message: Session["messages"][number]) => {
+			setState((prev) => {
+				const next = prev.sessions.map((s) => {
+					if (s.id !== prev.activeId) return s;
+					const idx = s.messages.findIndex((m) => m.id === message.id);
+					const merged =
+						idx === -1
+							? [...s.messages, message]
+							: s.messages.map((m, i) => (i === idx ? message : m));
+					return { ...s, messages: merged };
+				});
+				saveSessions(next);
+				return { ...prev, sessions: next };
+			});
+		},
+		[],
+	);
+
 	const updatePersona = useCallback((persona: Persona) => {
 		setState((prev) => {
 			const next = prev.sessions.map((s) => {
@@ -136,6 +155,7 @@ export function useSession() {
 		createSession,
 		deleteSession,
 		appendMessages,
+		upsertMessage,
 		updatePersona,
 		addPersona,
 		removePersona,

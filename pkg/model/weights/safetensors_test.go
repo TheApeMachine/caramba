@@ -189,8 +189,8 @@ func TestBindIR(test *testing.T) {
 		err := writeTestSafeTensors(path, []testTensor{
 			{
 				name:   "model.layers.0.self_attn.q_proj.weight",
-				shape:  []int{2, 2},
-				values: []float64{1, 2, 3, 4},
+				shape:  []int{3, 2},
+				values: []float64{1, 2, 3, 4, 5, 6},
 			},
 			{
 				name:   "model.layers.0.self_attn.o_proj.weight",
@@ -215,7 +215,7 @@ func TestBindIR(test *testing.T) {
 		qProjection := ir.NewNode("q_proj_0", ir.OpType("projection.linear"), shape)
 		qProjection.SetOperationID("projection.linear")
 		qProjection.SetMetadata("in_features", 2)
-		qProjection.SetMetadata("out_features", 2)
+		qProjection.SetMetadata("out_features", 3)
 		oProjection := ir.NewNode("o_proj_0", ir.OpType("projection.linear"), shape)
 		oProjection.SetOperationID("projection.linear")
 		oProjection.SetMetadata("in_features", 2)
@@ -228,11 +228,11 @@ func TestBindIR(test *testing.T) {
 		graph.AddNode(oProjection)
 		graph.AddNode(lmHead)
 
-		Convey("It should transpose square PyTorch Linear tensors by name", func() {
+		Convey("It should transpose PyTorch Linear tensors by name", func() {
 			err := BindIR(graph, store)
 			So(err, ShouldBeNil)
 
-			So(qProjection.Metadata()["weight"], ShouldResemble, []float64{1, 3, 2, 4})
+			So(qProjection.Metadata()["weight"], ShouldResemble, []float64{1, 3, 5, 2, 4, 6})
 			So(oProjection.Metadata()["weight"], ShouldResemble, []float64{5, 7, 6, 8})
 			So(lmHead.Metadata()["weight"], ShouldResemble, []float64{9, 11, 10, 12})
 		})
