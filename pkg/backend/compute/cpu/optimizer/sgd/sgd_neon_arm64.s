@@ -70,24 +70,22 @@ sgdm_neon_loop:
 	VLD1.P 16(R2), [V2.D2]
 	VLD1.P 16(R3), [V4.D2]
 
+	VFMUL_D2(21, 0, 6)
+	VFADD_D2(2, 6, 6)
 	VFMUL_D2(22, 4, 4)
-	VFMUL_D2(20, 2, 5)
-	VFSUB_D2(5, 4, 4)
+	VFADD_D2(6, 4, 4)
 	SUB $16, R3, R3
 	VST1.P [V4.D2], 16(R3)
 
-	VFMUL_D2(21, 0, 6)
-	VFMUL_D2(20, 6, 6)
-	VFSUB_D2(6, 0, 6)
-
 	CBZ R12, sgdm_neon_addV
 	VFMUL_D2(22, 4, 8)
-	VFMUL_D2(20, 2, 9)
-	VFSUB_D2(9, 8, 8)
-	VFADD_D2(8, 6, 6)
+	VFADD_D2(6, 8, 8)
+	VFMUL_D2(20, 8, 8)
+	VFSUB_D2(8, 0, 6)
 	B sgdm_neon_store
 sgdm_neon_addV:
-	VFADD_D2(4, 6, 6)
+	VFMUL_D2(20, 4, 8)
+	VFSUB_D2(8, 0, 6)
 sgdm_neon_store:
 	VST1.P [V6.D2], 16(R0)
 	SUBS $1, R5, R5
@@ -100,19 +98,21 @@ sgdm_neon_tail:
 	FMOVD (R2), F2
 	FMOVD (R3), F4
 
+	FMULD F21, F0, F6
+	FADDD F2, F6, F6
 	FMULD F22, F4, F4
-	FMSUBD F20, F4, F2, F4
+	FADDD F6, F4, F4
 	FMOVD F4, (R3)
 
-	FMULD F21, F0, F6
-	FMSUBD F20, F0, F6, F6
 	CBZ R12, sgdm_neon_addV2
 	FMULD F22, F4, F8
-	FMSUBD F20, F8, F2, F8
-	FADDD F8, F6, F6
+	FADDD F6, F8, F8
+	FMULD F20, F8, F8
+	FSUBD F8, F0, F6
 	B sgdm_neon_storeTail
 sgdm_neon_addV2:
-	FADDD F4, F6, F6
+	FMULD F20, F4, F8
+	FSUBD F8, F0, F6
 sgdm_neon_storeTail:
 	FMOVD F6, (R0)
 

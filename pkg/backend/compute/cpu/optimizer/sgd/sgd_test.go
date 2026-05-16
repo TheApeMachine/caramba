@@ -59,6 +59,42 @@ func TestSGD_Step(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(params[0], ShouldEqual, 5.0)
 			})
+
+			Convey("It should match scalar parity across SIMD tails and momentum modes", func() {
+				opt := NewSGD()
+
+				for _, length := range []int{1, 2, 3, 4, 7, 64, 1024} {
+					for _, momentum := range []float64{0, 0.72} {
+						for _, nesterov := range []bool{false, true} {
+							params := sgdPattern(length, 0.17, 0.031)
+							grads := sgdPattern(length, -0.11, 0.023)
+							velocity := sgdPattern(length, 0.013, 0.007)
+							stateDict := sgdState(params, grads, 0.0125, momentum, 0.015, nesterov).
+								WithM(append([]float64(nil), velocity...))
+							expectedOut, expectedVelocity := sgdReferenceStep(
+								params, grads, velocity, 0.0125, 0.015, momentum, nesterov,
+							)
+
+							updated, err := opt.Step(stateDict)
+
+							So(err, ShouldBeNil)
+							So(updated.Out, ShouldHaveLength, len(expectedOut))
+
+							for index := range expectedOut {
+								So(updated.Out[index], ShouldAlmostEqual, expectedOut[index], 1e-10)
+							}
+
+							if momentum == 0 {
+								continue
+							}
+
+							for index := range expectedVelocity {
+								So(updated.M[index], ShouldAlmostEqual, expectedVelocity[index], 1e-10)
+							}
+						}
+					}
+				}
+			})
 		})
 	})
 }
@@ -91,4 +127,49 @@ func sgdState(params, grads []float64, lr, momentum, wd float64, nesterov bool) 
 		WithNesterov(nesterov).
 		WithParams(params).
 		WithGrads(grads)
+}
+
+func sgdPattern(length int, offset float64, step float64) []float64 {
+	values := make([]float64, length)
+
+	for index := range values {
+		sign := 1.0
+
+		if index%2 != 0 {
+			sign = -1.0
+		}
+
+		values[index] = sign*(offset+step*float64(index%11)) + 0.0007*float64(index/11)
+	}
+
+	return values
+}
+
+func sgdReferenceStep(
+	params, grads, velocity []float64,
+	lr, wd, momentum float64,
+	nesterov bool,
+) ([]float64, []float64) {
+	out := make([]float64, len(params))
+	nextVelocity := append([]float64(nil), velocity...)
+
+	for index, param := range params {
+		grad := grads[index] + wd*param
+
+		if momentum == 0 {
+			out[index] = param - lr*grad
+			continue
+		}
+
+		nextVelocity[index] = momentum*nextVelocity[index] + grad
+		update := nextVelocity[index]
+
+		if nesterov {
+			update = grad + momentum*nextVelocity[index]
+		}
+
+		out[index] = param - lr*update
+	}
+
+	return out, nextVelocity
 }

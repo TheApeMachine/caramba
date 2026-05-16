@@ -148,7 +148,7 @@ int xla_add_scalar(double* dst, double scalar, int n);
 
 /**
  * xla_div_vec: Elementwise a[i]/b[i]. No zero check; IEEE-754 divide-by-zero yields ±Inf; returns 0 on completion,
- * -1 if StableHLO path fails before fallback.
+ * -1 if StableHLO execution fails.
  */
 int xla_div_vec(const double* a, const double* b, double* dst, int n);
 

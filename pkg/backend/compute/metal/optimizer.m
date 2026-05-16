@@ -109,6 +109,10 @@ static int run_threads(id<MTLComputePipelineState> pipeline, id<MTLCommandBuffer
 	return command_buffer.error ? optimizer_error(-1, [command_buffer.error localizedDescription]) : 0;
 }
 
+static int optimizer_groups(int count) {
+	return count <= 0 ? 0 : (count + 255) / 256;
+}
+
 	#define START_ENCODER(kernel_name) \
 		if (optimizer_init() != 0) return -1; \
 		id<MTLComputePipelineState> pipeline = optimizer_pipeline(kernel_name); \
@@ -120,6 +124,32 @@ static int run_threads(id<MTLComputePipelineState> pipeline, id<MTLCommandBuffer
 		[encoder setComputePipelineState:pipeline]
 
 #define SET_SCALAR(value, type_name, index) do { type_name scalar = (type_name)(value); [encoder setBytes:&scalar length:sizeof(type_name) atIndex:index]; } while (0)
+
+static int reduce_pair_partials(id<MTLBuffer> partials, int count, id<MTLBuffer> *reduced) {
+	id<MTLBuffer> current = partials;
+	int current_count = count;
+
+	while (current_count > 1) {
+		int next_count = optimizer_groups(current_count);
+		id<MTLBuffer> next = rw(NULL, next_count * 2);
+		int rc = 0;
+
+		{
+			START_ENCODER("reduce_pair_sums");
+			[encoder setBuffer:current offset:0 atIndex:0];
+			[encoder setBuffer:next offset:0 atIndex:1];
+			SET_SCALAR(current_count, uint, 2);
+			rc = run_threads(pipeline, command_buffer, encoder, next_count * 256);
+		}
+
+		if (rc != 0) return rc;
+		current = next;
+		current_count = next_count;
+	}
+
+	*reduced = current;
+	return 0;
+}
 
 static int finish_state(double *out, id<MTLBuffer> out_buffer, double *first, id<MTLBuffer> first_buffer, double *second, id<MTLBuffer> second_buffer, int count) {
 	to_double(out, (const float *)[out_buffer contents], count);
@@ -217,22 +247,54 @@ int metal_optimizer_hebbian(double *out, const double *params, const double *gra
 
 int metal_optimizer_lars(double *out, double *velocity, const double *params, const double *grads, int count, double learning_rate, double eta, double momentum, double weight_decay, double eps) {
 	float *v = to_float(velocity, count), *p = to_float(params, count), *g = to_float(grads, count);
-	START_ENCODER("lars");
 	id<MTLBuffer> bo = rw(NULL, count), bv = rw(v, count), bp = ro(p, count), bg = ro(g, count);
-	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bv offset:0 atIndex:1]; [encoder setBuffer:bp offset:0 atIndex:2]; [encoder setBuffer:bg offset:0 atIndex:3];
-	SET_SCALAR(count, uint, 4); SET_SCALAR(learning_rate, float, 5); SET_SCALAR(eta, float, 6); SET_SCALAR(momentum, float, 7); SET_SCALAR(weight_decay, float, 8); SET_SCALAR(eps, float, 9);
-	int rc = run_threads(pipeline, command_buffer, encoder, count);
+	int group_count = optimizer_groups(count);
+	id<MTLBuffer> partials = rw(NULL, group_count * 2), norms = nil;
+	int rc = 0;
+
+	{
+		START_ENCODER("lars_norms");
+		[encoder setBuffer:bp offset:0 atIndex:0]; [encoder setBuffer:bg offset:0 atIndex:1]; [encoder setBuffer:partials offset:0 atIndex:2];
+		SET_SCALAR(count, uint, 3);
+		rc = run_threads(pipeline, command_buffer, encoder, group_count * 256);
+	}
+
+	if (rc == 0) rc = reduce_pair_partials(partials, group_count, &norms);
+
+	if (rc == 0) {
+		START_ENCODER("lars_apply");
+		[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bv offset:0 atIndex:1]; [encoder setBuffer:bp offset:0 atIndex:2]; [encoder setBuffer:bg offset:0 atIndex:3]; [encoder setBuffer:norms offset:0 atIndex:4];
+		SET_SCALAR(count, uint, 5); SET_SCALAR(learning_rate, float, 6); SET_SCALAR(eta, float, 7); SET_SCALAR(momentum, float, 8); SET_SCALAR(weight_decay, float, 9); SET_SCALAR(eps, float, 10);
+		rc = run_threads(pipeline, command_buffer, encoder, count);
+	}
+
 	if (rc == 0) finish_state(out, bo, velocity, bv, NULL, nil, count);
 	free(v); free(p); free(g); return rc;
 }
 
 int metal_optimizer_lamb(double *out, double *moment, double *variance, const double *params, const double *grads, int count, double learning_rate, double beta1, double beta2, double eps, double weight_decay, double bias_correction1_inv, double bias_correction2_inv) {
 	float *m = to_float(moment, count), *v = to_float(variance, count), *p = to_float(params, count), *g = to_float(grads, count);
-	START_ENCODER("lamb");
 	id<MTLBuffer> bo = rw(NULL, count), bm = rw(m, count), bv = rw(v, count), bp = ro(p, count), bg = ro(g, count);
-	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bm offset:0 atIndex:1]; [encoder setBuffer:bv offset:0 atIndex:2]; [encoder setBuffer:bp offset:0 atIndex:3]; [encoder setBuffer:bg offset:0 atIndex:4];
-	SET_SCALAR(count, uint, 5); SET_SCALAR(learning_rate, float, 6); SET_SCALAR(beta1, float, 7); SET_SCALAR(beta2, float, 8); SET_SCALAR(eps, float, 9); SET_SCALAR(weight_decay, float, 10); SET_SCALAR(bias_correction1_inv, float, 11); SET_SCALAR(bias_correction2_inv, float, 12);
-	int rc = run_threads(pipeline, command_buffer, encoder, count);
+	int group_count = optimizer_groups(count);
+	id<MTLBuffer> partials = rw(NULL, group_count * 2), norms = nil;
+	int rc = 0;
+
+	{
+		START_ENCODER("lamb_prepare");
+		[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bm offset:0 atIndex:1]; [encoder setBuffer:bv offset:0 atIndex:2]; [encoder setBuffer:bp offset:0 atIndex:3]; [encoder setBuffer:bg offset:0 atIndex:4]; [encoder setBuffer:partials offset:0 atIndex:5];
+		SET_SCALAR(count, uint, 6); SET_SCALAR(beta1, float, 7); SET_SCALAR(beta2, float, 8); SET_SCALAR(eps, float, 9); SET_SCALAR(weight_decay, float, 10); SET_SCALAR(bias_correction1_inv, float, 11); SET_SCALAR(bias_correction2_inv, float, 12);
+		rc = run_threads(pipeline, command_buffer, encoder, group_count * 256);
+	}
+
+	if (rc == 0) rc = reduce_pair_partials(partials, group_count, &norms);
+
+	if (rc == 0) {
+		START_ENCODER("lamb_apply");
+		[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bo offset:0 atIndex:1]; [encoder setBuffer:bp offset:0 atIndex:2]; [encoder setBuffer:norms offset:0 atIndex:3];
+		SET_SCALAR(count, uint, 4); SET_SCALAR(learning_rate, float, 5);
+		rc = run_threads(pipeline, command_buffer, encoder, count);
+	}
+
 	if (rc == 0) finish_state(out, bo, moment, bm, variance, bv, count);
 	free(m); free(v); free(p); free(g); return rc;
 }

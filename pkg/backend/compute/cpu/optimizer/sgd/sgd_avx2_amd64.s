@@ -66,8 +66,9 @@ sgdv_avx2_done:
 
 // sgdMomentumAVX2(out, params, grads, velocity []float64,
 //                 lr, wd, momentum float64, nesterov uint64)
-//   v[i] = μ*v[i] - lr*grads[i]
-//   out[i] = params[i] - lr*wd*params[i] + (nesterov ? μ*v[i] - lr*g[i] : v[i])
+//   geff = grads[i] + wd*params[i]
+//   v[i] = μ*v[i] + geff
+//   out[i] = params[i] - lr*(nesterov ? geff + μ*v[i] : v[i])
 TEXT ·sgdMomentumAVX2(SB), NOSPLIT, $0-128
 	MOVQ out+0(FP), AX
 	MOVQ params+24(FP), R8
@@ -86,29 +87,23 @@ sgdm_avx2_loop:
 	VMOVUPD (R9), Y1                            // grads
 	VMOVUPD (R10), Y2                           // velocity
 
-	// v = μ*v - lr*g
+	VMOVAPD      Y1, Y3
+	VFMADD231PD  Y9, Y0, Y3
 	VMULPD       Y10, Y2, Y2
-	VFNMADD231PD Y8, Y1, Y2
+	VADDPD       Y3, Y2, Y2
 	VMOVUPD      Y2, (R10)
 
-	// out = p - lr*wd*p   (start from params, subtract scaled p)
-	VMOVAPD      Y0, Y3
-	VMULPD       Y9, Y0, Y4
-	VFNMADD231PD Y8, Y4, Y3                     // tmp - = lr * (wd*p)
-	// equivalent to: Y3 = Y0 - lr*wd*p
-
-	// Add velocity contribution
 	CMPQ DX, $0
 	JE   sgdm_avx2_addV
-	// Nesterov: out += μ*v - lr*g
 	VMULPD       Y10, Y2, Y5
-	VFNMADD231PD Y8, Y1, Y5
-	VADDPD       Y5, Y3, Y3
+	VADDPD       Y3, Y5, Y5
 	JMP          sgdm_avx2_store
 sgdm_avx2_addV:
-	VADDPD Y2, Y3, Y3
+	VMOVAPD Y2, Y5
 sgdm_avx2_store:
-	VMOVUPD Y3, (AX)
+	VMULPD  Y8, Y5, Y5
+	VSUBPD  Y5, Y0, Y0
+	VMOVUPD Y0, (AX)
 
 	ADDQ $32, AX
 	ADDQ $32, R8
@@ -131,31 +126,26 @@ sgdm_avx2_tail:
 	MOVSD momentum+112(FP), X10
 	SHUFPD $0, X10, X10
 
-	MULPD X10, X2
-	MOVAPD X1, X11
-	MULPD X8, X11
-	SUBPD X11, X2
-	MOVUPD X2, (R10)
-
-	MOVAPD X0, X3
+	MOVAPD X1, X3
 	MOVAPD X0, X4
 	MULPD X9, X4
-	MULPD X8, X4
-	SUBPD X4, X3
+	ADDPD X4, X3
+	MULPD X10, X2
+	ADDPD X3, X2
+	MOVUPD X2, (R10)
 
 	CMPQ DX, $0
 	JE sgdm_avx2_tailAddV
 	MOVAPD X2, X5
 	MULPD X10, X5
-	MOVAPD X1, X11
-	MULPD X8, X11
-	SUBPD X11, X5
-	ADDPD X5, X3
+	ADDPD X3, X5
 	JMP sgdm_avx2_tailStore
 sgdm_avx2_tailAddV:
-	ADDPD X2, X3
+	MOVAPD X2, X5
 sgdm_avx2_tailStore:
-	MOVUPD X3, (AX)
+	MULPD X8, X5
+	SUBPD X5, X0
+	MOVUPD X0, (AX)
 	ADDQ $16, AX
 	ADDQ $16, R8
 	ADDQ $16, R9
@@ -172,30 +162,26 @@ sgdm_avx2_scalar:
 	MOVSD wd+104(FP), X9
 	MOVSD momentum+112(FP), X10
 
-	MULSD X10, X2
-	MOVAPD X1, X11
-	MULSD X8, X11
-	SUBSD X11, X2
-	MOVSD X2, (R10)
-
-	MOVAPD X0, X3
+	MOVAPD X1, X3
 	MOVAPD X0, X4
 	MULSD X9, X4
-	MULSD X8, X4
-	SUBSD X4, X3
+	ADDSD X4, X3
+	MULSD X10, X2
+	ADDSD X3, X2
+	MOVSD X2, (R10)
+
 	CMPQ DX, $0
 	JE sgdm_avx2_scalarAddV
 	MOVAPD X2, X5
 	MULSD X10, X5
-	MOVAPD X1, X11
-	MULSD X8, X11
-	SUBSD X11, X5
-	ADDSD X5, X3
+	ADDSD X3, X5
 	JMP sgdm_avx2_scalarStore
 sgdm_avx2_scalarAddV:
-	ADDSD X2, X3
+	MOVAPD X2, X5
 sgdm_avx2_scalarStore:
-	MOVSD X3, (AX)
+	MULSD X8, X5
+	SUBSD X5, X0
+	MOVSD X0, (AX)
 
 sgdm_avx2_done:
 	VZEROUPPER

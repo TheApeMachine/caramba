@@ -8,11 +8,12 @@ type Optimizer = state.Optimizer
 
 /*
 OptimizerRegistry exposes the curated first-order optimizers that every production
-ComputeBackend ought to accelerate for its Location.
+ComputeBackend must accelerate for its Location.
 
-Implementations route to SIMD, accelerator kernels, or portable Go as appropriate; they MUST
-reject kinds they cannot run without approximation instead of handing off silently to host
-floating point with different rounding guarantees.
+Implementations route to the backend's native execution path: CPU SIMD/assembly,
+Metal kernels, CUDA kernels, or XLA/PJRT StableHLO. A backend that cannot run an
+optimizer through its native path must reject it instead of silently handing off
+to another location with different ownership or rounding guarantees.
 */
 type OptimizerRegistry interface {
 	Adam(*state.Dict) (Optimizer, error)

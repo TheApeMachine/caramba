@@ -1,6 +1,6 @@
-//go:build darwin && cgo
+//go:build cgo && xla
 
-package metal
+package xla
 
 import (
 	"fmt"
@@ -20,41 +20,45 @@ import (
 )
 
 func TestOptimizerContract_Step(test *testing.T) {
-	Convey("Given Metal optimizers for the full train optimizer contract", test, func() {
-		for _, optimizerCase := range metalOptimizerCases() {
+	platform := xlaPJRTAvailablePlatform(test)
+
+	Convey("Given XLA optimizers for the full train optimizer contract", test, func() {
+		registry := NewOptimizerRegistryForPlatform(platform)
+
+		for _, optimizerCase := range xlaOptimizerCases() {
 			optimizerCase := optimizerCase
 
 			Convey("It should match CPU state-dict execution for "+optimizerCase.name, func() {
 				for _, length := range []int{1, 7, 64, 1024, 8192} {
-					cpuState := optimizerState(length)
-					metalState := optimizerState(length)
+					cpuState := xlaOptimizerState(length)
+					xlaState := xlaOptimizerState(length)
 					cpuOptimizer := optimizerCase.cpu()
-					metalOptimizer, err := optimizerCase.metal(NewOptimizerRegistry())
+					xlaOptimizer, err := optimizerCase.xla(registry)
 
 					So(err, ShouldBeNil)
 
 					cpuUpdated, err := cpuOptimizer.Step(cpuState)
 					So(err, ShouldBeNil)
-					metalUpdated, err := metalOptimizer.Step(metalState)
+					xlaUpdated, err := xlaOptimizer.Step(xlaState)
 					So(err, ShouldBeNil)
 
-					assertMetalSlice(
+					assertXLASlice(
 						fmt.Sprintf("%s/out/%d", optimizerCase.name, length),
-						metalUpdated.Out,
+						xlaUpdated.Out,
 						cpuUpdated.Out,
 						optimizerCase.tolerance,
 					)
 
 					for _, field := range optimizerCase.fields {
-						assertMetalSlice(
+						assertXLASlice(
 							fmt.Sprintf("%s/%s/%d", optimizerCase.name, field, length),
-							stateField(metalUpdated, field),
-							stateField(cpuUpdated, field),
+							xlaStateField(xlaUpdated, field),
+							xlaStateField(cpuUpdated, field),
 							optimizerCase.tolerance,
 						)
 					}
 
-					So(metalUpdated.Step, ShouldEqual, cpuUpdated.Step)
+					So(xlaUpdated.Step, ShouldEqual, cpuUpdated.Step)
 				}
 			})
 		}
@@ -62,78 +66,62 @@ func TestOptimizerContract_Step(test *testing.T) {
 }
 
 func TestLBFGS_Step(test *testing.T) {
-	Convey("Given a Metal L-BFGS optimizer", test, func() {
-		metalOptimizer, err := NewOptimizerRegistry().LBFGS(state.NewDict())
+	platform := xlaPJRTAvailablePlatform(test)
+
+	Convey("Given a XLA L-BFGS optimizer", test, func() {
+		xlaOptimizer, err := NewOptimizerRegistryForPlatform(platform).LBFGS(state.NewDict())
 		cpuOptimizer := cpulbfgs.NewLBFGS()
 
 		So(err, ShouldBeNil)
 
 		Convey("It should match the CPU two-loop update after history is populated", func() {
-			cpuState := lbfgsState(
+			cpuState := xlaLBFGSState(
 				[]float64{1.0, -0.5, 0.25, 1.5},
 				[]float64{0.30, -0.10, 0.20, -0.40},
 			)
-			metalState := lbfgsState(
+			xlaState := xlaLBFGSState(
 				[]float64{1.0, -0.5, 0.25, 1.5},
 				[]float64{0.30, -0.10, 0.20, -0.40},
 			)
 
 			_, err = cpuOptimizer.Step(cpuState)
 			So(err, ShouldBeNil)
-			_, err = metalOptimizer.Step(metalState)
+			_, err = xlaOptimizer.Step(xlaState)
 			So(err, ShouldBeNil)
 
 			cpuState.WithParams([]float64{0.92, -0.42, 0.18, 1.36}).
 				WithGrads([]float64{0.18, -0.04, 0.12, -0.22})
-			metalState.WithParams([]float64{0.92, -0.42, 0.18, 1.36}).
+			xlaState.WithParams([]float64{0.92, -0.42, 0.18, 1.36}).
 				WithGrads([]float64{0.18, -0.04, 0.12, -0.22})
 
 			cpuUpdated, err := cpuOptimizer.Step(cpuState)
 			So(err, ShouldBeNil)
-			metalUpdated, err := metalOptimizer.Step(metalState)
+			xlaUpdated, err := xlaOptimizer.Step(xlaState)
 			So(err, ShouldBeNil)
 
-			So(metalUpdated.Out, ShouldHaveLength, len(cpuUpdated.Out))
-			for index := range cpuUpdated.Out {
-				So(metalUpdated.Out[index], ShouldAlmostEqual, cpuUpdated.Out[index], 1e-4)
-			}
-			So(metalState.Head, ShouldEqual, cpuState.Head)
-			So(metalState.Count, ShouldEqual, cpuState.Count)
+			assertXLASlice("lbfgs/out", xlaUpdated.Out, cpuUpdated.Out, 1e-9)
+			So(xlaState.Head, ShouldEqual, cpuState.Head)
+			So(xlaState.Count, ShouldEqual, cpuState.Count)
 		})
 	})
 }
 
-func BenchmarkLBFGS_Step(benchmark *testing.B) {
-	optimizer, err := NewOptimizerRegistry().LBFGS(state.NewDict())
-	if err != nil {
-		benchmark.Fatal(err)
-	}
-
-	stateDict := lbfgsState(
-		[]float64{1.0, -0.5, 0.25, 1.5, -1.25, 0.75, -0.2, 0.6},
-		[]float64{0.30, -0.10, 0.20, -0.40, 0.14, -0.08, 0.05, -0.12},
-	)
-
-	for benchmark.Loop() {
-		_, _ = optimizer.Step(stateDict)
-		stateDict.WithParams(stateDict.Out).
-			WithGrads([]float64{0.18, -0.04, 0.12, -0.22, 0.11, -0.05, 0.03, -0.09})
-	}
-}
-
 func BenchmarkOptimizerReduction_Step(benchmark *testing.B) {
-	for _, optimizerCase := range metalOptimizerCases() {
+	platform := xlaPJRTAvailablePlatform(benchmark)
+	registry := NewOptimizerRegistryForPlatform(platform)
+
+	for _, optimizerCase := range xlaOptimizerCases() {
 		if optimizerCase.name != "lars" && optimizerCase.name != "lamb" {
 			continue
 		}
 
 		benchmark.Run(optimizerCase.name, func(benchmark *testing.B) {
-			optimizer, err := optimizerCase.metal(NewOptimizerRegistry())
+			optimizer, err := optimizerCase.xla(registry)
 			if err != nil {
 				benchmark.Fatal(err)
 			}
 
-			stateDict := optimizerState(1 << 16)
+			stateDict := xlaOptimizerState(1 << 16)
 
 			benchmark.ResetTimer()
 
@@ -149,108 +137,98 @@ func BenchmarkOptimizerReduction_Step(benchmark *testing.B) {
 	}
 }
 
-func lbfgsState(params, grads []float64) *state.Dict {
-	return state.NewDict().
-		WithLR(0.4).
-		WithHistSize(4).
-		WithLineSearch(false).
-		WithC1(1e-4).
-		WithParams(params).
-		WithGrads(grads)
-}
-
-type metalOptimizerCase struct {
+type xlaOptimizerCase struct {
 	name      string
 	fields    []string
 	tolerance float64
 	cpu       func() state.Optimizer
-	metal     func(Registry) (state.Optimizer, error)
+	xla       func(Registry) (state.Optimizer, error)
 }
 
-func metalOptimizerCases() []metalOptimizerCase {
-	tolerance := 8e-4
+func xlaOptimizerCases() []xlaOptimizerCase {
+	tolerance := 1e-8
 
-	return []metalOptimizerCase{
+	return []xlaOptimizerCase{
 		{
 			name:      "adam",
 			fields:    []string{"m", "v"},
 			tolerance: tolerance,
 			cpu:       func() state.Optimizer { return cpuadam.NewAdam() },
-			metal:     func(registry Registry) (state.Optimizer, error) { return registry.Adam(state.NewDict()) },
+			xla:       func(registry Registry) (state.Optimizer, error) { return registry.Adam(state.NewDict()) },
 		},
 		{
 			name:      "adamw",
 			fields:    []string{"m", "v"},
 			tolerance: tolerance,
 			cpu:       func() state.Optimizer { return cpuadam.NewAdamW() },
-			metal:     func(registry Registry) (state.Optimizer, error) { return registry.AdamW(state.NewDict()) },
+			xla:       func(registry Registry) (state.Optimizer, error) { return registry.AdamW(state.NewDict()) },
 		},
 		{
 			name:      "adamax",
 			fields:    []string{"m", "v"},
 			tolerance: tolerance,
 			cpu:       func() state.Optimizer { return cpuadam.NewAdaMax() },
-			metal:     func(registry Registry) (state.Optimizer, error) { return registry.AdaMax(state.NewDict()) },
+			xla:       func(registry Registry) (state.Optimizer, error) { return registry.AdaMax(state.NewDict()) },
 		},
 		{
 			name:      "sgd",
 			fields:    []string{"m"},
 			tolerance: tolerance,
 			cpu:       func() state.Optimizer { return cpusgd.NewSGD() },
-			metal:     func(registry Registry) (state.Optimizer, error) { return registry.SGD(state.NewDict()) },
+			xla:       func(registry Registry) (state.Optimizer, error) { return registry.SGD(state.NewDict()) },
 		},
 		{
 			name:      "lion",
 			fields:    []string{"m"},
 			tolerance: tolerance,
 			cpu:       func() state.Optimizer { return cpulion.NewLion() },
-			metal:     func(registry Registry) (state.Optimizer, error) { return registry.Lion(state.NewDict()) },
+			xla:       func(registry Registry) (state.Optimizer, error) { return registry.Lion(state.NewDict()) },
 		},
 		{
 			name:      "rmsprop",
 			fields:    []string{"v", "buf", "grad_avg"},
 			tolerance: tolerance,
 			cpu:       func() state.Optimizer { return cpurmsprop.NewRMSProp() },
-			metal:     func(registry Registry) (state.Optimizer, error) { return registry.RMSProp(state.NewDict()) },
+			xla:       func(registry Registry) (state.Optimizer, error) { return registry.RMSProp(state.NewDict()) },
 		},
 		{
 			name:      "hebbian",
 			tolerance: tolerance,
 			cpu:       func() state.Optimizer { return cpuhebbian.NewHebbian() },
-			metal:     func(registry Registry) (state.Optimizer, error) { return registry.Hebbian(state.NewDict()) },
+			xla:       func(registry Registry) (state.Optimizer, error) { return registry.Hebbian(state.NewDict()) },
 		},
 		{
 			name:      "lars",
 			fields:    []string{"m"},
 			tolerance: tolerance,
 			cpu:       func() state.Optimizer { return cpulars.NewLARS() },
-			metal:     func(registry Registry) (state.Optimizer, error) { return registry.Lars(state.NewDict()) },
+			xla:       func(registry Registry) (state.Optimizer, error) { return registry.Lars(state.NewDict()) },
 		},
 		{
 			name:      "lamb",
 			fields:    []string{"m", "v"},
 			tolerance: tolerance,
 			cpu:       func() state.Optimizer { return cpulars.NewLAMB() },
-			metal:     func(registry Registry) (state.Optimizer, error) { return registry.Lamb(state.NewDict()) },
+			xla:       func(registry Registry) (state.Optimizer, error) { return registry.Lamb(state.NewDict()) },
 		},
 		{
 			name:      "adagrad",
 			fields:    []string{"v"},
 			tolerance: tolerance,
 			cpu:       func() state.Optimizer { return cpuadagrad.NewAdaGrad() },
-			metal:     func(registry Registry) (state.Optimizer, error) { return registry.AdaGrad(state.NewDict()) },
+			xla:       func(registry Registry) (state.Optimizer, error) { return registry.AdaGrad(state.NewDict()) },
 		},
 		{
 			name:      "adadelta",
 			fields:    []string{"v", "buf"},
 			tolerance: tolerance,
 			cpu:       func() state.Optimizer { return cpuadagrad.NewAdaDelta() },
-			metal:     func(registry Registry) (state.Optimizer, error) { return registry.AdaDelta(state.NewDict()) },
+			xla:       func(registry Registry) (state.Optimizer, error) { return registry.AdaDelta(state.NewDict()) },
 		},
 	}
 }
 
-func optimizerState(length int) *state.Dict {
+func xlaOptimizerState(length int) *state.Dict {
 	stateDict := state.NewDict().
 		WithLR(0.0125).
 		WithBeta1(0.86).
@@ -265,44 +243,54 @@ func optimizerState(length int) *state.Dict {
 		WithMaxNorm(17.0).
 		WithNesterov(true).
 		WithCentered(true).
-		WithParams(pattern(length, 0.17, 0.031)).
-		WithGrads(pattern(length, -0.11, 0.023)).
-		WithM(pattern(length, 0.013, 0.007)).
-		WithV(positivePattern(length, 0.021, 0.005))
+		WithParams(xlaPattern(length, 0.17, 0.031)).
+		WithGrads(xlaPattern(length, -0.11, 0.023)).
+		WithM(xlaPattern(length, 0.013, 0.007)).
+		WithV(xlaPositivePattern(length, 0.021, 0.005))
 
-	stateDict.Buf = positivePattern(length, 0.019, 0.004)
-	stateDict.GradAvg = pattern(length, -0.015, 0.003)
+	stateDict.Buf = xlaPositivePattern(length, 0.019, 0.004)
+	stateDict.GradAvg = xlaPattern(length, -0.015, 0.003)
 
 	return stateDict
 }
 
-func pattern(length int, offset float64, step float64) []float64 {
+func xlaLBFGSState(params, grads []float64) *state.Dict {
+	return state.NewDict().
+		WithLR(0.4).
+		WithHistSize(4).
+		WithLineSearch(false).
+		WithC1(1e-4).
+		WithParams(params).
+		WithGrads(grads)
+}
+
+func xlaPattern(length int, offset float64, step float64) []float64 {
 	values := make([]float64, length)
 
 	for index := range values {
 		sign := 1.0
 
-		if index%2 != 0 {
+		if index%2 == 1 {
 			sign = -1.0
 		}
 
-		values[index] = sign*(offset+step*float64(index%11)) + 0.0007*float64(index/11)
+		values[index] = sign * (offset + float64(index%17)*step)
 	}
 
 	return values
 }
 
-func positivePattern(length int, offset float64, step float64) []float64 {
+func xlaPositivePattern(length int, offset float64, step float64) []float64 {
 	values := make([]float64, length)
 
 	for index := range values {
-		values[index] = offset + step*float64(index%11) + 0.0007*float64(index/11)
+		values[index] = offset + float64(index%19)*step
 	}
 
 	return values
 }
 
-func stateField(stateDict *state.Dict, field string) []float64 {
+func xlaStateField(stateDict *state.Dict, field string) []float64 {
 	switch field {
 	case "m":
 		return stateDict.M
@@ -317,7 +305,7 @@ func stateField(stateDict *state.Dict, field string) []float64 {
 	}
 }
 
-func assertMetalSlice(name string, actual []float64, expected []float64, tolerance float64) {
+func assertXLASlice(name string, actual []float64, expected []float64, tolerance float64) {
 	So(actual, ShouldHaveLength, len(expected))
 
 	if len(expected) == 0 {
@@ -345,8 +333,14 @@ func assertMetalSlice(name string, actual []float64, expected []float64, toleran
 	}
 
 	SoMsg(
-		fmt.Sprintf("%s max_diff=%g index=%d actual=%g expected=%g tolerance=%g",
-			name, maxDiff, maxIndex, actual[maxIndex], expected[maxIndex], tolerance,
+		fmt.Sprintf(
+			"%s max_diff=%g index=%d actual=%g expected=%g tolerance=%g",
+			name,
+			maxDiff,
+			maxIndex,
+			actual[maxIndex],
+			expected[maxIndex],
+			tolerance,
 		),
 		maxDiff <= tolerance,
 		ShouldBeTrue,

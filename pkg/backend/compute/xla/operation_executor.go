@@ -97,7 +97,7 @@ func (tensorBackend *TensorBackend) Apply(
 			node,
 			inputs,
 			NewOperationRegistry(),
-			NewOptimizerRegistry(),
+			NewOptimizerRegistryForPlatform(tensorBackend.platform),
 		)
 	}
 }

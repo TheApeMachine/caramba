@@ -2,6 +2,7 @@
 
 package xla
 
+// #include <stdlib.h>
 // #include "optimizer.h"
 import "C"
 
@@ -13,22 +14,130 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
-type Registry struct{}
+type Registry struct {
+	platform string
+	err      error
+}
 
-func NewOptimizerRegistry() Registry { return Registry{} }
+func NewOptimizerRegistry() Registry {
+	return NewOptimizerRegistryForPlatform("cpu")
+}
 
-func (registry Registry) Adam(*state.Dict) (state.Optimizer, error)     { return &Adam{}, nil }
-func (registry Registry) AdamW(*state.Dict) (state.Optimizer, error)    { return &AdamW{}, nil }
-func (registry Registry) AdaMax(*state.Dict) (state.Optimizer, error)   { return &AdaMax{}, nil }
-func (registry Registry) SGD(*state.Dict) (state.Optimizer, error)      { return &SGD{}, nil }
-func (registry Registry) Lion(*state.Dict) (state.Optimizer, error)     { return &Lion{}, nil }
-func (registry Registry) RMSProp(*state.Dict) (state.Optimizer, error)  { return &RMSProp{}, nil }
-func (registry Registry) Hebbian(*state.Dict) (state.Optimizer, error)  { return &Hebbian{}, nil }
-func (registry Registry) Lars(*state.Dict) (state.Optimizer, error)     { return &Lars{}, nil }
-func (registry Registry) Lamb(*state.Dict) (state.Optimizer, error)     { return &Lamb{}, nil }
-func (registry Registry) AdaGrad(*state.Dict) (state.Optimizer, error)  { return &AdaGrad{}, nil }
-func (registry Registry) AdaDelta(*state.Dict) (state.Optimizer, error) { return &AdaDelta{}, nil }
-func (registry Registry) LBFGS(*state.Dict) (state.Optimizer, error)    { return &LBFGS{}, nil }
+func NewOptimizerRegistryForPlatform(platform string) Registry {
+	config, err := newRuntimePJRTConfig(platform)
+
+	if err != nil {
+		return Registry{platform: platform, err: err}
+	}
+
+	platformCString := C.CString(config.Platform)
+	defer C.free(unsafe.Pointer(platformCString))
+
+	if rc := C.xla_optimizer_init(platformCString); rc != 0 {
+		return Registry{
+			platform: config.Platform,
+			err:      fmt.Errorf("xla optimizer: initialization failed for platform %q", config.Platform),
+		}
+	}
+
+	return Registry{platform: config.Platform}
+}
+
+func (registry Registry) Adam(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &Adam{}, nil
+}
+
+func (registry Registry) AdamW(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &AdamW{}, nil
+}
+
+func (registry Registry) AdaMax(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &AdaMax{}, nil
+}
+
+func (registry Registry) SGD(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &SGD{}, nil
+}
+
+func (registry Registry) Lion(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &Lion{}, nil
+}
+
+func (registry Registry) RMSProp(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &RMSProp{}, nil
+}
+
+func (registry Registry) Hebbian(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &Hebbian{}, nil
+}
+
+func (registry Registry) Lars(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &Lars{}, nil
+}
+
+func (registry Registry) Lamb(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &Lamb{}, nil
+}
+
+func (registry Registry) AdaGrad(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &AdaGrad{}, nil
+}
+
+func (registry Registry) AdaDelta(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &AdaDelta{}, nil
+}
+
+func (registry Registry) LBFGS(*state.Dict) (state.Optimizer, error) {
+	if registry.err != nil {
+		return nil, registry.err
+	}
+
+	return &LBFGS{}, nil
+}
 
 type Adam struct{}
 

@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+int xla_optimizer_init(const char* platform);
+void xla_optimizer_shutdown(void);
 int xla_optimizer_adam(
 	double *out, double *moment, double *variance,
 	const double *params, const double *grads, int count,

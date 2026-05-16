@@ -25,6 +25,10 @@ static int optimizer_copy_free(double* host, double* device, int count) {
     return 0;
 }
 
+static int optimizer_groups(int count) {
+    return count <= 0 ? 0 : (count + BLOCK_SIZE - 1) / BLOCK_SIZE;
+}
+
 __global__ void optimizer_adam_kernel(
     double* out, double* moment, double* variance,
     const double* params, const double* grads, int count,
@@ -160,25 +164,85 @@ __global__ void optimizer_hebbian_scale_kernel(double* out, int count, double sc
     if (index < count) out[index] *= scale;
 }
 
-__global__ void optimizer_lars_kernel(
+__global__ void optimizer_reduce_pair_kernel(
+    const double2* input, double2* output, int count
+) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int local = threadIdx.x;
+    __shared__ double left[BLOCK_SIZE];
+    __shared__ double right[BLOCK_SIZE];
+
+    double2 value = make_double2(0.0, 0.0);
+
+    if (index < count) {
+        value = input[index];
+    }
+
+    left[local] = value.x;
+    right[local] = value.y;
+    __syncthreads();
+
+    for (int stride = BLOCK_SIZE / 2; stride > 0; stride >>= 1) {
+        if (local < stride) {
+            left[local] += left[local + stride];
+            right[local] += right[local + stride];
+        }
+
+        __syncthreads();
+    }
+
+    if (local == 0) {
+        output[blockIdx.x] = make_double2(left[0], right[0]);
+    }
+}
+
+__global__ void optimizer_lars_norms_kernel(
+    const double* params, const double* grads, double2* partials, int count
+) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int local = threadIdx.x;
+    __shared__ double param_squares[BLOCK_SIZE];
+    __shared__ double grad_squares[BLOCK_SIZE];
+
+    double param_square = 0.0;
+    double grad_square = 0.0;
+
+    if (index < count) {
+        double param = params[index];
+        double grad = grads[index];
+        param_square = param * param;
+        grad_square = grad * grad;
+    }
+
+    param_squares[local] = param_square;
+    grad_squares[local] = grad_square;
+    __syncthreads();
+
+    for (int stride = BLOCK_SIZE / 2; stride > 0; stride >>= 1) {
+        if (local < stride) {
+            param_squares[local] += param_squares[local + stride];
+            grad_squares[local] += grad_squares[local + stride];
+        }
+
+        __syncthreads();
+    }
+
+    if (local == 0) {
+        partials[blockIdx.x] = make_double2(param_squares[0], grad_squares[0]);
+    }
+}
+
+__global__ void optimizer_lars_apply_kernel(
     double* out, double* velocity,
-    const double* params, const double* grads, int count,
+    const double* params, const double* grads, const double2* norms, int count,
     double learning_rate, double eta, double momentum,
     double weight_decay, double eps
 ) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index >= count) return;
 
-    double param_norm_square = 0.0;
-    double grad_norm_square = 0.0;
-
-    for (int norm_index = 0; norm_index < count; norm_index++) {
-        param_norm_square += params[norm_index] * params[norm_index];
-        grad_norm_square += grads[norm_index] * grads[norm_index];
-    }
-
-    double param_norm = sqrt(param_norm_square);
-    double grad_norm = sqrt(grad_norm_square);
+    double param_norm = sqrt(norms[0].x);
+    double grad_norm = sqrt(norms[0].y);
     double local_learning_rate = learning_rate;
 
     if (param_norm > 0.0 && grad_norm > 0.0) {
@@ -191,46 +255,67 @@ __global__ void optimizer_lars_kernel(
     out[index] = params[index] - next_velocity;
 }
 
-__global__ void optimizer_lamb_kernel(
-    double* out, double* moment, double* variance,
-    const double* params, const double* grads, int count,
-    double learning_rate, double beta1, double beta2, double eps,
-    double weight_decay, double bias_correction1_inv,
-    double bias_correction2_inv
+__global__ void optimizer_lamb_prepare_kernel(
+    double* update, double* moment, double* variance,
+    const double* params, const double* grads, double2* partials, int count,
+    double beta1, double beta2, double eps, double weight_decay,
+    double bias_correction1_inv, double bias_correction2_inv
+) {
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int local = threadIdx.x;
+    __shared__ double param_squares[BLOCK_SIZE];
+    __shared__ double update_squares[BLOCK_SIZE];
+
+    double param_square = 0.0;
+    double update_square = 0.0;
+
+    if (index < count) {
+        double grad = grads[index];
+        double param = params[index];
+        double next_moment = beta1 * moment[index] + (1.0 - beta1) * grad;
+        double next_variance = beta2 * variance[index] + (1.0 - beta2) * grad * grad;
+        double next_update = next_moment * bias_correction1_inv /
+            (sqrt(next_variance * bias_correction2_inv) + eps) + weight_decay * param;
+
+        moment[index] = next_moment;
+        variance[index] = next_variance;
+        update[index] = next_update;
+        param_square = param * param;
+        update_square = next_update * next_update;
+    }
+
+    param_squares[local] = param_square;
+    update_squares[local] = update_square;
+    __syncthreads();
+
+    for (int stride = BLOCK_SIZE / 2; stride > 0; stride >>= 1) {
+        if (local < stride) {
+            param_squares[local] += param_squares[local + stride];
+            update_squares[local] += update_squares[local + stride];
+        }
+
+        __syncthreads();
+    }
+
+    if (local == 0) {
+        partials[blockIdx.x] = make_double2(param_squares[0], update_squares[0]);
+    }
+}
+
+__global__ void optimizer_lamb_apply_kernel(
+    double* out, const double* update, const double* params, const double2* norms,
+    int count, double learning_rate
 ) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index >= count) return;
 
-    double param_norm_square = 0.0;
-    double update_norm_square = 0.0;
-
-    for (int norm_index = 0; norm_index < count; norm_index++) {
-        double next_moment = beta1 * moment[norm_index] + (1.0 - beta1) * grads[norm_index];
-        double next_variance = beta2 * variance[norm_index] +
-            (1.0 - beta2) * grads[norm_index] * grads[norm_index];
-        double update = next_moment * bias_correction1_inv /
-            (sqrt(next_variance * bias_correction2_inv) + eps) +
-            weight_decay * params[norm_index];
-        param_norm_square += params[norm_index] * params[norm_index];
-        update_norm_square += update * update;
-    }
-
-    double grad = grads[index];
-    double next_moment = beta1 * moment[index] + (1.0 - beta1) * grad;
-    double next_variance = beta2 * variance[index] + (1.0 - beta2) * grad * grad;
-    double update = next_moment * bias_correction1_inv /
-        (sqrt(next_variance * bias_correction2_inv) + eps) + weight_decay * params[index];
-    double param_norm = sqrt(param_norm_square);
-    double update_norm = sqrt(update_norm_square);
     double ratio = learning_rate;
 
-    if (param_norm > 0.0 && update_norm > 0.0) {
-        ratio = learning_rate * param_norm / update_norm;
+    if (norms[0].x > 0.0 && norms[0].y > 0.0) {
+        ratio = learning_rate * sqrt(norms[0].x) / sqrt(norms[0].y);
     }
 
-    moment[index] = next_moment;
-    variance[index] = next_variance;
-    out[index] = params[index] - ratio * update;
+    out[index] = params[index] - ratio * update[index];
 }
 
 __global__ void optimizer_adagrad_kernel(
@@ -372,6 +457,30 @@ __global__ void optimizer_lbfgs_kernel(
     for (int index = 0; index < count; index++) {
         out[index] = params[index] - effective_learning_rate * direction[index];
     }
+}
+
+static int optimizer_reduce_pair(double2* partials, int partial_count, double2** reduced) {
+    double2* current = partials;
+    int current_count = partial_count;
+
+    while (current_count > 1) {
+        int next_count = optimizer_groups(current_count);
+        double2* next = nullptr;
+        CUDA_OPT_CHECK(cudaMalloc((void**)&next, (size_t)next_count * sizeof(double2)));
+
+        optimizer_reduce_pair_kernel<<<next_count, BLOCK_SIZE>>>(current, next, current_count);
+        CUDA_OPT_CHECK(cudaGetLastError());
+
+        if (current != partials) {
+            cudaFree(current);
+        }
+
+        current = next;
+        current_count = next_count;
+    }
+
+    *reduced = current;
+    return 0;
 }
 
 extern "C" {
@@ -557,18 +666,28 @@ int cuda_optimizer_lars(
     double weight_decay, double eps
 ) {
     double *dOut, *dVelocity, *dParams, *dGrads;
+    double2 *dPartials, *dNorms;
     size_t bytes = (size_t)count * sizeof(double);
+    int group_count = optimizer_groups(count);
     CUDA_OPT_CHECK(cudaMalloc((void**)&dOut, bytes));
+    CUDA_OPT_CHECK(cudaMalloc((void**)&dPartials, (size_t)group_count * sizeof(double2)));
     if (optimizer_alloc_copy(velocity, &dVelocity, count)) return -1;
     if (optimizer_alloc_copy(params, &dParams, count)) return -1;
     if (optimizer_alloc_copy(grads, &dGrads, count)) return -1;
-    optimizer_lars_kernel<<<(count + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
-        dOut, dVelocity, dParams, dGrads, count,
+
+    optimizer_lars_norms_kernel<<<group_count, BLOCK_SIZE>>>(dParams, dGrads, dPartials, count);
+    CUDA_OPT_CHECK(cudaGetLastError());
+    if (optimizer_reduce_pair(dPartials, group_count, &dNorms)) return -1;
+
+    optimizer_lars_apply_kernel<<<group_count, BLOCK_SIZE>>>(
+        dOut, dVelocity, dParams, dGrads, dNorms, count,
         learning_rate, eta, momentum, weight_decay, eps
     );
     CUDA_OPT_CHECK(cudaGetLastError());
     optimizer_copy_free(out, dOut, count);
     optimizer_copy_free(velocity, dVelocity, count);
+    if (dNorms != dPartials) cudaFree(dNorms);
+    cudaFree(dPartials);
     cudaFree(dParams); cudaFree(dGrads);
     return 0;
 }
@@ -581,21 +700,32 @@ int cuda_optimizer_lamb(
     double bias_correction2_inv
 ) {
     double *dOut, *dMoment, *dVariance, *dParams, *dGrads;
+    double2 *dPartials, *dNorms;
     size_t bytes = (size_t)count * sizeof(double);
+    int group_count = optimizer_groups(count);
     CUDA_OPT_CHECK(cudaMalloc((void**)&dOut, bytes));
+    CUDA_OPT_CHECK(cudaMalloc((void**)&dPartials, (size_t)group_count * sizeof(double2)));
     if (optimizer_alloc_copy(moment, &dMoment, count)) return -1;
     if (optimizer_alloc_copy(variance, &dVariance, count)) return -1;
     if (optimizer_alloc_copy(params, &dParams, count)) return -1;
     if (optimizer_alloc_copy(grads, &dGrads, count)) return -1;
-    optimizer_lamb_kernel<<<(count + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(
-        dOut, dMoment, dVariance, dParams, dGrads, count,
-        learning_rate, beta1, beta2, eps, weight_decay,
-        bias_correction1_inv, bias_correction2_inv
+
+    optimizer_lamb_prepare_kernel<<<group_count, BLOCK_SIZE>>>(
+        dOut, dMoment, dVariance, dParams, dGrads, dPartials, count,
+        beta1, beta2, eps, weight_decay, bias_correction1_inv, bias_correction2_inv
+    );
+    CUDA_OPT_CHECK(cudaGetLastError());
+    if (optimizer_reduce_pair(dPartials, group_count, &dNorms)) return -1;
+
+    optimizer_lamb_apply_kernel<<<group_count, BLOCK_SIZE>>>(
+        dOut, dOut, dParams, dNorms, count, learning_rate
     );
     CUDA_OPT_CHECK(cudaGetLastError());
     optimizer_copy_free(out, dOut, count);
     optimizer_copy_free(moment, dMoment, count);
     optimizer_copy_free(variance, dVariance, count);
+    if (dNorms != dPartials) cudaFree(dNorms);
+    cudaFree(dPartials);
     cudaFree(dParams); cudaFree(dGrads);
     return 0;
 }

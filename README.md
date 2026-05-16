@@ -227,6 +227,12 @@ assembly paths with scalar tails named by architecture rather than by a vector
 ISA they do not use, and the CPU test suite rejects SIMD files that only branch
 to scalar symbols.
 
+Optimizer execution follows the same rule. CPU optimizers own AVX2, SSE2, and
+NEON assembly paths; Metal and CUDA own native kernels; XLA optimizers compile
+their update math to StableHLO and execute through the configured PJRT plugin.
+Backend parity tests compare optimizer `state.Dict` mutations against the CPU
+contract instead of accepting backend-specific drift.
+
 ### Building Backends
 
 ```bash

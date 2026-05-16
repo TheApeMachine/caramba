@@ -45,6 +45,8 @@ static std::unordered_map<std::string, std::string> g_configured_plugins;
 // Cached element count for which executables were compiled.
 static int g_compiled_n = 0;
 
+extern "C" void xla_optimizer_shutdown(void);
+
 // ---------------------------------------------------------------------------
 // Error helpers
 // ---------------------------------------------------------------------------
@@ -715,6 +717,8 @@ int xla_swiglu(const double* src, double* dst, int n) {
 }
 
 void xla_shutdown(void) {
+    xla_optimizer_shutdown();
+
     for (auto& kv : g_execs) {
         PJRT_LoadedExecutable_Destroy_Args da{};
         da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;

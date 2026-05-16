@@ -171,7 +171,9 @@ export function MessageFeed({ messages, isSubmitted, compact }: Props) {
 
 			{messages.length === 0 && (
 				<p className="text-xs text-muted-foreground text-center mt-8">
-					Ask anything — your research team is ready.
+					{compact
+						? "Ask anything — I'm ready."
+						: "Ask anything — your research team is ready."}
 				</p>
 			)}
 		</section>
