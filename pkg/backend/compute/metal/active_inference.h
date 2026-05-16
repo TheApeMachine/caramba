@@ -34,6 +34,7 @@ out: non-NULL; receives scalar F in out[0]. n==0 writes 0 to out[0].
 Returns 0 on success, non-zero on error.
 */
 int metal_ai_free_energy(const float *mu, const float *log_sigma, float *out, int n);
+int metal_ai_free_energy_tensor(const void *mu, const void *log_sigma, void *out, int n);
 
 /*
 Belief update (same formulas as CPU reference):
@@ -45,6 +46,10 @@ int metal_ai_belief_update(
     const float *mu, const float *log_sigma,
     const float *pred_err, float lr,
     float *out, int n);
+int metal_ai_belief_update_tensor(
+    const void *mu, const void *log_sigma,
+    const void *pred_err, float lr,
+    void *out, int n);
 
 /*
 Precision-weighted error: out[i] = err[i] * exp(clamp(log_prec[i], -80, 80)).
@@ -52,6 +57,8 @@ err, log_prec, out: length n float32 arrays. Returns -3 if non-finite inputs.
 */
 int metal_ai_precision_weight(
     const float *err, const float *log_prec, float *out, int n);
+int metal_ai_precision_weight_tensor(
+    const void *err, const void *log_prec, void *out, int n);
 
 /*
 Expected free energy: G[k] = -sum_i clamp(q[i,k],0,1)*ln(clamp(q[i,k],0,1)+eps).
@@ -59,6 +66,8 @@ q_outcomes: row-major n×K (index i*K+k). out: length K. eps must be finite and 
 */
 int metal_ai_expected_free_energy(
     const float *q_outcomes, float *out, int n, int K, float eps);
+int metal_ai_expected_free_energy_tensor(
+    const void *q_outcomes, void *out, int n, int K, float eps);
 
 #ifdef __cplusplus
 }

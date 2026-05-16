@@ -79,6 +79,10 @@ int metal_causal_counterfactual(
     const float *X_obs, const float *Y_obs, const float *beta, const float *X_cf,
     float *out,
     int N, int N_cf);
+int metal_causal_counterfactual_tensor(
+    const void *X_obs, const void *Y_obs, const void *beta, const void *X_cf,
+    void *out,
+    int N, int N_cf);
 
 // Frontdoor adjustment with equal-frequency binning for univariate X, M, and Y.
 // X, M, and Y are length T. nx and nm are bin counts, and effect is a
@@ -86,6 +90,10 @@ int metal_causal_counterfactual(
 int metal_causal_frontdoor(
     const float *X, const float *M, const float *Y,
     float *effect,
+    int T, int nx, int nm);
+int metal_causal_frontdoor_tensor(
+    const void *X, const void *M, const void *Y,
+    void *effect,
     int T, int nx, int nm);
 
 int metal_causal_dag_markov(

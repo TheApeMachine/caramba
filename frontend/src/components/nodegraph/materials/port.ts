@@ -1,21 +1,29 @@
 import * as THREE from "three";
+import { PORT_COLORS, PORT_TYPES } from "../types";
 import {
-	INPUT_OFFSET_X,
-	INPUT_OFFSET_Y,
 	MAX_NODES,
+	MAX_PORTS,
 	nodesTexture,
-	OUTPUT_OFFSET_X,
-	OUTPUT_OFFSET_Y,
 	PORT_RADIUS,
+	portsTexture,
 } from "../vector";
 
-const PORTS_PER_NODE = 2;
+/*
+PortLayer — one instanced quad per port slot. Each instance reads its own
+texel from portsTexture: (nodeIdx, offsetX, offsetY, packed). It then reads
+the parent node's centre from nodesTexture, adds the offset, and renders
+a half-disc notched into the card's border.
 
-/**
- * PortLayer — one instanced quad per (node, kind). The geometry is 3× the
- * port radius to accommodate the halo glow; the fragment shader composes
- * a disc, rim, and halo from a single distance.
- */
+Color comes from a small uniform palette indexed by the port's type id.
+*/
+const PORT_PALETTE = new Float32Array(PORT_TYPES.length * 3);
+for (let i = 0; i < PORT_TYPES.length; i++) {
+	const col = PORT_COLORS[PORT_TYPES[i]];
+	PORT_PALETTE[i * 3 + 0] = col[0];
+	PORT_PALETTE[i * 3 + 1] = col[1];
+	PORT_PALETTE[i * 3 + 2] = col[2];
+}
+
 export class PortLayer {
 	readonly mesh: THREE.Mesh;
 	private mat: THREE.RawShaderMaterial;
@@ -27,7 +35,7 @@ export class PortLayer {
 		this.geom.setAttribute("position", quad.getAttribute("position"));
 		this.geom.setAttribute("uv", quad.getAttribute("uv"));
 		this.geom.setIndex(quad.getIndex());
-		this.geom.instanceCount = MAX_NODES * PORTS_PER_NODE;
+		this.geom.instanceCount = MAX_PORTS;
 
 		this.mat = new THREE.RawShaderMaterial({
 			glslVersion: THREE.GLSL3,
@@ -35,41 +43,53 @@ export class PortLayer {
 			depthWrite: false,
 			uniforms: {
 				uNodes: { value: nodesTexture },
-				uMax: { value: MAX_NODES },
-				uPortsPerNode: { value: PORTS_PER_NODE },
+				uPorts: { value: portsTexture },
+				uMaxNodes: { value: MAX_NODES },
+				uMaxPorts: { value: MAX_PORTS },
 				uRadius: { value: PORT_RADIUS },
-				uInputOffset: {
-					value: new THREE.Vector2(INPUT_OFFSET_X, INPUT_OFFSET_Y),
-				},
-				uOutputOffset: {
-					value: new THREE.Vector2(OUTPUT_OFFSET_X, OUTPUT_OFFSET_Y),
-				},
+				uPalette: { value: PORT_PALETTE },
+				uPaletteSize: { value: PORT_TYPES.length },
 				uProj: { value: new THREE.Matrix4() },
 				uView: { value: new THREE.Matrix4() },
 			},
 			vertexShader: /* glsl */ `
 				in vec3 position;
 				uniform sampler2D uNodes;
-				uniform float uMax;
-				uniform float uPortsPerNode;
+				uniform sampler2D uPorts;
+				uniform float uMaxNodes;
+				uniform float uMaxPorts;
 				uniform float uRadius;
-				uniform vec2 uInputOffset;
-				uniform vec2 uOutputOffset;
+				uniform vec3 uPalette[${PORT_TYPES.length}];
 				uniform mat4 uProj;
 				uniform mat4 uView;
 				out vec2 vUv;
 				out float vAlive;
 				out float vKind;
+				flat out vec3 vColor;
 				void main() {
-					float id = float(gl_InstanceID);
-					float nodeIdx = floor(id / uPortsPerNode);
-					float kind = mod(id, uPortsPerNode);
-					float u = (nodeIdx + 0.5) / uMax;
-					vec4 n = texture(uNodes, vec2(u, 0.5));
-					vAlive = n.a;
-					vUv = position.xy + 0.5;
+					float pu = (float(gl_InstanceID) + 0.5) / uMaxPorts;
+					vec4 port = texture(uPorts, vec2(pu, 0.5));
+					float nodeIdx = port.r;
+					vAlive = (nodeIdx < 0.0) ? 0.0 : 1.0;
+					if (vAlive < 0.5) {
+						gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+						return;
+					}
+					vec2 offset = vec2(port.g, port.b);
+					float packed = port.a;
+					float kind = mod(packed, 8.0);
+					float typeId = floor(packed / 8.0);
 					vKind = kind;
-					vec2 offset = (kind < 0.5) ? uInputOffset : uOutputOffset;
+					vColor = uPalette[int(typeId)];
+
+					float nu = (nodeIdx + 0.5) / uMaxNodes;
+					vec4 n = texture(uNodes, vec2(nu, 0.5));
+					if (n.a < 0.5) {
+						vAlive = 0.0;
+						gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+						return;
+					}
+					vUv = position.xy + 0.5;
 					vec2 world = n.xy + offset + position.xy * (uRadius * 3.0);
 					gl_Position = uProj * uView * vec4(world, 0.0, 1.0);
 				}
@@ -79,13 +99,16 @@ export class PortLayer {
 				in vec2 vUv;
 				in float vAlive;
 				in float vKind;
+				flat in vec3 vColor;
 				out vec4 outColor;
 				void main() {
 					if (vAlive < 0.5) discard;
 					vec2 p = vUv - 0.5;
 					float d = length(p);
-					// Flat half-disc notched into the card's border. Flat edge is
-					// at x = 0 (the card border); curved half pokes inward.
+					// Flat half-disc notched into the card's border. Flat edge
+					// at x = 0 (card border); curved half pokes inward. Side
+					// flips based on kind so inputs notch right-ward and
+					// outputs notch left-ward.
 					float side = (vKind < 0.5) ? 1.0 : -1.0;
 					float xInward = p.x * side;
 					if (xInward < 0.0) discard;
@@ -94,22 +117,18 @@ export class PortLayer {
 					float aa = 0.012;
 					if (d > discR + aa) discard;
 
-					// Desaturated type fills.
-					vec3 fillIn  = vec3(0.38, 0.72, 0.92);
-					vec3 fillOut = vec3(0.92, 0.68, 0.36);
-					vec3 portCol = (vKind < 0.5) ? fillIn : fillOut;
-					vec3 color = portCol;
+					vec3 color = vColor;
 
-					// Inner shadow along the curved rim — same falloff vocabulary
-					// as the card's border AA so the port reads as part of the
-					// same continuous bevelled surface.
+					// Inner shadow along the curved rim — same bevel vocabulary
+					// as the card's border so the joint reads as a single
+					// continuous surface.
 					float rimShade = smoothstep(discR - 0.080, discR, d);
 					color *= 1.0 - rimShade * 0.45;
 
 					// Occlusion gradient along the flat edge (the side touching
-					// the card's rim). Darkens the port pixels nearest the card
-					// border so the joint reads as 'cast shadow from the rim'
-					// rather than 'two flat surfaces butted together'.
+					// the card's rim). Darkens pixels nearest the card border
+					// so the joint reads as a cast shadow rather than two
+					// butted surfaces.
 					float flatShade = 1.0 - smoothstep(0.0, 0.060, xInward);
 					color *= 1.0 - flatShade * 0.35;
 

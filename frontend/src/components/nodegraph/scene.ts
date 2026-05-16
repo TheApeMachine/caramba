@@ -9,11 +9,20 @@ import { PickLayer } from "./materials/pick";
 import { PortLayer } from "./materials/port";
 import { RubberEdgeLayer } from "./materials/rubber";
 import { type FramedParent, PreviewPass } from "./preview";
+import { portsCompatible } from "./types";
 import {
-	currentLevel, fillInputBuffers, getRevision,
-	INPUT_OFFSET_X, INPUT_OFFSET_Y, NODE_H, NODE_W,
-	type Node, OUTPUT_OFFSET_X, OUTPUT_OFFSET_Y, PORT_RADIUS,
-	type PositionTransform, vectorStore,
+	currentLevel,
+	fillInputBuffers,
+	getRevision,
+	NODE_H,
+	NODE_W,
+	type Node,
+	PORT_RADIUS,
+	portDefs,
+	type PortKind,
+	type PositionTransform,
+	portWorld,
+	vectorStore,
 } from "./vector";
 
 const CLEAR_COLOR = 0x0b0d10;
@@ -98,7 +107,7 @@ function transformFor(frame: PortalFrame, unfoldT: number): PositionTransform {
 	};
 }
 
-export type PortRef = { nodeId: number; kind: "in" | "out" };
+export type PortRef = { nodeId: number; kind: PortKind; portIdx: number };
 
 export type SceneHandle = {
 	renderer: THREE.WebGLRenderer;
@@ -185,35 +194,29 @@ export function setupScene(container: HTMLElement): SceneHandle {
 		pickLayer.pick(renderer, camera.three, sx, sy, CLEAR_COLOR);
 
 	/*
-	Port hit-test in screen space. Ports are at known offsets from each node
-	centre; we walk the current level and pick the closest port within a
-	zoom-aware radius. Returns the picked port or null.
+	Port hit-test in screen space. Walks every port on every node at the
+	current level (cheap: ports per node ≤ ~8, nodes per level ≤ low
+	thousands) and picks the closest one within a generous radius. Returns
+	the port reference or null.
 	*/
-	type PortRef = { nodeId: number; kind: "in" | "out" };
-	const portWorld = (node: Node, kind: "in" | "out"): [number, number] => {
-		if (kind === "in") {
-			return [node.x + INPUT_OFFSET_X, node.y + INPUT_OFFSET_Y];
-		}
-		return [node.x + OUTPUT_OFFSET_X, node.y + OUTPUT_OFFSET_Y];
-	};
 	const pickPort = (sx: number, sy: number): PortRef | null => {
 		const [wx, wy] = camera.worldFromScreen(sx, sy, renderer.domElement);
 		const lvl = currentLevel(vectorStore.state);
-		// Pick radius is the port's visible half-disc radius in world units
-		// (3 * PORT_RADIUS quad scaled at 0.25 disc = 0.75 * PORT_RADIUS),
-		// padded a bit so the user doesn't have to be pixel-perfect.
 		const r = PORT_RADIUS * 1.1;
 		const r2 = r * r;
 		let best: { ref: PortRef; d2: number } | null = null;
 		for (const node of lvl.nodes) {
 			for (const kind of ["in", "out"] as const) {
-				const [px, py] = portWorld(node, kind);
-				const dx = wx - px;
-				const dy = wy - py;
-				const d2 = dx * dx + dy * dy;
-				if (d2 > r2) continue;
-				if (!best || d2 < best.d2) {
-					best = { ref: { nodeId: node.id, kind }, d2 };
+				const defs = portDefs(node, kind);
+				for (let idx = 0; idx < defs.length; idx++) {
+					const [px, py] = portWorld(node, kind, idx);
+					const dx = wx - px;
+					const dy = wy - py;
+					const d2 = dx * dx + dy * dy;
+					if (d2 > r2) continue;
+					if (!best || d2 < best.d2) {
+						best = { ref: { nodeId: node.id, kind, portIdx: idx }, d2 };
+					}
 				}
 			}
 		}
@@ -227,7 +230,8 @@ export function setupScene(container: HTMLElement): SceneHandle {
 	*/
 	const setRubber = (
 		from: PortRef | null,
-		cursorWorldX: number, cursorWorldY: number,
+		cursorWorldX: number,
+		cursorWorldY: number,
 	): PortRef | null => {
 		if (!from) {
 			rubberLayer.setActive(false);
@@ -239,25 +243,34 @@ export function setupScene(container: HTMLElement): SceneHandle {
 			rubberLayer.setActive(false);
 			return null;
 		}
-		const [ax, ay] = portWorld(fromNode, from.kind);
+		const [ax, ay] = portWorld(fromNode, from.kind, from.portIdx);
+		const fromType = portDefs(fromNode, from.kind)[from.portIdx]?.type;
 
-		// Snap to nearest compatible port within radius.
-		const wantKind = from.kind === "in" ? "out" : "in";
+		// Snap to nearest compatible port within radius. "Compatible" means
+		// opposite kind (out↔in), different node, and matching port types
+		// (or one side is `any`).
+		const wantKind: PortKind = from.kind === "in" ? "out" : "in";
 		const snapR = PORT_RADIUS * 1.8;
 		const snapR2 = snapR * snapR;
 		let snap: { ref: PortRef; x: number; y: number; d2: number } | null = null;
 		for (const node of lvl.nodes) {
 			if (node.id === from.nodeId) continue;
-			const [px, py] = portWorld(node, wantKind);
-			const dx = cursorWorldX - px;
-			const dy = cursorWorldY - py;
-			const d2 = dx * dx + dy * dy;
-			if (d2 > snapR2) continue;
-			if (!snap || d2 < snap.d2) {
-				snap = {
-					ref: { nodeId: node.id, kind: wantKind },
-					x: px, y: py, d2,
-				};
+			const defs = portDefs(node, wantKind);
+			for (let idx = 0; idx < defs.length; idx++) {
+				if (fromType && !portsCompatible(fromType, defs[idx].type)) continue;
+				const [px, py] = portWorld(node, wantKind, idx);
+				const dx = cursorWorldX - px;
+				const dy = cursorWorldY - py;
+				const d2 = dx * dx + dy * dy;
+				if (d2 > snapR2) continue;
+				if (!snap || d2 < snap.d2) {
+					snap = {
+						ref: { nodeId: node.id, kind: wantKind, portIdx: idx },
+						x: px,
+						y: py,
+						d2,
+					};
+				}
 			}
 		}
 		const bx = snap?.x ?? cursorWorldX;

@@ -243,3 +243,25 @@ func BenchmarkMetalHawkes_LogLikelihoodTensor(benchmark *testing.B) {
 		closeBenchmarkOutput(benchmark, output, err)
 	}
 }
+
+func BenchmarkMetalHawkes_SimulateTensor(benchmark *testing.B) {
+	benchmark.ReportAllocs()
+	tensorBackend, hawkesOps := hawkesBenchmarkOps(benchmark)
+	defer func() {
+		_ = tensorBackend.Close()
+	}()
+
+	processCount, maxSteps := 8, 256
+	mu := uploadMetalTensor(tensorBackend, hawkesBenchmarkShape(benchmark, processCount), hawkesMu(processCount))
+	alpha := uploadMetalTensor(tensorBackend, hawkesBenchmarkShape(benchmark, processCount), hawkesZeros(processCount))
+	beta := uploadMetalTensor(tensorBackend, hawkesBenchmarkShape(benchmark, processCount), hawkesBeta(processCount))
+	tMax := uploadMetalTensor(tensorBackend, hawkesBenchmarkShape(benchmark, 1), []float64{2})
+	outputShape := hawkesBenchmarkShape(benchmark, processCount*maxSteps)
+	defer closeBenchmarkTensors(mu, alpha, beta, tMax)
+
+	benchmark.ResetTimer()
+	for benchmark.Loop() {
+		output, err := hawkesOps.SimulateTensor(mu, alpha, beta, tMax, outputShape)
+		closeBenchmarkOutput(benchmark, output, err)
+	}
+}

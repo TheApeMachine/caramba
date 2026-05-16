@@ -374,6 +374,34 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyHawkesLogLikelihood(ctx, node, inputs)
 	case "hawkes.simulate":
 		return tensorBackend.applyHawkesSimulate(ctx, node, inputs)
+	case "active_inference.free_energy":
+		return tensorBackend.applyActiveFreeEnergy(ctx, node, inputs)
+	case "active_inference.belief_update":
+		return tensorBackend.applyActiveBeliefUpdate(ctx, node, inputs)
+	case "active_inference.precision_weight":
+		return tensorBackend.applyActivePrecisionWeight(ctx, node, inputs)
+	case "active_inference.expected_free_energy":
+		return tensorBackend.applyActiveExpectedFreeEnergy(ctx, node, inputs)
+	case "predictive_coding.prediction":
+		return tensorBackend.applyPredictivePrediction(ctx, node, inputs)
+	case "predictive_coding.prediction_error":
+		return tensorBackend.applyPredictivePredictionError(ctx, node, inputs)
+	case "predictive_coding.update_representation":
+		return tensorBackend.applyPredictiveUpdateRepresentation(ctx, node, inputs)
+	case "predictive_coding.update_weights":
+		return tensorBackend.applyPredictiveUpdateWeights(ctx, node, inputs)
+	case "markov_blanket.partition":
+		return tensorBackend.applyMarkovPartition(ctx, node, inputs)
+	case "markov_blanket.flow_internal":
+		return tensorBackend.applyMarkovFlowInternal(ctx, node, inputs)
+	case "markov_blanket.flow_active":
+		return tensorBackend.applyMarkovFlowActive(ctx, node, inputs)
+	case "markov_blanket.mutual_information":
+		return tensorBackend.applyMarkovMutualInformation(ctx, node, inputs)
+	case "causal.counterfactual":
+		return tensorBackend.applyCausalCounterfactual(ctx, node, inputs)
+	case "causal.frontdoor_adjustment":
+		return tensorBackend.applyCausalFrontdoorAdjustment(ctx, node, inputs)
 	default:
 		return nil, fmt.Errorf(
 			"metal tensor: operation %q node %q has no resident Metal implementation",

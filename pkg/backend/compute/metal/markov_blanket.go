@@ -22,6 +22,7 @@ this wrapper from multiple goroutines.
 type MetalMarkovBlanket struct {
 	mu       sync.Mutex
 	metallib string
+	runtime  *MetalRuntime
 }
 
 func NewMarkovBlanket(metallib string) (*MetalMarkovBlanket, error) {
@@ -36,7 +37,12 @@ func NewMarkovBlanket(metallib string) (*MetalMarkovBlanket, error) {
 		return nil, fmt.Errorf("metal_mb_init failed (rc=%d): check %q exists", rc, metallib)
 	}
 
-	return &MetalMarkovBlanket{metallib: metallib}, nil
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MetalMarkovBlanket{metallib: metallib, runtime: runtime}, nil
 }
 
 /*
@@ -48,6 +54,10 @@ func (op *MetalMarkovBlanket) Close() error {
 
 	if rc := C.metal_mb_cleanup(); rc != 0 {
 		return fmt.Errorf("metal_mb_cleanup failed (rc=%d)", rc)
+	}
+
+	if op.runtime != nil {
+		return op.runtime.Close()
 	}
 
 	return nil

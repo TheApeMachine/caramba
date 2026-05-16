@@ -14,6 +14,7 @@ static id<MTLCommandQueue>              gAIQueue  = nil;
 static id<MTLComputePipelineState>     gPSO_fe   = nil;
 static id<MTLComputePipelineState>     gPSO_fe_red = nil;
 static id<MTLComputePipelineState>     gPSO_fe_fin = nil;
+static id<MTLComputePipelineState>     gPSO_fe_serial = nil;
 static id<MTLComputePipelineState>     gPSO_belief = nil;
 static id<MTLComputePipelineState>     gPSO_pw   = nil;
 static id<MTLComputePipelineState>     gPSO_efe  = nil;
@@ -102,11 +103,12 @@ int metal_ai_init(const char *metallib_path) {
 		gPSO_fe     = ai_make_pso(gAIDevice, library, @"ai_free_energy_terms_kernel");
 		gPSO_fe_red = ai_make_pso(gAIDevice, library, @"ai_reduce_fe_atomic_kernel");
 		gPSO_fe_fin = ai_make_pso(gAIDevice, library, @"ai_finalize_free_energy_kernel");
+		gPSO_fe_serial = ai_make_pso(gAIDevice, library, @"ai_free_energy_serial_kernel");
 		gPSO_belief = ai_make_pso(gAIDevice, library, @"ai_belief_update_kernel");
 		gPSO_pw     = ai_make_pso(gAIDevice, library, @"ai_precision_weight_kernel");
 		gPSO_efe    = ai_make_pso(gAIDevice, library, @"ai_expected_free_energy_kernel");
 
-		if (!gPSO_fe || !gPSO_fe_red || !gPSO_fe_fin || !gPSO_belief || !gPSO_pw || !gPSO_efe) {
+		if (!gPSO_fe || !gPSO_fe_red || !gPSO_fe_fin || !gPSO_fe_serial || !gPSO_belief || !gPSO_pw || !gPSO_efe) {
 			result = METAL_AI_ERR_INVALID;
 			return;
 		}
@@ -123,6 +125,7 @@ int metal_ai_cleanup(void) {
 		gPSO_fe     = nil;
 		gPSO_fe_red = nil;
 		gPSO_fe_fin = nil;
+		gPSO_fe_serial = nil;
 		gPSO_belief = nil;
 		gPSO_pw     = nil;
 		gPSO_efe    = nil;
@@ -437,6 +440,184 @@ int metal_ai_expected_free_energy(
 		}
 
 		memcpy(out, [buf_o contents], (size_t)K * sizeof(float));
+	});
+
+	return rc;
+}
+
+int metal_ai_free_energy_tensor(const void *mu, const void *log_sigma, void *out, int n) {
+	if (!gAIInited) {
+		return METAL_AI_ERR_NOT_INIT;
+	}
+
+	if (!mu || !log_sigma || !out || n <= 0 || !gPSO_fe_serial) {
+		return METAL_AI_ERR_INVALID;
+	}
+
+	__block int rc = METAL_AI_OK;
+
+	ai_ensure_serial();
+	dispatch_sync(gAISerial, ^{
+		id<MTLBuffer> buf_mu = (__bridge id)((void*)mu);
+		id<MTLBuffer> buf_ls = (__bridge id)((void*)log_sigma);
+		id<MTLBuffer> buf_out = (__bridge id)out;
+
+		if (!buf_mu || !buf_ls || !buf_out) {
+			rc = METAL_AI_ERR_INVALID;
+			return;
+		}
+
+		id<MTLCommandBuffer> command_buffer = [gAIQueue commandBuffer];
+		id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+
+		if (!command_buffer || !encoder) {
+			rc = METAL_AI_ERR_INVALID;
+			return;
+		}
+
+		uint n_u = (uint)n;
+		[encoder setComputePipelineState:gPSO_fe_serial];
+		[encoder setBuffer:buf_mu offset:0 atIndex:0];
+		[encoder setBuffer:buf_ls offset:0 atIndex:1];
+		[encoder setBuffer:buf_out offset:0 atIndex:2];
+		[encoder setBytes:&n_u length:sizeof(uint) atIndex:3];
+		[encoder dispatchThreads:MTLSizeMake(1, 1, 1)
+		  threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+		[encoder endEncoding];
+
+		rc = ai_wait_command_buffer(command_buffer);
+	});
+
+	return rc;
+}
+
+int metal_ai_belief_update_tensor(
+	const void *mu, const void *log_sigma,
+	const void *pred_err, float lr,
+	void *out, int n) {
+	if (!gAIInited) {
+		return METAL_AI_ERR_NOT_INIT;
+	}
+
+	if (!mu || !log_sigma || !pred_err || !out || n <= 0) {
+		return METAL_AI_ERR_INVALID;
+	}
+
+	__block int rc = METAL_AI_OK;
+
+	ai_ensure_serial();
+	dispatch_sync(gAISerial, ^{
+		id<MTLBuffer> buf_mu = (__bridge id)((void*)mu);
+		id<MTLBuffer> buf_ls = (__bridge id)((void*)log_sigma);
+		id<MTLBuffer> buf_pe = (__bridge id)((void*)pred_err);
+		id<MTLBuffer> buf_out = (__bridge id)out;
+
+		if (!buf_mu || !buf_ls || !buf_pe || !buf_out) {
+			rc = METAL_AI_ERR_INVALID;
+			return;
+		}
+
+		id<MTLCommandBuffer> command_buffer = [gAIQueue commandBuffer];
+		id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+
+		[encoder setComputePipelineState:gPSO_belief];
+		[encoder setBuffer:buf_mu offset:0 atIndex:0];
+		[encoder setBuffer:buf_ls offset:0 atIndex:1];
+		[encoder setBuffer:buf_pe offset:0 atIndex:2];
+		[encoder setBuffer:buf_out offset:0 atIndex:3];
+		[encoder setBytes:&lr length:sizeof(lr) atIndex:4];
+		uint n_u = (uint)n;
+		[encoder setBytes:&n_u length:sizeof(uint) atIndex:5];
+		[encoder dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		  threadsPerThreadgroup:MTLSizeMake(gPSO_belief.threadExecutionWidth, 1, 1)];
+		[encoder endEncoding];
+
+		rc = ai_wait_command_buffer(command_buffer);
+	});
+
+	return rc;
+}
+
+int metal_ai_precision_weight_tensor(
+	const void *err, const void *log_prec, void *out, int n) {
+	if (!gAIInited) {
+		return METAL_AI_ERR_NOT_INIT;
+	}
+
+	if (!err || !log_prec || !out || n <= 0) {
+		return METAL_AI_ERR_INVALID;
+	}
+
+	__block int rc = METAL_AI_OK;
+
+	ai_ensure_serial();
+	dispatch_sync(gAISerial, ^{
+		id<MTLBuffer> buf_e = (__bridge id)((void*)err);
+		id<MTLBuffer> buf_lp = (__bridge id)((void*)log_prec);
+		id<MTLBuffer> buf_o = (__bridge id)out;
+
+		if (!buf_e || !buf_lp || !buf_o) {
+			rc = METAL_AI_ERR_INVALID;
+			return;
+		}
+
+		id<MTLCommandBuffer> command_buffer = [gAIQueue commandBuffer];
+		id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+
+		[encoder setComputePipelineState:gPSO_pw];
+		[encoder setBuffer:buf_e offset:0 atIndex:0];
+		[encoder setBuffer:buf_lp offset:0 atIndex:1];
+		[encoder setBuffer:buf_o offset:0 atIndex:2];
+		uint n_u = (uint)n;
+		[encoder setBytes:&n_u length:sizeof(uint) atIndex:3];
+		[encoder dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		  threadsPerThreadgroup:MTLSizeMake(gPSO_pw.threadExecutionWidth, 1, 1)];
+		[encoder endEncoding];
+
+		rc = ai_wait_command_buffer(command_buffer);
+	});
+
+	return rc;
+}
+
+int metal_ai_expected_free_energy_tensor(
+	const void *q_outcomes, void *out, int n, int K, float eps) {
+	if (!gAIInited) {
+		return METAL_AI_ERR_NOT_INIT;
+	}
+
+	if (!q_outcomes || !out || n <= 0 || K <= 0 || !(eps > 0.f) || !isfinite((double)eps)) {
+		return METAL_AI_ERR_INVALID;
+	}
+
+	__block int rc = METAL_AI_OK;
+
+	ai_ensure_serial();
+	dispatch_sync(gAISerial, ^{
+		id<MTLBuffer> buf_q = (__bridge id)((void*)q_outcomes);
+		id<MTLBuffer> buf_o = (__bridge id)out;
+
+		if (!buf_q || !buf_o) {
+			rc = METAL_AI_ERR_INVALID;
+			return;
+		}
+
+		id<MTLCommandBuffer> command_buffer = [gAIQueue commandBuffer];
+		id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+
+		[encoder setComputePipelineState:gPSO_efe];
+		[encoder setBuffer:buf_q offset:0 atIndex:0];
+		[encoder setBuffer:buf_o offset:0 atIndex:1];
+		uint n_u = (uint)n;
+		uint k_u = (uint)K;
+		[encoder setBytes:&n_u length:sizeof(uint) atIndex:2];
+		[encoder setBytes:&k_u length:sizeof(uint) atIndex:3];
+		[encoder setBytes:&eps length:sizeof(eps) atIndex:4];
+		[encoder dispatchThreads:MTLSizeMake((NSUInteger)K, 1, 1)
+		  threadsPerThreadgroup:MTLSizeMake(gPSO_efe.threadExecutionWidth, 1, 1)];
+		[encoder endEncoding];
+
+		rc = ai_wait_command_buffer(command_buffer);
 	});
 
 	return rc;

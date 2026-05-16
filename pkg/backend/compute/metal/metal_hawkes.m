@@ -12,6 +12,7 @@ static id<MTLComputePipelineState> gPSO_kmat  = nil;
 static id<MTLComputePipelineState> gPSO_logt  = nil;
 static id<MTLComputePipelineState> gPSO_logred = nil;
 static id<MTLComputePipelineState> gPSO_logfin = nil;
+static id<MTLComputePipelineState> gPSO_logserial = nil;
 static id<MTLComputePipelineState> gPSO_simclr = nil;
 static id<MTLComputePipelineState> gPSO_simdim = nil;
 static int                          gHInited  = 0;
@@ -99,6 +100,7 @@ int metal_hawkes_init(const char *metallib_path) {
 		gPSO_logt = hawkes_make_pso(gHDevice, lib, @"hawkes_log_term_kernel");
 		gPSO_logred = hawkes_make_pso(gHDevice, lib, @"hawkes_reduce_sum_atomic_kernel");
 		gPSO_logfin = hawkes_make_pso(gHDevice, lib, @"hawkes_loglik_finalize_kernel");
+		gPSO_logserial = hawkes_make_pso(gHDevice, lib, @"hawkes_log_likelihood_serial_kernel");
 		gPSO_simclr = hawkes_make_pso(gHDevice, lib, @"hawkes_sim_clear_kernel");
 		gPSO_simdim = hawkes_make_pso(gHDevice, lib, @"hawkes_simulate_dim_kernel");
 
@@ -108,6 +110,7 @@ int metal_hawkes_init(const char *metallib_path) {
 			|| !gPSO_logt
 			|| !gPSO_logred
 			|| !gPSO_logfin
+			|| !gPSO_logserial
 			|| !gPSO_simclr
 			|| !gPSO_simdim
 		) {
@@ -129,6 +132,7 @@ int metal_hawkes_cleanup(void) {
 		gPSO_logt = nil;
 		gPSO_logred = nil;
 		gPSO_logfin = nil;
+		gPSO_logserial = nil;
 		gPSO_simclr = nil;
 		gPSO_simdim = nil;
 		gHQueue   = nil;
@@ -516,56 +520,32 @@ int metal_hawkes_log_likelihood_tensor(
 
 	hawkes_ensure_serial();
 	dispatch_sync(gHSerial, ^{
-		size_t bytes = (size_t)T * sizeof(float);
 		id<MTLBuffer> buf_i = (__bridge id)((void*)intensities);
-		id<MTLBuffer> buf_p = [gHDevice newBufferWithLength:bytes
-		                                            options:MTLResourceStorageModeShared];
-		float sum_zero = 0.f;
-		id<MTLBuffer> buf_sum = [gHDevice newBufferWithBytes:&sum_zero
-		                                               length:sizeof(float)
-		                                              options:MTLResourceStorageModeShared];
 		id<MTLBuffer> buf_integral = (__bridge id)((void*)integral);
 		id<MTLBuffer> buf_out = (__bridge id)out;
 
-		if (!buf_i || !buf_p || !buf_sum || !buf_integral || !buf_out) {
+		if (!buf_i || !buf_integral || !buf_out || !gPSO_logserial) {
 			rc = -1;
 			return;
 		}
 
 		id<MTLCommandBuffer> cb = [gHQueue commandBuffer];
-		id<MTLComputeCommandEncoder> enc0 = [cb computeCommandEncoder];
+		id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
 
-		if (!cb || !enc0) {
+		if (!cb || !enc) {
 			rc = -1;
 			return;
 		}
 
-		[enc0 setComputePipelineState:gPSO_logt];
-		[enc0 setBuffer:buf_i offset:0 atIndex:0];
-		[enc0 setBuffer:buf_p offset:0 atIndex:1];
 		uint tu = (uint)T;
-		[enc0 setBytes:&tu length:sizeof(tu) atIndex:2];
-		[enc0 dispatchThreads:MTLSizeMake((NSUInteger)T, 1, 1)
-		  threadsPerThreadgroup:MTLSizeMake(gPSO_logt.threadExecutionWidth, 1, 1)];
-		[enc0 endEncoding];
-
-		id<MTLComputeCommandEncoder> enc1 = [cb computeCommandEncoder];
-		[enc1 setComputePipelineState:gPSO_logred];
-		[enc1 setBuffer:buf_p offset:0 atIndex:0];
-		[enc1 setBuffer:buf_sum offset:0 atIndex:1];
-		[enc1 setBytes:&tu length:sizeof(tu) atIndex:2];
-		[enc1 dispatchThreads:MTLSizeMake((NSUInteger)T, 1, 1)
-		  threadsPerThreadgroup:MTLSizeMake(gPSO_logred.threadExecutionWidth, 1, 1)];
-		[enc1 endEncoding];
-
-		id<MTLComputeCommandEncoder> enc2 = [cb computeCommandEncoder];
-		[enc2 setComputePipelineState:gPSO_logfin];
-		[enc2 setBuffer:buf_sum offset:0 atIndex:0];
-		[enc2 setBuffer:buf_integral offset:0 atIndex:1];
-		[enc2 setBuffer:buf_out offset:0 atIndex:2];
-		[enc2 dispatchThreads:MTLSizeMake(1, 1, 1)
+		[enc setComputePipelineState:gPSO_logserial];
+		[enc setBuffer:buf_i offset:0 atIndex:0];
+		[enc setBuffer:buf_integral offset:0 atIndex:1];
+		[enc setBuffer:buf_out offset:0 atIndex:2];
+		[enc setBytes:&tu length:sizeof(tu) atIndex:3];
+		[enc dispatchThreads:MTLSizeMake(1, 1, 1)
 		  threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
-		[enc2 endEncoding];
+		[enc endEncoding];
 
 		rc = hawkes_wait(cb);
 	});

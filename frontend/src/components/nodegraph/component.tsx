@@ -1,7 +1,23 @@
 import { useSelector } from "@tanstack/react-store";
-import { useEffect, useEffectEvent, useRef } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { NodePalette } from "./palette";
 import { type PortRef, type SceneHandle, setupScene } from "./scene";
-import { currentLevel, NODE_H, NODE_W, vectorStore } from "./vector";
+import { portsCompatible } from "./types";
+import {
+	currentLevel,
+	NODE_H,
+	NODE_W,
+	portDefs,
+	snapToGrid,
+	vectorStore,
+} from "./vector";
+
+type PaletteState = {
+	screenX: number;
+	screenY: number;
+	worldX: number;
+	worldY: number;
+};
 
 type Mode =
 	| { kind: "idle" }
@@ -34,6 +50,7 @@ export const NodeGraph = () => {
 	const modeRef = useRef<Mode>({ kind: "idle" });
 	const framedNodeRef = useRef<number | null>(null);
 	const dragMovedRef = useRef(false);
+	const [palette, setPalette] = useState<PaletteState | null>(null);
 
 	const level = useSelector(vectorStore, (s) =>
 		currentLevel(s),
@@ -96,8 +113,8 @@ export const NodeGraph = () => {
 		const [wx, wy] = scene.worldFromScreen(evt.clientX, evt.clientY);
 		vectorStore.actions.moveNode(
 			mode.nodeId,
-			wx - mode.offsetX,
-			wy - mode.offsetY,
+			snapToGrid(wx - mode.offsetX),
+			snapToGrid(wy - mode.offsetY),
 		);
 		dragMovedRef.current = true;
 	});
@@ -120,7 +137,26 @@ export const NodeGraph = () => {
 			// Orient so 'from' is always the output port.
 			const out = mode.from.kind === "out" ? mode.from : target;
 			const inp = mode.from.kind === "in" ? mode.from : target;
-			vectorStore.actions.addEdge(out.nodeId, inp.nodeId);
+
+			// Type-check before committing. setRubber filters snap candidates
+			// by compatibility, but the pickPort fallback doesn't — without
+			// this guard, a precise drop on an incompatible port would still
+			// connect.
+			const lvl = currentLevel(vectorStore.state);
+			const outNode = lvl.nodes.find((n) => n.id === out.nodeId);
+			const inpNode = lvl.nodes.find((n) => n.id === inp.nodeId);
+			if (!outNode || !inpNode) return;
+			const outType = portDefs(outNode, "out")[out.portIdx]?.type;
+			const inpType = portDefs(inpNode, "in")[inp.portIdx]?.type;
+			if (!outType || !inpType) return;
+			if (!portsCompatible(outType, inpType)) return;
+
+			vectorStore.actions.addEdge(
+				out.nodeId,
+				out.portIdx,
+				inp.nodeId,
+				inp.portIdx,
+			);
 			return;
 		}
 
@@ -159,37 +195,61 @@ export const NodeGraph = () => {
 		}
 	});
 
+	const onContextMenu = useEffectEvent((evt: MouseEvent) => {
+		const scene = sceneRef.current;
+		if (!scene) return;
+		if (evt.target !== scene.canvas) return;
+		evt.preventDefault();
+		const [wx, wy] = scene.worldFromScreen(evt.clientX, evt.clientY);
+		setPalette({
+			screenX: evt.clientX,
+			screenY: evt.clientY,
+			worldX: snapToGrid(wx),
+			worldY: snapToGrid(wy),
+		});
+	});
+
 	useEffect(() => {
 		if (!containerRef.current) return;
 		const scene = setupScene(containerRef.current);
 		sceneRef.current = scene;
 
-		// One-time seed so a fresh load has something visible at every
-		// level we'll demo: two top-level nodes, each with a 3-node
-		// sub-graph wired up.
+		// One-time seed: showcase the typed-port system. Type IDs map to
+		// NODE_TYPES in ./types: 0=default(any↔any), 1=source(tensor out),
+		// 2=sink(tensor in), 3=scalar(2×number in, 2×number out), 4=gate
+		// (any+bool in, any out). Sub-graphs let us demo the fractal zoom.
 		if (
 			vectorStore.state.path.length === 0 &&
 			vectorStore.state.nodes.length === 0
 		) {
 			const { actions } = vectorStore;
-			actions.addNode(-200, 0);
-			actions.addNode(200, 0);
-			actions.addEdge(0, 1);
+			// Horizontal spacing >= NODE_W + 2*STUB so the Manhattan router has
+			// room for a forward route (output-stub + input-stub fit between
+			// adjacent nodes). NODE_W=240, STUB=24 → 288 minimum; 360 gives
+			// breathing room.
+			actions.addNode(-400, 0, 1); // 0: source (tensor out)
+			actions.addNode(0, 0, 4); // 1: gate (any + bool → any)
+			actions.addNode(400, 0, 2); // 2: sink (tensor in)
+			actions.addEdge(0, 0, 1, 0); // source.value → gate.in
+			actions.addEdge(1, 0, 2, 0); // gate.out → sink.value
 
-			for (const parentId of [0, 1]) {
+			for (const parentId of [0, 1, 2]) {
 				actions.enter(parentId);
-				actions.addNode(-180, -60);
-				actions.addNode(0, 60);
-				actions.addNode(180, -60);
+				// All three inner nodes are scalars so the chain uses only
+				// number ports — strict typing means same-type-only.
+				actions.addNode(-320, -80, 3); // scalar (2×number in, 2×number out)
+				actions.addNode(0, 80, 3);
+				actions.addNode(320, -80, 3);
 				const inner = currentLevel(vectorStore.state).nodes;
-				actions.addEdge(inner[0].id, inner[1].id);
-				actions.addEdge(inner[1].id, inner[2].id);
+				actions.addEdge(inner[0].id, 0, inner[1].id, 1); // sum → y
+				actions.addEdge(inner[1].id, 1, inner[2].id, 0); // diff → x
 				actions.up();
 			}
 		}
 
 		scene.canvas.addEventListener("mousedown", onMouseDown);
 		scene.canvas.addEventListener("dblclick", onDoubleClick);
+		scene.canvas.addEventListener("contextmenu", onContextMenu);
 		window.addEventListener("mousemove", onMouseMove);
 		window.addEventListener("mouseup", onMouseUp);
 		window.addEventListener("keydown", onKeyDown);
@@ -227,6 +287,7 @@ export const NodeGraph = () => {
 			cancelAnimationFrame(zoomRaf);
 			scene.canvas.removeEventListener("mousedown", onMouseDown);
 			scene.canvas.removeEventListener("dblclick", onDoubleClick);
+			scene.canvas.removeEventListener("contextmenu", onContextMenu);
 			window.removeEventListener("mousemove", onMouseMove);
 			window.removeEventListener("mouseup", onMouseUp);
 			window.removeEventListener("keydown", onKeyDown);
@@ -264,8 +325,30 @@ export const NodeGraph = () => {
 				<br />
 				drag empty → pan · click node → frame · drag node → move ·
 				drag from port → edge · double-click node → enter ·
-				double-click empty → add node · wheel → zoom · Esc → up
+				right-click → add node · wheel → zoom · Esc → up
 			</div>
+			{palette ? (
+				<NodePalette
+					x={palette.screenX}
+					y={palette.screenY}
+					onPick={(pick) => {
+						vectorStore.actions.addNode(
+							palette.worldX,
+							palette.worldY,
+							pick.typeId,
+							pick.inputs || pick.outputs || pick.opId
+								? {
+										inputs: pick.inputs,
+										opId: pick.opId,
+										outputs: pick.outputs,
+									}
+								: undefined,
+						);
+						setPalette(null);
+					}}
+					onClose={() => setPalette(null)}
+				/>
+			) : null}
 		</div>
 	);
 };

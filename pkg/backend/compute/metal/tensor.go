@@ -31,6 +31,10 @@ type TensorBackend struct {
 	projectionOps  *ProjectionOps
 	vsaOps         *MetalVSAOps
 	hawkesOps      *MetalHawkes
+	activeOps      *ActiveInferenceOps
+	predictiveOps  *MetalPredictiveCodingOps
+	markovOps      *MetalMarkovBlanket
+	causalOps      *MetalCausalOps
 	embeddingOps   map[string]*EmbeddingOps
 	kvEntries      map[string]*residentKVEntry
 	resident       map[string]computetensor.Float64Tensor

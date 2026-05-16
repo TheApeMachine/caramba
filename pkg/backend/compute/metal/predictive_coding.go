@@ -19,6 +19,7 @@ MetalPredictiveCodingOps dispatches predictive coding on Metal; calls are serial
 type MetalPredictiveCodingOps struct {
 	mu       sync.Mutex
 	metallib string
+	runtime  *MetalRuntime
 }
 
 /*
@@ -36,7 +37,12 @@ func NewPredictiveCodingOps(metallib string) (*MetalPredictiveCodingOps, error) 
 		return nil, fmt.Errorf("metal_pc_init failed (rc=%d): check %q exists", rc, metallib)
 	}
 
-	return &MetalPredictiveCodingOps{metallib: metallib}, nil
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MetalPredictiveCodingOps{metallib: metallib, runtime: runtime}, nil
 }
 
 /*

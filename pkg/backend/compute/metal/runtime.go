@@ -255,6 +255,15 @@ func (runtime *MetalRuntime) release(tensor *Tensor) error {
 	}
 
 	sizeClass := metalSizeClass(bytes)
+	actualBytes := int(C.metal_tensor_get_size(buffer))
+	if actualBytes < sizeClass {
+		if rc := C.metal_tensor_free(buffer); rc != 0 {
+			return fmt.Errorf("metal runtime: free failed (rc=%d)", rc)
+		}
+
+		return nil
+	}
+
 	key := metalBufferKey{sizeClass: sizeClass, storageMode: storageMode}
 
 	runtime.mu.Lock()

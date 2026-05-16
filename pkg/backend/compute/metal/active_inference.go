@@ -27,6 +27,7 @@ metallib must be an absolute path to active_inference.metallib (see repo Makefil
 type ActiveInferenceOps struct {
 	mu       sync.Mutex
 	metallib string
+	runtime  *MetalRuntime
 }
 
 /*
@@ -44,7 +45,12 @@ func NewActiveInferenceOps(metallib string) (*ActiveInferenceOps, error) {
 		return nil, fmt.Errorf("metal_ai_init failed (rc=%d): check %q exists", rc, metallib)
 	}
 
-	return &ActiveInferenceOps{metallib: metallib}, nil
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &ActiveInferenceOps{metallib: metallib, runtime: runtime}, nil
 }
 
 /*

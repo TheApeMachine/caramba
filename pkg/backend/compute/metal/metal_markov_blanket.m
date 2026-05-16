@@ -4,21 +4,21 @@
 #import <Metal/Metal.h>
 #include "markov_blanket.h"
 
-static id<MTLDevice> gMBDevice = nil;
-static id<MTLCommandQueue> gMBQueue = nil;
-static id<MTLComputePipelineState> gPSO_part = nil;
-static id<MTLComputePipelineState> gPSO_fint = nil;
-static id<MTLComputePipelineState> gPSO_fact = nil;
+id<MTLDevice> gMBDevice = nil;
+id<MTLCommandQueue> gMBQueue = nil;
+id<MTLComputePipelineState> gPSO_part = nil;
+id<MTLComputePipelineState> gPSO_fint = nil;
+id<MTLComputePipelineState> gPSO_fact = nil;
 
-static id<MTLComputePipelineState> gPSO_mean = nil;
-static id<MTLComputePipelineState> gPSO_cov = nil;
-static id<MTLComputePipelineState> gPSO_joint = nil;
-static id<MTLComputePipelineState> gPSO_chol = nil;
+id<MTLComputePipelineState> gPSO_mean = nil;
+id<MTLComputePipelineState> gPSO_cov = nil;
+id<MTLComputePipelineState> gPSO_joint = nil;
+id<MTLComputePipelineState> gPSO_chol = nil;
 
-static int gMBInited = 0;
-static dispatch_queue_t gMBSerial = NULL;
+int gMBInited = 0;
+dispatch_queue_t gMBSerial = NULL;
 
-static void mb_ensure_serial(void) {
+void mb_ensure_serial(void) {
 	static dispatch_once_t onceToken;
 	dispatch_once(&onceToken, ^{
 		gMBSerial = dispatch_queue_create("com.caramba.metal.markov_blanket", DISPATCH_QUEUE_SERIAL);
@@ -32,7 +32,7 @@ static id<MTLComputePipelineState> mb_make_pso(id<MTLDevice> device, id<MTLLibra
 	return [device newComputePipelineStateWithFunction:fn error:&err];
 }
 
-static int mb_wait(id<MTLCommandBuffer> cb) {
+int mb_wait(id<MTLCommandBuffer> cb) {
 	dispatch_semaphore_t done = dispatch_semaphore_create(0);
 	if (!done) return -1;
 	[cb addCompletedHandler:^(id<MTLCommandBuffer> _) {

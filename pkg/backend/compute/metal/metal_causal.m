@@ -5,8 +5,8 @@
 #import <Metal/Metal.h>
 #include "causal.h"
 
-static id<MTLDevice> gCDevice = nil;
-static id<MTLCommandQueue> gCQueue = nil;
+id<MTLDevice> gCDevice = nil;
+id<MTLCommandQueue> gCQueue = nil;
 static id<MTLComputePipelineState> gPSO_axpy = nil;
 static id<MTLComputePipelineState> gPSO_sub = nil;
 static id<MTLComputePipelineState> gPSO_matvec = nil;
@@ -25,23 +25,23 @@ static id<MTLComputePipelineState> gPSO_backdoor_effect = nil;
 static id<MTLComputePipelineState> gPSO_cate_split = nil;
 static id<MTLComputePipelineState> gPSO_cate_effect = nil;
 
-static id<MTLComputePipelineState> gPSO_counterfactual = nil;
-static id<MTLComputePipelineState> gPSO_frontdoor_sort_pad = nil;
-static id<MTLComputePipelineState> gPSO_frontdoor_sort_step = nil;
-static id<MTLComputePipelineState> gPSO_frontdoor_boundaries = nil;
-static id<MTLComputePipelineState> gPSO_frontdoor_assign = nil;
-static id<MTLComputePipelineState> gPSO_frontdoor_accumulate = nil;
-static id<MTLComputePipelineState> gPSO_frontdoor_normalize = nil;
-static id<MTLComputePipelineState> gPSO_frontdoor_effect = nil;
+id<MTLComputePipelineState> gPSO_counterfactual = nil;
+id<MTLComputePipelineState> gPSO_frontdoor_sort_pad = nil;
+id<MTLComputePipelineState> gPSO_frontdoor_sort_step = nil;
+id<MTLComputePipelineState> gPSO_frontdoor_boundaries = nil;
+id<MTLComputePipelineState> gPSO_frontdoor_assign = nil;
+id<MTLComputePipelineState> gPSO_frontdoor_accumulate = nil;
+id<MTLComputePipelineState> gPSO_frontdoor_normalize = nil;
+id<MTLComputePipelineState> gPSO_frontdoor_effect = nil;
 
 static id<MTLComputePipelineState> gPSO_dag_prep = nil;
 static id<MTLComputePipelineState> gPSO_dag_sigma2 = nil;
 static id<MTLComputePipelineState> gPSO_dag_score = nil;
 
-static int gCInited = 0;
-static dispatch_queue_t gCSerial = NULL;
+int gCInited = 0;
+dispatch_queue_t gCSerial = NULL;
 
-static void c_ensure_serial(void) {
+void c_ensure_serial(void) {
 	static dispatch_once_t onceToken;
 	dispatch_once(&onceToken, ^{
 		gCSerial = dispatch_queue_create("com.caramba.metal.causal", DISPATCH_QUEUE_SERIAL);
@@ -55,7 +55,7 @@ static id<MTLComputePipelineState> c_make_pso(id<MTLDevice> device, id<MTLLibrar
 	return [device newComputePipelineStateWithFunction:fn error:&err];
 }
 
-static int c_wait(id<MTLCommandBuffer> cb) {
+int c_wait(id<MTLCommandBuffer> cb) {
 	dispatch_semaphore_t done = dispatch_semaphore_create(0);
 	if (!done) return -1;
 	[cb addCompletedHandler:^(id<MTLCommandBuffer> _) {

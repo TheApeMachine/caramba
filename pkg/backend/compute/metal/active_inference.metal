@@ -41,6 +41,26 @@ kernel void ai_finalize_free_energy_kernel(
     out[0] = s;
 }
 
+kernel void ai_free_energy_serial_kernel(
+    device const float* mu           [[buffer(0)]],
+    device const float* log_sigma    [[buffer(1)]],
+    device       float* out          [[buffer(2)]],
+    constant     uint&  n            [[buffer(3)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid != 0) {
+        return;
+    }
+
+    float sum = 0.f;
+    for (uint idx = 0; idx < n; idx++) {
+        float m = mu[idx];
+        float ls = log_sigma[idx];
+        sum += 0.5f * (m * m + exp(ls) - ls - 1.f);
+    }
+    out[0] = sum;
+}
+
 kernel void ai_belief_update_kernel(
     device const float* mu           [[buffer(0)]],
     device const float* log_sigma    [[buffer(1)]],

@@ -408,3 +408,201 @@ int metal_pc_update_weights(
 
 	return rc;
 }
+
+int metal_pc_prediction_tensor(const void *W, const void *r, void *dst, int D_out, int D_in) {
+	if (!gPCInited) {
+		return -3;
+	}
+
+	if (!W || !r || !dst || D_out <= 0 || D_in <= 0) {
+		return -1;
+	}
+
+	__block int rc = 0;
+
+	pc_ensure_serial();
+	dispatch_sync(gPCSerial, ^{
+		id<MTLBuffer> buf_w = (__bridge id)((void*)W);
+		id<MTLBuffer> buf_r = (__bridge id)((void*)r);
+		id<MTLBuffer> buf_d = (__bridge id)dst;
+
+		if (!buf_w || !buf_r || !buf_d) {
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gPCQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+		[enc setComputePipelineState:gPSO_pred];
+		[enc setBuffer:buf_w offset:0 atIndex:0];
+		[enc setBuffer:buf_r offset:0 atIndex:1];
+		[enc setBuffer:buf_d offset:0 atIndex:2];
+		uint d_out = (uint)D_out;
+		uint d_in = (uint)D_in;
+		[enc setBytes:&d_out length:sizeof(d_out) atIndex:3];
+		[enc setBytes:&d_in length:sizeof(d_in) atIndex:4];
+		[enc dispatchThreads:MTLSizeMake((NSUInteger)D_out, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_pred.threadExecutionWidth, 1, 1)];
+		[enc endEncoding];
+
+		rc = pc_wait(cb);
+	});
+
+	return rc;
+}
+
+int metal_pc_prediction_error_tensor(
+	const void *x, const void *mu_hat,
+	const void *prec, void *dst, int n) {
+	if (!gPCInited) {
+		return -3;
+	}
+
+	if (!x || !mu_hat || !dst || n <= 0) {
+		return -1;
+	}
+
+	__block int rc = 0;
+
+	pc_ensure_serial();
+	dispatch_sync(gPCSerial, ^{
+		id<MTLBuffer> buf_x = (__bridge id)((void*)x);
+		id<MTLBuffer> buf_m = (__bridge id)((void*)mu_hat);
+		id<MTLBuffer> buf_p = nil;
+		uint use_prec = prec ? 1u : 0u;
+
+		if (prec) {
+			buf_p = (__bridge id)((void*)prec);
+		} else {
+			buf_p = [gPCDevice newBufferWithLength:sizeof(float)
+			                               options:MTLResourceStorageModeShared];
+		}
+
+		id<MTLBuffer> buf_d = (__bridge id)dst;
+
+		if (!buf_x || !buf_m || !buf_p || !buf_d) {
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gPCQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+		[enc setComputePipelineState:gPSO_perr];
+		[enc setBuffer:buf_x offset:0 atIndex:0];
+		[enc setBuffer:buf_m offset:0 atIndex:1];
+		[enc setBuffer:buf_p offset:0 atIndex:2];
+		[enc setBuffer:buf_d offset:0 atIndex:3];
+		uint n_u = (uint)n;
+		[enc setBytes:&n_u length:sizeof(n_u) atIndex:4];
+		[enc setBytes:&use_prec length:sizeof(use_prec) atIndex:5];
+		[enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_perr.threadExecutionWidth, 1, 1)];
+		[enc endEncoding];
+
+		rc = pc_wait(cb);
+	});
+
+	return rc;
+}
+
+int metal_pc_update_representation_tensor(
+	const void *r, const void *W,
+	const void *eps_lower, const void *eps_self,
+	const void *lr, void *dst, int D_out, int D_in) {
+	if (!gPCInited) {
+		return -3;
+	}
+
+	if (!r || !W || !eps_lower || !eps_self || !lr || !dst || D_out <= 0 || D_in <= 0) {
+		return -1;
+	}
+
+	__block int rc = 0;
+
+	pc_ensure_serial();
+	dispatch_sync(gPCSerial, ^{
+		id<MTLBuffer> buf_r = (__bridge id)((void*)r);
+		id<MTLBuffer> buf_w = (__bridge id)((void*)W);
+		id<MTLBuffer> buf_el = (__bridge id)((void*)eps_lower);
+		id<MTLBuffer> buf_es = (__bridge id)((void*)eps_self);
+		id<MTLBuffer> buf_lr = (__bridge id)((void*)lr);
+		id<MTLBuffer> buf_d = (__bridge id)dst;
+
+		if (!buf_r || !buf_w || !buf_el || !buf_es || !buf_lr || !buf_d) {
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gPCQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+		[enc setComputePipelineState:gPSO_urep];
+		[enc setBuffer:buf_r offset:0 atIndex:0];
+		[enc setBuffer:buf_w offset:0 atIndex:1];
+		[enc setBuffer:buf_el offset:0 atIndex:2];
+		[enc setBuffer:buf_es offset:0 atIndex:3];
+		[enc setBuffer:buf_d offset:0 atIndex:4];
+		[enc setBuffer:buf_lr offset:0 atIndex:5];
+		uint d_out = (uint)D_out;
+		uint d_in = (uint)D_in;
+		[enc setBytes:&d_out length:sizeof(d_out) atIndex:6];
+		[enc setBytes:&d_in length:sizeof(d_in) atIndex:7];
+		[enc dispatchThreads:MTLSizeMake((NSUInteger)D_in, 1, 1)
+		 threadsPerThreadgroup:MTLSizeMake(gPSO_urep.threadExecutionWidth, 1, 1)];
+		[enc endEncoding];
+
+		rc = pc_wait(cb);
+	});
+
+	return rc;
+}
+
+int metal_pc_update_weights_tensor(
+	const void *W, const void *eps, const void *r,
+	const void *lr, void *dst, int D_out, int D_in) {
+	if (!gPCInited) {
+		return -3;
+	}
+
+	if (!W || !eps || !r || !lr || !dst || D_out <= 0 || D_in <= 0) {
+		return -1;
+	}
+
+	__block int rc = 0;
+
+	pc_ensure_serial();
+	dispatch_sync(gPCSerial, ^{
+		id<MTLBuffer> buf_w = (__bridge id)((void*)W);
+		id<MTLBuffer> buf_e = (__bridge id)((void*)eps);
+		id<MTLBuffer> buf_r = (__bridge id)((void*)r);
+		id<MTLBuffer> buf_lr = (__bridge id)((void*)lr);
+		id<MTLBuffer> buf_d = (__bridge id)dst;
+
+		if (!buf_w || !buf_e || !buf_r || !buf_lr || !buf_d) {
+			rc = -1;
+			return;
+		}
+
+		id<MTLCommandBuffer> cb = [gPCQueue commandBuffer];
+		id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+		[enc setComputePipelineState:gPSO_uw];
+		[enc setBuffer:buf_w offset:0 atIndex:0];
+		[enc setBuffer:buf_e offset:0 atIndex:1];
+		[enc setBuffer:buf_r offset:0 atIndex:2];
+		[enc setBuffer:buf_d offset:0 atIndex:3];
+		[enc setBuffer:buf_lr offset:0 atIndex:4];
+		uint d_out = (uint)D_out;
+		uint d_in = (uint)D_in;
+		[enc setBytes:&d_out length:sizeof(d_out) atIndex:5];
+		[enc setBytes:&d_in length:sizeof(d_in) atIndex:6];
+
+		NSUInteger tx = D_out < 16 ? (NSUInteger)D_out : 16;
+		NSUInteger ty = D_in < 16 ? (NSUInteger)D_in : 16;
+		[enc dispatchThreads:MTLSizeMake((NSUInteger)D_out, (NSUInteger)D_in, 1)
+		 threadsPerThreadgroup:MTLSizeMake(tx, ty, 1)];
+		[enc endEncoding];
+
+		rc = pc_wait(cb);
+	});
+
+	return rc;
+}

@@ -93,6 +93,20 @@ var residentOperationTable = []OperationCoverage{
 	residentOperation("hawkes.kernel_matrix", "metal_hawkes_kernel_matrix_tensor", "BenchmarkMetalHawkes_KernelMatrixTensor", "TestMetalHawkes_KernelMatrixTensor"),
 	residentOperation("hawkes.log_likelihood", "metal_hawkes_log_likelihood_tensor", "BenchmarkMetalHawkes_LogLikelihoodTensor", "TestMetalHawkes_LogLikelihoodTensor"),
 	residentOperation("hawkes.simulate", "metal_hawkes_simulate_tensor", "BenchmarkMetalHawkes_SimulateTensor", "TestMetalHawkes_SimulateTensor"),
+	residentOperation("active_inference.free_energy", "metal_ai_free_energy_tensor", "BenchmarkActiveInferenceOps_FreeEnergyTensor", "TestActiveInferenceOps_FreeEnergyTensor"),
+	residentOperation("active_inference.belief_update", "metal_ai_belief_update_tensor", "BenchmarkActiveInferenceOps_BeliefUpdateTensor", "TestActiveInferenceOps_BeliefUpdateTensor"),
+	residentOperation("active_inference.precision_weight", "metal_ai_precision_weight_tensor", "BenchmarkActiveInferenceOps_PrecisionWeightTensor", "TestActiveInferenceOps_PrecisionWeightTensor"),
+	residentOperation("active_inference.expected_free_energy", "metal_ai_expected_free_energy_tensor", "BenchmarkActiveInferenceOps_ExpectedFreeEnergyTensor", "TestActiveInferenceOps_ExpectedFreeEnergyTensor"),
+	residentOperation("predictive_coding.prediction", "metal_pc_prediction_tensor", "BenchmarkMetalPredictiveCodingOps_PredictionTensor", "TestMetalPredictiveCodingOps_PredictionTensor"),
+	residentOperation("predictive_coding.prediction_error", "metal_pc_prediction_error_tensor", "BenchmarkMetalPredictiveCodingOps_PredictionErrorTensor", "TestMetalPredictiveCodingOps_PredictionErrorTensor"),
+	residentOperation("predictive_coding.update_representation", "metal_pc_update_representation_tensor", "BenchmarkMetalPredictiveCodingOps_UpdateRepresentationTensor", "TestMetalPredictiveCodingOps_UpdateRepresentationTensor"),
+	residentOperation("predictive_coding.update_weights", "metal_pc_update_weights_tensor", "BenchmarkMetalPredictiveCodingOps_UpdateWeightsTensor", "TestMetalPredictiveCodingOps_UpdateWeightsTensor"),
+	residentOperation("markov_blanket.partition", "metal_mb_partition_tensor", "BenchmarkMetalMarkovBlanket_PartitionTensor", "TestMetalMarkovBlanket_PartitionTensor"),
+	residentOperation("markov_blanket.flow_internal", "metal_mb_flow_internal_tensor", "BenchmarkMetalMarkovBlanket_FlowInternalTensor", "TestMetalMarkovBlanket_FlowInternalTensor"),
+	residentOperation("markov_blanket.flow_active", "metal_mb_flow_active_tensor", "BenchmarkMetalMarkovBlanket_FlowActiveTensor", "TestMetalMarkovBlanket_FlowActiveTensor"),
+	residentOperation("markov_blanket.mutual_information", "metal_mb_mutual_information_tensor", "BenchmarkMetalMarkovBlanket_MutualInformationTensor", "TestMetalMarkovBlanket_MutualInformationTensor"),
+	residentOperation("causal.counterfactual", "metal_causal_counterfactual_tensor", "BenchmarkMetalCausalOps_CounterfactualTensor", "TestMetalCausalOps_CounterfactualTensor"),
+	residentOperation("causal.frontdoor_adjustment", "metal_causal_frontdoor_tensor", "BenchmarkMetalCausalOps_FrontdoorAdjustmentTensor", "TestMetalCausalOps_FrontdoorAdjustmentTensor"),
 }
 
 /*

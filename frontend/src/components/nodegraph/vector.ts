@@ -1,22 +1,24 @@
 import { createStore } from "@tanstack/store";
 import * as THREE from "three";
+import { getNodeType, type PortDef, portTypeId } from "./types";
 
 /*
-The render map: two RGBA-float textures the GPU samples each frame.
+GPU input textures the materials and the compute pass sample each frame.
 
-nodesTexture  — one texel per node, .rg = (x, y) in world units,
-                .b  = typeId, .a = flags (1.0 = alive)
-edgesTexture  — one texel per edge, .rg = fromNodeIndex (as float),
-                .ba = toNodeIndex.  Port indices land in a second
-                row when we add ports.
+nodesTexture  — 1 texel per node, RGBA = (x, y, typeId, alive).
+edgesTexture  — 1 texel per edge, RGBA = (fromPortIdx, toPortIdx, alive, _).
+                Edge endpoints reference into portsTexture so multi-port
+                nodes resolve cleanly without per-edge offset baggage.
+portsTexture  — 1 texel per port, RGBA = (nodeIdx, offsetX, offsetY, packed).
+                packed = portType * 8 + kind, kind ∈ {0=in, 1=out}.
+                Dead slots have nodeIdx = -1.
 
-Both buffers are sized as 1D rows for simplicity; we'll lift to 2D when
-we cross 4096 nodes. The Float32Arrays `nodeData`/`edgeData` and the
-DataTextures share the same memory — writes become visible to the GPU
-once we set `needsUpdate = true`.
+Float32 throughout so positions don't quantize and the routing pass can
+do straight arithmetic on indices.
 */
 export const MAX_NODES = 1024;
 export const MAX_EDGES = 4096;
+export const MAX_PORTS = 8192;
 
 export const nodeData = new Float32Array(MAX_NODES * 4);
 export const nodesTexture = new THREE.DataTexture(
@@ -42,15 +44,19 @@ edgesTexture.minFilter = THREE.NearestFilter;
 edgesTexture.magFilter = THREE.NearestFilter;
 edgesTexture.needsUpdate = true;
 
-/*
-edgePathsTexture stores the four corners of each edge's Manhattan route.
-Width = MAX_EDGES * 4 texels; layout per edge i: column 4i+0..4i+3,
-each texel .rg = (x, y). p0 = source, p1/p2 = the two bend corners,
-p3 = sink. The edge shader expands these into 3 line segments.
-*/
+export const portData = new Float32Array(MAX_PORTS * 4);
+export const portsTexture = new THREE.DataTexture(
+	portData,
+	MAX_PORTS,
+	1,
+	THREE.RGBAFormat,
+	THREE.FloatType,
+);
+portsTexture.minFilter = THREE.NearestFilter;
+portsTexture.magFilter = THREE.NearestFilter;
+portsTexture.needsUpdate = true;
+
 export const PATH_TEXELS_PER_EDGE = 8;
-// 2D layout: x = corner index (0..PATH_TEXELS_PER_EDGE-1), y = edge index.
-// 1D would exceed WebGL2's max texture width once MAX_EDGES * texels > 16384.
 export const edgePathData = new Float32Array(
 	MAX_EDGES * PATH_TEXELS_PER_EDGE * 4,
 );
@@ -67,40 +73,89 @@ edgePathsTexture.needsUpdate = true;
 
 export const NODE_W = 240;
 export const NODE_H = 140;
+export const PORT_RADIUS = 6;
+
+/* World-unit grid step. Matches the minor grid line spacing painted by
+   materials/background.ts so visual feedback and snapping agree. */
+export const GRID_STEP = 80;
+
+export function snapToGrid(value: number): number {
+	return Math.round(value / GRID_STEP) * GRID_STEP;
+}
 
 /*
-Port offsets relative to a node's center. v0 has one input + one output
-per node, hard-coded. When real node types land, this becomes a registry
-entry per type. The values are also referenced by the routing pass so
-edges start/end exactly at port positions.
-
-The port disc's center sits ON the node edge (50% inside the body, 50%
-bulging out). Y offsets place the input near the top and the output near
-the bottom of the node.
+Ports sit on the left/right edges of the card body band (UV.y ∈ [0.16, 0.78]).
+PORT_BAND_Y_MIN/MAX express that band in world units relative to the node
+centre. Ports are distributed evenly along the band with PORT_BAND_PAD at
+top and bottom so a single port lands near vertical centre and adjacent
+ports never crowd the dividers.
 */
-export const PORT_RADIUS = 6;
-// Ports sit on the left/right edges of the card body band (between header and
-// footer). Body UV ≈ [0.16, 0.78]; its centre maps to ~uv.y 0.47, i.e. a small
-// downward offset from the node centre in world units.
-const BODY_CENTRE_UV_Y = 0.47;
-const PORT_Y = (BODY_CENTRE_UV_Y - 0.5) * NODE_H;
-// Half-disc notch: the disc's flat edge sits on the card border. The body
-// shader uses halfSize = 0.49 and draws a border band a few texels wide just
-// inside that edge — we offset by a small slop so the port covers the band
-// rather than letting it show through.
+const BODY_TOP_UV = 0.78;
+const BODY_BOT_UV = 0.16;
+export const PORT_BAND_Y_MAX = (BODY_TOP_UV - 0.5) * NODE_H;
+export const PORT_BAND_Y_MIN = (BODY_BOT_UV - 0.5) * NODE_H;
 const CARD_HALF_W = NODE_W * 0.495;
 const PORT_EDGE_SLOP = 0.5;
-export const INPUT_OFFSET_X = -CARD_HALF_W - PORT_EDGE_SLOP;
-export const INPUT_OFFSET_Y = PORT_Y;
-export const OUTPUT_OFFSET_X = CARD_HALF_W + PORT_EDGE_SLOP;
-export const OUTPUT_OFFSET_Y = PORT_Y;
+export const PORT_IN_X = -CARD_HALF_W - PORT_EDGE_SLOP;
+export const PORT_OUT_X = CARD_HALF_W + PORT_EDGE_SLOP;
 
-export type Edge = { id: number; from: number; to: number };
+export type PortKind = "in" | "out";
+
+/*
+portLayoutY returns the y-offset (relative to node centre) of port `idx`
+within a column of `count` ports. Single port lands at the band centre;
+larger counts spread along the band with even spacing.
+*/
+export function portLayoutY(idx: number, count: number): number {
+	if (count <= 1) return (PORT_BAND_Y_MAX + PORT_BAND_Y_MIN) * 0.5;
+	const pad = (PORT_BAND_Y_MAX - PORT_BAND_Y_MIN) * 0.18;
+	const top = PORT_BAND_Y_MAX - pad;
+	const bot = PORT_BAND_Y_MIN + pad;
+	const step = (top - bot) / (count - 1);
+	return top - idx * step;
+}
+
+export function portWorld(
+	node: Node,
+	kind: PortKind,
+	idx: number,
+): [number, number] {
+	const list = portDefs(node, kind);
+	const count = list.length;
+	const x = kind === "in" ? PORT_IN_X : PORT_OUT_X;
+	return [node.x + x, node.y + portLayoutY(idx, count)];
+}
+
+/*
+portDefs prefers per-node overrides (node.inputs / node.outputs) over the
+NodeType registry defaults. Converter nodes use this to carry their own
+in/out port-type pair without needing a registry entry per variant.
+*/
+export function portDefs(node: Node, kind: PortKind): PortDef[] {
+	if (kind === "in" && node.inputs) return node.inputs;
+	if (kind === "out" && node.outputs) return node.outputs;
+	const type = getNodeType(node.typeId);
+	return kind === "in" ? type.inputs : type.outputs;
+}
+
+export type Edge = {
+	id: number;
+	fromNode: number;
+	fromPort: number;
+	toNode: number;
+	toPort: number;
+};
+
 export type Node = {
 	id: number;
 	x: number;
 	y: number;
 	typeId: number;
+	/* Backend op id (e.g. "attention.sdpa") when this node was placed from
+	   the operation registry. Undefined for local registry types. */
+	opId?: string;
+	inputs?: PortDef[];
+	outputs?: PortDef[];
 	nodes: Node[];
 	edges: Edge[];
 };
@@ -108,8 +163,8 @@ export type Node = {
 type State = {
 	nodes: Node[];
 	edges: Edge[];
-	path: number[]; // node ids from root to the currently-edited level
-	framedNodeId: number | null; // when set, that node's children render as a compact preview inside its body
+	path: number[];
+	framedNodeId: number | null;
 	nextNodeId: number;
 	nextEdgeId: number;
 };
@@ -123,11 +178,6 @@ const initial: State = {
 	nextEdgeId: 0,
 };
 
-/*
-At any level, the current view is the (nodes, edges) pair at the end of
-`path`. Path = [] means root. Mutating actions clone the spine of `nodes`
-along the path and apply the change to the leaf level.
-*/
 function mutateLevel(
 	state: State,
 	mutate: (level: { nodes: Node[]; edges: Edge[] }) => {
@@ -140,55 +190,74 @@ function mutateLevel(
 		return { ...state, nodes: next.nodes, edges: next.edges };
 	}
 
-    const rebuild = (nodes: Node[], depth: number): Node[] => {
+	const rebuild = (nodes: Node[], depth: number): Node[] => {
 		const id = state.path[depth];
-		return nodes.map((n) => {
-			if (n.id !== id) return n;
+		return nodes.map((node) => {
+			if (node.id !== id) return node;
 
-            if (depth === state.path.length - 1) {
-				const next = mutate({ nodes: n.nodes, edges: n.edges });
-				return { ...n, nodes: next.nodes, edges: next.edges };
+			if (depth === state.path.length - 1) {
+				const next = mutate({ nodes: node.nodes, edges: node.edges });
+				return { ...node, nodes: next.nodes, edges: next.edges };
 			}
 
-            return { ...n, nodes: rebuild(n.nodes, depth + 1) };
+			return { ...node, nodes: rebuild(node.nodes, depth + 1) };
 		});
 	};
 
-    return { ...state, nodes: rebuild(state.nodes, 0) };
+	return { ...state, nodes: rebuild(state.nodes, 0) };
 }
 
 export const vectorStore = createStore(initial, (store) => ({
-	addNode: (x: number, y: number, typeId = 0) => {
+	addNode: (
+		x: number,
+		y: number,
+		typeId = 0,
+		overrides?: { inputs?: PortDef[]; outputs?: PortDef[]; opId?: string },
+	) => {
 		store.setState((prev) =>
-			mutateLevel(
-				{ ...prev, nextNodeId: prev.nextNodeId + 1 },
-				(lvl) => ({
-					nodes: [
-						...lvl.nodes,
-						{ id: prev.nextNodeId, x, y, typeId, nodes: [], edges: [] },
-					],
-					edges: lvl.edges,
-				}),
-			),
+			mutateLevel({ ...prev, nextNodeId: prev.nextNodeId + 1 }, (lvl) => ({
+				nodes: [
+					...lvl.nodes,
+					{
+						edges: [],
+						id: prev.nextNodeId,
+						inputs: overrides?.inputs,
+						nodes: [],
+						opId: overrides?.opId,
+						outputs: overrides?.outputs,
+						typeId,
+						x,
+						y,
+					},
+				],
+				edges: lvl.edges,
+			})),
 		);
 	},
 	moveNode: (id: number, x: number, y: number) => {
 		store.setState((prev) =>
 			mutateLevel(prev, (lvl) => ({
-				nodes: lvl.nodes.map((n) => (n.id === id ? { ...n, x, y } : n)),
+				nodes: lvl.nodes.map((node) =>
+					node.id === id ? { ...node, x, y } : node,
+				),
 				edges: lvl.edges,
 			})),
 		);
 	},
-	addEdge: (from: number, to: number) => {
+	addEdge: (
+		fromNode: number,
+		fromPort: number,
+		toNode: number,
+		toPort: number,
+	) => {
 		store.setState((prev) =>
-			mutateLevel(
-				{ ...prev, nextEdgeId: prev.nextEdgeId + 1 },
-				(lvl) => ({
-					nodes: lvl.nodes,
-					edges: [...lvl.edges, { id: prev.nextEdgeId, from, to }],
-				}),
-			),
+			mutateLevel({ ...prev, nextEdgeId: prev.nextEdgeId + 1 }, (lvl) => ({
+				nodes: lvl.nodes,
+				edges: [
+					...lvl.edges,
+					{ id: prev.nextEdgeId, fromNode, fromPort, toNode, toPort },
+				],
+			})),
 		);
 	},
 	enter: (id: number) => {
@@ -210,10 +279,6 @@ export const vectorStore = createStore(initial, (store) => ({
 	},
 }));
 
-/*
-Resolves the current level's (nodes, edges) from a state by walking `path`.
-Used by the buffer sync and by the renderer for read access. Pure.
-*/
 export function currentLevel(state: {
 	nodes: Node[];
 	edges: Edge[];
@@ -222,7 +287,7 @@ export function currentLevel(state: {
 	let nodes = state.nodes;
 	let edges = state.edges;
 	for (const id of state.path) {
-		const next = nodes.find((n) => n.id === id);
+		const next = nodes.find((node) => node.id === id);
 		if (!next) return { nodes: [], edges: [] };
 		nodes = next.nodes;
 		edges = next.edges;
@@ -230,43 +295,51 @@ export function currentLevel(state: {
 	return { nodes, edges };
 }
 
-/*
-syncBuffers writes the JS-side node/edge lists into the GPU-facing
-Float32Arrays. Runs on every store change. Node id is its index in the
-buffer for the lifetime of this session (we don't compact on remove yet).
-*/
-/*
-Populate the GPU input textures from any (nodes, edges) list. Exposed so
-the renderer can swap in the framed node's inner graph for a preview pass
-without going through the store.
-*/
 export type PositionTransform = (n: Node) => { x: number; y: number };
 
+/*
+Fill the GPU input textures from a (nodes, edges) list. Allocates port
+indices sequentially: for each node we write its inputs first (kind=0),
+then outputs (kind=1). The local map portIndexOf(nodeId, kind, portIdx)
+resolves the global port index used by edges.
+*/
 export function fillInputBuffers(
 	nodes: Node[],
 	edges: Edge[],
 	transform?: PositionTransform,
 ): void {
 	nodeData.fill(0);
+	portData.fill(0);
+	for (let i = 0; i < MAX_PORTS; i++) portData[i * 4] = -1;
+
+	type PortKey = `${number}:${PortKind}:${number}`;
+	const portIndexOf = new Map<PortKey, number>();
+	let portCursor = 0;
+
 	for (let i = 0; i < nodes.length && i < MAX_NODES; i++) {
-		const n = nodes[i];
+		const node = nodes[i];
 		const off = i * 4;
-		const pos = transform ? transform(n) : { x: n.x, y: n.y };
+		const pos = transform ? transform(node) : { x: node.x, y: node.y };
 		nodeData[off + 0] = pos.x;
 		nodeData[off + 1] = pos.y;
-		nodeData[off + 2] = n.typeId;
+		nodeData[off + 2] = node.typeId;
 		nodeData[off + 3] = 1.0;
+
+		const type = getNodeType(node.typeId);
+		writePorts(node, i, "in", type.inputs, portIndexOf, () => portCursor++);
+		writePorts(node, i, "out", type.outputs, portIndexOf, () => portCursor++);
 	}
 	nodesTexture.needsUpdate = true;
+	portsTexture.needsUpdate = true;
 
 	edgeData.fill(0);
-	const indexOf = new Map<number, number>();
-	for (let i = 0; i < nodes.length; i++) indexOf.set(nodes[i].id, i);
 	const edgeCount = Math.min(edges.length, MAX_EDGES);
 	for (let i = 0; i < edgeCount; i++) {
-		const e = edges[i];
-		const fromIdx = indexOf.get(e.from);
-		const toIdx = indexOf.get(e.to);
+		const edge = edges[i];
+		const fromKey: PortKey = `${edge.fromNode}:out:${edge.fromPort}`;
+		const toKey: PortKey = `${edge.toNode}:in:${edge.toPort}`;
+		const fromIdx = portIndexOf.get(fromKey);
+		const toIdx = portIndexOf.get(toKey);
 		if (fromIdx === undefined || toIdx === undefined) continue;
 		const off = i * 4;
 		edgeData[off + 0] = fromIdx;
@@ -276,17 +349,37 @@ export function fillInputBuffers(
 	edgesTexture.needsUpdate = true;
 }
 
+function writePorts(
+	node: Node,
+	nodeIdx: number,
+	kind: PortKind,
+	defs: PortDef[],
+	portIndexOf: Map<`${number}:${PortKind}:${number}`, number>,
+	allocate: () => number,
+): void {
+	const count = defs.length;
+	const xOff = kind === "in" ? PORT_IN_X : PORT_OUT_X;
+	const kindBit = kind === "in" ? 0 : 1;
+
+	for (let idx = 0; idx < count; idx++) {
+		const globalIdx = allocate();
+		if (globalIdx >= MAX_PORTS) break;
+		const def = defs[idx];
+		const packed = portTypeId(def.type) * 8 + kindBit;
+		const off = globalIdx * 4;
+		portData[off + 0] = nodeIdx;
+		portData[off + 1] = xOff;
+		portData[off + 2] = portLayoutY(idx, count);
+		portData[off + 3] = packed;
+		portIndexOf.set(`${node.id}:${kind}:${idx}`, globalIdx);
+	}
+}
+
 function syncBuffers(state: State): void {
 	const level = currentLevel(state);
 	fillInputBuffers(level.nodes, level.edges);
 }
 
-/*
-Path texels are written by the GPU compute pass (see compute.ts), not from
-JS. The store subscriber syncs node/edge data into the input textures
-above; the renderer triggers the path compute once per frame whenever the
-store revision changes.
-*/
 let revision = 0;
 
 export function getRevision(): number {

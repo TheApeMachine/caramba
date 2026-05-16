@@ -86,6 +86,27 @@ kernel void hawkes_loglik_finalize_kernel(
     out[0] = s - integral;
 }
 
+kernel void hawkes_log_likelihood_serial_kernel(
+    device const float* intensities [[buffer(0)]],
+    constant     float& integral [[buffer(1)]],
+    device       float* out [[buffer(2)]],
+    constant     uint&  T [[buffer(3)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid != 0) {
+        return;
+    }
+
+    float sum = 0.f;
+    for (uint idx = 0; idx < T; idx++) {
+        float lam = intensities[idx];
+        if (lam > 0.f) {
+            sum += log(lam);
+        }
+    }
+    out[0] = sum - integral;
+}
+
 kernel void hawkes_sim_clear_kernel(
     device float* out [[buffer(0)]],
     constant     uint& total [[buffer(1)]],

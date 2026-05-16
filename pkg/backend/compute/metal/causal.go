@@ -21,6 +21,7 @@ Calls are serialised by a mutex so one instance may be used from multiple gorout
 type MetalCausalOps struct {
 	mu       sync.Mutex
 	metallib string
+	runtime  *MetalRuntime
 }
 
 /*
@@ -38,7 +39,12 @@ func NewCausalOps(metallib string) (*MetalCausalOps, error) {
 		return nil, fmt.Errorf("metal_causal_init failed (rc=%d): check %q exists", rc, metallib)
 	}
 
-	return &MetalCausalOps{metallib: metallib}, nil
+	runtime, err := newStandaloneMetalRuntime()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MetalCausalOps{metallib: metallib, runtime: runtime}, nil
 }
 
 /*
@@ -50,6 +56,10 @@ func (metalCausalOps *MetalCausalOps) Close() error {
 
 	if rc := C.metal_causal_shutdown(); rc != 0 {
 		return fmt.Errorf("metal_causal_shutdown failed (rc=%d)", rc)
+	}
+
+	if metalCausalOps.runtime != nil {
+		return metalCausalOps.runtime.Close()
 	}
 
 	return nil

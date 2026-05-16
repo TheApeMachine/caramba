@@ -75,7 +75,7 @@ export const Navigation = ({
 					<MicroscopeIcon /> Research
 				</AccordionTrigger>
 				<AccordionPanel className="flex flex-col gap-2">
-					<Link to={"/research"} onClick={onNavigate}>
+					<Link to={"/nodegraph"} onClick={onNavigate}>
 						<Button
 							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
@@ -136,7 +136,7 @@ export const Navigation = ({
 					<NetworkIcon /> Models
 				</AccordionTrigger>
 				<AccordionPanel className="flex flex-col gap-2">
-					<Link to={"/research"} onClick={onNavigate}>
+					<Link to={"/nodegraph"} onClick={onNavigate}>
 						<Button
 							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
@@ -161,7 +161,7 @@ export const Navigation = ({
 					<BotIcon /> Agents
 				</AccordionTrigger>
 				<AccordionPanel className="flex flex-col gap-2">
-					<Link to={"/research"} onClick={onNavigate}>
+					<Link to={"/nodegraph"} onClick={onNavigate}>
 						<Button
 							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
