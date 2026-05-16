@@ -16,16 +16,23 @@ import { SessionControls } from "#/components/auth/session-controls";
 import { Page } from "#/components/layout/page";
 import { ToastProvider } from "#/components/ui/toast";
 import { isAuthenticationPublicPath } from "#/lib/authentication-public-path";
+import { ThemeProvider } from "#/providers/theme";
 import appCss from "../styles.css?url";
 
 const RootDocument = ({ children }: { children: React.ReactNode }) => {
 	return (
-		<html lang="en" className="dark" suppressHydrationWarning>
+		<html lang="en" suppressHydrationWarning>
 			<head>
 				<HeadContent />
+				<script
+					dangerouslySetInnerHTML={{
+						__html: `(function(){try{var t=localStorage.getItem('caramba.theme')||'dark';var c=localStorage.getItem('caramba.contrast')==='1';var r=document.documentElement;['light','dim','dark'].forEach(function(x){r.classList.remove(x)});var resolved=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;r.classList.add(resolved);r.classList.toggle('contrast',c);}catch(e){}})();`,
+					}}
+				/>
 			</head>
 			<body className="flex h-full min-h-svh flex-col" suppressHydrationWarning>
 				<ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up">
+					<ThemeProvider>
 					<ToastProvider>
 						<Page>
 							<Page.Header>
@@ -54,6 +61,7 @@ const RootDocument = ({ children }: { children: React.ReactNode }) => {
 						]}
 					/>
 					<Scripts />
+					</ThemeProvider>
 				</ClerkProvider>
 			</body>
 		</html>

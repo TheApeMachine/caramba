@@ -4,6 +4,7 @@ package xla
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
@@ -69,6 +70,15 @@ func (registry OperationRegistry) Swish(config *state.Dict) (state.Operation, er
 	}
 
 	return &Swish{activation: activation}, nil
+}
+
+func (registry OperationRegistry) SELU(config *state.Dict) (state.Operation, error) {
+	activation, err := newXLAActivation(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SELU{activation: activation}, nil
 }
 
 func (registry OperationRegistry) SDPA(config *state.Dict) (state.Operation, error) {
@@ -194,6 +204,11 @@ func (registry OperationRegistry) ViewAsHeads(config *state.Dict) (state.Operati
 func (registry OperationRegistry) MergeHeads(config *state.Dict) (state.Operation, error) {
 	shapeOps, err := newXLAShapeOps(config)
 	return &MergeHeads{shapeOps: shapeOps}, err
+}
+
+func (registry OperationRegistry) LastToken(config *state.Dict) (state.Operation, error) {
+	shapeOps, err := newXLAShapeOps(config)
+	return &LastToken{shapeOps: shapeOps}, err
 }
 
 func (registry OperationRegistry) RoPE(config *state.Dict) (state.Operation, error) {
@@ -482,6 +497,7 @@ type Tanh struct{ activation *XLAActivation }
 type Sigmoid struct{ activation *XLAActivation }
 type Swish struct{ activation *XLAActivation }
 type SwiGLU struct{ activation *XLAActivation }
+type SELU struct{ activation *XLAActivation }
 
 func (relu *ReLU) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return xlaUnaryForward(stateDict, "xla.activation.relu", relu.activation.ReLU)
@@ -515,6 +531,10 @@ func (swish *Swish) Forward(stateDict *state.Dict) (*state.Dict, error) {
 
 func (swiglu *SwiGLU) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return xlaUnaryForward(stateDict, "xla.activation.swiglu", swiglu.activation.SwiGLU)
+}
+
+func (selu *SELU) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	return xlaUnaryForward(stateDict, "xla.activation.selu", selu.activation.SELU)
 }
 
 type SDPA struct{ attention *XLAAttention }
@@ -738,6 +758,7 @@ type Concat struct{ shapeOps *XLAShapeOps }
 type Split struct{ shapeOps *XLAShapeOps }
 type ViewAsHeads struct{ shapeOps *XLAShapeOps }
 type MergeHeads struct{ shapeOps *XLAShapeOps }
+type LastToken struct{ shapeOps *XLAShapeOps }
 
 func (reshape *Reshape) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return xlaShapeForward(stateDict, "xla.shape.reshape", 1, func(
@@ -858,6 +879,29 @@ func (mergeHeads *MergeHeads) Forward(stateDict *state.Dict) (*state.Dict, error
 
 	output, err := mergeHeads.shapeOps.MergeHeads(
 		stateDict.Inputs[0], shape[0], shape[1], shape[2], shape[3],
+	)
+
+	return setXLAOutput(stateDict, output, err)
+}
+
+func (lastToken *LastToken) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("xla.shape.last_token"); err != nil {
+		return nil, err
+	}
+
+	outer, sequenceLength, featureLength, err := xlaLastTokenShapeParts(
+		stateDict.OperationShape(),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := lastToken.shapeOps.LastToken(
+		stateDict.Inputs[0],
+		outer,
+		sequenceLength,
+		featureLength,
 	)
 
 	return setXLAOutput(stateDict, output, err)
@@ -1505,6 +1549,35 @@ func requireXLAShape(
 	}
 
 	return shape, nil
+}
+
+func xlaLastTokenShapeParts(shape []int) (int, int, int, error) {
+	if len(shape) < 2 {
+		return 0, 0, 0, fmt.Errorf("xla.shape.last_token: expected rank >= 2")
+	}
+
+	sequenceLength := shape[len(shape)-2]
+	featureLength := shape[len(shape)-1]
+
+	if sequenceLength <= 0 || featureLength <= 0 {
+		return 0, 0, 0, fmt.Errorf("xla.shape.last_token: trailing dimensions must be positive")
+	}
+
+	outer := 1
+
+	for _, dimension := range shape[:len(shape)-2] {
+		if dimension <= 0 {
+			return 0, 0, 0, fmt.Errorf("xla.shape.last_token: outer dimensions must be positive")
+		}
+
+		if outer > math.MaxInt/dimension {
+			return 0, 0, 0, fmt.Errorf("xla.shape.last_token: shape product overflows int")
+		}
+
+		outer *= dimension
+	}
+
+	return outer, sequenceLength, featureLength, nil
 }
 
 func xlaWeightBias(stateDict *state.Dict) ([]float64, []float64) {

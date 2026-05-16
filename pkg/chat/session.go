@@ -28,6 +28,7 @@ SessionConfig contains terminal-facing chat settings.
 */
 type SessionConfig struct {
 	Runtime         string
+	Backend         string
 	Model           string
 	UserPrompt      string
 	AssistantPrompt string
@@ -185,9 +186,33 @@ func (session *Session) exit(prompt string) bool {
 
 func (session *Session) writeBanner() error {
 	model := strings.TrimSpace(session.config.Model)
+	backend := strings.TrimSpace(session.config.Backend)
+
+	if backend != "" && model == "" {
+		_, err := fmt.Fprintf(
+			session.output,
+			"caramba chat runtime=%s backend=%s\n",
+			session.config.Runtime,
+			backend,
+		)
+
+		return err
+	}
 
 	if model == "" {
 		_, err := fmt.Fprintf(session.output, "caramba chat runtime=%s\n", session.config.Runtime)
+
+		return err
+	}
+
+	if backend != "" {
+		_, err := fmt.Fprintf(
+			session.output,
+			"caramba chat runtime=%s backend=%s model=%s\n",
+			session.config.Runtime,
+			backend,
+			model,
+		)
 
 		return err
 	}

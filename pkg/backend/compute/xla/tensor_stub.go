@@ -80,6 +80,14 @@ func (tensorBackend *TensorBackend) Sigmoid(input computetensor.Float64Tensor) (
 	return nil, fmt.Errorf("xla tensor: unavailable without cgo and xla build tags")
 }
 
+func (tensorBackend *TensorBackend) Swish(input computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+	return nil, fmt.Errorf("xla tensor: unavailable without cgo and xla build tags")
+}
+
+func (tensorBackend *TensorBackend) SELU(input computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+	return nil, fmt.Errorf("xla tensor: unavailable without cgo and xla build tags")
+}
+
 func (tensorBackend *TensorBackend) SwiGLU(input computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
 	return nil, fmt.Errorf("xla tensor: unavailable without cgo and xla build tags")
 }

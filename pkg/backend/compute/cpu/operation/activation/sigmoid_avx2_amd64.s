@@ -1,55 +1,89 @@
 #include "textflag.h"
 
-DATA ·sigConst27_amd64+0(SB)/8, $27.0
-GLOBL ·sigConst27_amd64(SB), RODATA, $8
-DATA ·sigConst9_amd64+0(SB)/8, $9.0
-GLOBL ·sigConst9_amd64(SB), RODATA, $8
-DATA ·sigHalf_amd64+0(SB)/8, $0.5
-GLOBL ·sigHalf_amd64(SB), RODATA, $8
-DATA ·sigOne_amd64+0(SB)/8, $1.0
-GLOBL ·sigOne_amd64(SB), RODATA, $8
-DATA ·sigNegOne_amd64+0(SB)/8, $-1.0
-GLOBL ·sigNegOne_amd64(SB), RODATA, $8
-
 // SigmoidAVX2(dst, src []float64)
-// ABI0: dst+0(FP)=ptr, src_base+24(FP)=ptr, src_len+32(FP)=len
-// sigmoid(x) = 0.5*(1+tanh(x/2))
+// Four-lane sigmoid(x) = 1/(1+exp(-x)).
 TEXT ·SigmoidAVX2(SB), NOSPLIT, $0-48
 	MOVQ dst+0(FP), AX
-	MOVQ src_len+32(FP), SI
 	MOVQ src_base+24(FP), DI
-	CMPQ SI, $0
-	JLE  done
-	VMOVSD ·sigConst27_amd64(SB), X10
-	VBROADCASTSD X10, Y10
-	VMOVSD ·sigConst9_amd64(SB), X11
-	VBROADCASTSD X11, Y11
-	VMOVSD ·sigHalf_amd64(SB), X12
-	VBROADCASTSD X12, Y12
-	VMOVSD ·sigOne_amd64(SB), X13
-	VBROADCASTSD X13, Y13
-	VMOVSD ·sigNegOne_amd64(SB), X14
-	VBROADCASTSD X14, Y14
+	MOVQ src_len+32(FP), BX
 
-loop:
+	VBROADCASTSD ·atLog2E(SB), Y10
+	VBROADCASTSD ·atLn2Hi(SB), Y11
+	VBROADCASTSD ·atLn2Lo(SB), Y12
+	VBROADCASTSD ·atMaxArg(SB), Y13
+	VBROADCASTSD ·atMinArg(SB), Y14
+	VBROADCASTSD ·atC0(SB), Y15
+	VMOVDQU ·activationBias32(SB), X9
+	VXORPD Y8, Y8, Y8
+
+	CMPQ BX, $4
+	JL   sigmoid_avx2_done
+
+sigmoid_avx2_loop:
 	VMOVUPD (DI), Y0
-	VMULPD Y12, Y0, Y1           // x/2
-	VMULPD Y1, Y1, Y2            // (x/2)^2
-	VADDPD Y10, Y2, Y3           // 27+(x/2)^2
-	VMULPD Y11, Y2, Y4           // 9*(x/2)^2
-	VADDPD Y10, Y4, Y4           // 27+9*(x/2)^2
-	VMULPD Y1, Y3, Y5            // (x/2)*(27+(x/2)^2)
-	VDIVPD Y4, Y5, Y6            // tanh(x/2)
-	VMINPD Y13, Y6, Y6
-	VMAXPD Y14, Y6, Y6
-	VADDPD Y13, Y6, Y6           // 1+tanh
-	VMULPD Y12, Y6, Y6           // 0.5*(1+tanh)
-	VMOVUPD Y6, (AX)
+	VSUBPD Y0, Y8, Y0
+	VMINPD Y13, Y0, Y0
+	VMAXPD Y14, Y0, Y0
+
+	VMULPD   Y10, Y0, Y1
+	VROUNDPD $0, Y1, Y1
+	VFNMADD231PD Y11, Y1, Y0
+	VFNMADD231PD Y12, Y1, Y0
+
+	VBROADCASTSD ·atC18(SB), Y2
+	VBROADCASTSD ·atC17(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC16(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC15(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC14(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC13(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC12(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC11(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC10(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC9(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC8(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC7(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC6(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC5(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC4(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC3(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC2(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC1(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC0(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+
+	VCVTPD2DQY Y1, X3
+	VPADDD     X9, X3, X3
+	VPMOVSXDQ  X3, Y4
+	VPSLLQ     $52, Y4, Y4
+	VMULPD     Y4, Y2, Y2
+
+	VADDPD Y15, Y2, Y2
+	VDIVPD Y2, Y15, Y5
+	VMOVUPD Y5, (AX)
+
 	ADDQ $32, AX
 	ADDQ $32, DI
-	SUBQ $4, SI
-	CMPQ SI, $4
-	JGE  loop
-done:
+	SUBQ $4, BX
+	CMPQ BX, $4
+	JGE  sigmoid_avx2_loop
+
+sigmoid_avx2_done:
 	VZEROUPPER
 	RET

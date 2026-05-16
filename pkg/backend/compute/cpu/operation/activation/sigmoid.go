@@ -3,7 +3,7 @@ package activation
 import "github.com/theapemachine/caramba/pkg/backend/compute/state"
 
 /*
-Sigmoid applies 1/(1+exp(-x)) approximated via rational tanh elementwise.
+Sigmoid applies 1/(1+exp(-x)) elementwise through the active CPU vector path.
 */
 type Sigmoid struct{}
 

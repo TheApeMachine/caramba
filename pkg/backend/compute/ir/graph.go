@@ -142,7 +142,7 @@ func verifyNodeShape(node *Node) error {
 		return verifyElementwiseNode(node, inputs)
 	case OpMatmul:
 		return verifyMatmulNode(node, inputs)
-	case OpReLU, OpLeakyReLU, OpGELU, OpTanh, OpSigmoid:
+	case OpReLU, OpLeakyReLU, OpGELU, OpTanh, OpSigmoid, OpSwish, OpSELU:
 		return verifyUnarySameShapeNode(node, inputs)
 	case OpSwiGLU:
 		return verifySwiGLUNode(node, inputs)

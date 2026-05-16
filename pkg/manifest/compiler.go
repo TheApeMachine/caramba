@@ -41,6 +41,24 @@ func (compiler *Compiler) Compile(path string) (*Graph, error) {
 		return nil, err
 	}
 
+	return compiler.compileDocument(document)
+}
+
+/*
+CompileBytes resolves an already-loaded manifest document and builds an
+executable Graph from the topology section.
+*/
+func (compiler *Compiler) CompileBytes(data []byte) (*Graph, error) {
+	document, err := compiler.parser.ParseBytes(data)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return compiler.compileDocument(document)
+}
+
+func (compiler *Compiler) compileDocument(document map[string]any) (*Graph, error) {
 	systemBlock, err := compiler.requireMap(document, "system")
 
 	if err != nil {
@@ -53,13 +71,21 @@ func (compiler *Compiler) Compile(path string) (*Graph, error) {
 		return nil, err
 	}
 
-	return compiler.buildGraph(topology)
+	documentInputs, err := compiler.optionalPortNames(document, "inputs")
+
+	if err != nil {
+		return nil, err
+	}
+
+	return compiler.buildGraph(topology, documentInputs)
 }
 
 /*
 buildGraph constructs a Graph from a decoded topology map.
 */
-func (compiler *Compiler) buildGraph(topology map[string]any) (*Graph, error) {
+func (compiler *Compiler) buildGraph(
+	topology map[string]any, documentInputs []string,
+) (*Graph, error) {
 	graph := newGraph()
 
 	nodesField, err := compiler.requireSequence(topology, "nodes")
@@ -75,6 +101,10 @@ func (compiler *Compiler) buildGraph(topology map[string]any) (*Graph, error) {
 	}
 
 	for _, input := range externalInputs {
+		graph.externalInputs[input] = true
+	}
+
+	for _, input := range documentInputs {
 		graph.externalInputs[input] = true
 	}
 
@@ -269,6 +299,40 @@ func (compiler *Compiler) optionalStringList(mapping map[string]any, key string)
 
 	if err != nil {
 		return nil, fmt.Errorf("compiler: key %q: %w", key, err)
+	}
+
+	return out, nil
+}
+
+func (compiler *Compiler) optionalPortNames(mapping map[string]any, key string) ([]string, error) {
+	field, ok := mapping[key]
+
+	if !ok {
+		return nil, nil
+	}
+
+	rawList, ok := field.([]any)
+
+	if !ok {
+		return nil, fmt.Errorf("compiler: key %q must be a sequence, got %T", key, field)
+	}
+
+	out := make([]string, 0, len(rawList))
+
+	for index, item := range rawList {
+		itemMap, ok := item.(map[string]any)
+
+		if !ok {
+			return nil, fmt.Errorf("compiler: key %q element %d must be a mapping", key, index)
+		}
+
+		name, err := compiler.requireString(itemMap, "name")
+
+		if err != nil {
+			return nil, fmt.Errorf("compiler: key %q element %d: %w", key, index, err)
+		}
+
+		out = append(out, name)
 	}
 
 	return out, nil

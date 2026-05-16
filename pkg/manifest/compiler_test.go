@@ -101,6 +101,27 @@ system:
 				So(graph.nodes, ShouldHaveLength, 1)
 			})
 
+			Convey("It should treat top-level input ports as graph inputs", func() {
+				write("master.yml", `
+inputs:
+  - name: x
+    type: tensor
+system:
+    topology:
+      type: GraphTopology
+      nodes:
+      - id: scale
+        op: math.scale
+        in: [x]
+        out: [y]
+        config:
+          factor: 3.0
+`)
+				graph, err := compiler.Compile("master.yml")
+				So(err, ShouldBeNil)
+				So(graph.ExternalInputs(), ShouldResemble, []string{"x"})
+			})
+
 			Convey("It should execute the graph correctly", func() {
 				write("master.yml", `
 system:

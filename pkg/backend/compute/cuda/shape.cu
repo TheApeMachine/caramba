@@ -137,6 +137,20 @@ __global__ void merge_heads_kernel(
     dst[outIdx] = src[idx];
 }
 
+__global__ void last_token_kernel(
+    const double* src, double* dst,
+    int seq_len, int feature, int n)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= n) return;
+
+    int outer = idx / feature;
+    int feature_idx = idx % feature;
+    int src_idx = (outer * seq_len + (seq_len - 1)) * feature + feature_idx;
+
+    dst[idx] = src[src_idx];
+}
+
 // ---------------------------------------------------------------------------
 // Launch helpers
 // ---------------------------------------------------------------------------
@@ -362,6 +376,43 @@ int cuda_merge_heads(const double* src, double* dst,
     if (cudaGetLastError()     != cudaSuccess) goto fail;
     if (cudaDeviceSynchronize() != cudaSuccess) goto fail;
     if (cudaMemcpy(dst, d_dst, bytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
+
+    cudaFree(d_src); cudaFree(d_dst);
+    return 0;
+fail:
+    cudaFree(d_src); cudaFree(d_dst);
+    return -1;
+}
+
+int cuda_last_token(const double* src, double* dst,
+                    int outer, int seq_len, int feature)
+{
+    if (!src || !dst || outer <= 0 || seq_len <= 0 || feature <= 0) return -1;
+
+    size_t input_items = (size_t)outer;
+
+    if (checked_mul_size(&input_items, (size_t)seq_len)) return -1;
+    if (checked_mul_size(&input_items, (size_t)feature)) return -1;
+    if (input_items > INT_MAX) return -1;
+
+    size_t output_items = (size_t)outer;
+
+    if (checked_mul_size(&output_items, (size_t)feature)) return -1;
+    if (output_items > INT_MAX) return -1;
+
+    int n = (int)output_items;
+    double *d_src = NULL, *d_dst = NULL;
+    size_t input_bytes = input_items * sizeof(double);
+    size_t output_bytes = output_items * sizeof(double);
+
+    if (cudaMalloc(&d_src, input_bytes) != cudaSuccess) return -1;
+    if (cudaMalloc(&d_dst, output_bytes) != cudaSuccess) { cudaFree(d_src); return -1; }
+
+    if (cudaMemcpy(d_src, src, input_bytes, cudaMemcpyHostToDevice) != cudaSuccess) goto fail;
+    last_token_kernel<<<blocks(n), BLOCK>>>(d_src, d_dst, seq_len, feature, n);
+    if (cudaGetLastError()     != cudaSuccess) goto fail;
+    if (cudaDeviceSynchronize() != cudaSuccess) goto fail;
+    if (cudaMemcpy(dst, d_dst, output_bytes, cudaMemcpyDeviceToHost) != cudaSuccess) goto fail;
 
     cudaFree(d_src); cudaFree(d_dst);
     return 0;

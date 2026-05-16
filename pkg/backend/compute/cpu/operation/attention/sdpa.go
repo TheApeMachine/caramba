@@ -20,33 +20,64 @@ func (s *SDPA) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, err
 	}
 
-	batch, numHeads, seqLen, headDim, err := attentionShape4("attention.sdpa", stateDict)
+	batch, numHeads, queryLength, headDim, err := attentionShape4("attention.sdpa", stateDict)
 
 	if err != nil {
 		return nil, err
 	}
 
 	Q, K, V := stateDict.Inputs[0], stateDict.Inputs[1], stateDict.Inputs[2]
-	headStride := seqLen * headDim
-	batchStride := numHeads * headStride
-	total := batch * numHeads * headStride
+	queryHeadStride := queryLength * headDim
+	queryBatchStride := numHeads * queryHeadStride
+	queryTotal := batch * numHeads * queryHeadStride
 
-	if len(Q) != total || len(K) != total || len(V) != total {
-		return nil, fmt.Errorf("attention.sdpa: Q/K/V lengths must all equal %d", total)
+	if len(Q) != queryTotal {
+		return nil, fmt.Errorf("attention.sdpa: Q length must equal %d", queryTotal)
 	}
 
-	stateDict.EnsureOperationOutLen(total)
+	keyValueWidth := batch * numHeads * headDim
+
+	if len(K) != len(V) || keyValueWidth == 0 || len(K)%keyValueWidth != 0 {
+		return nil, fmt.Errorf("attention.sdpa: K/V lengths must match whole cached heads")
+	}
+
+	keyValueLength := len(K) / keyValueWidth
+
+	if keyValueLength < queryLength {
+		return nil, fmt.Errorf(
+			"attention.sdpa: key/value length %d is shorter than query length %d",
+			keyValueLength,
+			queryLength,
+		)
+	}
+
+	keyValueHeadStride := keyValueLength * headDim
+	keyValueBatchStride := numHeads * keyValueHeadStride
+	stateDict.EnsureOperationOutLen(queryTotal)
 
 	for b := 0; b < batch; b++ {
 		for h := 0; h < numHeads; h++ {
-			off := b*batchStride + h*headStride
-			sdpaHead(
-				stateDict.Out[off:off+headStride],
-				Q[off:off+headStride],
-				K[off:off+headStride],
-				V[off:off+headStride],
-				seqLen, headDim, nil,
-			)
+			queryOffset := b*queryBatchStride + h*queryHeadStride
+			keyValueOffset := b*keyValueBatchStride + h*keyValueHeadStride
+			outHead := stateDict.Out[queryOffset : queryOffset+queryHeadStride]
+			queryHead := Q[queryOffset : queryOffset+queryHeadStride]
+			keyHead := K[keyValueOffset : keyValueOffset+keyValueHeadStride]
+			valueHead := V[keyValueOffset : keyValueOffset+keyValueHeadStride]
+
+			if stateDict.Causal {
+				sdpaHeadCausal(
+					outHead,
+					queryHead,
+					keyHead,
+					valueHead,
+					queryLength,
+					keyValueLength,
+					headDim,
+				)
+				continue
+			}
+
+			sdpaHead(outHead, queryHead, keyHead, valueHead, queryLength, keyValueLength, headDim)
 		}
 	}
 

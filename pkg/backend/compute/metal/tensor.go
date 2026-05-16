@@ -9,6 +9,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -21,7 +22,23 @@ var _ computetensor.Backend = (*TensorBackend)(nil)
 TensorBackend owns Metal MTLBuffer tensors.
 */
 type TensorBackend struct {
-	closed atomic.Uint32
+	closed        atomic.Uint32
+	cacheMu       sync.Mutex
+	activationOps *MetalActivation
+	mathOps       *MathOps
+	shapeOps      *MetalShapeOps
+	attentionOps  *MetalAttention
+	embeddingOps  map[string]*EmbeddingOps
+	kvEntries     map[string]*residentKVEntry
+	resident      map[string]computetensor.Float64Tensor
+}
+
+type residentKVEntry struct {
+	epoch    uint64
+	capacity int
+	shape    []int
+	key      computetensor.Float64Tensor
+	value    computetensor.Float64Tensor
 }
 
 /*
@@ -32,7 +49,11 @@ func NewTensorBackend() (*TensorBackend, error) {
 		return nil, fmt.Errorf("metal tensor: initialization failed (rc=%d)", rc)
 	}
 
-	return &TensorBackend{}, nil
+	return &TensorBackend{
+		embeddingOps: make(map[string]*EmbeddingOps),
+		kvEntries:    make(map[string]*residentKVEntry),
+		resident:     make(map[string]computetensor.Float64Tensor),
+	}, nil
 }
 
 /*
@@ -116,8 +137,58 @@ Close releases the backend.
 */
 func (tensorBackend *TensorBackend) Close() error {
 	tensorBackend.closed.Store(1)
+	tensorBackend.cacheMu.Lock()
+	defer tensorBackend.cacheMu.Unlock()
 
-	return nil
+	var closeErr error
+
+	for key, entry := range tensorBackend.kvEntries {
+		if err := entry.close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+
+		delete(tensorBackend.kvEntries, key)
+	}
+
+	for key, value := range tensorBackend.resident {
+		if value == nil {
+			continue
+		}
+
+		if err := value.Close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+
+		delete(tensorBackend.resident, key)
+	}
+
+	return closeErr
+}
+
+func (entry *residentKVEntry) close() error {
+	if entry == nil {
+		return nil
+	}
+
+	var closeErr error
+
+	if entry.key != nil {
+		if err := entry.key.Close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+	}
+
+	if entry.value != nil {
+		if err := entry.value.Close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+	}
+
+	entry.key = nil
+	entry.value = nil
+	entry.shape = nil
+
+	return closeErr
 }
 
 /*
@@ -163,6 +234,24 @@ func (metalActivation *MetalActivation) SigmoidTensor(
 	input computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {
 	return metalActivation.unaryTensor(input, "sigmoid", 0)
+}
+
+/*
+SwishTensor launches a Metal Swish kernel directly against resident buffers.
+*/
+func (metalActivation *MetalActivation) SwishTensor(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return metalActivation.unaryTensor(input, "swish", 0)
+}
+
+/*
+SELUTensor launches a Metal SELU kernel directly against resident buffers.
+*/
+func (metalActivation *MetalActivation) SELUTensor(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return metalActivation.unaryTensor(input, "selu", 0)
 }
 
 /*
@@ -234,6 +323,10 @@ func (metalActivation *MetalActivation) unaryTensor(
 		rc = C.metal_tanh_tensor(metalInput.buffer, output.buffer, C.int(metalInput.Len()))
 	case "sigmoid":
 		rc = C.metal_sigmoid_tensor(metalInput.buffer, output.buffer, C.int(metalInput.Len()))
+	case "swish":
+		rc = C.metal_swish_tensor(metalInput.buffer, output.buffer, C.int(metalInput.Len()))
+	case "selu":
+		rc = C.metal_selu_tensor(metalInput.buffer, output.buffer, C.int(metalInput.Len()))
 	default:
 		_ = output.Close()
 

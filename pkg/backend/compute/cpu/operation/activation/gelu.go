@@ -3,16 +3,14 @@ package activation
 import "github.com/theapemachine/caramba/pkg/backend/compute/state"
 
 /*
-Gelu evaluates the standard approximate GELU map using SIMD instructions on
-amd64/arm64 and a scalar fallback on other platforms.
+Gelu evaluates the tanh-form Gaussian Error Linear Unit:
 
-The formulation matches the assembly implementations: tanh uses the rational
-approximation z·(27+z²)/(27+9z²).
+	0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715*x^3)))
 */
 type Gelu struct{}
 
 /*
-NewGelu returns an Operation that computes approximate GELU elementwise.
+NewGelu returns an Operation that computes GELU elementwise.
 */
 func NewGelu() *Gelu {
 	return &Gelu{}

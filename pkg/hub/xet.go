@@ -349,9 +349,9 @@ func decodeXorbChunk(
 
 		return compressed, nil
 	case 1:
-		return decodeLZ4Block(compressed, uncompressedSize)
+		return decodeLZ4Payload(compressed, uncompressedSize)
 	case 2:
-		grouped, err := decodeLZ4Block(compressed, uncompressedSize)
+		grouped, err := decodeLZ4Payload(compressed, uncompressedSize)
 
 		if err != nil {
 			return nil, err

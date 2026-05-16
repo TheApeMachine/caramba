@@ -59,6 +59,10 @@ func (registry *OperationRegistry) Swish(*state.Dict) (state.Operation, error) {
 	return activation.NewSwish(), nil
 }
 
+func (registry *OperationRegistry) SELU(*state.Dict) (state.Operation, error) {
+	return activation.NewSELU(), nil
+}
+
 func (registry *OperationRegistry) SDPA(*state.Dict) (state.Operation, error) {
 	return attention.NewSDPA(), nil
 }
@@ -157,6 +161,10 @@ func (registry *OperationRegistry) ViewAsHeads(*state.Dict) (state.Operation, er
 
 func (registry *OperationRegistry) MergeHeads(*state.Dict) (state.Operation, error) {
 	return shape.NewMergeHeads(), nil
+}
+
+func (registry *OperationRegistry) LastToken(*state.Dict) (state.Operation, error) {
+	return shape.NewLastToken(), nil
 }
 
 func (registry *OperationRegistry) RoPE(*state.Dict) (state.Operation, error) {

@@ -7,7 +7,7 @@ import "fmt"
 /*
 SwishAVX2 applies the Swish activation to src and writes the results to dst.
 dst and src are float64 slices and dst must have the same length as src.
-The caller must only invoke this stub when AVX2 is supported and the slice
+The caller must only invoke this routine when AVX2 is supported and the slice
 length is a multiple of four. The routine writes dst in place and allocates
 nothing.
 */
@@ -17,7 +17,7 @@ func SwishAVX2(dst, src []float64)
 /*
 SwishSSE2 applies the Swish activation to src and writes the results to dst.
 dst and src are float64 slices and dst must have the same length as src.
-The caller must only invoke this stub when SSE2 is supported and the slice
+The caller must only invoke this routine when SSE2 is supported and the slice
 length is a multiple of two. The routine writes dst in place and allocates
 nothing.
 */

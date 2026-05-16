@@ -2,9 +2,9 @@
 
 DATA ·atLog2E+0(SB)/8, $1.4426950408889634
 GLOBL ·atLog2E(SB), RODATA, $8
-DATA ·atLn2Hi+0(SB)/8, $0.6931471803691864
+DATA ·atLn2Hi+0(SB)/8, $0.6931471805599453
 GLOBL ·atLn2Hi(SB), RODATA, $8
-DATA ·atLn2Lo+0(SB)/8, $1.9082149292705877e-10
+DATA ·atLn2Lo+0(SB)/8, $0.0
 GLOBL ·atLn2Lo(SB), RODATA, $8
 DATA ·atMaxArg+0(SB)/8, $709.0
 GLOBL ·atMaxArg(SB), RODATA, $8
@@ -34,10 +34,24 @@ DATA ·atC10+0(SB)/8, $2.7557319223985894e-7
 GLOBL ·atC10(SB), RODATA, $8
 DATA ·atC11+0(SB)/8, $2.5052108385441718e-8
 GLOBL ·atC11(SB), RODATA, $8
+DATA ·atC12+0(SB)/8, $2.08767569878681e-9
+GLOBL ·atC12(SB), RODATA, $8
+DATA ·atC13+0(SB)/8, $1.6059043836821613e-10
+GLOBL ·atC13(SB), RODATA, $8
+DATA ·atC14+0(SB)/8, $1.1470745597729725e-11
+GLOBL ·atC14(SB), RODATA, $8
+DATA ·atC15+0(SB)/8, $7.647163731819816e-13
+GLOBL ·atC15(SB), RODATA, $8
+DATA ·atC16+0(SB)/8, $4.779477332387385e-14
+GLOBL ·atC16(SB), RODATA, $8
+DATA ·atC17+0(SB)/8, $2.8114572543455206e-15
+GLOBL ·atC17(SB), RODATA, $8
+DATA ·atC18+0(SB)/8, $1.5619206968586225e-16
+GLOBL ·atC18(SB), RODATA, $8
 
-// scalarTanhAVX2(dst, src []float64)
+// scalarTanhAMD64(dst, src []float64)
 // tanh(x) per element via (e^{2x}-1)/(e^{2x}+1); NaN → NaN, ±Inf → ±1.
-TEXT ·scalarTanhAVX2(SB), NOSPLIT, $0-48
+TEXT ·scalarTanhAMD64(SB), NOSPLIT, $0-48
 	MOVQ dst+0(FP), AX
 	MOVQ src+24(FP), DI
 	MOVQ src_len+32(FP), CX
@@ -131,9 +145,9 @@ tanh_next:
 tanh_done:
 	RET
 
-// scalarSigmoidAVX2(dst, src []float64)
+// scalarSigmoidAMD64(dst, src []float64)
 // 1/(1+exp(-x)); NaN → NaN
-TEXT ·scalarSigmoidAVX2(SB), NOSPLIT, $0-48
+TEXT ·scalarSigmoidAMD64(SB), NOSPLIT, $0-48
 	MOVQ dst+0(FP), AX
 	MOVQ src+24(FP), DI
 	MOVQ src_len+32(FP), CX
@@ -208,8 +222,8 @@ sig_next:
 sig_done:
 	RET
 
-// scalarReLUAVX2(dst, src []float64)
-TEXT ·scalarReLUAVX2(SB), NOSPLIT, $0-48
+// scalarReLUAMD64(dst, src []float64)
+TEXT ·scalarReLUAMD64(SB), NOSPLIT, $0-48
 	MOVQ dst+0(FP), AX
 	MOVQ src+24(FP), DI
 	MOVQ src_len+32(FP), CX
@@ -227,8 +241,8 @@ relu_loop:
 relu_done:
 	RET
 
-// scalarLeakyReLUAVX2(dst, src []float64, alpha float64)
-TEXT ·scalarLeakyReLUAVX2(SB), NOSPLIT, $0-56
+// scalarLeakyReLUAMD64(dst, src []float64, alpha float64)
+TEXT ·scalarLeakyReLUAMD64(SB), NOSPLIT, $0-56
 	MOVQ dst+0(FP), AX
 	MOVQ src+24(FP), DI
 	MOVQ src_len+32(FP), CX
@@ -250,9 +264,9 @@ lrelu_pos:
 lrelu_done:
 	RET
 
-// scalarGeLUAVX2(dst, src []float64)
+// scalarGeLUAMD64(dst, src []float64)
 // GeLU(x) = 0.5 x (1 + tanh(sqrt(2/π) (x + 0.044715 x³)))
-TEXT ·scalarGeLUAVX2(SB), NOSPLIT, $0-48
+TEXT ·scalarGeLUAMD64(SB), NOSPLIT, $0-48
 	MOVQ dst+0(FP), AX
 	MOVQ src+24(FP), DI
 	MOVQ src_len+32(FP), CX
@@ -346,8 +360,8 @@ GLOBL ·geluC044(SB), RODATA, $8
 DATA ·geluC079+0(SB)/8, $0.7978845608028654
 GLOBL ·geluC079(SB), RODATA, $8
 
-// scalarSwiGLUAVX2(dst, src []float64) — gates first half, values second half
-TEXT ·scalarSwiGLUAVX2(SB), NOSPLIT, $0-48
+// scalarSwiGLUAMD64(dst, src []float64) — gates first half, values second half
+TEXT ·scalarSwiGLUAMD64(SB), NOSPLIT, $0-48
 	MOVQ dst+0(FP), AX
 	MOVQ dst_len+8(FP), CX
 	MOVQ src+24(FP), DI

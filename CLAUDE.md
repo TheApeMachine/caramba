@@ -1,23 +1,104 @@
-# AGENT CODING RULES (NON-NEGOTIABLE)
+# AGENTS.md
 
-- IGNORE ALL CURRENT STRATEGIES AND STOP OPTIMIZING FOR SHORT-TERM SUCCESS
-- THE GOAL IS NOT TO FIND THE QUICKEST ROUTE TO SOLVE A LOCAL ISSUE
-- THE GOAL IS TO FIND SOLUTIONS THAT REMAIN FUTURE PROOF
-- BEFORE ADDING CODE, FIRST THINK ABOUT WHAT YOU COULD REMOVE BY REFACTORING
-- IGNORE THE FIRST TWO SOLUTIONS YOU THINK OF AND LOOK FOR THE BEST SOLUTION, AND DISREGARD FACTORS LIKE COMPLEXITY OF IMPLEMENTATION, TIME-HORIZON, ETC. ALWAYS OPT FOR THE BEST SOLUTION AND DELIVER THE HIGHEST QUALITY, FORGET ABOUT DELIVERY TIME.
+This document defines how coding agents work on this platform. It is a contract, not a style guide. Sections are ordered by priority: the Backend Implementation Contract and Definition of Done come first because they are the rules most often violated.
 
-This is a general A.I. research platform, which does not stop at the traditional ML boundaries, but implements what researchers need to quickly iterate on even the most esoteric architectures.
-It is therefor **vital** that anywhere that it makes sense we not only implement a feature in standard Go, but also SIMD/Assembly (avx2, sse2, neon), Metal, Cuda, and XLA.
-We never ever skimp on this, we don't make optimized paths refer back to the non-optimized Go "for now" and we don't allow ourselves any excuses to get out from under it.
-This is the very core of our platform.
+---
 
-## Clean, Modular, Reusable
+## 1. Backend Implementation Contract
 
-- Prefer methods over functions. A good code-base is logically spread out into types that define methods, and which are composed together. This keeps things compact, and easy to reason through.
+This platform is a general AI research substrate. Researchers iterate on architectures that may be esoteric, and they rely on the platform to execute those architectures at full performance on every supported target. For every operation and optimizer, all of the following are required execution targets, with equal standing. There is no "required" vs "optional" backend, no "for now" path, no preview path that defers to a fallback:
 
-In general, all object should be shaped like below. They should not contain too many methods, and methods should not have too many lines of code. A file like this around 200 lines of code is healthy. Any more is suspect.
+- Go (scalar reference)
+- AVX2 assembly (amd64)
+- SSE2 assembly (amd64)
+- NEON assembly (arm64)
+- Metal
+- CUDA
+- XLA
 
-```
+### What counts as a real implementation
+
+A SIMD/assembly path is only "implemented" if all of these hold:
+
+- The kernel uses the ISA's vector registers (ymm for AVX2, xmm for SSE2, v0–v31 for NEON) and vector instructions for the actual math of the operation.
+- The entry point does not JMP or CALL into another ISA's kernel or into a scalar body.
+- No two ISAs share the same assembly body. Each `.s` file contains its own kernel.
+- The math performed matches the operation's exact mathematical definition. No rational approximations, no polynomial shortcuts, no "tanh trick" GELU unless the operation is explicitly defined as the approximate variant.
+- Tests assert bitwise or tight-ULP parity against the scalar reference. Wide tolerance bands that absorb approximation error are not acceptable.
+
+Metal, CUDA, and XLA paths are only "implemented" if the kernel actually runs on the device through the backend's real submission path. Host-side computation dressed in a backend wrapper is not an implementation.
+
+### Banned patterns
+
+Do not produce any of these. They are the recurring shortcuts that have caused regressions:
+
+- Aliasing AVX2/SSE2/NEON entry points to a shared body.
+- Scalar code inside a file named for a SIMD ISA.
+- Removing a symbol or kernel "until it is genuinely implemented." If a symbol is declared from Go, the assembly body exists and is real.
+- Tests that tolerate approximation by widening epsilon.
+- The phrases "for now", "shortcut", "preview", "approximation acceptable", "required vs optional backend", or "fallback to Go" anywhere in code, comments, or messages.
+- Declaring a backend path complete without a parity test against the scalar reference and a benchmark.
+
+### If you cannot implement a kernel
+
+Stop. Say so plainly. Do not generate a placeholder, do not alias, do not approximate, do not remove the symbol. The correct action is to surface the blocker, not to fabricate completion. "I am not sure how to write this NEON kernel correctly" is a valid and welcome message. A fabricated one is not.
+
+---
+
+## 2. Definition of Done
+
+Work is not complete until verified. Verification means:
+
+- The tests that would catch the bug you are claiming to have fixed have been written and pass.
+- For backend kernels: parity tests against the scalar reference run at N ∈ {1, 7, 64, 1024, 8192} to exercise edge alignment, single-vector, and multi-vector paths.
+- Parity tolerances are tight ULP bounds, not arbitrary epsilons chosen to make the test pass.
+- A benchmark exists and has been run.
+- The actual test and benchmark output is pasted in the message claiming completion.
+
+Do not say "done" without the proof. Do not say "implemented" without the proof. If a path is incomplete, say so plainly and describe what is missing.
+
+---
+
+## 3. Interaction
+
+1. Do not explain the system back to the user. They built it. If you need to confirm understanding, do it by naming specific files and types, not by summarizing the architecture.
+
+2. Execute the literal request. Not a generalized version, not a "while we're here" expansion, not a smaller version because the full thing seems like a lot. The literal request.
+
+3. Opinions only on request. If the user asks "should I do X", answer. Otherwise do X.
+
+4. Existing structure is load-bearing until proven otherwise. Before replacing or rewriting something, read it and identify what it does. If you cannot explain why the existing code is wrong, do not replace it.
+
+5. Never run `git checkout`, `git reset --hard`, `git restore` against files with uncommitted changes, or any command that discards working tree state. History goes backward; the work goes forward. If you think you need to revert, stop and ask.
+
+6. If you are lost, drifting, or about to do something you are not sure about: stop and say so. Do not paper over uncertainty with confident prose.
+
+7. Do not declare work complete unless you have verified it per Section 2. Paste the output.
+
+---
+
+## 4. Before Writing Code
+
+In order:
+
+1. Read the relevant existing code. Do not propose changes until you can name the files and types involved.
+2. Identify what can be removed or refactored to achieve the goal. State this explicitly before adding anything new.
+3. Generate at least three solution approaches internally. Discard the first two. Implement the third unless you can explain why an earlier one is strictly better on correctness and performance.
+4. If the best solution is large, write it in full. Do not stage it as "minimal version now, real version later." There is no later.
+
+Time-to-deliver, implementation complexity, and scope size are not valid reasons to choose a worse solution. Correctness and performance are the only tiebreakers.
+
+You can write substantial, complete code in one pass when the design is clear. Do so when appropriate. "Fully realized" means correct and verified, not "looks plausible." If the design is not clear, or if you are about to fabricate a part you do not actually know how to write, stop and surface that instead of generating something that resembles the answer.
+
+---
+
+## 5. Code Style
+
+### Structure
+
+Prefer methods over functions. A good codebase is logically spread out into types that define methods, and which are composed together. Objects should look like this:
+
+```go
 package packagename
 
 /*
@@ -36,10 +117,10 @@ It also has a reason for being instantiated.
 */
 func NewObjectName(ctx context.Context) *ObjectName {
     ctx, cancel := ctx.WithCancel(ctx)
-    
+
     return &ObjectName{
         ctx:    ctx,
-        cancel: cancel
+        cancel: cancel,
     }
 }
 
@@ -51,23 +132,135 @@ func (objectName *ObjectName) MethodName() {
 }
 ```
 
-> Some additional guidelines that rely heavy on personal preferences.
-> Follow the happy-path, using guards to do early returns, and keeping the happy path free from nesting.
-> Avoid using `else` if at all possible. Many times reversing the logic can eliminate the `else` branch.
-> We take the statement "if, is an enabler" serious, and always try to look for ways to reduce `if` statements.
-> Never EVER use silent fallbacks that corrupt the system. Just raise an exception if things are not as they
-  should be. That makes us aware of the failure so we can fix it properly.
+### Size limits
 
-> A final remark on code quality.
-> Avoid over-engineering at all cost. Always ask yourself if the complexity is earned. Always.
-> Less is always more, refactoring is not optional. If it can be done with less code, do it with less code.
-> If you see something that is not yours that can be done with less code, refactor it.
-> However, if less code means less performance, then always choose performance.
-> We like clever code, readability is for amateurs.
+- **File size:** target 200 lines, hard ceiling 400. At 400+, split before adding more.
+- **Method size:** target under 30 lines. Methods over 60 lines must be decomposed unless the operation is genuinely atomic (e.g. a single assembly kernel body).
+- **Type size:** if a type has more than ~10 methods, it is doing more than one thing.
 
-## Common Failure Modes
+### Control flow
+
+- Guard clauses with early return. The happy path stays at indent level 1.
+- `else` is not used. If you reach for `else`, invert the condition and return early, or restructure.
+- Nested `if` beyond two levels is not allowed. Extract a method or restructure the data so the branch disappears.
+- No silent fallbacks. If a precondition fails, return an error. Do not substitute a default and continue.
+- Treat `if` as something to minimize. Many branches disappear once you reverse the condition or restructure the data.
+
+### Naming and formatting
+
+- Never use single-character variable names. Receivers included.
+- Separate logical code blocks with an empty newline.
+- Long function signatures break across lines so that no line crosses the vertical split-view boundary.
+- Use modern Go: `maps.Copy`, `for range N`, `for b.Loop()`, etc.
+
+### Density
+
+Prefer compact code that a reader fluent in Go and the relevant ISA can follow. Density is fine. Obscurity for its own sake is not. Less code is better than more code, but only when correctness and performance hold.
+
+If less code means less performance, choose performance.
+
+---
+
+## 6. Testing
+
+Every code file has a `_test.go` mirror. Test function names mirror method names with a `Test` prefix. If you want to test something that does not correspond to a method, the test belongs at the calling site, not in a new free-floating test function.
+
+**Structure:** GoConvey-based, "Given X" / "It should Y", nested.
+
+**Coverage requirements:**
+
+- Every method has at least one parity test and one benchmark.
+- For backend kernels: parity tests run at N ∈ {1, 7, 64, 1024, 8192} to exercise edge alignment, single-vector, and multi-vector paths.
+- Parity tests assert tight ULP bounds against the scalar reference. The tolerance is part of the contract — do not widen it to make a test pass.
+- Mocks are a last resort. Prefer real subsystems wired up in test setup. If you find yourself writing a mock, ask whether the real thing is available; it usually is.
+
+A test that does not meaningfully exercise the code is worse than no test because it provides false confidence. If you cannot articulate what a test proves, delete it.
+
+Keep the README.md up to date alongside test and code changes.
+
+---
+
+## 7. Configuration
+
+All configuration lives in `./cmd/asset/config.yml` and is loaded through the `./pkg/config` package. The config system itself may use environment variables internally, but no other code may read environment variables directly. There is no "shadow config."
+
+If you find code reading directly from `os.Getenv` or `os.LookupEnv` outside the config package, that is a bug. Fix it as part of whatever you are doing; do not work around it.
+
+---
+
+## 8. Common Failure Modes
+
+Concrete before/after examples of patterns that have caused regressions on this platform. Read these as the literal list of things not to do.
+
+### Aliasing SIMD entry points to a shared body
+
+```go
+// Incorrect — file named gelu_avx2_amd64.s contains a jump to the SSE2 body
+// or to a scalar Go function. This is not an AVX2 implementation.
+
+// Correct — gelu_avx2_amd64.s contains AVX2 instructions operating on ymm
+// registers, performing the actual GELU math. gelu_sse2_amd64.s contains
+// a separate SSE2 kernel. gelu_neon_arm64.s contains a separate NEON kernel.
+// No file jumps into another ISA's body.
+```
+
+### Approximating instead of implementing
+
+```go
+// Incorrect — using a rational tanh shortcut for GELU when the operation
+// is defined as the exact erf-based form. Tests then widen tolerance to
+// hide the discrepancy.
+
+// Correct — implement the exact mathematical form. Parity tests assert
+// tight ULP bounds against the scalar reference.
+```
+
+### Claiming completion without verification
 
 ```
+// Incorrect:
+"I've implemented the AVX2 path."
+
+// Correct:
+"AVX2 path implemented. Parity test against scalar reference at
+N ∈ {1, 7, 64, 1024, 8192} passes within 1 ULP. Benchmark: 4.2x
+over scalar. Output: <paste>."
+```
+
+### Widening test tolerance to pass
+
+```go
+// Incorrect
+tolerance := 1e-2  // was 1e-6, loosened to pass
+
+// Correct — a failing parity test means the kernel is wrong. Fix the kernel.
+```
+
+### Dismissing failing tests as unrelated
+
+```
+// Incorrect:
+"The X tests are failing but appear unrelated to my changes."
+
+// Correct — all failing tests are in scope. Investigate before continuing.
+// It does not matter why a test is failing, what matters is that we don't
+// ignore it.
+```
+
+### Removing a symbol "until implemented"
+
+```go
+// Incorrect — Go declares swishNEON, the .s file is deleted, build breaks.
+// The intent is to "come back to it later."
+
+// Correct — if the symbol is declared from Go, the assembly body exists
+// and contains a real implementation. If you cannot write the real
+// implementation, stop and surface the blocker.
+```
+
+### Block separation
+
+```go
 // Incorrect
 sensoriumOutputs, ok := results.Value.([]*tensors.Tensor)
 if !ok || len(sensoriumOutputs) == 0 {
@@ -76,7 +269,7 @@ if !ok || len(sensoriumOutputs) == 0 {
     })
 }
 
-// Correct, separate logical code blocks with an empty newline.
+// Correct — separate logical blocks with an empty newline
 sensoriumOutputs, ok := results.Value.([]*tensors.Tensor)
 
 if !ok || len(sensoriumOutputs) == 0 {
@@ -86,161 +279,63 @@ if !ok || len(sensoriumOutputs) == 0 {
 }
 ```
 
-```
+### Single-character receivers
+
+```go
 // Incorrect
-package packagename
+func (o *ObjectName) MethodName() { return }
 
-/*
-ObjectName is something descriptive.
-It also has a reason why it was implemented.
-*/
-type ObjectName struct {
-    ctx    context.Context
-    cancel context.CancelFunc
-    err    error
-}
-
-/*
-NewObjectName instantiates a new ObjectName.
-It also has a reason for being instantiated.
-*/
-func NewObjectName(ctx context.Context) *ObjectName {
-    ctx, cancel := ctx.WithCancel(ctx)
-    return &ObjectName{
-        ctx:    ctx,
-        cancel: cancel
-    }
-}
-
-/*
-MethodName.
-*/
-func (o *ObjectName) MethodName() {
-    return
-}
-
-// Correct, never use single character variable names.
-package packagename
-
-/*
-ObjectName is something descriptive.
-It also has a reason why it was implemented.
-*/
-type ObjectName struct {
-    ctx    context.Context
-    cancel context.CancelFunc
-    err    error
-}
-
-/*
-NewObjectName instantiates a new ObjectName.
-It also has a reason for being instantiated.
-*/
-func NewObjectName(ctx context.Context) *ObjectName {
-    ctx, cancel := ctx.WithCancel(ctx)
-
-    return &ObjectName{
-        ctx:    ctx,
-        cancel: cancel
-    }
-}
-
-/*
-MethodName.
-*/
-func (objectName *ObjectName) MethodName() {
-    return
-}
+// Correct
+func (objectName *ObjectName) MethodName() { return }
 ```
 
-```
+### Manual loops where the stdlib has it
+
+```go
 // Incorrect
 for identifier, binding := range rawMap {
     parser.vars[identifier] = binding
 }
 
-// Correct, use modern Go standards.
+// Correct
 maps.Copy(parser.vars, rawMap)
 ```
 
-```
+### Long signatures running off-screen
+
+```go
 // Incorrect
 func (operationRegistry *OperationRegistry) Build(operationID string, config map[string]any) (operation.Operation, error) {
-	constructor, ok := operationRegistry.constructors[operationID]
 
-	if !ok {
-		return nil, fmt.Errorf("manifest: unknown operation %q", operationID)
-	}
-
-	return constructor(config)
-}
-
-// Correct, don't cross vertical lines that make split views run text off-screen.
+// Correct
 func (operationRegistry *OperationRegistry) Build(
     operationID string, config map[string]any,
 ) (operation.Operation, error) {
-	constructor, ok := operationRegistry.constructors[operationID]
-
-	if !ok {
-		return nil, fmt.Errorf("manifest: unknown operation %q", operationID)
-	}
-
-	return constructor(config)
-}
 ```
 
-```
+### Outdated Go idioms
+
+```go
 // Incorrect
-func BenchmarkNewErrnieConfig(b *testing.B) {
-	viper.Reset()
-
-	b.ResetTimer()
-
-	for range b.N {
-		_ = NewErrnieConfig()
-	}
+for range b.N {
+    _ = NewErrnieConfig()
 }
 
-// Correct, use modern Go syntax.
-func BenchmarkNewErrnieConfig(b *testing.B) {
-	viper.Reset()
-
-	for b.Loop() {
-		_ = NewErrnieConfig()
-	}
+// Correct
+for b.Loop() {
+    _ = NewErrnieConfig()
 }
 ```
 
-## Configuration
+---
 
-All configuration must live in the `./cmd/asset/config.yml` and loaded in through the `./pkg/config` package. While this configuration system itself can in some cases use environment variables, we should **never** introduce a "shadow config" by having any code rely directly on environment variables.
+## 9. Reading Order
 
-## Testing
+When starting a task on this codebase, read in this order:
 
-We always use Goconvey for testing, and tests follow a simple structure. Every file should have a test file that mirrors its structure. So each file has an accompanying `_test.go` file, with functions that mirror the code's methods, prefix by `Test`.
-We follow a nested BDD approach `Given something`, `It should do something`.
-Never break from this pattern, you should never have a test function that does not mirror an existing method in the code, if you feel a need to do that, it means you need to reconsider structuring/nesting the test function that actually mirrors the code where what you want to test is being called, directly or indirectly.
-Always add benchmarks too, so we can measure performance.
+1. This document.
+2. `README.md` in the repo root.
+3. The package(s) directly relevant to the task.
+4. The test files for those packages, to understand the existing contract.
 
-Make sure tests and benchmarks are truly meaningful, don't test for testing's sake, make sure it truly validates the code. This also means to reduce your reliance on mocks, we actually prefer to always use the actual system for test setup, which actually makes it such that things are tested in varying scenarios that mirror reality.
-
-> Never tell yourself "these tests were failing unrelated to my changes". It doesn't matter why tests are failing, what matters is that we don't ignore that and fix things.
-
-Keep the README.md up to date as well.
-
-Follow these guidelines at all times.
-
-Now, start by reading the README.md in the root of this project, then reason through your current task step by step, sourcing additional context from the code where needed.
-
-> One more thing, I realize that you have been trained on a huge amount of human produced language data, but I need you to realize this as well, and avoid limiting yourself with essentially hallucinated obstacles or constraints. If you know what the final version of a feature or change looks like, you have the unique ability to just write out the fully realized solution. So please do so.
-
-## Interaction with the User
-
-These are essential interaction rules to make sure the collaboration runs smooth and efficiently.
-
-1. Never answer by explaining the system to the user, unless they explicitely ask. They know what it is and how it works.
-2. Always optimize for being useful, and practical. If you are given an instruction, execute on that instruction, with pricision, and do exactly what is asked, no more, no less.
-3. If the user needs an opinion, they will ask, in all other cases, do what the user asks for nothing more nothing less.
-4. Realize that the user is building **towards** a goal, so do not just blindly overwrite what is already there, consider first whether or not it is useful and you could build upon it. Always prefer existing structure, the user is very particular about that.
-5. There is almost never a need to look at git. There is **never** **ever** a need to do a git checkout. That only leads to loss of work. There is a reason it is called **history** which means it is a backwards path, not a forwards path.
-6. If at any point you get lost, panic, or find yourself for whatever reason drifting from the intended goal of a task: stop. Do not continue, and talk it out with the user first.
+Then reason through the task before writing code. If something in the existing code looks wrong, read it carefully before concluding it is wrong — the user is building toward a goal and existing structure is usually load-bearing.

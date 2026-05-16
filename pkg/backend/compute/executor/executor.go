@@ -16,9 +16,7 @@ Every network-shared compute backend must satisfy this interface without
 falling back to a different location.
 */
 type Backend interface {
-	tensor.Float64ActivationBackend
-	tensor.Float64MathBackend
-	tensor.Float64FusedBackend
+	tensor.Backend
 	Apply(
 		ctx context.Context,
 		node NodeSpec,
@@ -43,20 +41,24 @@ type NodeSpec struct {
 }
 
 type Executor struct {
-	backend Backend
-	values  map[string]tensor.Float64Tensor
-	nodes   map[string]NodeSpec
-	states  map[string]int
-	owned   map[string]bool
+	backend   Backend
+	values    map[string]tensor.Float64Tensor
+	nodes     map[string]NodeSpec
+	states    map[string]int
+	owned     map[string]bool
+	remaining map[string]int
+	keep      map[string]bool
 }
 
 func New(backend Backend) *Executor {
 	return &Executor{
-		backend: backend,
-		values:  make(map[string]tensor.Float64Tensor),
-		nodes:   make(map[string]NodeSpec),
-		states:  make(map[string]int),
-		owned:   make(map[string]bool),
+		backend:   backend,
+		values:    make(map[string]tensor.Float64Tensor),
+		nodes:     make(map[string]NodeSpec),
+		states:    make(map[string]int),
+		owned:     make(map[string]bool),
+		remaining: make(map[string]int),
+		keep:      make(map[string]bool),
 	}
 }
 
@@ -82,6 +84,9 @@ func (executor *Executor) Execute(
 		executor.nodes[node.ID] = node
 	}
 
+	targetSpecs := targets(nodes)
+	executor.prepareLifetime(nodes, targetSpecs)
+
 	for _, tensorSpec := range tensors {
 		uploaded, err := executor.upload(tensorSpec)
 
@@ -93,7 +98,6 @@ func (executor *Executor) Execute(
 		executor.owned[tensorSpec.ID] = true
 	}
 
-	targetSpecs := targets(nodes)
 	outputs := make(map[string]tensor.Float64Tensor, len(targetSpecs))
 	outputIDs := make(map[string]bool, len(targetSpecs))
 
@@ -116,6 +120,7 @@ func (executor *Executor) Execute(
 		return nil, err
 	}
 
+	executor.detach(outputIDs)
 	callerOwnedOutputs = outputs
 
 	return outputs, nil
@@ -132,8 +137,51 @@ func (executor *Executor) reset() error {
 	executor.nodes = make(map[string]NodeSpec)
 	executor.states = make(map[string]int)
 	executor.owned = make(map[string]bool)
+	executor.remaining = make(map[string]int)
+	executor.keep = make(map[string]bool)
 
 	return nil
+}
+
+func (executor *Executor) prepareLifetime(nodes []NodeSpec, targets []NodeSpec) {
+	executor.remaining = make(map[string]int)
+	executor.keep = make(map[string]bool, len(targets))
+	reachable := make(map[string]bool, len(nodes))
+
+	for _, target := range targets {
+		executor.markReachable(target.ID, reachable)
+	}
+
+	for _, node := range nodes {
+		if !reachable[node.ID] {
+			continue
+		}
+
+		for _, inputID := range node.Inputs {
+			executor.remaining[inputID]++
+		}
+	}
+
+	for _, target := range targets {
+		executor.keep[target.ID] = true
+	}
+}
+
+func (executor *Executor) markReachable(id string, reachable map[string]bool) {
+	if reachable[id] {
+		return
+	}
+
+	reachable[id] = true
+	node, ok := executor.nodes[id]
+
+	if !ok {
+		return
+	}
+
+	for _, inputID := range node.Inputs {
+		executor.markReachable(inputID, reachable)
+	}
 }
 
 func (executor *Executor) closeOwnedExcept(keep map[string]bool) error {
@@ -157,6 +205,13 @@ func (executor *Executor) closeOwnedExcept(keep map[string]bool) error {
 	}
 
 	return closeErr
+}
+
+func (executor *Executor) detach(ids map[string]bool) {
+	for id := range ids {
+		delete(executor.owned, id)
+		delete(executor.values, id)
+	}
 }
 
 func (executor *Executor) upload(tensorSpec TensorSpec) (tensor.Float64Tensor, error) {
@@ -188,7 +243,13 @@ func (executor *Executor) evaluate(ctx context.Context, id string) (tensor.Float
 	case 1:
 		return nil, fmt.Errorf("executor: cycle detected at node %q", id)
 	case 2:
-		return executor.values[id], nil
+		value := executor.values[id]
+
+		if value == nil {
+			return nil, fmt.Errorf("executor: node %q was released before evaluation completed", id)
+		}
+
+		return value, nil
 	}
 
 	node, ok := executor.nodes[id]
@@ -224,7 +285,47 @@ func (executor *Executor) evaluate(ctx context.Context, id string) (tensor.Float
 	executor.owned[id] = true
 	executor.states[id] = 2
 
+	for _, inputID := range node.Inputs {
+		if err := executor.releaseAfterUse(inputID); err != nil {
+			return nil, err
+		}
+	}
+
 	return output, nil
+}
+
+func (executor *Executor) releaseAfterUse(id string) error {
+	remaining, ok := executor.remaining[id]
+
+	if !ok {
+		return nil
+	}
+
+	if remaining <= 0 {
+		return fmt.Errorf("executor: node %q lifetime underflow", id)
+	}
+
+	remaining--
+	executor.remaining[id] = remaining
+
+	if remaining != 0 || executor.keep[id] || !executor.owned[id] {
+		return nil
+	}
+
+	value := executor.values[id]
+
+	if value == nil {
+		return fmt.Errorf("executor: owned node %q has no resident value", id)
+	}
+
+	if err := value.Close(); err != nil {
+		return err
+	}
+
+	delete(executor.owned, id)
+	delete(executor.values, id)
+
+	return nil
 }
 
 func (executor *Executor) apply(

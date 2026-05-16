@@ -32,18 +32,23 @@ type XLAVSAOps struct {
 NewVSAOps initialises the PJRT client for the given platform ("cpu"/"gpu").
 */
 func NewVSAOps(platform string) (*XLAVSAOps, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err := config.ValidateRuntime(); err != nil {
-		return nil, err
-	}
+	pluginFile := config.ResolvedPluginFile()
 
 	cp := C.CString(config.Platform)
 	defer C.free(unsafe.Pointer(cp))
+
+	pluginPath := C.CString(pluginFile)
+	defer C.free(unsafe.Pointer(pluginPath))
+
+	if rc := C.xla_vsa_configure_plugin(cp, pluginPath); rc != 0 {
+		return nil, vsaPJRTError("xla_vsa_configure_plugin", rc)
+	}
 
 	if rc := C.xla_vsa_init(cp); rc != 0 {
 		return nil, vsaPJRTError("xla_vsa_init", rc)

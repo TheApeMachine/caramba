@@ -15,7 +15,29 @@ int metal_init_attention(const char* metallib_path);
 // out:     float32 output tensor, same shape as q
 // Returns 0 on success, -1 on failure.
 int metal_sdpa(const float* q, const float* k, const float* v, float* out,
-               int batch, int num_heads, int seq_len, int head_dim);
+               int batch, int num_heads, int query_len, int key_value_len,
+               int head_dim, int causal);
+
+int metal_sdpa_tensor(const void* q, const void* k, const void* v, void* out,
+                      int batch, int num_heads, int query_len, int key_value_len,
+                      int key_value_stride, int head_dim, int causal);
+
+int metal_kv_append_tensor(const void* previous_key, const void* previous_value,
+                           const void* key_chunk, const void* value_chunk,
+                           void* output_key, void* output_value,
+                           int batch, int num_heads, int previous_len,
+                           int chunk_len, int head_dim);
+
+int metal_kv_repack_tensor(const void* previous_key, const void* previous_value,
+                           void* output_key, void* output_value,
+                           int batch, int num_heads, int current_len,
+                           int head_dim, int previous_capacity,
+                           int output_capacity);
+
+int metal_kv_write_tensor(void* cache_key, void* cache_value,
+                          const void* key_chunk, const void* value_chunk,
+                          int batch, int num_heads, int start_len,
+                          int chunk_len, int head_dim, int capacity);
 
 // Multi-Query Attention. K/V have 1 head; Q has num_heads heads.
 // q:  [batch*num_heads, seq_len, head_dim]

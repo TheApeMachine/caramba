@@ -28,24 +28,20 @@ type XLAAttention struct {
 // NewAttention initialises a new XLAAttention for the given platform ("cpu" or "gpu").
 // It reuses the shared PJRT client when one already exists.
 func NewAttention(platform string) (*XLAAttention, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err := config.ValidateRuntime(); err != nil {
-		return nil, err
-	}
-
-	cp := C.CString(platform)
+	cp := C.CString(config.Platform)
 	defer func() { C.free(unsafe.Pointer(cp)) }()
 
 	if rc := C.xla_init(cp); rc != 0 {
-		return nil, fmt.Errorf("xla_init failed for platform %q: rc=%d", platform, rc)
+		return nil, fmt.Errorf("xla_init failed for platform %q: rc=%d", config.Platform, rc)
 	}
 
-	return &XLAAttention{platform: platform}, nil
+	return &XLAAttention{platform: config.Platform}, nil
 }
 
 // Forward dispatches to the appropriate attention variant based on len(shape).

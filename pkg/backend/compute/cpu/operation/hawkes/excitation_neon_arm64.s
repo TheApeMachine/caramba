@@ -1,5 +1,14 @@
 #include "textflag.h"
 
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFSUB_D2(m, n, d) WORD $(0x4EE0D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMINNM_D2(m, n, d) WORD $(0x4EE0C400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMAXNM_D2(m, n, d) WORD $(0x4E60C400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFRINTN_D2(n, d) WORD $(0x4E618800 | ((n) << 5) | (d))
+#define VFCVTZS_D2(n, d) WORD $(0x4EE1B800 | ((n) << 5) | (d))
+#define VLOADDUP(sym, addr, vec) MOVD $sym, addr; VLD1R (addr), [vec.D2]
+
 DATA ·hexLog2E+0(SB)/8, $1.4426950408889634
 GLOBL ·hexLog2E(SB), RODATA, $8
 DATA ·hexLn2Hi+0(SB)/8, $0.6931471803691864
@@ -36,28 +45,94 @@ DATA ·hexC11+0(SB)/8, $2.5052108385441718e-8
 GLOBL ·hexC11(SB), RODATA, $8
 
 // hawkesExcitationNEON returns alpha * Σ exp(-beta*(now - events[i])).
-//
-// NOTE on the "NEON" suffix:
-// The Go ARM64 assembler does not accept double-precision .2D vector
-// mnemonics (FMUL.2D, FADD.2D, FMLA.2D, FRINTN.2D, FCVTNS.2D, FMIN.2D,
-// FMAX.2D), so the implementation uses scalar FP64 (FMOVD/FMADDD/etc.)
-// rather than packed-double SIMD. True NEON vectorisation would require
-// hand-encoded WORD directives. The symbol name is kept "NEON" for parity
-// with the AVX2/SSE2 dispatch on amd64. All 12 polynomial coefficients are preloaded into FP registers
-// before the loop to avoid per-iteration memory broadcasts.
-//
-// Register map:
-//   F0/F1/F2/F3 : loop scratch (f, r, poly-acc, temp)
-//   F4          : 2^r bit-cast scratch (loop)
-//   F5..F15,F17 : polynomial coefficients C11..C0 (12 regs)
-//   F16         : Σ acc (sum)
-//   F20..F26    : range-reduction constants
-//   F18,F19,F27..F31: unused
-TEXT ·hawkesExcitationNEON(SB), NOSPLIT, $0-56
+TEXT ·hawkesExcitationNEON(SB), NOSPLIT, $16-56
 	MOVD events+0(FP), R0
 	MOVD events_len+8(FP), R1
 	CBZ R1, hex_done
 
+	FMOVD now+24(FP), F20
+	FMOVD F20, 0(RSP)
+	VLD1R (RSP), [V20.D2]
+	FMOVD beta+32(FP), F21
+	FMOVD F21, 8(RSP)
+	ADD $8, RSP, R11
+	VLD1R (R11), [V21.D2]
+	VLOADDUP(·hexLog2E(SB), R9, V22)
+	VLOADDUP(·hexLn2Hi(SB), R9, V23)
+	VLOADDUP(·hexLn2Lo(SB), R9, V24)
+	VLOADDUP(·hexMaxArg(SB), R9, V25)
+	VLOADDUP(·hexMinArg(SB), R9, V26)
+	VLOADDUP(·hexC11(SB), R9, V5)
+	VLOADDUP(·hexC10(SB), R9, V6)
+	VLOADDUP(·hexC9(SB), R9, V7)
+	VLOADDUP(·hexC8(SB), R9, V8)
+	VLOADDUP(·hexC7(SB), R9, V9)
+	VLOADDUP(·hexC6(SB), R9, V10)
+	VLOADDUP(·hexC5(SB), R9, V11)
+	VLOADDUP(·hexC4(SB), R9, V12)
+	VLOADDUP(·hexC3(SB), R9, V13)
+	VLOADDUP(·hexC2(SB), R9, V14)
+	VLOADDUP(·hexC1(SB), R9, V15)
+	VLOADDUP(·hexC0(SB), R9, V17)
+	VEOR V4.B16, V4.B16, V4.B16
+	VEOR V18.B16, V18.B16, V18.B16
+	MOVD  $1023, R10
+	VDUP  R10, V27.D2
+	LSR   $1, R1, R2
+	CBZ   R2, hex_tail
+
+hex_loop:
+	VLD1.P 16(R0), [V0.D2]
+	VFSUB_D2(0, 20, 0)
+	VFMUL_D2(21, 0, 0)
+	VFSUB_D2(0, 4, 0)
+	VFMINNM_D2(25, 0, 0)
+	VFMAXNM_D2(26, 0, 0)
+
+	VFMUL_D2(22, 0, 1)
+	VFRINTN_D2(1, 1)
+	VFMUL_D2(23, 1, 3)
+	VFSUB_D2(3, 0, 0)
+	VFMUL_D2(24, 1, 3)
+	VFSUB_D2(3, 0, 0)
+
+	VORR V5.B16, V5.B16, V2.B16
+	VFMUL_D2(0, 2, 2); VFADD_D2(6, 2, 2)
+	VFMUL_D2(0, 2, 2); VFADD_D2(7, 2, 2)
+	VFMUL_D2(0, 2, 2); VFADD_D2(8, 2, 2)
+	VFMUL_D2(0, 2, 2); VFADD_D2(9, 2, 2)
+	VFMUL_D2(0, 2, 2); VFADD_D2(10, 2, 2)
+	VFMUL_D2(0, 2, 2); VFADD_D2(11, 2, 2)
+	VFMUL_D2(0, 2, 2); VFADD_D2(12, 2, 2)
+	VFMUL_D2(0, 2, 2); VFADD_D2(13, 2, 2)
+	VFMUL_D2(0, 2, 2); VFADD_D2(14, 2, 2)
+	VFMUL_D2(0, 2, 2); VFADD_D2(15, 2, 2)
+	VFMUL_D2(0, 2, 2); VFADD_D2(17, 2, 2)
+
+	VFCVTZS_D2(1, 1)
+	VADD V27.D2, V1.D2, V1.D2
+	VSHL $52, V1.D2, V1.D2
+	VFMUL_D2(1, 2, 2)
+	VFADD_D2(2, 18, 18)
+
+	SUBS $1, R2, R2
+	BNE  hex_loop
+
+	MOVD RSP, R11
+	VST1.P [V18.D2], 16(R11)
+	FMOVD 0(RSP), F16
+	FMOVD 8(RSP), F0
+	FADDD F0, F16, F16
+	TST   $1, R1
+	BEQ   hex_finish
+	B     hex_tail_scalar
+
+hex_tail:
+	FMOVD $0.0, F16
+	TST   $1, R1
+	BEQ   hex_finish
+
+hex_tail_scalar:
 	FMOVD now+24(FP), F20
 	FMOVD beta+32(FP), F21
 	FMOVD ·hexLog2E(SB), F22
@@ -65,8 +140,6 @@ TEXT ·hawkesExcitationNEON(SB), NOSPLIT, $0-56
 	FMOVD ·hexLn2Lo(SB), F24
 	FMOVD ·hexMaxArg(SB), F25
 	FMOVD ·hexMinArg(SB), F26
-
-	// Hoist polynomial coefficients (C11 high-degree first).
 	FMOVD ·hexC11(SB), F5
 	FMOVD ·hexC10(SB), F6
 	FMOVD ·hexC9(SB), F7
@@ -80,10 +153,6 @@ TEXT ·hawkesExcitationNEON(SB), NOSPLIT, $0-56
 	FMOVD ·hexC1(SB), F15
 	FMOVD ·hexC0(SB), F17
 
-	FMOVD $0.0, F16
-	MOVD  $1023, R10
-
-hex_loop:
 	FMOVD (R0), F0
 	FSUBD F0, F20, F0                          // now - event
 	FMULD F21, F0, F0                          // *beta
@@ -117,10 +186,7 @@ hex_loop:
 	FMULD F4, F2, F2
 	FADDD F2, F16, F16
 
-	ADD $8, R0, R0
-	SUBS $1, R1, R1
-	BNE hex_loop
-
+hex_finish:
 	FMOVD alpha+40(FP), F0
 	FMULD F0, F16, F16
 	FMOVD F16, ret+48(FP)

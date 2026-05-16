@@ -22,23 +22,20 @@ type XLAMasking struct {
 
 // NewMasking initialises the PJRT client for masking operations.
 func NewMasking(platform string) (*XLAMasking, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err := config.ValidateRuntime(); err != nil {
-		return nil, err
-	}
-
-	cp := C.CString(platform)
+	cp := C.CString(config.Platform)
 	defer C.free(unsafe.Pointer(cp))
 
 	if rc := C.xla_masking_init(cp); rc != 0 {
-		return nil, fmt.Errorf("xla_masking_init failed for platform %q", platform)
+		return nil, fmt.Errorf("xla_masking_init failed for platform %q", config.Platform)
 	}
-	return &XLAMasking{platform: platform}, nil
+
+	return &XLAMasking{platform: config.Platform}, nil
 }
 
 // Shutdown releases all PJRT masking resources.

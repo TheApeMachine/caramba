@@ -1,13 +1,10 @@
 #include "textflag.h"
 
-// NOTE on the "NEON" suffix:
-// Go's ARM64 toolchain rejects double-precision .2D vector mnemonics, so the
-// inner sum-of-squares and dot-product loops run scalar FMADDD per element.
-// The kernel still lives in assembly (no Go scalar transcendentals) and the
-// symbol name mirrors the AVX2/SSE2 dispatch on amd64.
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
 
 // choleskyDecompNEON(L []float64, n int) uint64
-TEXT ·choleskyDecompNEON(SB), NOSPLIT, $0-40
+TEXT ·choleskyDecompNEON(SB), NOSPLIT, $16-40
 	MOVD L+0(FP), R0
 	MOVD n+24(FP), R1
 	MOVD $0, R2                               // col = 0
@@ -27,12 +24,28 @@ chol_col_loop:
 	FMOVD $0.0, F0
 	MOVD R4, R6
 	CBZ R5, chol_diag
+	VEOR V0.B16, V0.B16, V0.B16
+	MOVD R5, R11
+	LSR  $1, R11, R12
+	CBZ  R12, chol_sumsq_tail
 chol_sumsq_loop:
+	VLD1.P 16(R6), [V1.D2]
+	VFMUL_D2(1, 1, 2)
+	VFADD_D2(2, 0, 0)
+	SUBS $1, R12, R12
+	BNE  chol_sumsq_loop
+
+	MOVD RSP, R12
+	VST1.P [V0.D2], 16(R12)
+	FMOVD 0(RSP), F0
+	FMOVD 8(RSP), F1
+	FADDD F1, F0, F0
+
+chol_sumsq_tail:
+	TST $1, R5
+	BEQ chol_diag
 	FMOVD (R6), F1
 	FMADDD F1, F0, F1, F0
-	ADD $8, R6, R6
-	SUBS $1, R5, R5
-	BNE chol_sumsq_loop
 
 chol_diag:
 	// SI = &L[col*n + col]
@@ -76,14 +89,30 @@ chol_row_loop:
 	MOVD R2, R10                              // k count = col
 	FMOVD $0.0, F0
 	CBZ R10, chol_dot_done
+	VEOR V0.B16, V0.B16, V0.B16
+	MOVD R10, R11
+	LSR  $1, R11, R12
+	CBZ  R12, chol_dot_tail
 chol_dot_loop:
+	VLD1.P 16(R8), [V1.D2]
+	VLD1.P 16(R9), [V2.D2]
+	VFMUL_D2(1, 2, 3)
+	VFADD_D2(3, 0, 0)
+	SUBS $1, R12, R12
+	BNE  chol_dot_loop
+
+	MOVD RSP, R12
+	VST1.P [V0.D2], 16(R12)
+	FMOVD 0(RSP), F0
+	FMOVD 8(RSP), F1
+	FADDD F1, F0, F0
+
+chol_dot_tail:
+	TST $1, R10
+	BEQ chol_dot_done
 	FMOVD (R8), F1
 	FMOVD (R9), F2
 	FMADDD F1, F0, F2, F0
-	ADD $8, R8, R8
-	ADD $8, R9, R9
-	SUBS $1, R10, R10
-	BNE chol_dot_loop
 chol_dot_done:
 	// L[row*n+col] = (current - dot) * invDiag
 	MOVD R7, R3

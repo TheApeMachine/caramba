@@ -1,5 +1,7 @@
 #include "textflag.h"
 
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+
 // ApplyMaskNEON(dst, scores, mask []float64)
 // ABI0: dst+0(FP), dst_len+8(FP), dst_cap+16(FP),
 //       scores+24(FP), scores_len+32(FP), scores_cap+40(FP),
@@ -13,14 +15,10 @@ TEXT ·ApplyMaskNEON(SB), NOSPLIT, $0-72
 	CBZ  R4, am_neon_tail
 
 am_neon_loop:
-	FMOVD.P 8(R1), F0
-	FMOVD.P 8(R2), F1
-	FADDD   F1, F0, F0
-	FMOVD.P F0, 8(R0)
-	FMOVD.P 8(R1), F2
-	FMOVD.P 8(R2), F3
-	FADDD   F3, F2, F2
-	FMOVD.P F2, 8(R0)
+	VLD1.P 16(R1), [V0.D2]
+	VLD1.P 16(R2), [V1.D2]
+	VFADD_D2(1, 0, 0)
+	VST1.P [V0.D2], 16(R0)
 	SUBS $1, R4, R4
 	BNE  am_neon_loop
 

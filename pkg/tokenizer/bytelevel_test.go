@@ -60,6 +60,10 @@ func TestByteLevelBPE_Decode(test *testing.T) {
 			So(err, ShouldBeNil)
 			So(text, ShouldEqual, "hello")
 		})
+
+		Convey("It should expose special token IDs", func() {
+			So(tokenizer.SpecialTokenIDs(), ShouldResemble, []int{10})
+		})
 	})
 }
 

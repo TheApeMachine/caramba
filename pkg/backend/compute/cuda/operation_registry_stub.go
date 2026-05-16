@@ -36,6 +36,10 @@ func (registry OperationRegistry) Swish(*state.Dict) (state.Operation, error) {
 	return nil, cudaOperationsUnavailable()
 }
 
+func (registry OperationRegistry) SELU(*state.Dict) (state.Operation, error) {
+	return nil, cudaOperationsUnavailable()
+}
+
 func (registry OperationRegistry) SDPA(*state.Dict) (state.Operation, error) {
 	return nil, cudaOperationsUnavailable()
 }
@@ -133,6 +137,10 @@ func (registry OperationRegistry) ViewAsHeads(*state.Dict) (state.Operation, err
 }
 
 func (registry OperationRegistry) MergeHeads(*state.Dict) (state.Operation, error) {
+	return nil, cudaOperationsUnavailable()
+}
+
+func (registry OperationRegistry) LastToken(*state.Dict) (state.Operation, error) {
 	return nil, cudaOperationsUnavailable()
 }
 

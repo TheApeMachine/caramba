@@ -1,15 +1,10 @@
 #include "textflag.h"
 
-// NOTE on the "NEON" suffix:
-// The Go ARM64 assembler does not accept double-precision vector mnemonics
-// (FMUL/FADD with .2D, FMLA.2D, FRINTN.2D, FCVTNS.2D, etc.) — only scalar
-// FP64 instructions are available. This kernel therefore uses scalar FMOVD/
-// FMADDD/FSQRTD throughout; vectorisation would require raw-WORD encodings
-// of the NEON ops. The symbol name is kept for parity with the AVX2/SSE2
-// dispatch on amd64.
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
 
 // choleskyRegNEON(L []float64, n int, eps float64)
-TEXT ·choleskyRegNEON(SB), NOSPLIT, $0-40
+TEXT ·choleskyRegNEON(SB), NOSPLIT, $16-40
 	MOVD L+0(FP), R0
 	MOVD n+24(FP), R1
 	FMOVD eps+32(FP), F20
@@ -28,12 +23,28 @@ cr_col_loop:
 	FMOVD $0.0, F0
 	MOVD R4, R6
 	CBZ R5, cr_diag
+	VEOR V0.B16, V0.B16, V0.B16
+	MOVD R5, R11
+	LSR  $1, R11, R12
+	CBZ  R12, cr_ss_tail
 cr_ss_loop:
+	VLD1.P 16(R6), [V1.D2]
+	VFMUL_D2(1, 1, 2)
+	VFADD_D2(2, 0, 0)
+	SUBS $1, R12, R12
+	BNE  cr_ss_loop
+
+	MOVD RSP, R12
+	VST1.P [V0.D2], 16(R12)
+	FMOVD 0(RSP), F0
+	FMOVD 8(RSP), F1
+	FADDD F1, F0, F0
+
+cr_ss_tail:
+	TST $1, R5
+	BEQ cr_diag
 	FMOVD (R6), F1
 	FMADDD F1, F0, F1, F0
-	ADD $8, R6, R6
-	SUBS $1, R5, R5
-	BNE cr_ss_loop
 
 cr_diag:
 	MOVD R2, R3
@@ -77,14 +88,30 @@ cr_row_loop:
 	MOVD R2, R10
 	FMOVD $0.0, F0
 	CBZ R10, cr_dot_done
+	VEOR V0.B16, V0.B16, V0.B16
+	MOVD R10, R11
+	LSR  $1, R11, R12
+	CBZ  R12, cr_dot_tail
 cr_dot_loop:
+	VLD1.P 16(R8), [V1.D2]
+	VLD1.P 16(R9), [V2.D2]
+	VFMUL_D2(1, 2, 3)
+	VFADD_D2(3, 0, 0)
+	SUBS $1, R12, R12
+	BNE  cr_dot_loop
+
+	MOVD RSP, R12
+	VST1.P [V0.D2], 16(R12)
+	FMOVD 0(RSP), F0
+	FMOVD 8(RSP), F1
+	FADDD F1, F0, F0
+
+cr_dot_tail:
+	TST $1, R10
+	BEQ cr_dot_done
 	FMOVD (R8), F1
 	FMOVD (R9), F2
 	FMADDD F1, F0, F2, F0
-	ADD $8, R8, R8
-	ADD $8, R9, R9
-	SUBS $1, R10, R10
-	BNE cr_dot_loop
 cr_dot_done:
 	MOVD R7, R3
 	MUL R1, R3

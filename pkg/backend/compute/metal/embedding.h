@@ -26,6 +26,13 @@ int metal_token_embedding(
     int          d_model,
     int          vocab_size);
 
+int metal_token_embedding_tensor(
+    const void* tokens,
+    void*       out,
+    const void* weight,
+    int         batch_seq,
+    int         d_model);
+
 #ifdef __cplusplus
 }
 #endif

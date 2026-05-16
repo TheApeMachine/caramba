@@ -25,23 +25,20 @@ type XLAPooling struct {
 // NewXLAPooling initialises the PJRT client for pooling.
 // Call after (or instead of) NewXLAActivation — they share the same PJRT client.
 func NewXLAPooling(platform string) (*XLAPooling, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err := config.ValidateRuntime(); err != nil {
-		return nil, err
-	}
-
-	cp := C.CString(platform)
+	cp := C.CString(config.Platform)
 	defer C.free(unsafe.Pointer(cp))
 
 	if rc := C.xla_pooling_init(cp); rc != 0 {
-		return nil, fmt.Errorf("xla_pooling_init failed for platform %q", platform)
+		return nil, fmt.Errorf("xla_pooling_init failed for platform %q", config.Platform)
 	}
-	return &XLAPooling{platform: platform}, nil
+
+	return &XLAPooling{platform: config.Platform}, nil
 }
 
 // Shutdown releases pooling PJRT resources.

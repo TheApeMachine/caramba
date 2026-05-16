@@ -40,6 +40,7 @@ type ActivationOperationRegistry interface {
 	Sigmoid(*state.Dict) (Operation, error)
 	SwiGLU(*state.Dict) (Operation, error)
 	Swish(*state.Dict) (Operation, error)
+	SELU(*state.Dict) (Operation, error)
 }
 
 type AttentionOperationRegistry interface {
@@ -77,6 +78,7 @@ type ShapeOperationRegistry interface {
 	Split(*state.Dict) (Operation, error)
 	ViewAsHeads(*state.Dict) (Operation, error)
 	MergeHeads(*state.Dict) (Operation, error)
+	LastToken(*state.Dict) (Operation, error)
 }
 
 type PositionalOperationRegistry interface {

@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"github.com/theapemachine/caramba/pkg/backend/compute/dispatch"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
@@ -17,7 +18,7 @@ func CapabilitiesForLocation(location tensor.Location) Capabilities {
 func fullBackendCapabilities(location tensor.Location) *StaticCapabilities {
 	capabilities := NewStaticCapabilities(location)
 
-	for _, operationID := range ir.RequiredOperationIDs() {
+	for operationID := range dispatch.SupportedIDSet() {
 		capabilities.Register(operationID)
 	}
 

@@ -13,6 +13,7 @@ extern "C" {
  * is undefined unless externally serialised.
  */
 int  xla_vsa_init(const char* platform);
+int  xla_vsa_configure_plugin(const char* platform, const char* plugin_path);
 void xla_vsa_shutdown(void);
 
 /**

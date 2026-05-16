@@ -1,9 +1,13 @@
 #include "textflag.h"
 
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFSUB_D2(m, n, d) WORD $(0x4EE0D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
+
 // matVecNEON(dst, w, x []float64, rows, cols int)
 // dst = W @ x  where W is [rows x cols] row-major.
 // ABI0: dst+0..16, w+24..40, x+48..64, rows+72, cols+80
-TEXT ·matVecNEON(SB), NOSPLIT, $0-88
+TEXT ·matVecNEON(SB), NOSPLIT, $16-88
 	MOVD dst+0(FP), R0
 	MOVD w+24(FP), R1
 	MOVD x+48(FP), R2
@@ -12,36 +16,25 @@ TEXT ·matVecNEON(SB), NOSPLIT, $0-88
 	CBZ  R3, done_mv_neon
 row_loop_mv_neon:
 	FMOVD $0.0, F0            // accumulator
-	FMOVD $0.0, F5            // accumulator 2
 	MOVD  R2, R5              // x pointer (reset per row)
 	MOVD  R4, R6              // cols remaining
-	LSR   $2, R6, R7
-	CBZ   R7, pair_mv_neon
-quad_mv_neon:
-	FMOVD.P 8(R1), F1
-	FMOVD.P 8(R5), F2
-	FMADDD  F2, F0, F1, F0
-	FMOVD.P 8(R1), F3
-	FMOVD.P 8(R5), F4
-	FMADDD  F4, F5, F3, F5
-	FMOVD.P 8(R1), F8
-	FMOVD.P 8(R5), F9
-	FMADDD  F9, F0, F8, F0
-	FMOVD.P 8(R1), F10
-	FMOVD.P 8(R5), F11
-	FMADDD  F11, F5, F10, F5
-	SUBS $1, R7, R7
-	BNE  quad_mv_neon
-pair_mv_neon:
-	AND   $3, R6, R6
+	VEOR  V0.B16, V0.B16, V0.B16
 	LSR   $1, R6, R7
 	CBZ   R7, scalar_mv_neon
-	FMOVD.P 8(R1), F1
-	FMOVD.P 8(R5), F2
-	FMADDD  F2, F0, F1, F0
-	FMOVD.P 8(R1), F3
-	FMOVD.P 8(R5), F4
-	FMADDD  F4, F5, F3, F5
+pair_mv_neon:
+	VLD1.P 16(R1), [V1.D2]
+	VLD1.P 16(R5), [V2.D2]
+	VFMUL_D2(1, 2, 3)
+	VFADD_D2(3, 0, 0)
+	SUBS $1, R7, R7
+	BNE  pair_mv_neon
+
+	MOVD RSP, R7
+	VST1.P [V0.D2], 16(R7)
+	FMOVD 0(RSP), F0
+	FMOVD 8(RSP), F1
+	FADDD F1, F0, F0
+
 scalar_mv_neon:
 	AND $1, R6, R8
 	CBZ R8, store_mv_neon
@@ -49,7 +42,6 @@ scalar_mv_neon:
 	FMOVD.P 8(R5), F2
 	FMADDD  F2, F0, F1, F0
 store_mv_neon:
-	FADDD F5, F0, F0
 	FMOVD.P F0, 8(R0)
 	SUBS $1, R3, R3
 	BNE  row_loop_mv_neon
@@ -59,7 +51,7 @@ done_mv_neon:
 // axpyNEON(dst, src []float64, scale float64)
 // dst[i] += scale * src[i]
 // ABI0: dst+0..16, src+24..40, scale+48
-TEXT ·axpyNEON(SB), NOSPLIT, $0-56
+TEXT ·axpyNEON(SB), NOSPLIT, $8-56
 	MOVD  dst+0(FP), R0
 	MOVD  src_len+32(FP), R1
 	MOVD  src+24(FP), R2
@@ -67,19 +59,17 @@ TEXT ·axpyNEON(SB), NOSPLIT, $0-56
 	MOVD  src+24(FP), R7      // src base
 	MOVD  src_len+32(FP), R8  // original len
 	FMOVD scale+48(FP), F15
+	FMOVD F15, 0(RSP)
+	VLD1R (RSP), [V15.D2]
 	LSR   $1, R1, R3
 	CBZ   R3, tail_axpy_neon
 loop_axpy_neon:
-	FMOVD.P 8(R2), F0
-	FMOVD.P 8(R2), F1
-	FMULD   F15, F0, F2
-	FMULD   F15, F1, F3
-	FMOVD   (R0), F4
-	FADDD   F2, F4, F4
-	FMOVD.P F4, 8(R0)
-	FMOVD   (R0), F5
-	FADDD   F3, F5, F5
-	FMOVD.P F5, 8(R0)
+	VLD1.P 16(R2), [V0.D2]
+	VLD1.P 16(R0), [V1.D2]
+	VFMUL_D2(15, 0, 0)
+	VFADD_D2(0, 1, 1)
+	SUB $16, R0, R0
+	VST1.P [V1.D2], 16(R0)
 	SUBS $1, R3, R3
 	BNE  loop_axpy_neon
 tail_axpy_neon:
@@ -98,47 +88,30 @@ done_axpy_neon:
 
 // dotNEON(a, b []float64) float64
 // ABI0: a+0..16, b+24..40, ret+48
-TEXT ·dotNEON(SB), NOSPLIT, $0-56
+TEXT ·dotNEON(SB), NOSPLIT, $16-56
 	MOVD  a+0(FP), R4       // a base
 	MOVD  a_len+8(FP), R6   // len
 	MOVD  b+24(FP), R5      // b base
 	FMOVD $0.0, F0
-	FMOVD $0.0, F5
+	VEOR V0.B16, V0.B16, V0.B16
 	MOVD  R4, R0
 	MOVD  R5, R2
 	MOVD  R6, R3
-	LSR   $2, R3, R10       // quads
-	CBZ   R10, dot_pair_neon
-loop_dot_quad_neon:
-	FMOVD.P 8(R0), F1
-	FMOVD.P 8(R2), F3
-	FMADDD  F3, F0, F1, F0
-	FMOVD.P 8(R0), F2
-	FMOVD.P 8(R2), F4
-	FMADDD  F4, F5, F2, F5
-	FMOVD.P 8(R0), F8
-	FMOVD.P 8(R2), F9
-	FMADDD  F9, F0, F8, F0
-	FMOVD.P 8(R0), F10
-	FMOVD.P 8(R2), F11
-	FMADDD  F11, F5, F10, F5
-	SUBS $1, R10, R10
-	BNE  loop_dot_quad_neon
-dot_pair_neon:
-	AND   $3, R3, R3
 	LSR   $1, R3, R10
 	CBZ   R10, dot_tail_neon
 loop_dot_pair_neon:
-	FMOVD.P 8(R0), F1
-	FMOVD.P 8(R2), F3
-	FMADDD  F3, F0, F1, F0
-	FMOVD.P 8(R0), F2
-	FMOVD.P 8(R2), F4
-	FMADDD  F4, F5, F2, F5
+	VLD1.P 16(R0), [V1.D2]
+	VLD1.P 16(R2), [V2.D2]
+	VFMUL_D2(2, 1, 1)
+	VFADD_D2(1, 0, 0)
 	SUBS $1, R10, R10
 	BNE  loop_dot_pair_neon
 dot_tail_neon:
-	FADDD F5, F0, F0
+	MOVD RSP, R10
+	VST1.P [V0.D2], 16(R10)
+	FMOVD 0(RSP), F0
+	FMOVD 8(RSP), F1
+	FADDD F1, F0, F0
 	TST  $1, R6
 	BEQ  done_dot_neon
 	SUB  $1, R6, R7
@@ -166,14 +139,10 @@ TEXT ·subVecNEON(SB), NOSPLIT, $0-72
 	LSR  $1, R2, R4
 	CBZ  R4, tail_sub_neon
 loop_sub_neon:
-	FMOVD.P 8(R1), F0
-	FMOVD.P 8(R1), F1
-	FMOVD.P 8(R3), F2
-	FMOVD.P 8(R3), F3
-	FSUBD   F2, F0, F0
-	FSUBD   F3, F1, F1
-	FMOVD.P F0, 8(R0)
-	FMOVD.P F1, 8(R0)
+	VLD1.P 16(R1), [V0.D2]
+	VLD1.P 16(R3), [V1.D2]
+	VFSUB_D2(1, 0, 0)
+	VST1.P [V0.D2], 16(R0)
 	SUBS $1, R4, R4
 	BNE  loop_sub_neon
 tail_sub_neon:

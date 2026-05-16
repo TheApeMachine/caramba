@@ -1,7 +1,7 @@
 #include "textflag.h"
 
 // CopyNEON(dst, src []float64)
-// Copies src into dst 2 float64s per iteration using FMOVD.
+// Copies src into dst 2 float64s per iteration.
 // ABI0: dst+0(FP)=ptr, dst_len+8(FP)=len, dst_cap+16(FP)=cap,
 //       src_base+24(FP)=ptr, src_len+32(FP)=len, src_cap+40(FP)=cap
 TEXT ·CopyNEON(SB), NOSPLIT, $0-48
@@ -15,10 +15,8 @@ TEXT ·CopyNEON(SB), NOSPLIT, $0-48
 	CBZ  R3, tail
 
 pairloop:
-	FMOVD.P 8(R1), F0
-	FMOVD.P 8(R1), F1
-	FMOVD.P F0, 8(R0)
-	FMOVD.P F1, 8(R0)
+	VLD1.P 16(R1), [V0.D2]
+	VST1.P [V0.D2], 16(R0)
 	SUBS $1, R3, R3
 	BNE  pairloop
 

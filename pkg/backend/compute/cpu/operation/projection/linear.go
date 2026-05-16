@@ -40,16 +40,11 @@ func (linear *Linear) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, fmt.Errorf("projection.linear: shape is required")
 	}
 
-	M := shape[0]
 	K := stateDict.InFeatures
 	N := stateDict.OutFeatures
 
 	if len(shape) > 1 && K == 0 {
 		K = shape[len(shape)-1]
-	}
-
-	if M < 0 {
-		return nil, fmt.Errorf("projection.linear: M must be non-negative, got %d", M)
 	}
 
 	if K <= 0 {
@@ -60,12 +55,14 @@ func (linear *Linear) Forward(stateDict *state.Dict) (*state.Dict, error) {
 		return nil, fmt.Errorf("projection.linear: out_features must be positive, got %d", N)
 	}
 
-	if M > len(stateDict.Inputs[0])/K {
+	if len(stateDict.Inputs[0])%K != 0 {
 		return nil, fmt.Errorf(
-			"projection.linear: input length %d is insufficient for M=%d and K=%d",
-			len(stateDict.Inputs[0]), M, K,
+			"projection.linear: input length %d is not divisible by K=%d",
+			len(stateDict.Inputs[0]), K,
 		)
 	}
+
+	M := len(stateDict.Inputs[0]) / K
 
 	if int64(K)*int64(N) < 0 || int64(K)*int64(N) > int64(math.MaxInt) {
 		return nil, fmt.Errorf("projection.linear: K*N overflows int")

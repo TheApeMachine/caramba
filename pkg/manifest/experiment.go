@@ -161,7 +161,7 @@ func (compiler *Compiler) buildTarget(targetIndex int, targetMap map[string]any)
 		return Target{}, fmt.Errorf("experiment: %s.system.topology must be a mapping, got %T", path, topologyRaw)
 	}
 
-	graph, err := compiler.buildGraph(topologyMap)
+	graph, err := compiler.buildGraph(topologyMap, nil)
 
 	if err != nil {
 		return Target{}, fmt.Errorf("experiment: %s.system.topology: %w", path, err)

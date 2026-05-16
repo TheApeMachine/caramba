@@ -1,4 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
+import { motion } from "motion/react";
 import type React from "react";
 import { cn } from "@/lib/utils";
 
@@ -131,7 +132,7 @@ export const Flex = ({
 		fullWidth?: boolean;
 	}) => {
 	return (
-		<div
+		<motion.div
 			className={cn(
 				flexVariants({
 					direction,
@@ -150,7 +151,7 @@ export const Flex = ({
 			{...props}
 		>
 			{children}
-		</div>
+		</motion.div>
 	);
 };
 

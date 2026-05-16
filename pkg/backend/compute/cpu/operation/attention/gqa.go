@@ -71,7 +71,9 @@ func (gqa *GQA) Forward(stateDict *state.Dict) (*state.Dict, error) {
 					Q[qOff:qOff+headStride],
 					K[kvOff:kvOff+headStride],
 					V[kvOff:kvOff+headStride],
-					seqLen, headDim, nil,
+					seqLen,
+					seqLen,
+					headDim,
 				)
 			}
 		}

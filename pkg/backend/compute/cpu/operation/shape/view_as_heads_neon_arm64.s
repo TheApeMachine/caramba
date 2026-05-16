@@ -11,10 +11,8 @@ TEXT ·viewAsHeadsCopyNEON(SB), NOSPLIT, $0-48
 	CBZ R3, tail
 
 pairloop:
-	FMOVD.P 8(R1), F0
-	FMOVD.P 8(R1), F1
-	FMOVD.P F0, 8(R0)
-	FMOVD.P F1, 8(R0)
+	VLD1.P 16(R1), [V0.D2]
+	VST1.P [V0.D2], 16(R0)
 	SUBS $1, R3, R3
 	BNE  pairloop
 

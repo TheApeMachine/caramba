@@ -150,9 +150,15 @@ func BenchmarkRunner(b *testing.B) {
 
 		b.ResetTimer()
 		for b.Loop() {
-			_, err := runner.Execute(ctx, graph, targets)
+			outputs, err := runner.Execute(ctx, graph, targets)
 			if err != nil {
 				b.Fatalf("Execute failed: %v", err)
+			}
+
+			for _, output := range outputs {
+				if err := output.Close(); err != nil {
+					b.Fatalf("Close failed: %v", err)
+				}
 			}
 		}
 	})
@@ -169,9 +175,15 @@ func BenchmarkRunner(b *testing.B) {
 
 		b.ResetTimer()
 		for b.Loop() {
-			_, err := runner.Execute(ctx, graph, targets)
+			outputs, err := runner.Execute(ctx, graph, targets)
 			if err != nil {
 				b.Fatalf("Execute failed: %v", err)
+			}
+
+			for _, output := range outputs {
+				if err := output.Close(); err != nil {
+					b.Fatalf("Close failed: %v", err)
+				}
 			}
 		}
 	})

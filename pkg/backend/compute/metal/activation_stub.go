@@ -32,6 +32,14 @@ func (m *MetalActivation) Sigmoid(input []float64) ([]float64, error) {
 	return nil, metalUnavailable()
 }
 
+func (m *MetalActivation) Swish(input []float64) ([]float64, error) {
+	return nil, metalUnavailable()
+}
+
+func (m *MetalActivation) SELU(input []float64) ([]float64, error) {
+	return nil, metalUnavailable()
+}
+
 func (m *MetalActivation) SwiGLU(input []float64) ([]float64, error) {
 	return nil, metalUnavailable()
 }

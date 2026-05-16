@@ -81,6 +81,16 @@ func (registry OperationRegistry) Swish(config *state.Dict) (state.Operation, er
 	return &Swish{activation: activation}, nil
 }
 
+func (registry OperationRegistry) SELU(config *state.Dict) (state.Operation, error) {
+	activation, err := newMetalActivation(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &SELU{activation: activation}, nil
+}
+
 func (registry OperationRegistry) SDPA(config *state.Dict) (state.Operation, error) {
 	attention, err := newMetalAttention(config)
 
@@ -329,6 +339,16 @@ func (registry OperationRegistry) MergeHeads(config *state.Dict) (state.Operatio
 	}
 
 	return &MergeHeads{shapeOps: shapeOps}, nil
+}
+
+func (registry OperationRegistry) LastToken(config *state.Dict) (state.Operation, error) {
+	shapeOps, err := newMetalShape(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &LastToken{shapeOps: shapeOps}, nil
 }
 
 func (registry OperationRegistry) RoPE(config *state.Dict) (state.Operation, error) {
@@ -867,6 +887,7 @@ type Tanh struct{ activation *MetalActivation }
 type Sigmoid struct{ activation *MetalActivation }
 type SwiGLU struct{ activation *MetalActivation }
 type Swish struct{ activation *MetalActivation }
+type SELU struct{ activation *MetalActivation }
 
 func (relu *ReLU) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return unaryMetalForward(stateDict, "metal.activation.relu", relu.activation.ReLU)
@@ -898,6 +919,10 @@ func (swish *Swish) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return unaryMetalForward(stateDict, "metal.activation.swish", swish.activation.Swish)
 }
 
+func (selu *SELU) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	return unaryMetalForward(stateDict, "metal.activation.selu", selu.activation.SELU)
+}
+
 type SDPA struct{ attention *MetalAttention }
 type MQA struct{ attention *MetalAttention }
 type GQA struct{ attention *MetalAttention }
@@ -912,7 +937,7 @@ func (sdpa *SDPA) Forward(stateDict *state.Dict) (*state.Dict, error) {
 
 	output, err := sdpa.attention.SDPA(
 		stateDict.Inputs[0], stateDict.Inputs[1], stateDict.Inputs[2],
-		shape[0], shape[1], shape[2], shape[3],
+		shape[0], shape[1], shape[2], shape[3], stateDict.Causal,
 	)
 
 	return setMetalOutput(stateDict, output, err)
@@ -1124,6 +1149,7 @@ type Concat struct{ shapeOps *MetalShapeOps }
 type Split struct{ shapeOps *MetalShapeOps }
 type ViewAsHeads struct{ shapeOps *MetalShapeOps }
 type MergeHeads struct{ shapeOps *MetalShapeOps }
+type LastToken struct{ shapeOps *MetalShapeOps }
 
 func (reshape *Reshape) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return unaryShapeMetalForward(stateDict, "metal.shape.reshape", func(
@@ -1243,6 +1269,29 @@ func (mergeHeads *MergeHeads) Forward(stateDict *state.Dict) (*state.Dict, error
 
 	output, err := mergeHeads.shapeOps.MergeHeads(
 		stateDict.Inputs[0], shape[0], shape[1], shape[2], shape[3],
+	)
+
+	return setMetalOutput(stateDict, output, err)
+}
+
+func (lastToken *LastToken) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("metal.shape.last_token"); err != nil {
+		return nil, err
+	}
+
+	outer, sequenceLength, featureLength, err := lastTokenShapeParts(
+		stateDict.OperationShape(),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := lastToken.shapeOps.LastToken(
+		stateDict.Inputs[0],
+		outer,
+		sequenceLength,
+		featureLength,
 	)
 
 	return setMetalOutput(stateDict, output, err)

@@ -2,6 +2,7 @@ package executor_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -67,7 +68,206 @@ func TestExecutor(t *testing.T) {
 				}
 			})
 		})
+
+		Convey("When reusing the same executor after a successful run", func() {
+			firstOutputs, err := graphExecutor.Execute(context.Background(), nodes, tensors)
+			So(err, ShouldBeNil)
+
+			secondOutputs, err := graphExecutor.Execute(context.Background(), nodes, tensors)
+			So(err, ShouldBeNil)
+			defer func() { So(secondOutputs["relu"].Close(), ShouldBeNil) }()
+			defer func() { So(firstOutputs["relu"].Close(), ShouldBeNil) }()
+
+			Convey("It should leave caller-owned outputs alive", func() {
+				values, err := firstOutputs["relu"].CloneFloat64()
+
+				So(err, ShouldBeNil)
+				So(values, ShouldResemble, []float64{0, 2})
+			})
+		})
 	})
+
+	Convey("Given a graph with fanout dependencies", t, func() {
+		backend := newRecordingBackend()
+		graphExecutor := executor.New(backend)
+		shape, err := tensor.NewShape([]int{2})
+		So(err, ShouldBeNil)
+		data, err := executor.EncodeFloat64([]float64{1, 2})
+		So(err, ShouldBeNil)
+
+		nodes := []executor.NodeSpec{
+			{ID: "input", Op: ir.OpInput, Shape: shape.Dims()},
+			{ID: "left", Op: ir.OpReLU, Inputs: []string{"input"}, Shape: shape.Dims()},
+			{ID: "right", Op: ir.OpGELU, Inputs: []string{"input"}, Shape: shape.Dims()},
+			{
+				ID:     "output",
+				Op:     ir.OpAdd,
+				Inputs: []string{"left", "right"},
+				Shape:  shape.Dims(),
+				Target: true,
+			},
+		}
+		tensors := []executor.TensorSpec{
+			{ID: "input", Shape: []int64{2}, Data: data, DType: tensor.Float64},
+		}
+
+		outputs, err := graphExecutor.Execute(context.Background(), nodes, tensors)
+
+		Convey("It should release owned tensors only after their final consumer", func() {
+			So(err, ShouldBeNil)
+			So(outputs, ShouldHaveLength, 1)
+			So(backend.closed["upload:0"], ShouldEqual, 1)
+			So(backend.closed["left"], ShouldEqual, 1)
+			So(backend.closed["right"], ShouldEqual, 1)
+			So(backend.closed["output"], ShouldEqual, 0)
+			So(outputs["output"].Close(), ShouldBeNil)
+			So(backend.closed["output"], ShouldEqual, 1)
+		})
+	})
+}
+
+type recordingBackend struct {
+	uploads int
+	closed  map[string]int
+}
+
+func newRecordingBackend() *recordingBackend {
+	return &recordingBackend{
+		closed: make(map[string]int),
+	}
+}
+
+func (recordingBackend *recordingBackend) Location() tensor.Location {
+	return tensor.Host
+}
+
+func (recordingBackend *recordingBackend) UploadFloat64(
+	shape tensor.Shape, values []float64,
+) (tensor.Float64Tensor, error) {
+	id := fmt.Sprintf("upload:%d", recordingBackend.uploads)
+	recordingBackend.uploads++
+
+	return newRecordingTensor(id, shape, values, recordingBackend.closed), nil
+}
+
+func (recordingBackend *recordingBackend) DownloadFloat64(
+	value tensor.Float64Tensor,
+) ([]float64, error) {
+	return value.CloneFloat64()
+}
+
+func (recordingBackend *recordingBackend) Close() error {
+	return nil
+}
+
+func (recordingBackend *recordingBackend) Apply(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, input := range inputs {
+		if _, err := input.CloneFloat64(); err != nil {
+			return nil, err
+		}
+	}
+
+	shape, err := recordingOutputShape(node, inputs)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return newRecordingTensor(
+		node.ID,
+		shape,
+		make([]float64, shape.Len()),
+		recordingBackend.closed,
+	), nil
+}
+
+func recordingOutputShape(
+	node executor.NodeSpec, inputs []tensor.Float64Tensor,
+) (tensor.Shape, error) {
+	if len(node.Shape) > 0 {
+		return tensor.NewShape(node.Shape)
+	}
+
+	if len(inputs) == 0 {
+		return tensor.NewShape([]int{0})
+	}
+
+	return inputs[0].Shape(), nil
+}
+
+type recordingTensor struct {
+	id     string
+	shape  tensor.Shape
+	values []float64
+	closed map[string]int
+	done   bool
+}
+
+func newRecordingTensor(
+	id string,
+	shape tensor.Shape,
+	values []float64,
+	closed map[string]int,
+) *recordingTensor {
+	return &recordingTensor{
+		id:     id,
+		shape:  shape,
+		values: append([]float64(nil), values...),
+		closed: closed,
+	}
+}
+
+func (recordingTensor *recordingTensor) Shape() tensor.Shape {
+	return recordingTensor.shape
+}
+
+func (recordingTensor *recordingTensor) DType() tensor.DType {
+	return tensor.Float64
+}
+
+func (recordingTensor *recordingTensor) Location() tensor.Location {
+	return tensor.Host
+}
+
+func (recordingTensor *recordingTensor) Len() int {
+	return recordingTensor.shape.Len()
+}
+
+func (recordingTensor *recordingTensor) Bytes() int {
+	bytes, err := recordingTensor.shape.Bytes(tensor.Float64)
+
+	if err != nil {
+		return 0
+	}
+
+	return bytes
+}
+
+func (recordingTensor *recordingTensor) Close() error {
+	if recordingTensor.done {
+		return nil
+	}
+
+	recordingTensor.done = true
+	recordingTensor.closed[recordingTensor.id]++
+
+	return nil
+}
+
+func (recordingTensor *recordingTensor) CloneFloat64() ([]float64, error) {
+	if recordingTensor.done {
+		return nil, fmt.Errorf("recording tensor %q is closed", recordingTensor.id)
+	}
+
+	return append([]float64(nil), recordingTensor.values...), nil
 }
 
 func BenchmarkExecutor_Execute(benchmark *testing.B) {
@@ -90,9 +290,15 @@ func BenchmarkExecutor_Execute(benchmark *testing.B) {
 
 	for benchmark.Loop() {
 		graphExecutor := executor.New(backend)
-		_, err := graphExecutor.Execute(context.Background(), nodes, tensors)
+		outputs, err := graphExecutor.Execute(context.Background(), nodes, tensors)
 		if err != nil {
 			benchmark.Fatalf("Execute failed: %v", err)
+		}
+
+		for _, output := range outputs {
+			if err := output.Close(); err != nil {
+				benchmark.Fatalf("Close failed: %v", err)
+			}
 		}
 	}
 }

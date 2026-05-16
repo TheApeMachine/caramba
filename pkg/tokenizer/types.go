@@ -9,6 +9,7 @@ type Tokenizer interface {
 	Encode(text string) ([]int, error)
 	Decode(tokenIDs []int, skipSpecialTokens bool) (string, error)
 	VocabSize() int
+	SpecialTokenIDs() []int
 }
 
 /*

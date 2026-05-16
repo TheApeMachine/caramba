@@ -8,7 +8,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
-const swigluTol = 5e-2
+const swigluReferenceTolerance = 1e-10
 
 var benchSinkSwiGLU []float64
 
@@ -39,7 +39,7 @@ func TestSwiGLU(t *testing.T) {
 			expected := referenceSwiGLU(input)
 
 			for index := 0; index < n; index++ {
-				So(out[index], ShouldAlmostEqual, expected[index], swigluTol)
+				So(out[index], ShouldAlmostEqual, expected[index], swigluReferenceTolerance)
 			}
 		})
 
@@ -55,7 +55,7 @@ func TestSwiGLU(t *testing.T) {
 			expected := referenceSwiGLU(input)
 
 			for index := 0; index < n; index++ {
-				So(out[index], ShouldAlmostEqual, expected[index], swigluTol)
+				So(out[index], ShouldAlmostEqual, expected[index], swigluReferenceTolerance)
 			}
 		})
 
@@ -71,7 +71,7 @@ func TestSwiGLU(t *testing.T) {
 			expected := referenceSwiGLU(input)
 
 			for index := 0; index < n; index++ {
-				So(out[index], ShouldAlmostEqual, expected[index], swigluTol)
+				So(out[index], ShouldAlmostEqual, expected[index], swigluReferenceTolerance)
 			}
 		})
 
@@ -87,7 +87,7 @@ func TestSwiGLU(t *testing.T) {
 			expected := referenceSwiGLU(input)
 
 			for index := 0; index < n; index++ {
-				So(out[index], ShouldAlmostEqual, expected[index], swigluTol)
+				So(out[index], ShouldAlmostEqual, expected[index], swigluReferenceTolerance)
 			}
 		})
 

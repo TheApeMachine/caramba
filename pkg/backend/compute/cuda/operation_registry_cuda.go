@@ -37,6 +37,10 @@ func (registry OperationRegistry) Swish(*state.Dict) (state.Operation, error) {
 	return &Swish{activation: New()}, nil
 }
 
+func (registry OperationRegistry) SELU(*state.Dict) (state.Operation, error) {
+	return &SELU{activation: New()}, nil
+}
+
 func (registry OperationRegistry) SDPA(*state.Dict) (state.Operation, error) {
 	return &SDPA{attention: NewAttention()}, nil
 }
@@ -135,6 +139,10 @@ func (registry OperationRegistry) ViewAsHeads(*state.Dict) (state.Operation, err
 
 func (registry OperationRegistry) MergeHeads(*state.Dict) (state.Operation, error) {
 	return &MergeHeads{shapeOps: NewShapeOps()}, nil
+}
+
+func (registry OperationRegistry) LastToken(*state.Dict) (state.Operation, error) {
+	return &LastToken{shapeOps: NewShapeOps()}, nil
 }
 
 func (registry OperationRegistry) RoPE(*state.Dict) (state.Operation, error) {
@@ -375,6 +383,7 @@ type Tanh struct{ activation *CUDAActivation }
 type Sigmoid struct{ activation *CUDAActivation }
 type Swish struct{ activation *CUDAActivation }
 type SwiGLU struct{ activation *CUDAActivation }
+type SELU struct{ activation *CUDAActivation }
 
 func (relu *ReLU) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return cudaUnaryForward(stateDict, "cuda.activation.relu", relu.activation.ReLU)
@@ -408,6 +417,10 @@ func (swish *Swish) Forward(stateDict *state.Dict) (*state.Dict, error) {
 
 func (swiglu *SwiGLU) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return cudaUnaryForward(stateDict, "cuda.activation.swiglu", swiglu.activation.SwiGLU)
+}
+
+func (selu *SELU) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	return cudaUnaryForward(stateDict, "cuda.activation.selu", selu.activation.SELU)
 }
 
 type SDPA struct{ attention *CUDAAttention }
@@ -613,6 +626,7 @@ type Concat struct{ shapeOps *CUDAShapeOps }
 type Split struct{ shapeOps *CUDAShapeOps }
 type ViewAsHeads struct{ shapeOps *CUDAShapeOps }
 type MergeHeads struct{ shapeOps *CUDAShapeOps }
+type LastToken struct{ shapeOps *CUDAShapeOps }
 
 func (reshape *Reshape) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	return cudaShapeForward(stateDict, "cuda.shape.reshape", 1, func(
@@ -732,6 +746,29 @@ func (mergeHeads *MergeHeads) Forward(stateDict *state.Dict) (*state.Dict, error
 
 	output, err := mergeHeads.shapeOps.MergeHeads(
 		stateDict.Inputs[0], shape[0], shape[1], shape[2], shape[3],
+	)
+
+	return setCUDAOutput(stateDict, output, err)
+}
+
+func (lastToken *LastToken) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("cuda.shape.last_token"); err != nil {
+		return nil, err
+	}
+
+	outer, sequenceLength, featureLength, err := cudaLastTokenShapeParts(
+		stateDict.OperationShape(),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := lastToken.shapeOps.LastToken(
+		stateDict.Inputs[0],
+		outer,
+		sequenceLength,
+		featureLength,
 	)
 
 	return setCUDAOutput(stateDict, output, err)
@@ -1355,6 +1392,35 @@ func requireCUDAShape(
 	}
 
 	return shape, nil
+}
+
+func cudaLastTokenShapeParts(shape []int) (int, int, int, error) {
+	if len(shape) < 2 {
+		return 0, 0, 0, fmt.Errorf("cuda.shape.last_token: expected rank >= 2")
+	}
+
+	sequenceLength := shape[len(shape)-2]
+	featureLength := shape[len(shape)-1]
+
+	if sequenceLength <= 0 || featureLength <= 0 {
+		return 0, 0, 0, fmt.Errorf("cuda.shape.last_token: trailing dimensions must be positive")
+	}
+
+	outer := 1
+
+	for _, dimension := range shape[:len(shape)-2] {
+		if dimension <= 0 {
+			return 0, 0, 0, fmt.Errorf("cuda.shape.last_token: outer dimensions must be positive")
+		}
+
+		if outer > stdmath.MaxInt/dimension {
+			return 0, 0, 0, fmt.Errorf("cuda.shape.last_token: shape product overflows int")
+		}
+
+		outer *= dimension
+	}
+
+	return outer, sequenceLength, featureLength, nil
 }
 
 func cudaWeightBias(stateDict *state.Dict) ([]float64, []float64) {

@@ -53,6 +53,27 @@ func TestSession_RunPrompt(test *testing.T) {
 			So(output.String(), ShouldEqual, "caramba> streamed\n")
 			So(generator.prompts, ShouldResemble, []string{"hello"})
 		})
+
+		Convey("It should include backend in the banner when configured", func() {
+			output := bytes.NewBuffer(nil)
+			session := NewSession(
+				context.Background(),
+				strings.NewReader(""),
+				output,
+				generator,
+				SessionConfig{
+					Runtime:    "model",
+					Backend:    "metal",
+					Model:      "openai-community/gpt2",
+					ShowBanner: true,
+				},
+			)
+
+			err := session.RunPrompt("hello")
+
+			So(err, ShouldBeNil)
+			So(output.String(), ShouldContainSubstring, "backend=metal")
+		})
 	})
 }
 

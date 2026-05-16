@@ -1,53 +1,40 @@
 #include "textflag.h"
 
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
+
 // similarityKernelNEON(a, b []float64) float64
-TEXT ·similarityKernelNEON(SB), NOSPLIT, $0-56
+TEXT ·similarityKernelNEON(SB), NOSPLIT, $16-56
 	MOVD  a+0(FP), R0
 	MOVD  a_len+8(FP), R1
 	MOVD  b+24(FP), R2
 	FMOVD $0.0, F0
-	FMOVD $0.0, F5
-	LSR   $2, R1, R3
-	CBZ   R3, try_pair
-
-loop_quad:
-	FMOVD.P 8(R0), F1
-	FMOVD.P 8(R2), F3
-	FMULD   F3, F1, F1
-	FADDD   F1, F0, F0
-	FMOVD.P 8(R0), F2
-	FMOVD.P 8(R2), F4
-	FMULD   F4, F2, F2
-	FADDD   F2, F5, F5
-	FMOVD.P 8(R0), F6
-	FMOVD.P 8(R2), F7
-	FMULD   F7, F6, F6
-	FADDD   F6, F0, F0
-	FMOVD.P 8(R0), F8
-	FMOVD.P 8(R2), F9
-	FMULD   F9, F8, F8
-	FADDD   F8, F5, F5
-	SUBS $1, R3, R3
-	BNE  loop_quad
-
-try_pair:
-	AND $3, R1, R1
+	VEOR V0.B16, V0.B16, V0.B16
 	LSR $1, R1, R3
 	CBZ R3, tail
 
 loop_pair:
-	FMOVD.P 8(R0), F1
-	FMOVD.P 8(R2), F3
-	FMULD   F3, F1, F1
-	FADDD   F1, F0, F0
-	FMOVD.P 8(R0), F2
-	FMOVD.P 8(R2), F4
-	FMULD   F4, F2, F2
-	FADDD   F2, F5, F5
+	VLD1.P 16(R0), [V1.D2]
+	VLD1.P 16(R2), [V2.D2]
+	VFMUL_D2(2, 1, 1)
+	VFADD_D2(1, 0, 0)
 	SUBS $1, R3, R3
 	BNE  loop_pair
 
+	MOVD RSP, R3
+	VST1.P [V0.D2], 16(R3)
+	FMOVD 0(RSP), F0
+	FMOVD 8(RSP), F1
+	FADDD F1, F0, F0
+
 tail:
-	FADDD F5, F0, F0
+	TST $1, R1
+	BEQ done
+	FMOVD.P 8(R0), F1
+	FMOVD.P 8(R2), F2
+	FMULD F2, F1, F1
+	FADDD F1, F0, F0
+
+done:
 	FMOVD F0, ret+48(FP)
 	RET

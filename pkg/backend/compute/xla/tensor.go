@@ -17,9 +17,7 @@ import (
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
-var _ computetensor.Float64ActivationBackend = (*TensorBackend)(nil)
-var _ computetensor.Float64MathBackend = (*TensorBackend)(nil)
-var _ computetensor.Float64FusedBackend = (*TensorBackend)(nil)
+var _ computetensor.Backend = (*TensorBackend)(nil)
 
 /*
 TensorBackend owns PJRT buffers for resident XLA execution.
@@ -33,24 +31,20 @@ type TensorBackend struct {
 NewTensorBackend creates an XLA/PJRT resident tensor backend.
 */
 func NewTensorBackend(platform string) (*TensorBackend, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err := config.ValidateRuntime(); err != nil {
-		return nil, err
-	}
-
-	platformCString := C.CString(platform)
+	platformCString := C.CString(config.Platform)
 	defer C.free(unsafe.Pointer(platformCString))
 
 	if rc := C.xla_tensor_init(platformCString); rc != 0 {
-		return nil, fmt.Errorf("xla tensor: initialization failed for platform %q", platform)
+		return nil, fmt.Errorf("xla tensor: initialization failed for platform %q", config.Platform)
 	}
 
-	return &TensorBackend{platform: platform}, nil
+	return &TensorBackend{platform: config.Platform}, nil
 }
 
 /*
@@ -198,6 +192,24 @@ func (tensorBackend *TensorBackend) Sigmoid(
 }
 
 /*
+Swish executes x * sigmoid(x) against a resident PJRT buffer.
+*/
+func (tensorBackend *TensorBackend) Swish(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return tensorBackend.unary(input, "swish", 0)
+}
+
+/*
+SELU executes scaled exponential linear unit against a resident PJRT buffer.
+*/
+func (tensorBackend *TensorBackend) SELU(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return tensorBackend.unary(input, "selu", 0)
+}
+
+/*
 SwiGLU executes gated activation and halves the final dimension.
 */
 func (tensorBackend *TensorBackend) SwiGLU(
@@ -304,6 +316,10 @@ func (tensorBackend *TensorBackend) unary(
 		rc = C.xla_tensor_tanh(xlaInput.handle, &output)
 	case "sigmoid":
 		rc = C.xla_tensor_sigmoid(xlaInput.handle, &output)
+	case "swish":
+		rc = C.xla_tensor_swish(xlaInput.handle, &output)
+	case "selu":
+		rc = C.xla_tensor_selu(xlaInput.handle, &output)
 	default:
 		return nil, fmt.Errorf("xla tensor: unknown unary kernel %q", name)
 	}

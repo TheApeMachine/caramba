@@ -23,23 +23,20 @@ type XLAPositionalOps struct {
 
 // NewPositional initialises the PJRT client for the given platform.
 func NewPositional(platform string) (*XLAPositionalOps, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err := config.ValidateRuntime(); err != nil {
-		return nil, err
-	}
-
-	cp := C.CString(platform)
+	cp := C.CString(config.Platform)
 	defer C.free(unsafe.Pointer(cp))
 
 	if rc := C.xla_positional_init(cp); rc != 0 {
-		return nil, fmt.Errorf("xla_positional_init failed for platform %q", platform)
+		return nil, fmt.Errorf("xla_positional_init failed for platform %q", config.Platform)
 	}
-	return &XLAPositionalOps{platform: platform}, nil
+
+	return &XLAPositionalOps{platform: config.Platform}, nil
 }
 
 // Shutdown releases all PJRT resources.

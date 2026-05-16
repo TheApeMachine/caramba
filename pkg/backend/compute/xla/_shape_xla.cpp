@@ -426,6 +426,60 @@ static std::string build_merge_heads(int B, int H, int T, int hd) {
         "}\n";
 }
 
+static std::string build_last_token(int outer, int seq_len, int feature) {
+    int64_t input64 = (int64_t)outer * (int64_t)seq_len * (int64_t)feature;
+    int64_t output64 = (int64_t)outer * (int64_t)feature;
+
+    if (input64 <= 0 || input64 > INT32_MAX || output64 <= 0 || output64 > INT32_MAX) {
+        return "";
+    }
+
+    int input_count = (int)input64;
+    int output_count = (int)output64;
+    std::ostringstream body;
+
+    body
+        << "module @last_token {\n"
+        << "  func.func @main(%arg0: " << f64t(input_count) << ") -> "
+        << f64t(output_count) << " {\n";
+
+    for (int outer_index = 0; outer_index < outer; outer_index++) {
+        int source_offset = (outer_index * seq_len + (seq_len - 1)) * feature;
+        body
+            << "    %v" << outer_index
+            << " = stablehlo.slice %arg0 [" << source_offset << ":"
+            << (source_offset + feature) << "] : (" << f64t(input_count)
+            << ") -> " << f64t(feature) << "\n";
+    }
+
+    if (outer == 1) {
+        body << "    return %v0 : " << f64t(output_count) << "\n";
+    } else {
+        int current_count = feature;
+
+        body
+            << "    %cat0 = stablehlo.concatenate %v0, %v1, dim = 0 : ("
+            << f64t(feature) << ", " << f64t(feature)
+            << ") -> " << f64t(current_count + feature) << "\n";
+        current_count += feature;
+
+        for (int index = 2; index < outer; index++) {
+            body
+                << "    %cat" << (index - 1)
+                << " = stablehlo.concatenate %cat" << (index - 2)
+                << ", %v" << index << ", dim = 0 : ("
+                << f64t(current_count) << ", " << f64t(feature)
+                << ") -> " << f64t(current_count + feature) << "\n";
+            current_count += feature;
+        }
+
+        body << "    return %cat" << (outer - 2) << " : " << f64t(output_count) << "\n";
+    }
+
+    body << "  }\n}\n";
+    return body.str();
+}
+
 // ---------------------------------------------------------------------------
 // Public C API
 // ---------------------------------------------------------------------------
@@ -528,6 +582,31 @@ int xla_merge_heads(const double* src, double* dst,
     PJRT_LoadedExecutable* exec = compile_shape_stablehlo(mlir);
     if (!exec) return -1;
     int rc = run_shape_exec(exec, src, n, dst, n);
+    PJRT_LoadedExecutable_Destroy_Args da{};
+    da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
+    da.executable  = exec;
+    g_api->PJRT_LoadedExecutable_Destroy(&da);
+    return rc;
+}
+
+int xla_last_token(const double* src, double* dst,
+                   int outer, int seq_len, int feature)
+{
+    if (!g_client) return -1;
+    if (!src || !dst || outer <= 0 || seq_len <= 0 || feature <= 0) return -1;
+
+    int64_t input64 = (int64_t)outer * (int64_t)seq_len * (int64_t)feature;
+    int64_t output64 = (int64_t)outer * (int64_t)feature;
+
+    if (input64 <= 0 || input64 > INT32_MAX || output64 <= 0 || output64 > INT32_MAX) {
+        return -1;
+    }
+
+    std::string mlir = build_last_token(outer, seq_len, feature);
+    if (mlir.empty()) return -1;
+    PJRT_LoadedExecutable* exec = compile_shape_stablehlo(mlir);
+    if (!exec) return -1;
+    int rc = run_shape_exec(exec, src, (int)input64, dst, (int)output64);
     PJRT_LoadedExecutable_Destroy_Args da{};
     da.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
     da.executable  = exec;

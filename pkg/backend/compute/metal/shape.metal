@@ -173,3 +173,17 @@ kernel void merge_heads_kernel(
 
     dst[outIdx] = src[idx];
 }
+
+kernel void last_token_kernel(
+    device const float* src [[buffer(0)]],
+    device float*       dst [[buffer(1)]],
+    constant int&       seq_len [[buffer(2)]],
+    constant int&       feature [[buffer(3)]],
+    uint idx [[thread_position_in_grid]])
+{
+    int outer = (int)idx / feature;
+    int feature_idx = (int)idx % feature;
+    int src_idx = (outer * seq_len + (seq_len - 1)) * feature + feature_idx;
+
+    dst[idx] = src[src_idx];
+}

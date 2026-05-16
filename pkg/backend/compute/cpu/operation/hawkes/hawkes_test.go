@@ -25,7 +25,9 @@ func forwardHawkes(
 	stateDict.WithInputs(values...)
 	outputState, err := operation.Forward(stateDict)
 
-	So(err, ShouldBeNil)
+	if err != nil {
+		panic(err)
+	}
 
 	return outputState.Out
 }

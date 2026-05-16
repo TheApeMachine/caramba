@@ -13,6 +13,16 @@ func TestGelu(t *testing.T) {
 		op := NewGelu()
 
 		Convey("Forward", func() {
+			Convey("It should compute tanh-form GELU", func() {
+				input := []float64{-3, -1, 0, 1, 3}
+				out := forwardGelu(op, input)
+
+				for index, value := range input {
+					expected := geluReference(value)
+					So(out[index], ShouldAlmostEqual, expected, 1e-12)
+				}
+			})
+
 			Convey("It should return ~0 for large negative inputs", func() {
 				out := forwardGelu(op, []float64{-10, -8, -6, -5})
 				for _, v := range out {
@@ -64,4 +74,11 @@ func forwardGelu(op *Gelu, input []float64) []float64 {
 	So(err, ShouldBeNil)
 
 	return out.Out
+}
+
+func geluReference(value float64) float64 {
+	cube := value * value * value
+	inner := 0.7978845608028654 * (value + 0.044715*cube)
+
+	return 0.5 * value * (1 + math.Tanh(inner))
 }

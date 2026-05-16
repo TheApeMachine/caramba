@@ -2,6 +2,7 @@ package hub
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -42,6 +43,29 @@ func TestDecodeLZ4Block(test *testing.T) {
 			So(out, ShouldResemble, []byte("aaaaaa"))
 		})
 	})
+
+	Convey("Given an LZ4 frame payload", test, func() {
+		frame := lz4Frame([]byte{0x30, 'a', 'b', 'c'})
+		out, err := decodeLZ4Payload(frame, 3)
+
+		Convey("It should decode framed blocks instead of treating magic bytes as a raw block", func() {
+			So(err, ShouldBeNil)
+			So(out, ShouldResemble, []byte("abc"))
+		})
+	})
+}
+
+func TestDecodeXorbRange_LZ4Frame(test *testing.T) {
+	Convey("Given a framed LZ4 xorb chunk", test, func() {
+		data := xorbChunk(1, lz4Frame([]byte{0x30, 'a', 'b', 'c'}), 3)
+
+		Convey("It should decode the frame payload", func() {
+			chunks, err := DecodeXorbRange(data, 0, 1)
+
+			So(err, ShouldBeNil)
+			So(chunks[0], ShouldResemble, []byte("abc"))
+		})
+	})
 }
 
 func BenchmarkDecodeXorbRange(benchmark *testing.B) {
@@ -52,17 +76,40 @@ func BenchmarkDecodeXorbRange(benchmark *testing.B) {
 	}
 }
 
-func xorbChunk(compression byte, payload []byte) []byte {
+func xorbChunk(compression byte, payload []byte, unpacked ...int) []byte {
+	uncompressedSize := len(payload)
+
+	if len(unpacked) > 0 {
+		uncompressedSize = unpacked[0]
+	}
+
 	header := []byte{
 		0,
 		byte(len(payload)),
 		byte(len(payload) >> 8),
 		byte(len(payload) >> 16),
 		compression,
-		byte(len(payload)),
-		byte(len(payload) >> 8),
-		byte(len(payload) >> 16),
+		byte(uncompressedSize),
+		byte(uncompressedSize >> 8),
+		byte(uncompressedSize >> 16),
 	}
 
 	return append(header, payload...)
+}
+
+func lz4Frame(block []byte) []byte {
+	frame := []byte{
+		0x04, 0x22, 0x4d, 0x18, // magic
+		0x60, // version + independent blocks
+		0x70, // max block size
+		0x00, // ignored header checksum
+	}
+	var size [4]byte
+
+	binary.LittleEndian.PutUint32(size[:], uint32(len(block)))
+	frame = append(frame, size[:]...)
+	frame = append(frame, block...)
+	frame = append(frame, 0, 0, 0, 0)
+
+	return frame
 }

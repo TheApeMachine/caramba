@@ -25,23 +25,20 @@ type XLAProjection struct {
 // NewXLAProjection initialises the PJRT projection client.
 // Call xla.New(platform) for the activation client first; this reuses globals.
 func NewXLAProjection(platform string) (*XLAProjection, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err := config.ValidateRuntime(); err != nil {
-		return nil, err
-	}
-
-	cp := C.CString(platform)
+	cp := C.CString(config.Platform)
 	defer C.free(unsafe.Pointer(cp))
 
 	if rc := C.xla_projection_init(cp); rc != 0 {
-		return nil, fmt.Errorf("xla_projection_init failed for platform %q", platform)
+		return nil, fmt.Errorf("xla_projection_init failed for platform %q", config.Platform)
 	}
-	return &XLAProjection{platform: platform}, nil
+
+	return &XLAProjection{platform: config.Platform}, nil
 }
 
 // Shutdown releases projection PJRT resources.

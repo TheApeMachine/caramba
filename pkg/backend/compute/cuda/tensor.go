@@ -17,9 +17,7 @@ import (
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
-var _ computetensor.Float64ActivationBackend = (*TensorBackend)(nil)
-var _ computetensor.Float64MathBackend = (*TensorBackend)(nil)
-var _ computetensor.Float64FusedBackend = (*TensorBackend)(nil)
+var _ computetensor.Backend = (*TensorBackend)(nil)
 
 /*
 TensorBackend owns CUDA device tensors.
@@ -161,6 +159,24 @@ func (tensorBackend *TensorBackend) Sigmoid(
 	input computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {
 	return tensorBackend.unary(input, "sigmoid", 0)
+}
+
+/*
+Swish launches a device-to-device CUDA Swish kernel.
+*/
+func (tensorBackend *TensorBackend) Swish(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return tensorBackend.unary(input, "swish", 0)
+}
+
+/*
+SELU launches a device-to-device CUDA SELU kernel.
+*/
+func (tensorBackend *TensorBackend) SELU(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return tensorBackend.unary(input, "selu", 0)
 }
 
 /*
@@ -329,6 +345,10 @@ func (tensorBackend *TensorBackend) unary(
 		rc = C.cuda_tanh_device((*C.double)(deviceInput.device), (*C.double)(output.device), C.int(deviceInput.Len()))
 	case "sigmoid":
 		rc = C.cuda_sigmoid_device((*C.double)(deviceInput.device), (*C.double)(output.device), C.int(deviceInput.Len()))
+	case "swish":
+		rc = C.cuda_swish_device((*C.double)(deviceInput.device), (*C.double)(output.device), C.int(deviceInput.Len()))
+	case "selu":
+		rc = C.cuda_selu_device((*C.double)(deviceInput.device), (*C.double)(output.device), C.int(deviceInput.Len()))
 	default:
 		_ = output.Close()
 

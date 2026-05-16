@@ -50,6 +50,19 @@ int metal_view_as_heads(const float* src, float* dst,
 int metal_merge_heads(const float* src, float* dst,
                       int B, int H, int T, int head_dim);
 
+// LastToken: [outer, seq_len, feature] -> [outer, feature].
+int metal_last_token(const float* src, float* dst,
+                     int outer, int seq_len, int feature);
+
+int metal_view_as_heads_tensor(const void* src, void* dst,
+                               int B, int T, int H, int head_dim);
+
+int metal_merge_heads_tensor(const void* src, void* dst,
+                             int B, int H, int T, int head_dim);
+
+int metal_last_token_tensor(const void* src, void* dst,
+                            int outer, int seq_len, int feature);
+
 #ifdef __cplusplus
 }
 #endif

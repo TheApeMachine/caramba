@@ -34,6 +34,10 @@ func (registry *OperationRegistry) Swish(_ *state.Dict) (state.Operation, error)
 	return unavailableOperation()
 }
 
+func (registry *OperationRegistry) SELU(_ *state.Dict) (state.Operation, error) {
+	return unavailableOperation()
+}
+
 func (registry *OperationRegistry) SDPA(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
@@ -131,6 +135,10 @@ func (registry *OperationRegistry) ViewAsHeads(_ *state.Dict) (state.Operation, 
 }
 
 func (registry *OperationRegistry) MergeHeads(_ *state.Dict) (state.Operation, error) {
+	return unavailableOperation()
+}
+
+func (registry *OperationRegistry) LastToken(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }
 

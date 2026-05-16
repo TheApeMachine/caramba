@@ -66,6 +66,32 @@ func TestOperationRegistry_Registered(t *testing.T) {
 	})
 }
 
+func TestOperationRegistry_GlobalActivationTemplates(t *testing.T) {
+	Convey("Given the global manifest operation registry", t, func() {
+		activationIDs := []string{
+			"activation.relu",
+			"activation.gelu",
+			"activation.sigmoid",
+			"activation.tanh",
+			"activation.swiglu",
+			"activation.swish",
+			"activation.selu",
+			"activation.leaky_relu",
+		}
+
+		Convey("Build", func() {
+			Convey("It should build every activation template operation", func() {
+				for _, activationID := range activationIDs {
+					built, err := globalRegistry.Build(activationID, nil)
+
+					So(err, ShouldBeNil)
+					So(built, ShouldNotBeNil)
+				}
+			})
+		})
+	})
+}
+
 func BenchmarkOperationRegistry_Build(b *testing.B) {
 	operationRegistry := NewOperationRegistry()
 

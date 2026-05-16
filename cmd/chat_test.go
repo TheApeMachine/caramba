@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/spf13/cobra"
 )
 
 func TestChatCommandOptions_TokenizerSource(test *testing.T) {
@@ -34,6 +35,28 @@ func TestChatCommandOptions_TokenizerSource(test *testing.T) {
 			source := options.TokenizerSource()
 
 			So(source.Source, ShouldEqual, "model/repo")
+		})
+	})
+}
+
+func TestChatCommandOptions_RuntimeName(test *testing.T) {
+	Convey("Given automatic chat runtime selection", test, func() {
+		command := &cobra.Command{}
+		command.Flags().String("model", "", "")
+		command.Flags().String("manifest", "", "")
+
+		Convey("It should use preview without model inputs", func() {
+			options := chatCommandOptions{Runtime: "auto"}
+
+			So(options.RuntimeName(command), ShouldEqual, "preview")
+		})
+
+		Convey("It should use model runtime when model is set", func() {
+			options := chatCommandOptions{Runtime: "auto"}
+			err := command.Flags().Set("model", "openai-community/gpt2")
+
+			So(err, ShouldBeNil)
+			So(options.RuntimeName(command), ShouldEqual, "model")
 		})
 	})
 }

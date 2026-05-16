@@ -109,7 +109,7 @@ func (m *MetalActivation) LeakyReLU(input []float64, alpha float64) ([]float64, 
 	return toFloat64(dst), nil
 }
 
-// GELU computes the Gaussian Error Linear Unit (tanh approximation).
+// GELU computes the tanh-form Gaussian Error Linear Unit.
 func (m *MetalActivation) GELU(input []float64) ([]float64, error) {
 	n := len(input)
 	if n == 0 {
@@ -129,7 +129,7 @@ func (m *MetalActivation) GELU(input []float64) ([]float64, error) {
 	return toFloat64(dst), nil
 }
 
-// Tanh computes element-wise hyperbolic tangent (rational approximation).
+// Tanh computes element-wise hyperbolic tangent.
 func (m *MetalActivation) Tanh(input []float64) ([]float64, error) {
 	n := len(input)
 	if n == 0 {
@@ -185,6 +185,26 @@ func (m *MetalActivation) Swish(input []float64) ([]float64, error) {
 	)
 	if rc != 0 {
 		return nil, fmt.Errorf("metal_swish failed (rc=%d)", rc)
+	}
+	return toFloat64(dst), nil
+}
+
+// SELU computes the self-normalizing scaled ELU element-wise.
+func (m *MetalActivation) SELU(input []float64) ([]float64, error) {
+	n := len(input)
+	if n == 0 {
+		return []float64{}, nil
+	}
+	src := toFloat32(input)
+	dst := make([]float32, n)
+
+	rc := C.metal_selu(
+		(*C.float)(unsafe.Pointer(&src[0])),
+		(*C.float)(unsafe.Pointer(&dst[0])),
+		C.int(n),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("metal_selu failed (rc=%d)", rc)
 	}
 	return toFloat64(dst), nil
 }

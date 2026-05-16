@@ -7,6 +7,7 @@ import {
 import { Link } from "@tanstack/react-router";
 import { LightbulbIcon } from "lucide-react";
 import { OrganizationAccountMenu } from "#/components/auth/organization-account-menu";
+import { ModeToggle } from "#/components/layout/mode-toggle";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { useIsClerkAppAdmin } from "#/hooks/use-clerk-app-role";
@@ -20,6 +21,7 @@ export function SessionControls() {
 	return (
 		<div className="ml-auto flex shrink-0 items-center gap-2">
 			{isClerkAppAdmin ? <Badge variant="warning">Admin</Badge> : null}
+			<ModeToggle />
 			<Show when="signed-out">
 				<SignInButton mode="modal">
 					<Button size="sm" type="button" variant="outline">

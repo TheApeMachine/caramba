@@ -24,37 +24,39 @@ func softmax(scores []float64) {
 
 // sdpaHead — SDPA per head. Three SIMD kernels back the per-row pipeline:
 // attentionRowScores → softmaxRow → attentionRowOutput.
-func sdpaHead(out, q, k, v []float64, seqLen, headDim int, maskFn func(i, j int) bool) {
+func sdpaHead(out, q, k, v []float64, queryLength, keyValueLength, headDim int) {
 	scale := 1.0 / math.Sqrt(float64(headDim))
-	scores := make([]float64, seqLen)
+	scores := make([]float64, keyValueLength)
 
-	if maskFn == nil {
-		for i := 0; i < seqLen; i++ {
-			qRow := q[i*headDim : (i+1)*headDim]
-			outRow := out[i*headDim : (i+1)*headDim]
-			attentionRowScoresKernel(scores, qRow, k, seqLen, headDim, scale)
-			softmax(scores)
-			attentionRowOutputKernel(outRow, scores, v, seqLen, headDim)
-		}
-
-		return
-	}
-
-	for i := 0; i < seqLen; i++ {
-		qRow := q[i*headDim : (i+1)*headDim]
-
-		for j := 0; j < seqLen; j++ {
-			if maskFn(i, j) {
-				scores[j] = math.Inf(-1)
-				continue
-			}
-
-			kRow := k[j*headDim : (j+1)*headDim]
-			scores[j] = dotProduct(qRow, kRow) * scale
-		}
+	for queryIndex := 0; queryIndex < queryLength; queryIndex++ {
+		qRow := q[queryIndex*headDim : (queryIndex+1)*headDim]
+		outRow := out[queryIndex*headDim : (queryIndex+1)*headDim]
+		attentionRowScoresKernel(scores, qRow, k, keyValueLength, headDim, scale)
 
 		softmax(scores)
-		outRow := out[i*headDim : (i+1)*headDim]
-		attentionRowOutputKernel(outRow, scores, v, seqLen, headDim)
+		attentionRowOutputKernel(outRow, scores, v, keyValueLength, headDim)
+	}
+}
+
+func sdpaHeadCausal(out, q, k, v []float64, queryLength, keyValueLength, headDim int) {
+	scale := 1.0 / math.Sqrt(float64(headDim))
+	scores := make([]float64, keyValueLength)
+	offset := keyValueLength - queryLength
+
+	for queryIndex := 0; queryIndex < queryLength; queryIndex++ {
+		visible := offset + queryIndex + 1
+		visibleScores := scores[:visible]
+		qRow := q[queryIndex*headDim : (queryIndex+1)*headDim]
+		outRow := out[queryIndex*headDim : (queryIndex+1)*headDim]
+		attentionRowScoresKernel(
+			visibleScores,
+			qRow,
+			k[:visible*headDim],
+			visible,
+			headDim,
+			scale,
+		)
+		softmax(visibleScores)
+		attentionRowOutputKernel(outRow, visibleScores, v, visible, headDim)
 	}
 }

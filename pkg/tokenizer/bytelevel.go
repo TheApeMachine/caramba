@@ -155,6 +155,21 @@ func (tokenizer *ByteLevelBPE) VocabSize() int {
 	return len(tokenizer.vocab)
 }
 
+/*
+SpecialTokenIDs returns tokenizer-level special token IDs.
+*/
+func (tokenizer *ByteLevelBPE) SpecialTokenIDs() []int {
+	tokenIDs := make([]int, 0, len(tokenizer.specialIDTokens))
+
+	for tokenID := range tokenizer.specialIDTokens {
+		tokenIDs = append(tokenIDs, tokenID)
+	}
+
+	sort.Ints(tokenIDs)
+
+	return tokenIDs
+}
+
 func (tokenizer *ByteLevelBPE) encodeOrdinary(text string) ([]int, error) {
 	preTokens := splitByteLevel(text)
 	tokenIDs := make([]int, 0, len(preTokens))

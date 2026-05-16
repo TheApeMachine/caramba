@@ -8,7 +8,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
-const tanhApproxTol = 5e-2
+const tanhReferenceTolerance = 1e-10
 
 var benchSinkTanh []float64
 
@@ -24,17 +24,17 @@ func TestTanh(t *testing.T) {
 					out := forwardActivation(op, inputs)
 
 					for index := range inputs {
-						So(out[index], ShouldAlmostEqual, math.Tanh(inputs[index]), tanhApproxTol)
+						So(out[index], ShouldAlmostEqual, math.Tanh(inputs[index]), tanhReferenceTolerance)
 					}
 				},
 			)
 
-			Convey("It should stay close to math.Tanh on ±1 (rational SIMD differs slightly from libm)", func() {
+			Convey("It should match math.Tanh on ±1 within the vector accuracy contract", func() {
 				inputs := []float64{-1, 1}
 				out := forwardActivation(op, inputs)
 
-				So(out[0], ShouldAlmostEqual, math.Tanh(inputs[0]), tanhApproxTol)
-				So(out[1], ShouldAlmostEqual, math.Tanh(inputs[1]), tanhApproxTol)
+				So(out[0], ShouldAlmostEqual, math.Tanh(inputs[0]), tanhReferenceTolerance)
+				So(out[1], ShouldAlmostEqual, math.Tanh(inputs[1]), tanhReferenceTolerance)
 			})
 
 			Convey("It should return an empty slice for empty input", func() {
@@ -42,15 +42,13 @@ func TestTanh(t *testing.T) {
 			})
 
 			Convey(
-				"It should map large magnitude inputs toward ±1 (approximation quality varies by SIMD path)",
+				"It should map large magnitude inputs toward ±1",
 				func() {
 					inputs := []float64{-10, 10}
 					out := forwardActivation(op, inputs)
 
-					So(out[0], ShouldBeLessThan, 0)
-					So(out[1], ShouldBeGreaterThan, 0)
-					So(math.Abs(out[0]), ShouldBeGreaterThan, 0.99)
-					So(math.Abs(out[1]), ShouldBeGreaterThan, 0.99)
+					So(out[0], ShouldAlmostEqual, math.Tanh(inputs[0]), tanhReferenceTolerance)
+					So(out[1], ShouldAlmostEqual, math.Tanh(inputs[1]), tanhReferenceTolerance)
 				},
 			)
 

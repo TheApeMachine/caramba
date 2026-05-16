@@ -14,6 +14,7 @@ import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as RequestFeatureRouteImport } from './routes/request-feature'
 import { Route as NodegraphDevRouteImport } from './routes/nodegraph-dev'
 import { Route as NodegraphRouteImport } from './routes/nodegraph'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResearchIndexRouteImport } from './routes/research/index'
 import { Route as KanbanIndexRouteImport } from './routes/kanban/index'
@@ -55,6 +56,11 @@ const NodegraphDevRoute = NodegraphDevRouteImport.update({
 const NodegraphRoute = NodegraphRouteImport.update({
   id: '/nodegraph',
   path: '/nodegraph',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -148,6 +154,7 @@ const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/dashboard': typeof DashboardRoute
   '/nodegraph': typeof NodegraphRoute
   '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
@@ -172,6 +179,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/dashboard': typeof DashboardRoute
   '/nodegraph': typeof NodegraphRoute
   '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
@@ -196,6 +204,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/dashboard': typeof DashboardRoute
   '/nodegraph': typeof NodegraphRoute
   '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
@@ -222,6 +231,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/dashboard'
     | '/nodegraph'
     | '/nodegraph-dev'
     | '/request-feature'
@@ -246,6 +256,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/dashboard'
     | '/nodegraph'
     | '/nodegraph-dev'
     | '/request-feature'
@@ -269,6 +280,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/dashboard'
     | '/nodegraph'
     | '/nodegraph-dev'
     | '/request-feature'
@@ -294,6 +306,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DashboardRoute: typeof DashboardRoute
   NodegraphRoute: typeof NodegraphRoute
   NodegraphDevRoute: typeof NodegraphDevRoute
   RequestFeatureRoute: typeof RequestFeatureRoute
@@ -349,6 +362,13 @@ declare module '@tanstack/react-router' {
       path: '/nodegraph'
       fullPath: '/nodegraph'
       preLoaderRoute: typeof NodegraphRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -490,6 +510,7 @@ const ResearchEditRouteRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DashboardRoute: DashboardRoute,
   NodegraphRoute: NodegraphRoute,
   NodegraphDevRoute: NodegraphDevRoute,
   RequestFeatureRoute: RequestFeatureRoute,

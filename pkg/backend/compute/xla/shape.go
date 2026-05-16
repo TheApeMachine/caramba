@@ -253,3 +253,43 @@ func (x *XLAShapeOps) MergeHeads(input []float64, B, H, T, headDim int) ([]float
 	}
 	return dst, nil
 }
+
+func (x *XLAShapeOps) LastToken(
+	input []float64,
+	outer int,
+	sequenceLength int,
+	featureLength int,
+) ([]float64, error) {
+	if outer <= 0 || sequenceLength <= 0 || featureLength <= 0 {
+		return nil, fmt.Errorf("xla_last_token: dimensions must be positive")
+	}
+
+	requiredInput := int64(outer) * int64(sequenceLength) * int64(featureLength)
+	outputLength := int64(outer) * int64(featureLength)
+
+	if requiredInput > int64(len(input)) {
+		return nil, fmt.Errorf(
+			"xla_last_token: input length %d < required length %d",
+			len(input),
+			requiredInput,
+		)
+	}
+
+	if outputLength > math.MaxInt32 {
+		return nil, fmt.Errorf("xla_last_token: output length %d exceeds int32", outputLength)
+	}
+
+	dst := make([]float64, int(outputLength))
+	rc := C.xla_last_token(
+		(*C.double)(unsafe.Pointer(&input[0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(outer),
+		C.int(sequenceLength),
+		C.int(featureLength),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("xla_last_token failed")
+	}
+
+	return dst, nil
+}

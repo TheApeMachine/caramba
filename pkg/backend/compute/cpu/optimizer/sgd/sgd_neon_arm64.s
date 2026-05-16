@@ -1,34 +1,33 @@
 #include "textflag.h"
 
+#define VFADD_D2(m, n, d) WORD $(0x4E60D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFSUB_D2(m, n, d) WORD $(0x4EE0D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VFMUL_D2(m, n, d) WORD $(0x6E60DC00 | ((m) << 16) | ((n) << 5) | (d))
+
 // sgdVanillaNEON(out, params, grads []float64, lr, wd float64)
-TEXT ·sgdVanillaNEON(SB), NOSPLIT, $0-88
+TEXT ·sgdVanillaNEON(SB), NOSPLIT, $16-88
 	MOVD out+0(FP), R0
 	MOVD params+24(FP), R1
 	MOVD grads+48(FP), R2
 	MOVD out_len+8(FP), R3
 	FMOVD lr+72(FP), F20
 	FMOVD wd+80(FP), F21
+	FMOVD F20, 0(RSP)
+	VLD1R (RSP), [V20.D2]
+	FMOVD F21, 8(RSP)
+	ADD $8, RSP, R6
+	VLD1R (R6), [V21.D2]
 
 	LSR  $1, R3, R4
 	CBZ  R4, sgdv_neon_tail
 sgdv_neon_loop:
-	FMOVD (R1), F0
-	FMOVD 8(R1), F1
-	FMOVD (R2), F2
-	FMOVD 8(R2), F3
-
-	// geff = g + wd*p  (FMADDD A, B, C, D : D = A*C + B)
-	FMADDD F21, F2, F0, F2
-	FMADDD F21, F3, F1, F3
-	// out = p - lr*geff  (FMSUBD A, B, C, D : D = B - A*C)
-	FMSUBD F20, F0, F2, F0
-	FMSUBD F20, F1, F3, F1
-	FMOVD F0, (R0)
-	FMOVD F1, 8(R0)
-
-	ADD $16, R0, R0
-	ADD $16, R1, R1
-	ADD $16, R2, R2
+	VLD1.P 16(R1), [V0.D2]
+	VLD1.P 16(R2), [V2.D2]
+	VFMUL_D2(21, 0, 3)
+	VFADD_D2(2, 3, 3)
+	VFMUL_D2(20, 3, 3)
+	VFSUB_D2(3, 0, 0)
+	VST1.P [V0.D2], 16(R0)
 	SUBS $1, R4, R4
 	BNE  sgdv_neon_loop
 
@@ -45,7 +44,7 @@ sgdv_neon_done:
 
 // sgdMomentumNEON(out, params, grads, velocity []float64,
 //                 lr, wd, momentum float64, nesterov uint64)
-TEXT ·sgdMomentumNEON(SB), NOSPLIT, $0-128
+TEXT ·sgdMomentumNEON(SB), NOSPLIT, $24-128
 	MOVD out+0(FP), R0
 	MOVD params+24(FP), R1
 	MOVD grads+48(FP), R2
@@ -55,52 +54,42 @@ TEXT ·sgdMomentumNEON(SB), NOSPLIT, $0-128
 	FMOVD wd+104(FP), F21
 	FMOVD momentum+112(FP), F22
 	MOVD nesterov+120(FP), R12
+	FMOVD F20, 0(RSP)
+	VLD1R (RSP), [V20.D2]
+	FMOVD F21, 8(RSP)
+	ADD $8, RSP, R13
+	VLD1R (R13), [V21.D2]
+	FMOVD F22, 16(RSP)
+	ADD $16, RSP, R13
+	VLD1R (R13), [V22.D2]
 
 	LSR  $1, R4, R5
 	CBZ  R5, sgdm_neon_tail
 sgdm_neon_loop:
-	FMOVD (R1), F0
-	FMOVD 8(R1), F1
-	FMOVD (R2), F2
-	FMOVD 8(R2), F3
-	FMOVD (R3), F4
-	FMOVD 8(R3), F5
+	VLD1.P 16(R1), [V0.D2]
+	VLD1.P 16(R2), [V2.D2]
+	VLD1.P 16(R3), [V4.D2]
 
-	// v = μ*v - lr*g
-	FMULD F22, F4, F4
-	FMULD F22, F5, F5
-	FMSUBD F20, F4, F2, F4
-	FMSUBD F20, F5, F3, F5
-	FMOVD F4, (R3)
-	FMOVD F5, 8(R3)
+	VFMUL_D2(22, 4, 4)
+	VFMUL_D2(20, 2, 5)
+	VFSUB_D2(5, 4, 4)
+	SUB $16, R3, R3
+	VST1.P [V4.D2], 16(R3)
 
-	// out = p - lr*wd*p  ≡  p*(1 - lr*wd)
-	FMULD F21, F0, F6
-	FMULD F21, F1, F7
-	FMSUBD F20, F0, F6, F6
-	FMSUBD F20, F1, F7, F7
+	VFMUL_D2(21, 0, 6)
+	VFMUL_D2(20, 6, 6)
+	VFSUB_D2(6, 0, 6)
 
-	// add velocity contribution
 	CBZ R12, sgdm_neon_addV
-	// Nesterov: out += μ*v - lr*g
-	FMULD F22, F4, F8
-	FMULD F22, F5, F9
-	FMSUBD F20, F8, F2, F8
-	FMSUBD F20, F9, F3, F9
-	FADDD F8, F6, F6
-	FADDD F9, F7, F7
+	VFMUL_D2(22, 4, 8)
+	VFMUL_D2(20, 2, 9)
+	VFSUB_D2(9, 8, 8)
+	VFADD_D2(8, 6, 6)
 	B sgdm_neon_store
 sgdm_neon_addV:
-	FADDD F4, F6, F6
-	FADDD F5, F7, F7
+	VFADD_D2(4, 6, 6)
 sgdm_neon_store:
-	FMOVD F6, (R0)
-	FMOVD F7, 8(R0)
-
-	ADD $16, R0, R0
-	ADD $16, R1, R1
-	ADD $16, R2, R2
-	ADD $16, R3, R3
+	VST1.P [V6.D2], 16(R0)
 	SUBS $1, R5, R5
 	BNE  sgdm_neon_loop
 

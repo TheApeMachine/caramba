@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	cpuoperation "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
@@ -16,13 +15,13 @@ func RunOperation(
 	backend Backend,
 	node NodeSpec,
 	inputs []tensor.Float64Tensor,
-	operation cpuoperation.Operation,
+	operation state.Operation,
 ) (tensor.Float64Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	values, err := InputValues(inputs)
+	values, err := InputValues(backend, inputs)
 	if err != nil {
 		return nil, err
 	}
@@ -37,13 +36,47 @@ func RunOperation(
 	return UploadOutput(backend, node, inputs, outputState.Out)
 }
 
+func RunOptimizer(
+	ctx context.Context,
+	backend Backend,
+	node NodeSpec,
+	inputs []tensor.Float64Tensor,
+	optimizer state.Optimizer,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	values, err := InputValues(backend, inputs)
+	if err != nil {
+		return nil, err
+	}
+
+	stateDict := OperationState(node, inputs, values)
+	if len(stateDict.Params) == 0 && len(values) > 0 {
+		stateDict.Params = values[0]
+	}
+
+	if len(stateDict.Grads) == 0 && len(values) > 1 {
+		stateDict.Grads = values[1]
+	}
+
+	outputState, err := optimizer.Step(stateDict)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return UploadOutput(backend, node, inputs, outputState.Out)
+}
+
 func OperationState(
 	node NodeSpec,
 	inputs []tensor.Float64Tensor,
 	values [][]float64,
 ) *state.Dict {
-	stateDict := state.NewDict().
-		WithShape(OutputShape(node, inputs))
+	stateDict := OperationConfig(node).
+		WithShape(OperationShape(node, inputs))
 
 	operationInputs := make([]any, len(values))
 
@@ -54,6 +87,12 @@ func OperationState(
 	if len(operationInputs) > 0 {
 		stateDict.WithInputs(operationInputs...)
 	}
+
+	return stateDict
+}
+
+func OperationConfig(node NodeSpec) *state.Dict {
+	stateDict := state.NewDict()
 
 	applyStateMetadata(stateDict, node)
 
@@ -194,7 +233,7 @@ func RunErrorOperation(
 		return nil, err
 	}
 
-	values, err := InputValues(inputs)
+	values, err := InputValues(backend, inputs)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +259,7 @@ func RunForwardErrorOperation(
 		return nil, err
 	}
 
-	values, err := InputValues(inputs)
+	values, err := InputValues(backend, inputs)
 	if err != nil {
 		return nil, err
 	}
@@ -245,14 +284,29 @@ func UploadOutput(
 		return nil, err
 	}
 
+	adopter, ok := backend.(interface {
+		AdoptFloat64(tensor.Shape, []float64) (tensor.Float64Tensor, error)
+	})
+
+	if ok {
+		return adopter.AdoptFloat64(shape, output)
+	}
+
 	return backend.UploadFloat64(shape, output)
 }
 
-func InputValues(inputs []tensor.Float64Tensor) ([][]float64, error) {
+func InputValues(
+	backend Backend,
+	inputs []tensor.Float64Tensor,
+) ([][]float64, error) {
+	if backend == nil {
+		return nil, fmt.Errorf("executor: backend is required for input values")
+	}
+
 	values := make([][]float64, len(inputs))
 
 	for index, input := range inputs {
-		value, err := input.CloneFloat64()
+		value, err := backend.DownloadFloat64(input)
 
 		if err != nil {
 			return nil, err
@@ -274,6 +328,18 @@ func OutputShape(node NodeSpec, inputs []tensor.Float64Tensor) []int {
 	}
 
 	return inputs[0].Shape().Dims()
+}
+
+func OperationShape(node NodeSpec, inputs []tensor.Float64Tensor) []int {
+	if shape := intSliceConfig(node, "op_shape"); len(shape) > 0 {
+		return shape
+	}
+
+	if len(inputs) > 0 {
+		return inputs[0].Shape().Dims()
+	}
+
+	return OutputShape(node, inputs)
 }
 
 func OutputTensorShape(
@@ -327,6 +393,10 @@ func NormalizeOperation(op ir.OpType) ir.OpType {
 		return ir.OpSigmoid
 	case "swiglu", "activation.swiglu":
 		return ir.OpSwiGLU
+	case "swish", "activation.swish":
+		return ir.OpSwish
+	case "selu", "activation.selu":
+		return ir.OpSELU
 	case "fused", "math.matmul_add", "math.matmul_add_gelu":
 		return ir.OpFused
 	default:
@@ -465,7 +535,7 @@ func floatSliceConfig(node NodeSpec, key string, fallback []float64) []float64 {
 
 	switch typed := value.(type) {
 	case []float64:
-		return append([]float64(nil), typed...)
+		return typed
 	case []float32:
 		values := make([]float64, len(typed))
 

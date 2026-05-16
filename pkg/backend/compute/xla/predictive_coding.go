@@ -24,13 +24,9 @@ type XLAPredictiveCodingOps struct {
 NewPredictiveCodingOps initialises the PJRT client for the given platform.
 */
 func NewPredictiveCodingOps(platform string) (*XLAPredictiveCodingOps, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
-		return nil, err
-	}
-
-	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 

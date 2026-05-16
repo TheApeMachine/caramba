@@ -2,9 +2,9 @@
 
 DATA ·atLog2E+0(SB)/8, $1.4426950408889634
 GLOBL ·atLog2E(SB), RODATA, $8
-DATA ·atLn2Hi+0(SB)/8, $0.6931471803691864
+DATA ·atLn2Hi+0(SB)/8, $0.6931471805599453
 GLOBL ·atLn2Hi(SB), RODATA, $8
-DATA ·atLn2Lo+0(SB)/8, $1.9082149292705877e-10
+DATA ·atLn2Lo+0(SB)/8, $0.0
 GLOBL ·atLn2Lo(SB), RODATA, $8
 DATA ·atMaxArg+0(SB)/8, $709.0
 GLOBL ·atMaxArg(SB), RODATA, $8
@@ -34,6 +34,20 @@ DATA ·atC10+0(SB)/8, $2.7557319223985894e-7
 GLOBL ·atC10(SB), RODATA, $8
 DATA ·atC11+0(SB)/8, $2.5052108385441718e-8
 GLOBL ·atC11(SB), RODATA, $8
+DATA ·atC12+0(SB)/8, $2.08767569878681e-9
+GLOBL ·atC12(SB), RODATA, $8
+DATA ·atC13+0(SB)/8, $1.6059043836821613e-10
+GLOBL ·atC13(SB), RODATA, $8
+DATA ·atC14+0(SB)/8, $1.1470745597729725e-11
+GLOBL ·atC14(SB), RODATA, $8
+DATA ·atC15+0(SB)/8, $7.647163731819816e-13
+GLOBL ·atC15(SB), RODATA, $8
+DATA ·atC16+0(SB)/8, $4.779477332387385e-14
+GLOBL ·atC16(SB), RODATA, $8
+DATA ·atC17+0(SB)/8, $2.8114572543455206e-15
+GLOBL ·atC17(SB), RODATA, $8
+DATA ·atC18+0(SB)/8, $1.5619206968586225e-16
+GLOBL ·atC18(SB), RODATA, $8
 DATA ·geluC044+0(SB)/8, $0.044715
 GLOBL ·geluC044(SB), RODATA, $8
 DATA ·geluC079+0(SB)/8, $0.7978845608028654
@@ -43,8 +57,8 @@ GLOBL ·geluC079(SB), RODATA, $8
 // All FP constants F20..F31 are reserved by caller pattern. This is inlined by
 // each routine below; no separate TEXT block — Plan-9 ARM64 doesn't fold easily.
 
-// scalarTanhNEON(dst, src []float64)
-TEXT ·scalarTanhNEON(SB), NOSPLIT, $0-48
+// scalarTanhARM64(dst, src []float64)
+TEXT ·scalarTanhARM64(SB), NOSPLIT, $0-48
 	MOVD dst+0(FP), R0
 	MOVD src+24(FP), R1
 	MOVD src_len+32(FP), R2
@@ -127,8 +141,8 @@ tanh_store:
 tanh_done:
 	RET
 
-// scalarSigmoidNEON(dst, src []float64)
-TEXT ·scalarSigmoidNEON(SB), NOSPLIT, $0-48
+// scalarSigmoidARM64(dst, src []float64)
+TEXT ·scalarSigmoidARM64(SB), NOSPLIT, $0-48
 	MOVD dst+0(FP), R0
 	MOVD src+24(FP), R1
 	MOVD src_len+32(FP), R2
@@ -196,8 +210,8 @@ sig_store:
 sig_done:
 	RET
 
-// scalarReLUNEON(dst, src []float64)
-TEXT ·scalarReLUNEON(SB), NOSPLIT, $0-48
+// scalarReLUARM64(dst, src []float64)
+TEXT ·scalarReLUARM64(SB), NOSPLIT, $0-48
 	MOVD dst+0(FP), R0
 	MOVD src+24(FP), R1
 	MOVD src_len+32(FP), R2
@@ -214,8 +228,8 @@ relu_loop:
 relu_done:
 	RET
 
-// scalarLeakyReLUNEON(dst, src []float64, alpha float64)
-TEXT ·scalarLeakyReLUNEON(SB), NOSPLIT, $0-56
+// scalarLeakyReLUARM64(dst, src []float64, alpha float64)
+TEXT ·scalarLeakyReLUARM64(SB), NOSPLIT, $0-56
 	MOVD dst+0(FP), R0
 	MOVD src+24(FP), R1
 	MOVD src_len+32(FP), R2
@@ -236,8 +250,8 @@ lr_store:
 lr_done:
 	RET
 
-// scalarGeLUNEON(dst, src []float64)
-TEXT ·scalarGeLUNEON(SB), NOSPLIT, $0-48
+// scalarGeLUARM64(dst, src []float64)
+TEXT ·scalarGeLUARM64(SB), NOSPLIT, $0-48
 	MOVD dst+0(FP), R0
 	MOVD src+24(FP), R1
 	MOVD src_len+32(FP), R2
@@ -318,8 +332,8 @@ gelu_store:
 gelu_done:
 	RET
 
-// scalarSwiGLUNEON(dst, src []float64)
-TEXT ·scalarSwiGLUNEON(SB), NOSPLIT, $0-48
+// scalarSwiGLUARM64(dst, src []float64)
+TEXT ·scalarSwiGLUARM64(SB), NOSPLIT, $0-48
 	MOVD dst+0(FP), R0
 	MOVD dst_len+8(FP), R2
 	MOVD src+24(FP), R1

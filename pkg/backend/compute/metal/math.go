@@ -216,6 +216,216 @@ func (m *MathOps) MatmulAddGELUTensor(
 	return m.matmulAddTensor(left, right, bias, true)
 }
 
+func (m *MathOps) MatmulFlatTensor(
+	left, right computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	M, K, N int,
+) (computetensor.Float64Tensor, error) {
+	metalLeft, err := requireMetalTensor(left)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalRight, err := requireMetalTensor(right)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if M <= 0 || K <= 0 || N <= 0 {
+		return nil, fmt.Errorf("metal tensor: flat matmul dimensions must be positive")
+	}
+
+	if metalLeft.Len() != M*K || metalRight.Len() != K*N {
+		return nil, fmt.Errorf(
+			"metal tensor: flat matmul length mismatch A=%d want %d B=%d want %d",
+			metalLeft.Len(),
+			M*K,
+			metalRight.Len(),
+			K*N,
+		)
+	}
+
+	if outputShape.Len() != M*N {
+		return nil, fmt.Errorf(
+			"metal tensor: flat matmul output shape length %d must equal M*N=%d",
+			outputShape.Len(),
+			M*N,
+		)
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_matmul_tensor(
+		metalLeft.buffer,
+		metalRight.buffer,
+		output.buffer,
+		C.int(M),
+		C.int(K),
+		C.int(N),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal tensor: flat matmul launch failed")
+	}
+
+	return output, nil
+}
+
+func (m *MathOps) MatmulAddFlatTensor(
+	left, right, bias computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	M, K, N int,
+) (computetensor.Float64Tensor, error) {
+	metalLeft, err := requireMetalTensor(left)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalRight, err := requireMetalTensor(right)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalBias, err := requireMetalTensor(bias)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if M <= 0 || K <= 0 || N <= 0 {
+		return nil, fmt.Errorf("metal tensor: flat fused matmul dimensions must be positive")
+	}
+
+	if metalLeft.Len() != M*K || metalRight.Len() != K*N {
+		return nil, fmt.Errorf(
+			"metal tensor: flat fused matmul length mismatch A=%d want %d B=%d want %d",
+			metalLeft.Len(),
+			M*K,
+			metalRight.Len(),
+			K*N,
+		)
+	}
+
+	if metalBias.Len() != N && metalBias.Len() != M*N {
+		return nil, fmt.Errorf(
+			"metal tensor: flat fused matmul bias length %d must be N=%d or M*N=%d",
+			metalBias.Len(),
+			N,
+			M*N,
+		)
+	}
+
+	if outputShape.Len() != M*N {
+		return nil, fmt.Errorf(
+			"metal tensor: flat fused matmul output shape length %d must equal M*N=%d",
+			outputShape.Len(),
+			M*N,
+		)
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_matmul_add_tensor(
+		metalLeft.buffer,
+		metalRight.buffer,
+		metalBias.buffer,
+		output.buffer,
+		C.int(M),
+		C.int(K),
+		C.int(N),
+		C.int(metalBias.Len()),
+		C.int(0),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal tensor: flat fused matmul launch failed")
+	}
+
+	return output, nil
+}
+
+func (m *MathOps) LayerNormTensor(
+	input, weight, bias computetensor.Float64Tensor,
+	eps float64,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalWeight, err := requireMetalTensor(weight)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalBias, err := requireMetalTensor(bias)
+
+	if err != nil {
+		return nil, err
+	}
+
+	dimensions := metalInput.shape.Dims()
+
+	if len(dimensions) == 0 {
+		return nil, fmt.Errorf("metal tensor: layernorm input shape is required")
+	}
+
+	dModel := dimensions[len(dimensions)-1]
+
+	if dModel <= 0 || metalInput.Len()%dModel != 0 {
+		return nil, fmt.Errorf("metal tensor: invalid layernorm final dimension %d", dModel)
+	}
+
+	if metalWeight.Len() != dModel || metalBias.Len() != dModel {
+		return nil, fmt.Errorf(
+			"metal tensor: layernorm weight/bias length must equal d_model=%d",
+			dModel,
+		)
+	}
+
+	output, err := newMetalTensor(metalInput.shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_layernorm_tensor(
+		metalInput.buffer,
+		output.buffer,
+		metalWeight.buffer,
+		metalBias.buffer,
+		C.int(metalInput.Len()/dModel),
+		C.int(dModel),
+		C.float(eps),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal tensor: layernorm launch failed")
+	}
+
+	return output, nil
+}
+
 func (m *MathOps) binaryTensor(
 	left, right computetensor.Float64Tensor, name string,
 ) (computetensor.Float64Tensor, error) {

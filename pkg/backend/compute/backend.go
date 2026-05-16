@@ -1,12 +1,22 @@
 package compute
 
 import (
-	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
-	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer"
+	"context"
+	"errors"
+	"fmt"
+
+	computecpu "github.com/theapemachine/caramba/pkg/backend/compute/cpu"
+	cpuoperation "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
+	cpuoptimizer "github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer"
 	"github.com/theapemachine/caramba/pkg/backend/compute/cuda"
+	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/metal"
+	"github.com/theapemachine/caramba/pkg/backend/compute/runner"
+	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/xla"
 )
+
+var ErrBackendRunnerRequired = errors.New("compute: backend runner is required")
 
 type BackendType uint
 
@@ -26,36 +36,64 @@ OperationCapabilities onto one handle (or deterministic composition) plus a
 StandardOptimizerRegistry that never crosses Location boundaries implicitly.
 */
 type Backend struct {
-	optimizers OptimizerRegistry
-	operations OperationRegistry
+	Optimizers OptimizerRegistry
+	Operations OperationRegistry
+	Runner     runner.Runner
 }
 
 func NewBackend(backendType BackendType) *Backend {
 	switch backendType {
 	case CPU:
 		return &Backend{
-			optimizers: NewOptimizerRegistry(optimizer.NewOptimizerRegistry()),
-			operations: NewOperationRegistry(operation.NewOperationRegistry()),
+			Optimizers: NewOptimizerRegistry(cpuoptimizer.NewOptimizerRegistry()),
+			Operations: NewOperationRegistry(cpuoperation.NewOperationRegistry()),
+			Runner:     computecpu.NewRunner(),
 		}
 	case CUDA:
 		return &Backend{
-			optimizers: NewOptimizerRegistry(cuda.NewOptimizerRegistry()),
-			operations: NewOperationRegistry(cuda.NewOperationRegistry()),
+			Optimizers: NewOptimizerRegistry(cuda.NewOptimizerRegistry()),
+			Operations: NewOperationRegistry(cuda.NewOperationRegistry()),
+			Runner:     cuda.NewRunner(),
 		}
 	case METAL:
 		return &Backend{
-			optimizers: NewOptimizerRegistry(metal.NewOptimizerRegistry()),
-			operations: NewOperationRegistry(metal.NewOperationRegistry()),
+			Optimizers: NewOptimizerRegistry(metal.NewOptimizerRegistry()),
+			Operations: NewOperationRegistry(metal.NewOperationRegistry()),
+			Runner:     metal.NewRunner(),
 		}
 	case XLA:
 		return &Backend{
-			optimizers: NewOptimizerRegistry(xla.NewOptimizerRegistry()),
-			operations: NewOperationRegistry(xla.NewOperationRegistry()),
+			Optimizers: NewOptimizerRegistry(xla.NewOptimizerRegistry()),
+			Operations: NewOperationRegistry(xla.NewOperationRegistry()),
+			Runner:     xla.NewRunner(),
 		}
 	}
 
-	return &Backend{
-		optimizers: NewOptimizerRegistry(optimizer.NewOptimizerRegistry()),
-		operations: NewOperationRegistry(operation.NewOperationRegistry()),
+	panic(fmt.Sprintf("compute: unsupported backend type %d", backendType))
+}
+
+func (backend *Backend) Execute(
+	ctx context.Context, graph *ir.Graph, targets []*ir.Node,
+) (map[string]tensor.Float64Tensor, error) {
+	if backend == nil || backend.Runner == nil {
+		return nil, ErrBackendRunnerRequired
 	}
+
+	return backend.Runner.Execute(ctx, graph, targets)
+}
+
+func (backend *Backend) Location() tensor.Location {
+	if backend == nil || backend.Runner == nil {
+		return ""
+	}
+
+	return backend.Runner.Location()
+}
+
+func (backend *Backend) Close() error {
+	if backend == nil || backend.Runner == nil {
+		return nil
+	}
+
+	return backend.Runner.Close()
 }

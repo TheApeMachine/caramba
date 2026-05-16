@@ -71,6 +71,8 @@ int xla_tensor_leaky_relu(const XLA_Tensor* input, double alpha, XLA_Tensor** ou
 int xla_tensor_gelu(const XLA_Tensor* input, XLA_Tensor** output);
 int xla_tensor_tanh(const XLA_Tensor* input, XLA_Tensor** output);
 int xla_tensor_sigmoid(const XLA_Tensor* input, XLA_Tensor** output);
+int xla_tensor_swish(const XLA_Tensor* input, XLA_Tensor** output);
+int xla_tensor_selu(const XLA_Tensor* input, XLA_Tensor** output);
 int xla_tensor_swiglu(const XLA_Tensor* input, XLA_Tensor** output);
 
 int xla_tensor_add(const XLA_Tensor* left, const XLA_Tensor* right, XLA_Tensor** output);

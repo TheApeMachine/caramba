@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/theapemachine/caramba/pkg/backend/compute/dispatch"
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
@@ -60,6 +61,18 @@ func (tensorBackend *TensorBackend) Apply(
 		) (tensor.Float64Tensor, error) {
 			return tensorBackend.Sigmoid(input)
 		})
+	case ir.OpSwish:
+		return requireCUDAInputs(node, inputs, 1, func(
+			input, _ tensor.Float64Tensor,
+		) (tensor.Float64Tensor, error) {
+			return tensorBackend.Swish(input)
+		})
+	case ir.OpSELU:
+		return requireCUDAInputs(node, inputs, 1, func(
+			input, _ tensor.Float64Tensor,
+		) (tensor.Float64Tensor, error) {
+			return tensorBackend.SELU(input)
+		})
 	case ir.OpSwiGLU:
 		return requireCUDAInputs(node, inputs, 1, func(
 			input, _ tensor.Float64Tensor,
@@ -78,7 +91,14 @@ func (tensorBackend *TensorBackend) Apply(
 
 		return tensorBackend.MatmulAdd(inputs[0], inputs[1], inputs[2])
 	default:
-		return nil, fmt.Errorf("cuda tensor: unsupported operation %q", node.Op)
+		return dispatch.RunOperation(
+			ctx,
+			tensorBackend,
+			node,
+			inputs,
+			NewOperationRegistry(),
+			NewOptimizerRegistry(),
+		)
 	}
 }
 

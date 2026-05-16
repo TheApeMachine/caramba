@@ -31,6 +31,9 @@ typedef struct PJRT_Error         PJRT_Error;
 // Returns 0 on success, -1 on error.
 int xla_init(const char* platform);
 
+// Configure the PJRT plugin path resolved from cmd/asset/config.yml before xla_init.
+int xla_configure_plugin(const char* platform, const char* plugin_path);
+
 // Compile and cache all activation executables.  Must be called after
 // xla_init and before any dispatch function.
 // Returns 0 on success, -1 on error.
@@ -50,6 +53,7 @@ int xla_gelu(const double* src, double* dst, int n);
 int xla_tanh_act(const double* src, double* dst, int n);
 int xla_sigmoid(const double* src, double* dst, int n);
 int xla_swish(const double* src, double* dst, int n);
+int xla_selu(const double* src, double* dst, int n);
 // src has 2*n elements (gates then values); dst has n elements.
 int xla_swiglu(const double* src, double* dst, int n);
 

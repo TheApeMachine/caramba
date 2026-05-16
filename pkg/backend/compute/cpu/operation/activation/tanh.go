@@ -3,7 +3,7 @@ package activation
 import "github.com/theapemachine/caramba/pkg/backend/compute/state"
 
 /*
-Tanh applies the rational-approximation tanh elementwise using SIMD on amd64/arm64.
+Tanh applies tanh elementwise through the active CPU vector path.
 */
 type Tanh struct{}
 

@@ -38,6 +38,17 @@ func scalarSigmoidAt(value float64) float64 {
 	return out[0]
 }
 
+func scalarSwish(dst, src []float64) {
+	n := len(src)
+	if len(dst) < n {
+		n = len(dst)
+	}
+
+	for index, value := range src[:n] {
+		dst[index] = value * scalarSigmoidAt(value)
+	}
+}
+
 func scalarReLU(dst, src []float64) {
 	n := len(src)
 	if len(dst) < n {

@@ -24,7 +24,7 @@ func TestSwish(t *testing.T) {
 				So(out[4], ShouldBeGreaterThan, out[3])
 			})
 
-			Convey("It should keep the SIMD rational approximation within the expected range", func() {
+			Convey("It should match swish over the sampled range", func() {
 				input := make([]float64, 0, 2401)
 
 				for index := -1200; index <= 1200; index++ {
@@ -43,7 +43,7 @@ func TestSwish(t *testing.T) {
 					}
 				}
 
-				So(maxError, ShouldBeLessThanOrEqualTo, 0.041)
+				So(maxError, ShouldBeLessThanOrEqualTo, 1e-10)
 			})
 
 			Convey("It should reject a nil state dict", func() {

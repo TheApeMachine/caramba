@@ -11,9 +11,7 @@
 
 #include "activation.h"
 
-#include <cctype>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <unordered_map>
 #include <string>
@@ -40,6 +38,9 @@ static void* g_plugin_handle = nullptr;
 
 // One cached executable per activation name.
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_execs;
+
+// PJRT plugin paths resolved by Go from cmd/asset/config.yml.
+static std::unordered_map<std::string, std::string> g_configured_plugins;
 
 // Cached element count for which executables were compiled.
 static int g_compiled_n = 0;
@@ -126,14 +127,6 @@ static bool await_and_destroy_event(PJRT_Event* event, const char* context) {
 
 typedef const PJRT_Api* (*GetPjrtApiFn)();
 
-static const char* pjrt_platform_plugin_env(const char* platform) {
-    if (strcmp(platform, "gpu") == 0 || strcmp(platform, "cuda") == 0) {
-        return "CARAMBA_PJRT_GPU_PLUGIN";
-    }
-
-    return "CARAMBA_PJRT_CPU_PLUGIN";
-}
-
 static bool pjrt_file_exists(const std::string& path) {
     FILE* file = std::fopen(path.c_str(), "rb");
 
@@ -141,48 +134,6 @@ static bool pjrt_file_exists(const std::string& path) {
 
     std::fclose(file);
     return true;
-}
-
-static bool pjrt_contains_path(const std::vector<std::string>& paths, const std::string& path) {
-    for (const std::string& existing : paths) {
-        if (existing == path) return true;
-    }
-
-    return false;
-}
-
-// ':' separates entries in LD_LIBRARY_PATH / DYLD_LIBRARY_PATH. Loader is Unix-only
-// (.so/.dylib via dlopen); Windows PATH-style ';' is intentionally unsupported here.
-static constexpr char kPathSeparator = ':';
-
-static void pjrt_append_library_dirs(std::vector<std::string>& dirs, const char* env_name) {
-    const char* raw_value = std::getenv(env_name);
-
-    if (!raw_value || raw_value[0] == '\0') return;
-
-    std::string value(raw_value);
-    size_t start = 0;
-    char separator = kPathSeparator;
-
-    while (start <= value.size()) {
-        size_t end = value.find(separator, start);
-        std::string dir = value.substr(start, end == std::string::npos ? std::string::npos : end - start);
-
-        if (!dir.empty() && !pjrt_contains_path(dirs, dir)) {
-            dirs.push_back(dir);
-        }
-
-        if (end == std::string::npos) break;
-        start = end + 1;
-    }
-}
-
-static std::vector<std::string> pjrt_library_dirs() {
-    std::vector<std::string> dirs;
-    pjrt_append_library_dirs(dirs, "CARAMBA_PJRT_LIBRARY_DIR");
-    pjrt_append_library_dirs(dirs, "LD_LIBRARY_PATH");
-    pjrt_append_library_dirs(dirs, "DYLD_LIBRARY_PATH");
-    return dirs;
 }
 
 static std::vector<std::string> pjrt_plugin_names(const char* platform) {
@@ -199,43 +150,15 @@ static std::vector<std::string> pjrt_plugin_names(const char* platform) {
     };
 }
 
-static std::string pjrt_join_path(const std::string& dir, const std::string& file) {
-    if (dir.empty()) return file;
-
-    char last = dir[dir.size() - 1];
-
-    if (last == '/' || last == '\\') return dir + file;
-
-    return dir + "/" + file;
-}
-
 std::string pjrt_plugin_path(const char* platform) {
-    const char* platform_path = std::getenv(pjrt_platform_plugin_env(platform));
-    if (platform_path && platform_path[0] != '\0') {
-        return std::string(platform_path);
-    }
+    std::string key(platform);
+    auto configured = g_configured_plugins.find(key);
 
-    const char* generic_path = std::getenv("CARAMBA_PJRT_PLUGIN");
-    if (generic_path && generic_path[0] != '\0') {
-        return std::string(generic_path);
-    }
-
-    const char* legacy_path = std::getenv("PJRT_PLUGIN_PATH");
-    if (legacy_path && legacy_path[0] != '\0') {
-        return std::string(legacy_path);
+    if (configured != g_configured_plugins.end()) {
+        return configured->second;
     }
 
     std::vector<std::string> plugin_names = pjrt_plugin_names(platform);
-
-    for (const std::string& library_dir : pjrt_library_dirs()) {
-        for (const std::string& plugin_name : plugin_names) {
-            std::string candidate = pjrt_join_path(library_dir, plugin_name);
-
-            if (pjrt_file_exists(candidate)) {
-                return candidate;
-            }
-        }
-    }
 
     return plugin_names[0];
 }
@@ -415,6 +338,26 @@ static std::string build_swish(int n) {
         "  func.func @main(%arg0: " + t + ") -> " + t + " {\n"
         "    %sig = stablehlo.logistic %arg0 : " + t + "\n"
         "    %out = stablehlo.multiply %arg0, %sig : " + t + "\n"
+        "    return %out : " + t + "\n"
+        "  }\n"
+        "}\n";
+}
+
+static std::string build_selu(int n) {
+    std::string t = f64_type(n);
+    return
+        "module @selu {\n"
+        "  func.func @main(%arg0: " + t + ") -> " + t + " {\n"
+        "    %zero  = stablehlo.constant dense<0.0> : " + t + "\n"
+        "    %one   = stablehlo.constant dense<1.0> : " + t + "\n"
+        "    %scale = stablehlo.constant dense<1.0507009873554805> : " + t + "\n"
+        "    %alpha_scale = stablehlo.constant dense<1.7580993408473766> : " + t + "\n"
+        "    %pos = stablehlo.multiply %arg0, %scale : " + t + "\n"
+        "    %exp = stablehlo.exponential %arg0 : " + t + "\n"
+        "    %shifted = stablehlo.subtract %exp, %one : " + t + "\n"
+        "    %neg = stablehlo.multiply %shifted, %alpha_scale : " + t + "\n"
+        "    %mask = stablehlo.compare GT, %arg0, %zero, TOTALORDER : (" + t + "," + t + ") -> tensor<" + std::to_string(n) + "xi1>\n"
+        "    %out = stablehlo.select %mask, %pos, %neg : (tensor<" + std::to_string(n) + "xi1>, " + t + ", " + t + ") -> " + t + "\n"
         "    return %out : " + t + "\n"
         "  }\n"
         "}\n";
@@ -608,6 +551,23 @@ static std::string xla_normalize_platform(const char* platform) {
 
 extern "C" {
 
+int xla_configure_plugin(const char* platform, const char* plugin_path) {
+    if (!platform || platform[0] == '\0' || !plugin_path || plugin_path[0] == '\0') {
+        return -1;
+    }
+
+    std::string path(plugin_path);
+
+    if (!pjrt_file_exists(path)) {
+        return -1;
+    }
+
+    g_configured_plugins[std::string(platform)] = path;
+    g_configured_plugins[xla_normalize_platform(platform)] = path;
+
+    return 0;
+}
+
 int xla_init(const char* platform) {
     std::string requested = xla_normalize_platform(platform);
 
@@ -622,7 +582,7 @@ int xla_init(const char* platform) {
         return 0;
     }
 
-    g_api = load_pjrt_plugin(platform);
+    g_api = load_pjrt_plugin(requested.c_str());
     if (!g_api) return -1;
 
     PJRT_Client_Create_Args ca{};
@@ -681,6 +641,7 @@ int xla_compile_activations(int n) {
         { "tanh_act",   build_tanh(n)         },
         { "sigmoid",    build_sigmoid(n)      },
         { "swish",      build_swish(n)        },
+        { "selu",       build_selu(n)         },
         { "swiglu",     build_swiglu(n)       },
     };
 
@@ -741,6 +702,11 @@ int xla_sigmoid(const double* src, double* dst, int n) {
 int xla_swish(const double* src, double* dst, int n) {
     if (g_compiled_n != n && xla_compile_activations(n) != 0) return -1;
     return run_executable(g_execs["swish"], src, n, dst, n, true);
+}
+
+int xla_selu(const double* src, double* dst, int n) {
+    if (g_compiled_n != n && xla_compile_activations(n) != 0) return -1;
+    return run_executable(g_execs["selu"], src, n, dst, n, true);
 }
 
 int xla_swiglu(const double* src, double* dst, int n) {

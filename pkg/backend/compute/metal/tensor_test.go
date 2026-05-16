@@ -64,6 +64,70 @@ func TestTensorBackend_DownloadFloat64(t *testing.T) {
 	})
 }
 
+func TestTensorBackend_Add(t *testing.T) {
+	Convey("Given resident Metal tensors", t, func() {
+		tensorBackend := newMetalTensorBackendForTest(t)
+
+		shape, err := computetensor.NewShape([]int{2})
+		So(err, ShouldBeNil)
+
+		left, err := tensorBackend.UploadFloat64(shape, []float64{1, 2})
+		So(err, ShouldBeNil)
+		defer func() {
+			So(left.Close(), ShouldBeNil)
+		}()
+
+		right, err := tensorBackend.UploadFloat64(shape, []float64{3, 4})
+		So(err, ShouldBeNil)
+		defer func() {
+			So(right.Close(), ShouldBeNil)
+		}()
+
+		Convey("It should initialize math kernels before launching add", func() {
+			output, err := tensorBackend.Add(left, right)
+
+			So(err, ShouldBeNil)
+			defer func() {
+				So(output.Close(), ShouldBeNil)
+			}()
+
+			values, err := output.CloneFloat64()
+
+			So(err, ShouldBeNil)
+			So(values, ShouldResemble, []float64{4, 6})
+		})
+	})
+}
+
+func TestTensorBackend_GELU(t *testing.T) {
+	Convey("Given a resident Metal tensor", t, func() {
+		tensorBackend := newMetalTensorBackendForTest(t)
+
+		shape, err := computetensor.NewShape([]int{1})
+		So(err, ShouldBeNil)
+
+		input, err := tensorBackend.UploadFloat64(shape, []float64{0})
+		So(err, ShouldBeNil)
+		defer func() {
+			So(input.Close(), ShouldBeNil)
+		}()
+
+		Convey("It should initialize activation kernels before launching GELU", func() {
+			output, err := tensorBackend.GELU(input)
+
+			So(err, ShouldBeNil)
+			defer func() {
+				So(output.Close(), ShouldBeNil)
+			}()
+
+			values, err := output.CloneFloat64()
+
+			So(err, ShouldBeNil)
+			So(values[0], ShouldAlmostEqual, 0, 1e-6)
+		})
+	})
+}
+
 func TestTensorBackend_CloseConcurrent(t *testing.T) {
 	Convey("Given a Metal tensor backend", t, func() {
 		tensorBackend := newMetalTensorBackendForTest(t)
@@ -177,6 +241,58 @@ func BenchmarkTensorBackend_DownloadFloat64(benchmark *testing.B) {
 		_, err := tensorBackend.DownloadFloat64(uploaded)
 
 		if err != nil {
+			benchmark.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkTensorBackend_Add(benchmark *testing.B) {
+	tensorBackend, err := NewTensorBackend()
+
+	if err != nil {
+		benchmark.Skipf("skipping benchmark due to setup error: %v", err)
+	}
+
+	defer func() {
+		_ = tensorBackend.Close()
+	}()
+
+	shape, err := computetensor.NewShape([]int{1024})
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	left, err := tensorBackend.UploadFloat64(shape, make([]float64, shape.Len()))
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	defer func() {
+		_ = left.Close()
+	}()
+
+	right, err := tensorBackend.UploadFloat64(shape, make([]float64, shape.Len()))
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	defer func() {
+		_ = right.Close()
+	}()
+
+	benchmark.ResetTimer()
+
+	for benchmark.Loop() {
+		output, err := tensorBackend.Add(left, right)
+
+		if err != nil {
+			benchmark.Fatal(err)
+		}
+
+		if err := output.Close(); err != nil {
 			benchmark.Fatal(err)
 		}
 	}

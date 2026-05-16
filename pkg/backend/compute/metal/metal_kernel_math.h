@@ -45,6 +45,11 @@ int metal_matmul_add_tensor(
     int M, int K, int N, int bias_n, int gelu
 );
 
+int metal_layernorm_tensor(
+    const void* src, void* dst, const void* weight, const void* bias,
+    int num_rows, int d_model, float eps
+);
+
 // Scale: dst[i] = src[i] * (1/sqrt(dim)).
 int metal_inv_sqrt_dim_scale(const float* src, float* dst, int n, int dim);
 

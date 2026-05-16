@@ -9,6 +9,8 @@ import "C"
 import (
 	"fmt"
 	"unsafe"
+
+	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
 // EmbeddingOps wraps the Metal token-embedding kernel.
@@ -107,4 +109,63 @@ func (e *EmbeddingOps) TokenEmbedding(tokens []float64, weight []float64) ([]flo
 		return nil, fmt.Errorf("metal_token_embedding failed (rc=%d)", rc)
 	}
 	return toFloat64(outF32), nil
+}
+
+/*
+ForwardTensor performs token embedding lookup against resident Metal buffers.
+*/
+func (e *EmbeddingOps) ForwardTensor(
+	tokens computetensor.Float64Tensor,
+	weight computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+) (computetensor.Float64Tensor, error) {
+	metalTokens, err := requireMetalTensor(tokens)
+
+	if err != nil {
+		return nil, err
+	}
+
+	metalWeight, err := requireMetalTensor(weight)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if outputShape.Len() != metalTokens.Len()*e.dModel {
+		return nil, fmt.Errorf(
+			"metal embedding tensor: output shape length %d does not match token_count*d_model=%d",
+			outputShape.Len(),
+			metalTokens.Len()*e.dModel,
+		)
+	}
+
+	if metalWeight.Len() != e.vocabSize*e.dModel {
+		return nil, fmt.Errorf(
+			"metal embedding tensor: weight length %d != vocab_size*d_model=%d",
+			metalWeight.Len(),
+			e.vocabSize*e.dModel,
+		)
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_token_embedding_tensor(
+		metalTokens.buffer,
+		output.buffer,
+		metalWeight.buffer,
+		C.int(metalTokens.Len()),
+		C.int(e.dModel),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_token_embedding_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
 }

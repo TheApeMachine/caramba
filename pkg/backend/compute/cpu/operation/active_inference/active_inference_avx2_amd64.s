@@ -1,8 +1,5 @@
 #include "textflag.h"
 
-// SSE2 entry points (·freeEnergySSE2, ·beliefUpdateMuSSE2, ·precisionWeightMulSSE2) are defined in
-// this file alongside AVX/FMA routines. Go dispatches to them when AVX2+FMA are unavailable.
-
 // freeEnergyAVX2(mu, expSigma []float64) float64
 // Computes sum(mu[i]^2 + expSigma[i]) over all i.
 // Caller subtracts logSigma+1 terms and multiplies by 0.5.
@@ -49,44 +46,6 @@ fe_done:
 	VZEROUPPER
 	RET
 
-// freeEnergySSE2(mu, expSigma []float64) float64
-// ABI0: mu+0(FP)..16, expSigma+24(FP)..40, ret+48(FP)
-TEXT ·freeEnergySSE2(SB), NOSPLIT, $0-56
-	MOVQ mu+0(FP),        AX
-	MOVQ mu_len+8(FP),    BX
-	MOVQ expSigma+24(FP), DI
-	XORPD X0, X0
-
-	CMPQ BX, $2
-	JL   fe2_scalar
-
-fe2_loop2:
-	MOVUPD (AX), X1
-	MOVUPD (DI), X2
-	MULPD  X1, X1
-	ADDPD  X1, X0
-	ADDPD  X2, X0
-	ADDQ $16, AX
-	ADDQ $16, DI
-	SUBQ $2, BX
-	CMPQ BX, $2
-	JGE  fe2_loop2
-
-	HADDPD X0, X0
-
-fe2_scalar:
-	TESTQ BX, BX
-	JZ    fe2_done
-	MOVSD (AX), X1
-	MOVSD (DI), X2
-	MULSD X1, X1
-	ADDSD X1, X0
-	ADDSD X2, X0
-
-fe2_done:
-	MOVSD X0, ret+48(FP)
-	RET
-
 // beliefUpdateMuAVX2(dst, mu, predErr []float64, lr float64)
 // dst[i] = mu[i] - lr*(mu[i]+predErr[i])  = mu[i]*(1-lr) - lr*predErr[i]
 // ABI0: dst+0(FP)..16, mu+24(FP)..40, predErr+48(FP)..64, lr+72(FP)
@@ -123,39 +82,6 @@ bmu_tail:
 	VZEROUPPER
 	RET
 
-// beliefUpdateMuSSE2(dst, mu, predErr []float64, lr float64)
-// ABI0: dst+0(FP)..16, mu+24(FP)..40, predErr+48(FP)..64, lr+72(FP)
-TEXT ·beliefUpdateMuSSE2(SB), NOSPLIT, $0-80
-	MOVQ dst+0(FP),      R8
-	MOVQ mu+24(FP),      R9
-	MOVQ mu_len+32(FP),  BX
-	MOVQ predErr+48(FP), R10
-	MOVSD lr+72(FP), X14
-	SHUFPD $0, X14, X14
-
-	CMPQ BX, $2
-	JL   bmu2_done
-
-bmu2_loop2:
-	MOVUPD (R9), X0
-	MOVUPD (R10), X1
-	// dst = mu + pred_err
-	MOVUPD X0, X2
-	ADDPD  X1, X2
-	// dst = mu - lr*(mu+pred_err)
-	MULPD  X14, X2
-	SUBPD  X2, X0
-	MOVUPD X0, (R8)
-	ADDQ $16, R8
-	ADDQ $16, R9
-	ADDQ $16, R10
-	SUBQ $2, BX
-	CMPQ BX, $2
-	JGE  bmu2_loop2
-
-bmu2_done:
-	RET
-
 // precisionWeightMulAVX2(dst, errVec, prec []float64)
 // dst[i] = errVec[i] * prec[i]
 // ABI0: dst+0(FP)..16, errVec+24(FP)..40, prec+48(FP)..64
@@ -182,30 +108,4 @@ pw_loop4:
 
 pw_done:
 	VZEROUPPER
-	RET
-
-// precisionWeightMulSSE2(dst, errVec, prec []float64)
-// ABI0: dst+0(FP)..16, errVec+24(FP)..40, prec+48(FP)..64
-TEXT ·precisionWeightMulSSE2(SB), NOSPLIT, $0-72
-	MOVQ dst+0(FP),        R8
-	MOVQ errVec+24(FP),    R9
-	MOVQ errVec_len+32(FP), BX
-	MOVQ prec+48(FP),      R10
-
-	CMPQ BX, $2
-	JL   pw2_done
-
-pw2_loop2:
-	MOVUPD (R9), X0
-	MOVUPD (R10), X1
-	MULPD  X1, X0
-	MOVUPD X0, (R8)
-	ADDQ $16, R8
-	ADDQ $16, R9
-	ADDQ $16, R10
-	SUBQ $2, BX
-	CMPQ BX, $2
-	JGE  pw2_loop2
-
-pw2_done:
 	RET

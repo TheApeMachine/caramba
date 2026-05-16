@@ -24,7 +24,7 @@ func TestPreviewGenerator_Generate(test *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(output.String(), ShouldContainSubstring, "Preview runtime active")
-			So(output.String(), ShouldContainSubstring, "Model inference will connect here")
+			So(output.String(), ShouldContainSubstring, "manifest-backed local inference")
 		})
 	})
 

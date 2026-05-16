@@ -5,7 +5,6 @@
 
 #include "tensor.h"
 
-#include <cinttypes>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -26,11 +25,6 @@ struct XLA_Tensor {
 
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> g_tensor_execs;
 static std::mutex                                       g_tensor_execs_mutex;
-
-static bool tensor_debug_enabled() {
-    const char* debug = std::getenv("CARAMBA_XLA_DEBUG");
-    return debug && debug[0] != '\0';
-}
 
 /*
 tensor_count_elements returns the product of dims, or 0 if any dimension is 0.
@@ -294,6 +288,37 @@ static std::string tensor_build_simple_unary(
     );
 }
 
+static std::string tensor_build_swish(const std::vector<int64_t>& dims) {
+    std::string t = tensor_type(dims, "f64");
+
+    return tensor_build_unary(
+        "tensor_swish",
+        dims,
+        "    %sigmoid = stablehlo.logistic %arg0 : " + t + "\n"
+        "    %out = stablehlo.multiply %arg0, %sigmoid : " + t + "\n"
+    );
+}
+
+static std::string tensor_build_selu(const std::vector<int64_t>& dims) {
+    std::string t = tensor_type(dims, "f64");
+    std::string mask_type = tensor_type(dims, "i1");
+
+    return tensor_build_unary(
+        "tensor_selu",
+        dims,
+        "    %zero = stablehlo.constant dense<0.0> : " + t + "\n"
+        "    %one = stablehlo.constant dense<1.0> : " + t + "\n"
+        "    %scale = stablehlo.constant dense<1.0507009873554805> : " + t + "\n"
+        "    %scale_alpha = stablehlo.constant dense<1.7580993408473766> : " + t + "\n"
+        "    %positive = stablehlo.multiply %arg0, %scale : " + t + "\n"
+        "    %exp = stablehlo.exponential %arg0 : " + t + "\n"
+        "    %minus_one = stablehlo.subtract %exp, %one : " + t + "\n"
+        "    %negative = stablehlo.multiply %minus_one, %scale_alpha : " + t + "\n"
+        "    %mask = stablehlo.compare GT, %arg0, %zero, TOTALORDER : (" + t + ", " + t + ") -> " + mask_type + "\n"
+        "    %out = stablehlo.select %mask, %positive, %negative : (" + mask_type + ", " + t + ", " + t + ") -> " + t + "\n"
+    );
+}
+
 static std::string tensor_build_swiglu(const XLA_Tensor* input) {
     std::vector<int64_t> output_dims = input->dims;
     int last = (int)output_dims.size() - 1;
@@ -511,21 +536,6 @@ int xla_tensor_upload_f64(const double* src, const int64_t* dims, int rank, XLA_
     args.device = g_device;
     args.memory = g_memory;
 
-    if (tensor_debug_enabled()) {
-        fprintf(stderr,
-                "XLA tensor upload: api=%p client=%p device=%p memory=%p data=%p dims=%p rank=%d elements=%" PRId64 " type=%d semantics=%d\n",
-                (const void*)g_api,
-                (void*)g_client,
-                (void*)g_device,
-                (void*)g_memory,
-                args.data,
-                (const void*)args.dims,
-                rank,
-                (int64_t)elements,
-                (int)args.type,
-                (int)args.host_buffer_semantics);
-    }
-
     PJRT_Error* err = g_api->PJRT_Client_BufferFromHostBuffer(&args);
 
     if (!check(g_api, err, "PJRT_Client_BufferFromHostBuffer(tensor)")) {
@@ -619,6 +629,18 @@ int xla_tensor_sigmoid(const XLA_Tensor* input, XLA_Tensor** output) {
     return tensor_unary(
         input, output, "sigmoid", tensor_build_simple_unary("tensor_sigmoid", "stablehlo.logistic", input->dims)
     );
+}
+
+int xla_tensor_swish(const XLA_Tensor* input, XLA_Tensor** output) {
+    if (!input || !output) return -1;
+
+    return tensor_unary(input, output, "swish", tensor_build_swish(input->dims));
+}
+
+int xla_tensor_selu(const XLA_Tensor* input, XLA_Tensor** output) {
+    if (!input || !output) return -1;
+
+    return tensor_unary(input, output, "selu", tensor_build_selu(input->dims));
 }
 
 int xla_tensor_swiglu(const XLA_Tensor* input, XLA_Tensor** output) {

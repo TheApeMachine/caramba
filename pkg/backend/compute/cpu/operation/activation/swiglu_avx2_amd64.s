@@ -1,70 +1,96 @@
 #include "textflag.h"
 
-DATA ·swigluConst27_amd64+0(SB)/8, $27.0
-GLOBL ·swigluConst27_amd64(SB), RODATA, $8
-DATA ·swigluConst9_amd64+0(SB)/8, $9.0
-GLOBL ·swigluConst9_amd64(SB), RODATA, $8
-DATA ·swigluHalf_amd64+0(SB)/8, $0.5
-GLOBL ·swigluHalf_amd64(SB), RODATA, $8
-DATA ·swigluOne_amd64+0(SB)/8, $1.0
-GLOBL ·swigluOne_amd64(SB), RODATA, $8
-DATA ·swigluNegOne_amd64+0(SB)/8, $-1.0
-GLOBL ·swigluNegOne_amd64(SB), RODATA, $8
-
 // SwiGLUAVX2(dst, src []float64)
-// src.len = 2n; gates = src[0..n-1], values = src[n..2n-1]
-// dst.len = n; dst[i] = gate[i] * sigmoid(gate[i]) * value[i]   (swish(gate) * value)
-// ABI0: dst+0(FP)=ptr, dst_len+8(FP)=len(=n), dst_cap+16(FP)=cap,
-//       src_base+24(FP)=ptr, src_len+32(FP)=len(=2n), src_cap+40(FP)=cap
+// Four-lane swish(gate) * value, with gates in src[:len(dst)] and values after.
 TEXT ·SwiGLUAVX2(SB), NOSPLIT, $0-48
-	MOVQ dst_len+8(FP), BX     // n = dst.len
-	CMPQ BX, $0
-	JLE  done
-
 	MOVQ dst+0(FP), AX
-	MOVQ src_base+24(FP), DI   // gates ptr
+	MOVQ dst_len+8(FP), BX
+	MOVQ src_base+24(FP), DI
+	CMPQ BX, $4
+	JL   swiglu_avx2_done
 
-	VMOVSD ·swigluConst27_amd64(SB), X10
-	VBROADCASTSD X10, Y10
-	VMOVSD ·swigluConst9_amd64(SB), X11
-	VBROADCASTSD X11, Y11
-	VMOVSD ·swigluHalf_amd64(SB), X12
-	VBROADCASTSD X12, Y12
-	VMOVSD ·swigluOne_amd64(SB), X13
-	VBROADCASTSD X13, Y13
-	VMOVSD ·swigluNegOne_amd64(SB), X14
-	VBROADCASTSD X14, Y14
+	MOVQ BX, SI
+	SHLQ $3, SI
+	ADDQ DI, SI
 
-	// values ptr = gates ptr + n*8
-	MOVQ BX, R9
-	SHLQ $3, R9
-	ADDQ DI, R9
+	VBROADCASTSD ·atLog2E(SB), Y10
+	VBROADCASTSD ·atLn2Hi(SB), Y11
+	VBROADCASTSD ·atLn2Lo(SB), Y12
+	VBROADCASTSD ·atMaxArg(SB), Y13
+	VBROADCASTSD ·atMinArg(SB), Y14
+	VBROADCASTSD ·atC0(SB), Y15
+	VMOVDQU ·activationBias32(SB), X9
+	VXORPD Y8, Y8, Y8
 
-	MOVQ BX, SI               // use SI as element counter
+swiglu_avx2_loop:
+	VMOVUPD (DI), Y6
+	VMOVUPD (SI), Y7
+	VSUBPD Y6, Y8, Y0
+	VMINPD Y13, Y0, Y0
+	VMAXPD Y14, Y0, Y0
 
-loop:
-	VMOVUPD (DI), Y0           // gates
-	VMOVUPD (R9), Y1           // values
-	VMULPD Y12, Y0, Y2         // gate/2
-	VMULPD Y2, Y2, Y3
-	VADDPD Y10, Y3, Y4
-	VMULPD Y11, Y3, Y5
-	VADDPD Y10, Y5, Y5
-	VMULPD Y2, Y4, Y6
-	VDIVPD Y5, Y6, Y6
-	VMINPD Y13, Y6, Y6
-	VMAXPD Y14, Y6, Y6
-	VADDPD Y13, Y6, Y6
-	VMULPD Y12, Y6, Y6         // sigmoid(gate)
-	VMULPD Y0, Y6, Y6          // swish(gate) = gate * sigmoid(gate)
-	VMULPD Y1, Y6, Y7          // swish(gate) * value
-	VMOVUPD Y7, (AX)
+	VMULPD   Y10, Y0, Y1
+	VROUNDPD $0, Y1, Y1
+	VFNMADD231PD Y11, Y1, Y0
+	VFNMADD231PD Y12, Y1, Y0
+
+	VBROADCASTSD ·atC18(SB), Y2
+	VBROADCASTSD ·atC17(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC16(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC15(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC14(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC13(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC12(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC11(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC10(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC9(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC8(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC7(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC6(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC5(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC4(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC3(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC2(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC1(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+	VBROADCASTSD ·atC0(SB), Y3
+	VFMADD213PD  Y3, Y0, Y2
+
+	VCVTPD2DQY Y1, X3
+	VPADDD     X9, X3, X3
+	VPMOVSXDQ  X3, Y4
+	VPSLLQ     $52, Y4, Y4
+	VMULPD     Y4, Y2, Y2
+
+	VADDPD Y15, Y2, Y2
+	VDIVPD Y2, Y15, Y5
+	VMULPD Y6, Y5, Y5
+	VMULPD Y7, Y5, Y5
+	VMOVUPD Y5, (AX)
+
 	ADDQ $32, AX
 	ADDQ $32, DI
-	ADDQ $32, R9
-	SUBQ $4, SI
-	CMPQ SI, $4
-	JGE  loop
-done:
+	ADDQ $32, SI
+	SUBQ $4, BX
+	CMPQ BX, $4
+	JGE  swiglu_avx2_loop
+
+swiglu_avx2_done:
 	VZEROUPPER
 	RET

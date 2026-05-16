@@ -68,6 +68,12 @@ func registerActivation() {
 	Register("activation.swiglu", func(_ map[string]any) (operation.Operation, error) {
 		return activation.NewSwiGLU(), nil
 	})
+	Register("activation.swish", func(_ map[string]any) (operation.Operation, error) {
+		return activation.NewSwish(), nil
+	})
+	Register("activation.selu", func(_ map[string]any) (operation.Operation, error) {
+		return activation.NewSELU(), nil
+	})
 	Register("activation.leaky_relu", func(config map[string]any) (operation.Operation, error) {
 		return activation.NewLeakyReLU(), nil
 	})
@@ -225,6 +231,9 @@ func registerMath() {
 	})
 	Register("math.matmul", func(_ map[string]any) (operation.Operation, error) {
 		return math.NewMatmul(), nil
+	})
+	Register("math.matmul_add", func(_ map[string]any) (operation.Operation, error) {
+		return math.NewMatmulAdd(), nil
 	})
 	Register("math.softmax", func(_ map[string]any) (operation.Operation, error) {
 		return math.NewSoftmax(), nil
@@ -407,6 +416,9 @@ func registerShape() {
 	})
 	Register("shape.view_as_heads", func(config map[string]any) (operation.Operation, error) {
 		return shape.NewViewAsHeads(intParam(config, "num_heads")), nil
+	})
+	Register("shape.last_token", func(_ map[string]any) (operation.Operation, error) {
+		return shape.NewLastToken(), nil
 	})
 	Register("shape.merge_heads", func(_ map[string]any) (operation.Operation, error) {
 		return shape.NewMergeHeads(), nil

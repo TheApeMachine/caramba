@@ -15,19 +15,24 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
-func metallibPathOrSkip(t *testing.T, name string) string {
-	t.Helper()
+type metalTestSkipper interface {
+	Helper()
+	Skipf(string, ...any)
+}
+
+func metallibPathOrSkip(test metalTestSkipper, name string) string {
+	test.Helper()
 
 	_, file, _, ok := runtime.Caller(0)
 
 	if !ok {
-		t.Skip("runtime.Caller failed")
+		test.Skipf("runtime.Caller failed")
 	}
 
 	p := filepath.Join(filepath.Dir(file), name)
 
 	if _, err := os.Stat(p); err != nil {
-		t.Skipf("missing %s — run `make build` in repo root", p)
+		test.Skipf("missing %s — run `make build` in repo root", p)
 	}
 
 	return p

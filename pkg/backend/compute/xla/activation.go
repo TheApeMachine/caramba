@@ -25,23 +25,20 @@ type XLAActivation struct {
 
 // New initialises the PJRT client for the given platform ("cpu" or "gpu").
 func New(platform string) (*XLAActivation, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err := config.ValidateRuntime(); err != nil {
-		return nil, err
-	}
-
-	cp := C.CString(platform)
+	cp := C.CString(config.Platform)
 	defer C.free(unsafe.Pointer(cp))
 
 	if rc := C.xla_init(cp); rc != 0 {
-		return nil, fmt.Errorf("xla_init failed for platform %q: rc=%d", platform, rc)
+		return nil, fmt.Errorf("xla_init failed for platform %q: rc=%d", config.Platform, rc)
 	}
-	return &XLAActivation{platform: platform}, nil
+
+	return &XLAActivation{platform: config.Platform}, nil
 }
 
 // Shutdown releases all PJRT resources.
@@ -191,6 +188,27 @@ func (x *XLAActivation) Swish(input []float64) ([]float64, error) {
 	)
 	if rc != 0 {
 		return nil, fmt.Errorf("xla_swish failed")
+	}
+	return dst, nil
+}
+
+// SELU computes the self-normalizing scaled ELU element-wise.
+func (x *XLAActivation) SELU(input []float64) ([]float64, error) {
+	n := len(input)
+	if n == 0 {
+		return []float64{}, nil
+	}
+	if err := x.ensureCompiled(n); err != nil {
+		return nil, err
+	}
+	dst := make([]float64, n)
+	rc := C.xla_selu(
+		(*C.double)(unsafe.Pointer(&input[0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(n),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("xla_selu failed")
 	}
 	return dst, nil
 }

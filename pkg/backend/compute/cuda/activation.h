@@ -18,6 +18,7 @@ int cuda_gelu(const double* src, double* dst, int n);
 int cuda_tanh(const double* src, double* dst, int n);
 int cuda_sigmoid(const double* src, double* dst, int n);
 int cuda_swish(const double* src, double* dst, int n);
+int cuda_selu(const double* src, double* dst, int n);
 
 // src has 2*n doubles (gates then values); dst has n doubles.
 int cuda_swiglu(const double* src, double* dst, int n);
@@ -34,6 +35,7 @@ int cuda_gelu_device(const double* src, double* dst, int n);
 int cuda_tanh_device(const double* src, double* dst, int n);
 int cuda_sigmoid_device(const double* src, double* dst, int n);
 int cuda_swish_device(const double* src, double* dst, int n);
+int cuda_selu_device(const double* src, double* dst, int n);
 // cuda_swiglu_device: src holds 2*n contiguous doubles — gates [0..n-1], values [n..2n-1]
 // (same layout as cuda_swiglu host wrapper); dst receives n outputs.
 int cuda_swiglu_device(const double* src, double* dst, int n);

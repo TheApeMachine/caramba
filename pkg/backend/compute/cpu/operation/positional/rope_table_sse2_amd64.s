@@ -1,0 +1,55 @@
+#include "textflag.h"
+
+TEXT ·ropeAdvanceRowSSE2(SB), NOSPLIT, $0-96
+	MOVQ cosCur+0(FP), AX
+	MOVQ sinCur+24(FP), BX
+	MOVQ cosStep+48(FP), DI
+	MOVQ sinStep+72(FP), SI
+	MOVQ cosCur_len+8(FP), CX
+	CMPQ CX, $2
+	JL ras_scalar
+ras_loop:
+	MOVUPD (AX), X0
+	MOVUPD (BX), X1
+	MOVUPD (DI), X2
+	MOVUPD (SI), X3
+	MOVAPD X0, X4
+	MULPD X2, X4
+	MOVAPD X1, X6
+	MULPD X3, X6
+	SUBPD X6, X4
+	MOVAPD X1, X5
+	MULPD X2, X5
+	MOVAPD X0, X6
+	MULPD X3, X6
+	ADDPD X6, X5
+	MOVUPD X4, (AX)
+	MOVUPD X5, (BX)
+	ADDQ $16, AX
+	ADDQ $16, BX
+	ADDQ $16, DI
+	ADDQ $16, SI
+	SUBQ $2, CX
+	CMPQ CX, $2
+	JGE ras_loop
+ras_scalar:
+	CMPQ CX, $0
+	JLE ras_done
+	MOVSD (AX), X0
+	MOVSD (BX), X1
+	MOVSD (DI), X2
+	MOVSD (SI), X3
+	MOVAPD X0, X4
+	MULSD X2, X4
+	MOVAPD X1, X6
+	MULSD X3, X6
+	SUBSD X6, X4
+	MOVAPD X1, X5
+	MULSD X2, X5
+	MOVAPD X0, X6
+	MULSD X3, X6
+	ADDSD X6, X5
+	MOVSD X4, (AX)
+	MOVSD X5, (BX)
+ras_done:
+	RET

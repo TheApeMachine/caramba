@@ -233,6 +233,62 @@ func TestHostBackend_UploadFloat64(t *testing.T) {
 		})
 	})
 
+	convey.Convey("Given a closed arena tensor at the allocation tail", t, func() {
+		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
+		smallShape, err := NewShape([]int{4})
+		convey.So(err, convey.ShouldBeNil)
+
+		uploaded, err := hostBackend.UploadFloat64(smallShape, []float64{1, 2, 3, 4})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(uploaded.Close(), convey.ShouldBeNil)
+
+		fullShape, err := NewShape([]int{hostArenaFloat64Elements})
+		convey.So(err, convey.ShouldBeNil)
+
+		convey.Convey("It should rewind released tail capacity for the next upload", func() {
+			reused, err := hostBackend.UploadFloat64(fullShape, make([]float64, fullShape.Len()))
+
+			convey.So(err, convey.ShouldBeNil)
+			defer func() { convey.So(reused.Close(), convey.ShouldBeNil) }()
+
+			convey.So(reused.Len(), convey.ShouldEqual, hostArenaFloat64Elements)
+		})
+	})
+
+	convey.Convey("Given a closed arena tensor before a live allocation", t, func() {
+		hostBackend := NewHostBackend()
+		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+
+		firstShape, err := NewShape([]int{4})
+		convey.So(err, convey.ShouldBeNil)
+		secondShape, err := NewShape([]int{6})
+		convey.So(err, convey.ShouldBeNil)
+
+		first, err := hostBackend.UploadFloat64(firstShape, []float64{1, 2, 3, 4})
+		convey.So(err, convey.ShouldBeNil)
+		second, err := hostBackend.UploadFloat64(secondShape, []float64{5, 6, 7, 8, 9, 10})
+		convey.So(err, convey.ShouldBeNil)
+		defer func() { convey.So(second.Close(), convey.ShouldBeNil) }()
+		convey.So(first.Close(), convey.ShouldBeNil)
+
+		convey.Convey("It should reuse the released span without disturbing live tensors", func() {
+			reused, err := hostBackend.UploadFloat64(firstShape, []float64{11, 12, 13, 14})
+
+			convey.So(err, convey.ShouldBeNil)
+			defer func() { convey.So(reused.Close(), convey.ShouldBeNil) }()
+
+			values, err := second.CloneFloat64()
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(values, convey.ShouldResemble, []float64{5, 6, 7, 8, 9, 10})
+
+			values, err = reused.CloneFloat64()
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(values, convey.ShouldResemble, []float64{11, 12, 13, 14})
+		})
+	})
+
 	convey.Convey("Given an empty tensor upload", t, func() {
 		hostBackend := NewHostBackend()
 		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()

@@ -26,6 +26,8 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/vsa"
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
+	"github.com/theapemachine/caramba/pkg/backend/compute/kv"
+	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -35,77 +37,81 @@ var TensorOperationDispatchContract = OperationDispatchContract{}
 
 func (operationDispatchContract OperationDispatchContract) SupportedIDSet() map[ir.OpType]bool {
 	return map[ir.OpType]bool{
-		ir.OpInput:                                true,
-		ir.OpAdd:                                  true,
-		ir.OpMul:                                  true,
-		ir.OpMatmul:                               true,
-		ir.OpReLU:                                 true,
-		ir.OpLeakyReLU:                            true,
-		ir.OpGELU:                                 true,
-		ir.OpTanh:                                 true,
-		ir.OpSigmoid:                              true,
-		ir.OpSwiGLU:                               true,
-		ir.OpFused:                                true,
-		"activation.relu":                         true,
-		"activation.leaky_relu":                   true,
-		"activation.gelu":                         true,
-		"activation.tanh":                         true,
-		"activation.sigmoid":                      true,
-		"activation.swiglu":                       true,
-		"activation.swish":                        true,
-		"attention.sdpa":                          true,
-		"attention.mqa":                           true,
-		"attention.gqa":                           true,
-		"attention.sliding_window":                true,
-		"masking.apply":                           true,
-		"masking.causal":                          true,
-		"math.add":                                true,
-		"math.mul":                                true,
-		"math.matmul":                             true,
-		"math.exp":                                true,
-		"math.log":                                true,
-		"math.logsumexp":                          true,
-		"math.softmax":                            true,
-		"math.outer":                              true,
-		"math.sign":                               true,
-		"math.inv_sqrt_dim_scale":                 true,
-		"math.dropout":                            true,
-		"math.rmsnorm":                            true,
-		"math.layernorm":                          true,
-		"shape.reshape":                           true,
-		"shape.transpose":                         true,
-		"shape.concat":                            true,
-		"shape.split":                             true,
-		"shape.view_as_heads":                     true,
-		"shape.merge_heads":                       true,
-		"positional.rope":                         true,
-		"positional.alibi":                        true,
-		"embedding.token":                         true,
-		"convolution.conv1d":                      true,
-		"convolution.conv2d":                      true,
-		"convolution.conv3d":                      true,
-		"convolution.conv_transpose2d":            true,
-		"pooling.max_pool2d":                      true,
-		"pooling.avg_pool2d":                      true,
-		"pooling.adaptive_avg_pool2d":             true,
-		"pooling.adaptive_max_pool2d":             true,
-		"projection.linear":                       true,
-		"projection.fused_qkv":                    true,
-		"hawkes.intensity":                        true,
-		"hawkes.kernel_matrix":                    true,
-		"hawkes.log_likelihood":                   true,
-		"hawkes.simulate":                         true,
-		"vsa.bind":                                true,
-		"vsa.bundle":                              true,
-		"vsa.similarity":                          true,
-		"vsa.permute":                             true,
-		"vsa.inverse_permute":                     true,
-		"active_inference.belief_update":          true,
-		"active_inference.expected_free_energy":   true,
-		"active_inference.free_energy":            true,
-		"active_inference.precision_weight":       true,
-		"predictive_coding.prediction":            true,
-		"predictive_coding.prediction_error":      true,
+		ir.OpInput:                              true,
+		ir.OpAdd:                                true,
+		ir.OpMul:                                true,
+		ir.OpMatmul:                             true,
+		ir.OpReLU:                               true,
+		ir.OpLeakyReLU:                          true,
+		ir.OpGELU:                               true,
+		ir.OpTanh:                               true,
+		ir.OpSigmoid:                            true,
+		ir.OpSwiGLU:                             true,
+		ir.OpSwish:                              true,
+		ir.OpSELU:                               true,
+		ir.OpFused:                              true,
+		"activation.relu":                       true,
+		"activation.leaky_relu":                 true,
+		"activation.gelu":                       true,
+		"activation.tanh":                       true,
+		"activation.sigmoid":                    true,
+		"activation.swiglu":                     true,
+		"activation.swish":                      true,
+		"activation.selu":                       true,
+		"attention.sdpa":                        true,
+		"attention.mqa":                         true,
+		"attention.gqa":                         true,
+		"attention.sliding_window":              true,
+		"masking.apply":                         true,
+		"masking.causal":                        true,
+		"math.add":                              true,
+		"math.mul":                              true,
+		"math.matmul":                           true,
+		"math.exp":                              true,
+		"math.log":                              true,
+		"math.logsumexp":                        true,
+		"math.softmax":                          true,
+		"math.outer":                            true,
+		"math.sign":                             true,
+		"math.inv_sqrt_dim_scale":               true,
+		"math.dropout":                          true,
+		"math.rmsnorm":                          true,
+		"math.layernorm":                        true,
+		"shape.reshape":                         true,
+		"shape.transpose":                       true,
+		"shape.concat":                          true,
+		"shape.split":                           true,
+		"shape.view_as_heads":                   true,
+		"shape.last_token":                      true,
+		"shape.merge_heads":                     true,
+		"positional.rope":                       true,
+		"positional.alibi":                      true,
+		"embedding.token":                       true,
+		"convolution.conv1d":                    true,
+		"convolution.conv2d":                    true,
+		"convolution.conv3d":                    true,
+		"convolution.conv_transpose2d":          true,
+		"pooling.max_pool2d":                    true,
+		"pooling.avg_pool2d":                    true,
+		"pooling.adaptive_avg_pool2d":           true,
+		"pooling.adaptive_max_pool2d":           true,
+		"projection.linear":                     true,
+		"projection.fused_qkv":                  true,
+		"hawkes.intensity":                      true,
+		"hawkes.kernel_matrix":                  true,
+		"hawkes.log_likelihood":                 true,
+		"hawkes.simulate":                       true,
+		"vsa.bind":                              true,
+		"vsa.bundle":                            true,
+		"vsa.similarity":                        true,
+		"vsa.permute":                           true,
+		"vsa.inverse_permute":                   true,
+		"active_inference.belief_update":        true,
+		"active_inference.expected_free_energy": true,
+		"active_inference.free_energy":          true,
+		"active_inference.precision_weight":     true,
+		"predictive_coding.prediction":          true,
+		"predictive_coding.prediction_error":    true,
 		"predictive_coding.update_representation": true,
 		"predictive_coding.update_weights":        true,
 		"markov_blanket.flow_active":              true,
@@ -123,6 +129,8 @@ func (operationDispatchContract OperationDispatchContract) SupportedIDSet() map[
 		"train.loss.cross_entropy":                true,
 		"train.loss.mse_grad":                     true,
 		"train.loss.cross_entropy_grad":           true,
+		"train.grad.mse":                          true,
+		"train.grad.cross_entropy":                true,
 		"train.optimizer.adam":                    true,
 		"train.optimizer.adamw":                   true,
 		"train.optimizer.sgd":                     true,
@@ -131,6 +139,9 @@ func (operationDispatchContract OperationDispatchContract) SupportedIDSet() map[
 		"bench.accuracy":                          true,
 		"bench.perplexity":                        true,
 		"bench.f1":                                true,
+		"bench.metric.accuracy":                   true,
+		"bench.metric.perplexity":                 true,
+		"bench.metric.f1":                         true,
 		"model.graft":                             true,
 		"model.freeze":                            true,
 	}
@@ -149,47 +160,27 @@ func (tensorBackend *TensorBackend) Apply(
 	case ir.OpInput:
 		return nil, fmt.Errorf("cpu tensor: input node %q was not materialized", node.ID)
 	case ir.OpAdd:
-		return requireInputs(node, inputs, 2, tensorBackend.Add)
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewAdd())
 	case ir.OpMul:
-		return requireInputs(node, inputs, 2, tensorBackend.Mul)
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewMul())
 	case ir.OpMatmul:
-		return requireInputs(node, inputs, 2, tensorBackend.Matmul)
+		return tensorBackend.applyMatmul(ctx, node, inputs)
 	case ir.OpReLU:
-		return requireInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
-			return tensorBackend.ReLU(input)
-		})
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewReLU())
 	case ir.OpLeakyReLU:
-		return requireInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
-			return tensorBackend.LeakyReLU(input, floatConfig(node, "alpha", 0.01))
-		})
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewLeakyReLU())
 	case ir.OpGELU:
-		return requireInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
-			return tensorBackend.GELU(input)
-		})
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewGelu())
 	case ir.OpTanh:
-		return requireInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
-			return tensorBackend.Tanh(input)
-		})
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewTanh())
 	case ir.OpSigmoid:
-		return requireInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
-			return tensorBackend.Sigmoid(input)
-		})
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewSigmoid())
+	case ir.OpSwish:
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewSwish())
 	case ir.OpSwiGLU:
-		return requireInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
-			return tensorBackend.SwiGLU(input)
-		})
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewSwiGLU())
+	case ir.OpSELU:
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewSELU())
 	case ir.OpFused:
 		return tensorBackend.applyFused(ctx, node, inputs)
 	default:
@@ -206,19 +197,19 @@ func (tensorBackend *TensorBackend) applyFused(
 		return nil, err
 	}
 
-	activation, _ := node.Metadata["activation"].(string)
+	activationName, _ := node.Metadata["activation"].(string)
 	if len(inputs) == 2 {
-		output, err := tensorBackend.Matmul(inputs[0], inputs[1])
+		output, err := tensorBackend.applyMatmul(ctx, node, inputs)
 
 		if err != nil {
 			return nil, err
 		}
 
 		switch {
-		case strings.EqualFold(activation, string(ir.OpReLU)):
-			return tensorBackend.ReLU(output)
-		case strings.EqualFold(activation, string(ir.OpGELU)):
-			return tensorBackend.GELU(output)
+		case strings.EqualFold(activationName, string(ir.OpReLU)):
+			return tensorBackend.applyActivation(ctx, node, output, activation.NewReLU())
+		case strings.EqualFold(activationName, string(ir.OpGELU)):
+			return tensorBackend.applyActivation(ctx, node, output, activation.NewGelu())
 		default:
 			return output, nil
 		}
@@ -228,11 +219,17 @@ func (tensorBackend *TensorBackend) applyFused(
 		return nil, fmt.Errorf("cpu tensor: Fused node %q requires 2 or 3 inputs", node.ID)
 	}
 
-	if strings.EqualFold(activation, string(ir.OpGELU)) {
-		return tensorBackend.MatmulAddGELU(inputs[0], inputs[1], inputs[2])
+	output, err := tensorBackend.applyMatmulAdd(ctx, node, inputs)
+
+	if err != nil {
+		return nil, err
 	}
 
-	return tensorBackend.MatmulAdd(inputs[0], inputs[1], inputs[2])
+	if strings.EqualFold(activationName, string(ir.OpGELU)) {
+		return tensorBackend.applyActivation(ctx, node, output, activation.NewGelu())
+	}
+
+	return output, nil
 }
 
 func (tensorBackend *TensorBackend) applyOperation(
@@ -243,8 +240,10 @@ func (tensorBackend *TensorBackend) applyOperation(
 	switch strings.ToLower(string(node.Op)) {
 	case "activation.swish":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewSwish())
+	case "activation.selu":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewSELU())
 	case "attention.sdpa":
-		return executor.RunOperation(ctx, tensorBackend, node, inputs, attention.NewSDPA())
+		return tensorBackend.applySDPA(ctx, node, inputs)
 	case "attention.mqa":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, attention.NewMQA())
 	case "attention.gqa":
@@ -303,6 +302,8 @@ func (tensorBackend *TensorBackend) applyOperation(
 			inputs,
 			shape.NewViewAsHeads(intConfig(node, "num_heads", 1)),
 		)
+	case "shape.last_token":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, shape.NewLastToken())
 	case "shape.merge_heads":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, shape.NewMergeHeads())
 	case "positional.rope":
@@ -456,9 +457,9 @@ func (tensorBackend *TensorBackend) applyOperation(
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewMSELoss())
 	case "train.loss.cross_entropy":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewCrossEntropyLoss())
-	case "train.loss.mse_grad":
+	case "train.loss.mse_grad", "train.grad.mse":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewMSEGrad())
-	case "train.loss.cross_entropy_grad":
+	case "train.loss.cross_entropy_grad", "train.grad.cross_entropy":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewCrossEntropyGrad())
 	case "train.optimizer.adam":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, train.NewAdamStep(
@@ -488,11 +489,11 @@ func (tensorBackend *TensorBackend) applyOperation(
 			floatConfig(node, "eps", 1e-8), floatConfig(node, "momentum", 0),
 			floatConfig(node, "wd", 0),
 		))
-	case "bench.accuracy":
+	case "bench.accuracy", "bench.metric.accuracy":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, bench.NewAccuracy())
-	case "bench.perplexity":
+	case "bench.perplexity", "bench.metric.perplexity":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, bench.NewPerplexity())
-	case "bench.f1":
+	case "bench.f1", "bench.metric.f1":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, bench.NewF1())
 	case "model.graft":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, model.NewGraft(
@@ -512,22 +513,165 @@ func (tensorBackend *TensorBackend) applyOperation(
 	}
 }
 
-func requireInputs(
+func (tensorBackend *TensorBackend) applyMatmul(
+	ctx context.Context,
 	node executor.NodeSpec,
 	inputs []tensor.Float64Tensor,
-	count int,
-	apply func(tensor.Float64Tensor, tensor.Float64Tensor) (tensor.Float64Tensor, error),
 ) (tensor.Float64Tensor, error) {
-	if len(inputs) != count {
-		return nil, fmt.Errorf("cpu tensor: %s node %q requires %d inputs", node.Op, node.ID, count)
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
-	var second tensor.Float64Tensor
-	if len(inputs) > 1 {
-		second = inputs[1]
+	if len(inputs) != 2 {
+		return nil, fmt.Errorf("cpu tensor: %s node %q requires 2 inputs", node.Op, node.ID)
 	}
 
-	return apply(inputs[0], second)
+	operationNode, err := withMatmulOperationShape(node, inputs)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return executor.RunOperation(ctx, tensorBackend, operationNode, inputs, math.NewMatmul())
+}
+
+func (tensorBackend *TensorBackend) applyMatmulAdd(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 3 {
+		return nil, fmt.Errorf("cpu tensor: %s node %q requires 3 inputs", node.Op, node.ID)
+	}
+
+	operationNode, err := withMatmulOperationShape(node, inputs)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return executor.RunOperation(ctx, tensorBackend, operationNode, inputs, math.NewMatmulAdd())
+}
+
+func (tensorBackend *TensorBackend) applyActivation(
+	ctx context.Context,
+	node executor.NodeSpec,
+	input tensor.Float64Tensor,
+	operation interface {
+		Forward(*state.Dict) (*state.Dict, error)
+	},
+) (tensor.Float64Tensor, error) {
+	output, err := executor.RunOperation(ctx, tensorBackend, node, []tensor.Float64Tensor{input}, operation)
+
+	if err != nil {
+		_ = input.Close()
+
+		return nil, err
+	}
+
+	if closeErr := input.Close(); closeErr != nil {
+		return nil, closeErr
+	}
+
+	return output, nil
+}
+
+func withMatmulOperationShape(
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (executor.NodeSpec, error) {
+	if len(inputs) < 2 {
+		return executor.NodeSpec{}, fmt.Errorf("cpu tensor: %s node %q requires at least 2 inputs", node.Op, node.ID)
+	}
+
+	leftDims := inputs[0].Shape().Dims()
+	rightDims := inputs[1].Shape().Dims()
+
+	if len(leftDims) != 2 || len(rightDims) != 2 {
+		return executor.NodeSpec{}, fmt.Errorf("cpu tensor: %s node %q requires rank-2 matrices", node.Op, node.ID)
+	}
+
+	if leftDims[1] != rightDims[0] {
+		return executor.NodeSpec{}, fmt.Errorf(
+			"cpu tensor: %s node %q dimension mismatch [%d,%d] x [%d,%d]",
+			node.Op, node.ID, leftDims[0], leftDims[1], rightDims[0], rightDims[1],
+		)
+	}
+
+	metadata := make(map[string]any, len(node.Metadata)+1)
+
+	for key, value := range node.Metadata {
+		metadata[key] = value
+	}
+
+	metadata["op_shape"] = []int{leftDims[0], leftDims[1], rightDims[1]}
+	node.Metadata = metadata
+
+	return node, nil
+}
+
+func (tensorBackend *TensorBackend) applySDPA(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	cache, _ := node.Metadata["kv_cache"].(*kv.Cache)
+
+	if cache == nil {
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, attention.NewSDPA())
+	}
+
+	if !boolConfig(node, "causal", false) {
+		return nil, fmt.Errorf("cpu tensor: KV cache requires causal SDPA node %q", node.ID)
+	}
+
+	return tensorBackend.applyCachedSDPA(ctx, node, inputs, cache)
+}
+
+func (tensorBackend *TensorBackend) applyCachedSDPA(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+	cache *kv.Cache,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 3 {
+		return nil, fmt.Errorf("cpu tensor: SDPA node %q requires 3 inputs", node.ID)
+	}
+
+	values, err := executor.InputValues(tensorBackend, inputs)
+
+	if err != nil {
+		return nil, err
+	}
+
+	keyShape := inputs[1].Shape().Dims()
+	cachedKey, cachedValue, _, err := cache.Append(node.ID, keyShape, values[1], values[2])
+
+	if err != nil {
+		return nil, err
+	}
+
+	outputState, err := attention.NewSDPA().Forward(
+		executor.OperationState(
+			node,
+			inputs,
+			[][]float64{values[0], cachedKey, cachedValue},
+		),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return executor.UploadOutput(tensorBackend, node, inputs, outputState.Out)
 }
 
 func intConfig(node executor.NodeSpec, key string, fallback int) int {

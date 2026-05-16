@@ -48,6 +48,7 @@ static void* gv_dl_handle = nullptr;
 #endif
 
 static std::unordered_map<std::string, PJRT_LoadedExecutable*> gv_execs;
+static std::string gv_plugin_path;
 
 static std::mutex gv_err_mu;
 static std::string gv_last_err;
@@ -88,6 +89,8 @@ static bool vcheck(const PJRT_Api* api, PJRT_Error* err, const char* ctx) {
 // ---------------------------------------------------------------------------
 
 static std::string pjrt_plugin_path(const char* platform) {
+    if (!gv_plugin_path.empty()) return gv_plugin_path;
+
     std::string p(platform);
     if (p == "cpu") return "pjrt_c_api_cpu_plugin.so";
     if (p == "gpu") return "pjrt_c_api_gpu_plugin.so";
@@ -402,6 +405,17 @@ static int run_unary(
 // ---------------------------------------------------------------------------
 
 extern "C" {
+
+int xla_vsa_configure_plugin(const char* platform, const char* plugin_path) {
+    (void)platform;
+
+    if (!plugin_path || plugin_path[0] == '\0') return -1;
+
+    std::lock_guard<std::mutex> lock(gv_mutex);
+    gv_plugin_path = plugin_path;
+
+    return 0;
+}
 
 int xla_vsa_init(const char* platform) {
     std::lock_guard<std::mutex> lock(gv_mutex);

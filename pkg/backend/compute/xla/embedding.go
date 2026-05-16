@@ -25,23 +25,20 @@ type XLAEmbedding struct {
 // NewXLAEmbedding initialises the PJRT client for the given platform
 // ("cpu" or "gpu") and stores the embedding dimensions.
 func NewXLAEmbedding(platform string, vocabSize, dModel int) (*XLAEmbedding, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err := config.ValidateRuntime(); err != nil {
-		return nil, err
-	}
-
-	cp := C.CString(platform)
+	cp := C.CString(config.Platform)
 	defer C.free(unsafe.Pointer(cp))
 
 	if rc := C.xla_embedding_init(cp); rc != 0 {
-		return nil, fmt.Errorf("xla_embedding_init failed for platform %q: rc=%d", platform, rc)
+		return nil, fmt.Errorf("xla_embedding_init failed for platform %q: rc=%d", config.Platform, rc)
 	}
-	return &XLAEmbedding{platform: platform, vocabSize: vocabSize, dModel: dModel}, nil
+
+	return &XLAEmbedding{platform: config.Platform, vocabSize: vocabSize, dModel: dModel}, nil
 }
 
 // Shutdown releases all PJRT embedding resources.

@@ -31,13 +31,9 @@ type XLAActiveInferenceOps struct {
 NewActiveInferenceOps initialises the PJRT client for the given platform.
 */
 func NewActiveInferenceOps(platform string) (*XLAActiveInferenceOps, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
-		return nil, err
-	}
-
-	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 

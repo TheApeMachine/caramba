@@ -1,45 +1,140 @@
 #include "textflag.h"
 
-// Constants in tanh_avx2_amd64.s
-
 // TanhSSE2(dst, src []float64)
-// ABI0: dst+0(FP)=ptr, src_base+24(FP)=ptr, src_len+32(FP)=len
+// Two-lane tanh(x) using exp(2x) range reduction and polynomial evaluation.
 TEXT ·TanhSSE2(SB), NOSPLIT, $0-48
 	MOVQ dst+0(FP), AX
-	MOVQ src_len+32(FP), SI
 	MOVQ src_base+24(FP), DI
-	CMPQ SI, $0
-	JLE  done
-	MOVSD  ·tanhConst27_amd64(SB), X10
-	MOVDDUP X10, X10
-	MOVSD  ·tanhConst9_amd64(SB), X11
-	MOVDDUP X11, X11
-	MOVSD  ·tanhOne_amd64(SB), X12
-	MOVDDUP X12, X12
-	MOVSD  ·tanhNegOne_amd64(SB), X13
-	MOVDDUP X13, X13
+	MOVQ src_len+32(FP), BX
 
-loop:
+	MOVSD  ·atLog2E(SB), X10
+	SHUFPD $0, X10, X10
+	MOVSD  ·atLn2Hi(SB), X11
+	SHUFPD $0, X11, X11
+	MOVSD  ·atLn2Lo(SB), X12
+	SHUFPD $0, X12, X12
+	MOVSD  ·atMaxArg(SB), X13
+	SHUFPD $0, X13, X13
+	MOVSD  ·atMinArg(SB), X14
+	SHUFPD $0, X14, X14
+	MOVSD  ·atC0(SB), X15
+	SHUFPD $0, X15, X15
+	MOVOU  ·activationBias32(SB), X9
+	PXOR   X8, X8
+
+	CMPQ BX, $2
+	JL   tanh_sse2_done
+
+tanh_sse2_loop:
 	MOVUPD (DI), X0
+	ADDPD  X0, X0
+	MINPD  X13, X0
+	MAXPD  X14, X0
+
 	MOVAPD X0, X1
-	MULPD  X0, X1
-	MOVAPD X1, X2
-	ADDPD  X10, X2
-	MOVAPD X1, X3
-	MULPD  X11, X3
-	ADDPD  X10, X3
+	MULPD  X10, X1
+	CVTPD2PL X1, X4
+	CVTPL2PD X4, X1
+
+	MOVAPD X1, X5
+	MULPD  X11, X5
+	SUBPD  X5, X0
+	MOVAPD X1, X5
+	MULPD  X12, X5
+	SUBPD  X5, X0
+
+	MOVSD  ·atC18(SB), X2
+	SHUFPD $0, X2, X2
+	MOVSD  ·atC17(SB), X3
+	SHUFPD $0, X3, X3
 	MULPD  X0, X2
-	MOVAPD X2, X4
-	DIVPD  X3, X4
-	// Clamp rational tanh approximation into [-1,+1]: X12 holds +1, X13 holds -1 (see MOVDDUP above).
-	// MINPD/MAXPD keep lane values inside the interval when the polynomial slightly overshoots.
-	MINPD  X12, X4
-	MAXPD  X13, X4
-	MOVUPD X4, (AX)
+	ADDPD  X3, X2
+	MOVSD  ·atC16(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC15(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC14(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC13(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC12(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC11(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC10(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC9(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC8(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC7(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC6(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC5(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC4(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC3(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC2(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC1(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC0(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+
+	PADDD     X9, X4
+	MOVAPD    X8, X5
+	PUNPCKLLQ X5, X4
+	PSLLQ     $52, X4
+	MULPD     X4, X2
+
+	MOVAPD X2, X5
+	SUBPD  X15, X5
+	ADDPD  X15, X2
+	DIVPD  X2, X5
+	MOVUPD X5, (AX)
+
 	ADDQ $16, AX
 	ADDQ $16, DI
-	SUBQ $2, SI
-	CMPQ SI, $2
-	JGE  loop
-done:
+	SUBQ $2, BX
+	CMPQ BX, $2
+	JGE  tanh_sse2_loop
+
+tanh_sse2_done:
 	RET

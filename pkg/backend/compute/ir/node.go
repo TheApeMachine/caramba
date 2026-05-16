@@ -26,6 +26,8 @@ const (
 	OpTanh      OpType = "Tanh"
 	OpSigmoid   OpType = "Sigmoid"
 	OpSwiGLU    OpType = "SwiGLU"
+	OpSwish     OpType = "Swish"
+	OpSELU      OpType = "SELU"
 	OpFused     OpType = "Fused"
 )
 

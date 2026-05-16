@@ -15,6 +15,7 @@ static id<MTLComputePipelineState> sPSO_concat      = nil;
 static id<MTLComputePipelineState> sPSO_split       = nil;
 static id<MTLComputePipelineState> sPSO_viewHeads   = nil;
 static id<MTLComputePipelineState> sPSO_mergeHeads  = nil;
+static id<MTLComputePipelineState> sPSO_lastToken   = nil;
 
 // ---------------------------------------------------------------------------
 
@@ -44,9 +45,10 @@ int metal_shape_init(const char* metallib_path) {
         sPSO_split      = make_pso_s(lib, @"split_kernel");
         sPSO_viewHeads  = make_pso_s(lib, @"view_as_heads_kernel");
         sPSO_mergeHeads = make_pso_s(lib, @"merge_heads_kernel");
+        sPSO_lastToken  = make_pso_s(lib, @"last_token_kernel");
 
         if (!sPSO_transpose || !sPSO_copy || !sPSO_concat || !sPSO_split ||
-            !sPSO_viewHeads || !sPSO_mergeHeads) return -1;
+            !sPSO_viewHeads || !sPSO_mergeHeads || !sPSO_lastToken) return -1;
 
         return 0;
     }
@@ -337,6 +339,120 @@ int metal_merge_heads(const float* src, float* dst,
         if (((uintptr_t)dst % page) != 0) {
             memcpy(dst, [bufDst contents], bytes);
         }
+        return 0;
+    }
+}
+
+int metal_last_token(const float* src, float* dst,
+                     int outer, int seq_len, int feature)
+{
+    @autoreleasepool {
+        if (!src || !dst || outer <= 0 || seq_len <= 0 || feature <= 0) {
+            return -1;
+        }
+
+        int input_n = outer * seq_len * feature;
+        int output_n = outer * feature;
+        NSUInteger input_bytes = (NSUInteger)input_n * sizeof(float);
+        NSUInteger output_bytes = (NSUInteger)output_n * sizeof(float);
+
+        id<MTLBuffer> bufSrc = make_buf(sDevice, src, input_bytes);
+        id<MTLBuffer> bufDst = make_dst_buf(sDevice, dst, output_bytes);
+        if (!bufSrc || !bufDst || !sPSO_lastToken) return -1;
+
+        id<MTLCommandBuffer> cb = [sQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:sPSO_lastToken];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:&seq_len length:sizeof(int) atIndex:2];
+        [enc setBytes:&feature length:sizeof(int) atIndex:3];
+        NSUInteger tw = sPSO_lastToken.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)output_n, 1, 1)
+     threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        vm_size_t page = getpagesize();
+        if (((uintptr_t)dst % page) != 0) {
+            memcpy(dst, [bufDst contents], output_bytes);
+        }
+        return 0;
+    }
+}
+
+static int dispatch_shape_tensor(
+	id<MTLComputePipelineState> pso,
+	const void* src,
+    void* dst,
+    int a,
+    int b,
+    int c,
+    int d,
+    int n)
+{
+    @autoreleasepool {
+        if (!sQueue || !pso || !src || !dst || n <= 0) return -1;
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        id<MTLCommandBuffer> cb = [sQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:pso];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:&a length:sizeof(int) atIndex:2];
+        [enc setBytes:&b length:sizeof(int) atIndex:3];
+        [enc setBytes:&c length:sizeof(int) atIndex:4];
+        [enc setBytes:&d length:sizeof(int) atIndex:5];
+        NSUInteger tw = pso.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+     threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+        return 0;
+    }
+}
+
+int metal_view_as_heads_tensor(const void* src, void* dst,
+                               int B, int T, int H, int head_dim)
+{
+    return dispatch_shape_tensor(sPSO_viewHeads, src, dst, B, T, H, head_dim,
+                                 B * T * H * head_dim);
+}
+
+int metal_merge_heads_tensor(const void* src, void* dst,
+                             int B, int H, int T, int head_dim)
+{
+    return dispatch_shape_tensor(sPSO_mergeHeads, src, dst, B, H, T, head_dim,
+                                 B * H * T * head_dim);
+}
+
+int metal_last_token_tensor(const void* src, void* dst,
+                            int outer, int seq_len, int feature)
+{
+    @autoreleasepool {
+        int n = outer * feature;
+        if (!sQueue || !sPSO_lastToken || !src || !dst || n <= 0 ||
+            seq_len <= 0 || feature <= 0) return -1;
+
+        id<MTLBuffer> bufSrc = (__bridge id)((void*)src);
+        id<MTLBuffer> bufDst = (__bridge id)dst;
+        id<MTLCommandBuffer> cb = [sQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:sPSO_lastToken];
+        [enc setBuffer:bufSrc offset:0 atIndex:0];
+        [enc setBuffer:bufDst offset:0 atIndex:1];
+        [enc setBytes:&seq_len length:sizeof(int) atIndex:2];
+        [enc setBytes:&feature length:sizeof(int) atIndex:3];
+        NSUInteger tw = sPSO_lastToken.threadExecutionWidth;
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n, 1, 1)
+     threadsPerThreadgroup:MTLSizeMake(tw, 1, 1)];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
         return 0;
     }
 }

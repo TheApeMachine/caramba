@@ -44,6 +44,10 @@ int cuda_view_as_heads(const double* src, double* dst,
 int cuda_merge_heads(const double* src, double* dst,
                      int B, int H, int T, int head_dim);
 
+// LastToken: [outer, seq_len, feature] -> [outer, feature].
+int cuda_last_token(const double* src, double* dst,
+                    int outer, int seq_len, int feature);
+
 #ifdef __cplusplus
 }
 #endif

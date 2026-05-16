@@ -127,3 +127,43 @@ int metal_token_embedding(
         return 0;
     }
 }
+
+int metal_token_embedding_tensor(
+    const void* tokens,
+    void*       out,
+    const void* weight,
+    int         batch_seq,
+    int         d_model)
+{
+    @autoreleasepool {
+        if (!gEmbQueue || !gPSO_token_embedding || !tokens || !out || !weight) return -1;
+        if (batch_seq <= 0 || d_model <= 0) return -1;
+
+        id<MTLBuffer> bufWeight = (__bridge id)((void*)weight);
+        id<MTLBuffer> bufTokens = (__bridge id)((void*)tokens);
+        id<MTLBuffer> bufOut    = (__bridge id)out;
+        int total = batch_seq * d_model;
+
+        id<MTLCommandBuffer>         cb  = [gEmbQueue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+
+        [enc setComputePipelineState:gPSO_token_embedding];
+        [enc setBuffer:bufWeight offset:0 atIndex:0];
+        [enc setBuffer:bufTokens offset:0 atIndex:1];
+        [enc setBuffer:bufOut    offset:0 atIndex:2];
+        int dm = d_model;
+        [enc setBytes:&dm length:sizeof(int) atIndex:3];
+
+        NSUInteger tw  = gPSO_token_embedding.threadExecutionWidth;
+        NSUInteger tgs = tw;
+        MTLSize threads     = MTLSizeMake((NSUInteger)total, 1, 1);
+        MTLSize threadgroup = MTLSizeMake(tgs, 1, 1);
+
+        [enc dispatchThreads:threads threadsPerThreadgroup:threadgroup];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+
+        return 0;
+    }
+}

@@ -18,8 +18,8 @@ type PreviewConfig struct {
 }
 
 /*
-PreviewGenerator streams an honest tokenizer-backed response before the
-full CausalLM runtime exists.
+PreviewGenerator streams an honest tokenizer-backed response before manifest
+execution is connected to model weights.
 */
 type PreviewGenerator struct {
 	artifact    *tokenizer.Artifact
@@ -72,7 +72,7 @@ func (generator *PreviewGenerator) Generate(
 
 func (generator *PreviewGenerator) response(prompt string) (string, error) {
 	if generator.artifact == nil {
-		return "Preview runtime active. Provide --model or --tokenizer to exercise tokenizer loading. Model inference will connect here once SafeTensors import, architecture binding, and CausalLM decoding are in place.", nil
+		return "Preview runtime active. Provide --model to run manifest-backed local inference, or --tokenizer to exercise tokenizer loading.", nil
 	}
 
 	tokenIDs, err := generator.artifact.Tokenizer.Encode(prompt)
@@ -82,7 +82,7 @@ func (generator *PreviewGenerator) response(prompt string) (string, error) {
 	}
 
 	return fmt.Sprintf(
-		"Preview runtime active. The tokenizer encoded this prompt into %d tokens. Model inference will connect here once SafeTensors import, architecture binding, and CausalLM decoding are in place.",
+		"Preview runtime active. The tokenizer encoded this prompt into %d tokens. Provide --model to run manifest-backed local inference.",
 		len(tokenIDs),
 	), nil
 }

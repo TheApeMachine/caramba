@@ -1,6 +1,7 @@
 package tensor
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -225,8 +226,14 @@ type HostBackend struct {
 	mu     sync.RWMutex
 	closed bool
 	arena  []float64
+	free   []arenaBlock
 	offset int
 	live   int
+}
+
+type arenaBlock struct {
+	start  int
+	length int
 }
 
 /*
@@ -295,21 +302,22 @@ func (hostBackend *HostBackend) createFloat64(
 	}
 
 	var dest []float64
+	arenaStart := -1
+	arenaLength := 0
 
 	if copyValues {
 		if shape.Len() == 0 {
 			return &HostTensor{bytes: bytes, shape: shape, values: nil}, nil
 		}
 
-		if shape.Len() > len(hostBackend.arena)-hostBackend.offset {
-			return nil, fmt.Errorf(
-				"tensor: host arena exhausted: requested %d float64 elements with %d remaining of %d",
-				shape.Len(), len(hostBackend.arena)-hostBackend.offset, len(hostBackend.arena),
-			)
+		arenaStart, err = hostBackend.allocateArena(shape.Len())
+
+		if err != nil {
+			return nil, err
 		}
 
-		dest = hostBackend.arena[hostBackend.offset : hostBackend.offset+shape.Len()]
-		hostBackend.offset += shape.Len()
+		arenaLength = shape.Len()
+		dest = hostBackend.arena[arenaStart : arenaStart+shape.Len()]
 		copy(dest, values)
 		hostBackend.live++
 	} else {
@@ -319,6 +327,8 @@ func (hostBackend *HostBackend) createFloat64(
 	return &HostTensor{
 		backend: hostBackend,
 		arena:   copyValues && shape.Len() > 0,
+		start:   arenaStart,
+		length:  arenaLength,
 		bytes:   bytes,
 		shape:   shape,
 		values:  dest,
@@ -366,6 +376,8 @@ func (hostBackend *HostBackend) Close() error {
 
 	hostBackend.closed = true
 	hostBackend.arena = nil
+	hostBackend.free = nil
+	hostBackend.offset = 0
 
 	return nil
 }
@@ -386,16 +398,132 @@ func (hostBackend *HostBackend) Reset() error {
 	}
 
 	hostBackend.offset = 0
+	hostBackend.free = nil
 
 	return nil
 }
 
-func (hostBackend *HostBackend) releaseArenaTensor() {
+func (hostBackend *HostBackend) allocateArena(length int) (int, error) {
+	for index, block := range hostBackend.free {
+		if block.length < length {
+			continue
+		}
+
+		start := block.start
+
+		if block.length == length {
+			hostBackend.free = slices.Delete(hostBackend.free, index, index+1)
+			return start, nil
+		}
+
+		hostBackend.free[index].start += length
+		hostBackend.free[index].length -= length
+
+		return start, nil
+	}
+
+	if length > len(hostBackend.arena)-hostBackend.offset {
+		return 0, fmt.Errorf(
+			"tensor: host arena exhausted: requested %d float64 elements with %d reusable of %d",
+			length, hostBackend.availableArena(), len(hostBackend.arena),
+		)
+	}
+
+	start := hostBackend.offset
+	hostBackend.offset += length
+
+	return start, nil
+}
+
+func (hostBackend *HostBackend) availableArena() int {
+	available := len(hostBackend.arena) - hostBackend.offset
+
+	for _, block := range hostBackend.free {
+		available += block.length
+	}
+
+	return available
+}
+
+func (hostBackend *HostBackend) releaseArenaTensor(start, length int) error {
 	hostBackend.mu.Lock()
 	defer hostBackend.mu.Unlock()
 
 	if hostBackend.live > 0 {
 		hostBackend.live--
+	}
+
+	if hostBackend.closed || len(hostBackend.arena) == 0 || length == 0 {
+		return nil
+	}
+
+	if start < 0 || length < 0 || start+length > len(hostBackend.arena) {
+		return fmt.Errorf(
+			"tensor: invalid arena release start=%d length=%d capacity=%d",
+			start, length, len(hostBackend.arena),
+		)
+	}
+
+	hostBackend.free = append(hostBackend.free, arenaBlock{
+		start:  start,
+		length: length,
+	})
+	hostBackend.coalesceArena()
+
+	return nil
+}
+
+func (hostBackend *HostBackend) coalesceArena() {
+	if len(hostBackend.free) == 0 {
+		return
+	}
+
+	slices.SortFunc(hostBackend.free, func(left, right arenaBlock) int {
+		return cmp.Compare(left.start, right.start)
+	})
+
+	blocks := hostBackend.free[:0]
+
+	for _, block := range hostBackend.free {
+		if block.length <= 0 {
+			continue
+		}
+
+		if len(blocks) == 0 {
+			blocks = append(blocks, block)
+			continue
+		}
+
+		last := &blocks[len(blocks)-1]
+		lastEnd := last.start + last.length
+
+		if block.start > lastEnd {
+			blocks = append(blocks, block)
+			continue
+		}
+
+		blockEnd := block.start + block.length
+
+		if blockEnd > lastEnd {
+			last.length = blockEnd - last.start
+		}
+	}
+
+	hostBackend.free = blocks
+	hostBackend.rewindArenaTail()
+}
+
+func (hostBackend *HostBackend) rewindArenaTail() {
+	for len(hostBackend.free) > 0 {
+		lastIndex := len(hostBackend.free) - 1
+		block := hostBackend.free[lastIndex]
+
+		if block.start+block.length != hostBackend.offset {
+			return
+		}
+
+		hostBackend.offset = block.start
+		hostBackend.free = hostBackend.free[:lastIndex]
 	}
 }
 
@@ -406,6 +534,8 @@ type HostTensor struct {
 	mu      sync.RWMutex
 	backend *HostBackend
 	arena   bool
+	start   int
+	length  int
 	bytes   int
 	shape   Shape
 	values  []float64
@@ -501,14 +631,18 @@ func (hostTensor *HostTensor) Close() error {
 	hostTensor.closed = true
 	backend := hostTensor.backend
 	arena := hostTensor.arena
+	start := hostTensor.start
+	length := hostTensor.length
 	hostTensor.backend = nil
 	hostTensor.arena = false
+	hostTensor.start = -1
+	hostTensor.length = 0
 	hostTensor.bytes = 0
 	hostTensor.values = nil
 	hostTensor.shape = Shape{}
 
 	if arena && backend != nil {
-		backend.releaseArenaTensor()
+		return backend.releaseArenaTensor(start, length)
 	}
 
 	return nil

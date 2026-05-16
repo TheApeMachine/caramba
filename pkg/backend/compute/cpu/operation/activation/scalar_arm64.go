@@ -3,28 +3,28 @@
 package activation
 
 //go:noescape
-func scalarTanhNEON(dst, src []float64)
+func scalarTanhARM64(dst, src []float64)
 
 //go:noescape
-func scalarSigmoidNEON(dst, src []float64)
+func scalarSigmoidARM64(dst, src []float64)
 
 //go:noescape
-func scalarReLUNEON(dst, src []float64)
+func scalarReLUARM64(dst, src []float64)
 
 //go:noescape
-func scalarLeakyReLUNEON(dst, src []float64, alpha float64)
+func scalarLeakyReLUARM64(dst, src []float64, alpha float64)
 
 //go:noescape
-func scalarGeLUNEON(dst, src []float64)
+func scalarGeLUARM64(dst, src []float64)
 
 //go:noescape
-func scalarSwiGLUNEON(dst, src []float64)
+func scalarSwiGLUARM64(dst, src []float64)
 
-func scalarTanhKernel(dst, src []float64)    { scalarTanhNEON(dst, src) }
-func scalarSigmoidKernel(dst, src []float64) { scalarSigmoidNEON(dst, src) }
-func scalarReLUKernel(dst, src []float64)    { scalarReLUNEON(dst, src) }
+func scalarTanhKernel(dst, src []float64)    { scalarTanhARM64(dst, src) }
+func scalarSigmoidKernel(dst, src []float64) { scalarSigmoidARM64(dst, src) }
+func scalarReLUKernel(dst, src []float64)    { scalarReLUARM64(dst, src) }
 func scalarLeakyReLUKernel(dst, src []float64, alpha float64) {
-	scalarLeakyReLUNEON(dst, src, alpha)
+	scalarLeakyReLUARM64(dst, src, alpha)
 }
-func scalarGeLUKernel(dst, src []float64)   { scalarGeLUNEON(dst, src) }
-func scalarSwiGLUKernel(dst, src []float64) { scalarSwiGLUNEON(dst, src) }
+func scalarGeLUKernel(dst, src []float64)   { scalarGeLUARM64(dst, src) }
+func scalarSwiGLUKernel(dst, src []float64) { scalarSwiGLUARM64(dst, src) }

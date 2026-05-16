@@ -1,53 +1,141 @@
 #include "textflag.h"
 
-// Constants live in swish_avx2_amd64.s.
-
 // SwishSSE2(dst, src []float64)
-// dst[i] = src[i] * sigmoid(src[i])
+// Two-lane swish(x) = x/(1+exp(-x)).
 TEXT ·SwishSSE2(SB), NOSPLIT, $0-48
 	MOVQ dst+0(FP), AX
 	MOVQ src_base+24(FP), DI
-	MOVQ src_len+32(FP), SI
-	CMPQ SI, $0
-	JLE  done
+	MOVQ src_len+32(FP), BX
 
-	MOVSD  ·swishConst27_amd64(SB), X10
-	MOVDDUP X10, X10
-	MOVSD  ·swishConst9_amd64(SB), X11
-	MOVDDUP X11, X11
-	MOVSD  ·swishHalf_amd64(SB), X12
-	MOVDDUP X12, X12
-	MOVSD  ·swishOne_amd64(SB), X13
-	MOVDDUP X13, X13
-	MOVSD  ·swishNegOne_amd64(SB), X14
-	MOVDDUP X14, X14
+	MOVSD  ·atLog2E(SB), X10
+	SHUFPD $0, X10, X10
+	MOVSD  ·atLn2Hi(SB), X11
+	SHUFPD $0, X11, X11
+	MOVSD  ·atLn2Lo(SB), X12
+	SHUFPD $0, X12, X12
+	MOVSD  ·atMaxArg(SB), X13
+	SHUFPD $0, X13, X13
+	MOVSD  ·atMinArg(SB), X14
+	SHUFPD $0, X14, X14
+	MOVSD  ·atC0(SB), X15
+	SHUFPD $0, X15, X15
+	MOVOU  ·activationBias32(SB), X9
+	PXOR   X8, X8
 
-loop:
-	MOVUPD (DI), X0
+	CMPQ BX, $2
+	JL   swish_sse2_done
+
+swish_sse2_loop:
+	MOVUPD (DI), X6
+	MOVAPD X8, X0
+	SUBPD  X6, X0
+	MINPD  X13, X0
+	MAXPD  X14, X0
+
 	MOVAPD X0, X1
-	MULPD  X12, X1
-	MOVAPD X1, X2
-	MULPD  X1, X2
-	MOVAPD X2, X3
-	ADDPD  X10, X3
-	MOVAPD X2, X4
-	MULPD  X11, X4
-	ADDPD  X10, X4
+	MULPD  X10, X1
+	CVTPD2PL X1, X4
+	CVTPL2PD X4, X1
+
 	MOVAPD X1, X5
-	MULPD  X3, X5
-	MOVAPD X5, X6
-	DIVPD  X4, X6
-	MINPD  X13, X6
-	MAXPD  X14, X6
-	ADDPD  X13, X6
-	MULPD  X12, X6
-	MULPD  X0, X6
-	MOVUPD X6, (AX)
+	MULPD  X11, X5
+	SUBPD  X5, X0
+	MOVAPD X1, X5
+	MULPD  X12, X5
+	SUBPD  X5, X0
+
+	MOVSD  ·atC18(SB), X2
+	SHUFPD $0, X2, X2
+	MOVSD  ·atC17(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC16(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC15(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC14(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC13(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC12(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC11(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC10(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC9(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC8(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC7(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC6(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC5(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC4(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC3(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC2(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC1(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+	MOVSD  ·atC0(SB), X3
+	SHUFPD $0, X3, X3
+	MULPD  X0, X2
+	ADDPD  X3, X2
+
+	PADDD     X9, X4
+	MOVAPD    X8, X5
+	PUNPCKLLQ X5, X4
+	PSLLQ     $52, X4
+	MULPD     X4, X2
+
+	ADDPD  X15, X2
+	MOVAPD X15, X5
+	DIVPD  X2, X5
+	MULPD  X6, X5
+	MOVUPD X5, (AX)
+
 	ADDQ $16, AX
 	ADDQ $16, DI
-	SUBQ $2, SI
-	CMPQ SI, $2
-	JGE  loop
+	SUBQ $2, BX
+	CMPQ BX, $2
+	JGE  swish_sse2_loop
 
-done:
+swish_sse2_done:
 	RET

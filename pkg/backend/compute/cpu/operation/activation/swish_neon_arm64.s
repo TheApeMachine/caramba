@@ -1,94 +1,105 @@
 #include "textflag.h"
-
-DATA ·swishConst27+0(SB)/8, $27.0
-GLOBL ·swishConst27(SB), RODATA|NOPTR, $8
-DATA ·swishConst9+0(SB)/8, $9.0
-GLOBL ·swishConst9(SB), RODATA|NOPTR, $8
-DATA ·swishHalf+0(SB)/8, $0.5
-GLOBL ·swishHalf(SB), RODATA|NOPTR, $8
-DATA ·swishOne+0(SB)/8, $1.0
-GLOBL ·swishOne(SB), RODATA|NOPTR, $8
-DATA ·swishNegOne+0(SB)/8, $-1.0
-GLOBL ·swishNegOne(SB), RODATA|NOPTR, $8
+#include "neon_math_arm64.h"
 
 // swishNEON(dst, src []float64)
-// dst[i] = src[i] * sigmoid(src[i]) using the local fast sigmoid form:
-//   t = x / 2
-//   sigmoid(x) ≈ (1 + clamp(-1, 1, t * (27 + t*t) / (27 + 9*t*t))) / 2
-//
-// The constants 27 and 9 implement a bounded rational tanh-style
-// approximation; no external citation is assumed. The clamp instructions below
-// bound the rational result to [-1, 1]. The denominator 27 + 9*t*t is always at
-// least 27 for finite t, so the division has no zero or underflow denominator
-// in the supported finite input range. Tests cover max Swish error across
-// [-12, 12] against the exact x/(1+exp(-x)) definition.
+// Two-lane NEON swish(x) = x/(1+exp(-x)).
 TEXT ·swishNEON(SB), NOSPLIT, $0-48
 	MOVD dst+0(FP), R0
 	MOVD src_base+24(FP), R1
 	MOVD src_len+32(FP), R2
-	CBZ  R2, done
+	LSR  $1, R2, R2
+	CBZ  R2, swish_neon_done
 
-	FMOVD ·swishConst27(SB), F26
-	FMOVD ·swishConst9(SB), F27
-	FMOVD ·swishHalf(SB), F28
-	FMOVD ·swishOne(SB), F29
-	FMOVD ·swishNegOne(SB), F30
+	VLOADDUP(·atLog2E(SB), R9, V20)
+	VLOADDUP(·atLn2Hi(SB), R9, V21)
+	VLOADDUP(·atLn2Lo(SB), R9, V22)
+	VLOADDUP(·atMaxArg(SB), R9, V23)
+	VLOADDUP(·atMinArg(SB), R9, V24)
+	VLOADDUP(·atC0(SB), R9, V25)
+	MOVD $1023, R10
+	VDUP R10, V27.D2
+	VEOR V4.B16, V4.B16, V4.B16
 
-	LSR $1, R2, R3
-	CBZ R3, scalar_tail
+swish_neon_loop:
+	VLD1.P 16(R1), [V6.D2]
+	VFSUB_D2(6, 4, 0)
+	VFMINNM_D2(23, 0, 0)
+	VFMAXNM_D2(24, 0, 0)
 
-pair_loop:
-	FMOVD.P 8(R1), F0
-	FMOVD.P 8(R1), F10
+	VFMUL_D2(20, 0, 1)
+	VFRINTN_D2(1, 1)
+	VFMUL_D2(21, 1, 3)
+	VFSUB_D2(3, 0, 0)
+	VFMUL_D2(22, 1, 3)
+	VFSUB_D2(3, 0, 0)
 
-	FMULD F28, F0, F1
-	FMULD F1, F1, F2
-	FADDD F26, F2, F3
-	FMULD F27, F2, F4
-	FADDD F26, F4, F4
-	FMULD F1, F3, F5
-	FDIVD F4, F5, F6
-	FMIND F29, F6, F6
-	FMAXD F30, F6, F6
-	FADDD F29, F6, F6
-	FMULD F28, F6, F6
-	FMULD F0, F6, F6
+	VLOADDUP(·atC18(SB), R9, V2)
+	VLOADDUP(·atC17(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC16(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC15(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC14(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC13(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC12(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC11(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC10(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC9(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC8(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC7(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC6(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC5(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC4(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC3(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC2(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VLOADDUP(·atC1(SB), R9, V3)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(3, 2, 2)
+	VFMUL_D2(0, 2, 2)
+	VFADD_D2(25, 2, 2)
 
-	FMULD F28, F10, F11
-	FMULD F11, F11, F12
-	FADDD F26, F12, F13
-	FMULD F27, F12, F14
-	FADDD F26, F14, F14
-	FMULD F11, F13, F15
-	FDIVD F14, F15, F16
-	FMIND F29, F16, F16
-	FMAXD F30, F16, F16
-	FADDD F29, F16, F16
-	FMULD F28, F16, F16
-	FMULD F10, F16, F16
+	VFCVTZS_D2(1, 1)
+	VADD V27.D2, V1.D2, V1.D2
+	VSHL $52, V1.D2, V1.D2
+	VFMUL_D2(1, 2, 2)
 
-	FMOVD.P F6, 8(R0)
-	FMOVD.P F16, 8(R0)
-	SUBS $1, R3, R3
-	BNE  pair_loop
+	VFADD_D2(25, 2, 2)
+	VFDIV_D2(2, 25, 0)
+	VFMUL_D2(6, 0, 0)
+	VST1.P [V0.D2], 16(R0)
 
-	TBZ $0, R2, done
+	SUBS $1, R2, R2
+	BNE  swish_neon_loop
 
-scalar_tail:
-	FMOVD (R1), F0
-	FMULD F28, F0, F1
-	FMULD F1, F1, F2
-	FADDD F26, F2, F3
-	FMULD F27, F2, F4
-	FADDD F26, F4, F4
-	FMULD F1, F3, F5
-	FDIVD F4, F5, F6
-	FMIND F29, F6, F6
-	FMAXD F30, F6, F6
-	FADDD F29, F6, F6
-	FMULD F28, F6, F6
-	FMULD F0, F6, F6
-	FMOVD F6, (R0)
-
-done:
+swish_neon_done:
 	RET

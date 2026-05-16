@@ -101,6 +101,18 @@ func (tensorBackend *TensorBackend) Sigmoid(
 	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
 }
 
+func (tensorBackend *TensorBackend) Swish(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
+}
+
+func (tensorBackend *TensorBackend) SELU(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
+}
+
 func (tensorBackend *TensorBackend) SwiGLU(
 	input computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {

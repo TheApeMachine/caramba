@@ -8,10 +8,12 @@ import "C"
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"unsafe"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
+	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
 // MetalShapeOps dispatches shape manipulation kernels to the GPU via Metal.
@@ -126,6 +128,18 @@ func (m *MetalShapeOps) Forward(
 		}
 
 		return m.MergeHeads(data[0], shape[0], shape[1], shape[2], shape[3])
+	case "shape.last_token":
+		if len(data) != 1 {
+			return nil, fmt.Errorf("metal shape Forward last_token: requires one input buffer")
+		}
+
+		outer, sequenceLength, featureLength, err := lastTokenShapeParts(shape)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return m.LastToken(data[0], outer, sequenceLength, featureLength)
 	default:
 		return nil, fmt.Errorf("metal shape Forward: unsupported operation %q", request.Op)
 	}
@@ -282,6 +296,193 @@ func (m *MetalShapeOps) MergeHeads(input []float64, B, H, T, headDim int) ([]flo
 		return nil, fmt.Errorf("metal_merge_heads failed (rc=%d)", rc)
 	}
 	return toFloat64(dst32), nil
+}
+
+func (m *MetalShapeOps) LastToken(
+	input []float64,
+	outer int,
+	sequenceLength int,
+	featureLength int,
+) ([]float64, error) {
+	if outer <= 0 || sequenceLength <= 0 || featureLength <= 0 {
+		return nil, fmt.Errorf("metal_last_token: dimensions must be positive")
+	}
+
+	requiredInput := int64(outer) * int64(sequenceLength) * int64(featureLength)
+	outputLength := int64(outer) * int64(featureLength)
+
+	if requiredInput > int64(len(input)) {
+		return nil, fmt.Errorf(
+			"metal_last_token: input length %d < required length %d",
+			len(input),
+			requiredInput,
+		)
+	}
+
+	if outputLength > math.MaxInt32 {
+		return nil, fmt.Errorf("metal_last_token: output length %d exceeds int32", outputLength)
+	}
+
+	src32 := toFloat32(input[:int(requiredInput)])
+	dst32 := make([]float32, int(outputLength))
+	rc := C.metal_last_token(
+		(*C.float)(unsafe.Pointer(&src32[0])),
+		(*C.float)(unsafe.Pointer(&dst32[0])),
+		C.int(outer),
+		C.int(sequenceLength),
+		C.int(featureLength),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("metal_last_token failed (rc=%d)", rc)
+	}
+
+	return toFloat64(dst32), nil
+}
+
+func lastTokenShapeParts(shape []int) (int, int, int, error) {
+	if len(shape) < 2 {
+		return 0, 0, 0, fmt.Errorf("metal shape last_token: expected rank >= 2")
+	}
+
+	sequenceLength := shape[len(shape)-2]
+	featureLength := shape[len(shape)-1]
+
+	if sequenceLength <= 0 || featureLength <= 0 {
+		return 0, 0, 0, fmt.Errorf("metal shape last_token: trailing dimensions must be positive")
+	}
+
+	outer := 1
+
+	for _, dimension := range shape[:len(shape)-2] {
+		if dimension <= 0 {
+			return 0, 0, 0, fmt.Errorf("metal shape last_token: outer dimensions must be positive")
+		}
+
+		if outer > math.MaxInt/dimension {
+			return 0, 0, 0, fmt.Errorf("metal shape last_token: shape product overflows int")
+		}
+
+		outer *= dimension
+	}
+
+	return outer, sequenceLength, featureLength, nil
+}
+
+func (m *MetalShapeOps) ViewAsHeadsTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	B, T, H, headDim int,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if metalInput.Len() != B*T*H*headDim || outputShape.Len() != metalInput.Len() {
+		return nil, fmt.Errorf("metal shape: invalid view_as_heads tensor shape")
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_view_as_heads_tensor(
+		metalInput.buffer,
+		output.buffer,
+		C.int(B),
+		C.int(T),
+		C.int(H),
+		C.int(headDim),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_view_as_heads_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (m *MetalShapeOps) MergeHeadsTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	B, H, T, headDim int,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if metalInput.Len() != B*H*T*headDim || outputShape.Len() != metalInput.Len() {
+		return nil, fmt.Errorf("metal shape: invalid merge_heads tensor shape")
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_merge_heads_tensor(
+		metalInput.buffer,
+		output.buffer,
+		C.int(B),
+		C.int(H),
+		C.int(T),
+		C.int(headDim),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_merge_heads_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
+func (m *MetalShapeOps) LastTokenTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+	outer, sequenceLength, featureLength int,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if metalInput.Len() < outer*sequenceLength*featureLength ||
+		outputShape.Len() != outer*featureLength {
+		return nil, fmt.Errorf("metal shape: invalid last_token tensor shape")
+	}
+
+	output, err := newMetalTensor(outputShape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	rc := C.metal_last_token_tensor(
+		metalInput.buffer,
+		output.buffer,
+		C.int(outer),
+		C.int(sequenceLength),
+		C.int(featureLength),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_last_token_tensor failed (rc=%d)", rc)
+	}
+
+	return output, nil
 }
 
 func metalIntConfig(node executor.NodeSpec, key string, fallback int) int {

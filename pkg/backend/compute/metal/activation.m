@@ -17,6 +17,7 @@ static id<MTLComputePipelineState> gPSO_gelu    = nil;
 static id<MTLComputePipelineState> gPSO_tanh    = nil;
 static id<MTLComputePipelineState> gPSO_sigmoid = nil;
 static id<MTLComputePipelineState> gPSO_swish   = nil;
+static id<MTLComputePipelineState> gPSO_selu    = nil;
 static id<MTLComputePipelineState> gPSO_swiglu  = nil;
 
 // ---------------------------------------------------------------------------
@@ -48,11 +49,11 @@ int metal_init(const char* metallib_path) {
         gPSO_tanh    = make_pso(lib, @"tanh_forward");
         gPSO_sigmoid = make_pso(lib, @"sigmoid_forward");
         gPSO_swish   = make_pso(lib, @"swish_forward");
+        gPSO_selu    = make_pso(lib, @"selu_forward");
         gPSO_swiglu  = make_pso(lib, @"swiglu_forward");
 
-        if (!gPSO_relu || !gPSO_leaky || !gPSO_gelu ||
-            !gPSO_tanh || !gPSO_sigmoid || !gPSO_swish ||
-            !gPSO_swiglu) return -1;
+        if (!gPSO_relu || !gPSO_leaky || !gPSO_gelu || !gPSO_tanh ||
+            !gPSO_sigmoid || !gPSO_swish || !gPSO_selu || !gPSO_swiglu) return -1;
 
         return 0;
     }
@@ -241,6 +242,10 @@ int metal_swish(const float* src, float* dst, int n) {
     return dispatch_2buf(gPSO_swish, src, n, dst, n, NULL, 0, n);
 }
 
+int metal_selu(const float* src, float* dst, int n) {
+    return dispatch_2buf(gPSO_selu, src, n, dst, n, NULL, 0, n);
+}
+
 int metal_swiglu(const float* src, float* dst, int n) {
     unsigned int un = (unsigned int)n;
     // src has 2*n elements (gates then values); dst has n elements.
@@ -317,6 +322,18 @@ int metal_swish_tensor(const void* src, void* dst, int n) {
     NSUInteger minB = (NSUInteger)n * sizeof(float);
 
     return dispatch_tensor_2buf(gPSO_swish, (void*)src, dst, NULL, 0, n, minB, minB);
+}
+
+int metal_selu_tensor(const void* src, void* dst, int n) {
+    if (n < 0) return -1;
+
+    if (n == 0) return 0;
+
+    if ((NSUInteger)n > ULONG_MAX / sizeof(float)) return -1;
+
+    NSUInteger minB = (NSUInteger)n * sizeof(float);
+
+    return dispatch_tensor_2buf(gPSO_selu, (void*)src, dst, NULL, 0, n, minB, minB);
 }
 
 int metal_swiglu_tensor(const void* src, void* dst, int n) {

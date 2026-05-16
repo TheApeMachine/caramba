@@ -26,13 +26,9 @@ NewCausalOps initialises the PJRT client for causal operations on the given plat
 Platform is validated via PJRTConfig (cpu, gpu, cuda).
 */
 func NewCausalOps(platform string) (*XLACausalOps, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
-		return nil, err
-	}
-
-	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 

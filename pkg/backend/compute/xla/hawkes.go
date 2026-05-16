@@ -19,13 +19,9 @@ XLAHawkes dispatches Hawkes process operations to XLA via PJRT.
 type XLAHawkes struct{}
 
 func NewHawkes(platform string) (*XLAHawkes, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
-		return nil, err
-	}
-
-	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 

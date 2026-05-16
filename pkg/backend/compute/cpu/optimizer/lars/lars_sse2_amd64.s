@@ -1,0 +1,323 @@
+#include "textflag.h"
+
+
+TEXT ·larsStepSSE2(SB), NOSPLIT, $0-120
+	MOVQ out+0(FP), AX
+	MOVQ velocity+24(FP), R8
+	MOVQ params+48(FP), R9
+	MOVQ grads+72(FP), R10
+	MOVQ out_len+8(FP), CX
+	MOVSD localLR+96(FP), X8
+	SHUFPD $0, X8, X8
+	MOVSD momentum+104(FP), X9
+	SHUFPD $0, X9, X9
+	MOVSD wd+112(FP), X10
+	SHUFPD $0, X10, X10
+
+	CMPQ CX, $2
+	JL lars_sse2_tail
+lars_sse2_loop:
+	MOVUPD (R8), X0
+	MOVUPD (R9), X1
+	MOVUPD (R10), X2
+
+	MOVAPD X2, X3
+	MOVAPD X1, X11
+	MULPD X10, X11
+	ADDPD X11, X3
+
+	MULPD X9, X0
+	MOVAPD X3, X11
+	MULPD X8, X11
+	ADDPD X11, X0
+	MOVUPD X0, (R8)
+
+	SUBPD X0, X1
+	MOVUPD X1, (AX)
+
+	ADDQ $16, AX
+	ADDQ $16, R8
+	ADDQ $16, R9
+	ADDQ $16, R10
+	SUBQ $2, CX
+	CMPQ CX, $2
+	JGE lars_sse2_loop
+
+lars_sse2_tail:
+	CMPQ CX, $0
+	JLE lars_sse2_done
+	MOVSD (R8), X0
+	MOVSD (R9), X1
+	MOVSD (R10), X2
+
+	MOVAPD X2, X3
+	MOVAPD X1, X11
+	MULSD X10, X11
+	ADDSD X11, X3
+
+	MULSD X9, X0
+	MOVAPD X3, X11
+	MULSD X8, X11
+	ADDSD X11, X0
+	MOVSD X0, (R8)
+
+	SUBSD X0, X1
+	MOVSD X1, (AX)
+
+lars_sse2_done:
+	RET
+
+
+TEXT ·lambStepSSE2(SB), NOSPLIT, $0-160
+	MOVQ out+0(FP), AX
+	MOVQ m+24(FP), R8
+	MOVQ v+48(FP), R11
+	MOVQ params+72(FP), R9
+	MOVQ grads+96(FP), R10
+	MOVQ out_len+8(FP), CX
+
+	MOVSD ratio+120(FP), X8
+	SHUFPD $0, X8, X8
+	MOVSD bc1Inv+128(FP), X9
+	SHUFPD $0, X9, X9
+	MOVSD bc2Inv+136(FP), X10
+	SHUFPD $0, X10, X10
+	MOVSD eps+144(FP), X11
+	SHUFPD $0, X11, X11
+	MOVSD wd+152(FP), X12
+	SHUFPD $0, X12, X12
+
+	CMPQ CX, $2
+	JL lamb_sse2_tail
+lamb_sse2_loop:
+	MOVUPD (R8), X0
+	MOVUPD (R11), X1
+	MOVUPD (R9), X2
+
+	MOVAPD X0, X3
+	MULPD X9, X3
+	MOVAPD X1, X4
+	MULPD X10, X4
+
+	MOVAPD X4, X5
+	SQRTPD X5, X5
+	ADDPD X11, X5
+	MOVAPD X3, X6
+	DIVPD X5, X6
+
+	MOVAPD X2, X13
+	MULPD X12, X13
+	ADDPD X13, X6
+
+	MOVAPD X2, X7
+	MOVAPD X6, X13
+	MULPD X8, X13
+	SUBPD X13, X7
+	MOVUPD X7, (AX)
+
+	ADDQ $16, AX
+	ADDQ $16, R8
+	ADDQ $16, R11
+	ADDQ $16, R9
+	ADDQ $16, R10
+	SUBQ $2, CX
+	CMPQ CX, $2
+	JGE lamb_sse2_loop
+
+lamb_sse2_tail:
+	CMPQ CX, $0
+	JLE lamb_sse2_done
+	MOVSD (R8), X0
+	MOVSD (R11), X1
+	MOVSD (R9), X2
+
+	MOVAPD X0, X3
+	MULSD X9, X3
+	MOVAPD X1, X4
+	MULSD X10, X4
+
+	MOVAPD X4, X5
+	SQRTSD X5, X5
+	ADDSD X11, X5
+	MOVAPD X3, X6
+	DIVSD X5, X6
+
+	MOVAPD X2, X13
+	MULSD X12, X13
+	ADDSD X13, X6
+
+	MOVAPD X2, X7
+	MOVAPD X6, X13
+	MULSD X8, X13
+	SUBSD X13, X7
+	MOVSD X7, (AX)
+
+lamb_sse2_done:
+	RET
+
+
+TEXT ·lambEMASSE2(SB), NOSPLIT, $0-104
+	MOVQ m+0(FP), R8
+	MOVQ v+24(FP), R11
+	MOVQ grads+48(FP), R10
+	MOVQ m_len+8(FP), CX
+
+	MOVSD beta1+72(FP), X8
+	SHUFPD $0, X8, X8
+	MOVSD oneMinusBeta1+80(FP), X9
+	SHUFPD $0, X9, X9
+	MOVSD beta2+88(FP), X10
+	SHUFPD $0, X10, X10
+	MOVSD oneMinusBeta2+96(FP), X11
+	SHUFPD $0, X11, X11
+
+	CMPQ CX, $2
+	JL lema_sse2_tail
+lema_sse2_loop:
+	MOVUPD (R8), X0
+	MOVUPD (R11), X1
+	MOVUPD (R10), X2
+
+	MOVAPD X2, X3
+	MULPD X3, X3
+	MULPD X8, X0
+	MOVAPD X2, X4
+	MULPD X9, X4
+	ADDPD X4, X0
+	MOVUPD X0, (R8)
+	MULPD X10, X1
+	MOVAPD X3, X4
+	MULPD X11, X4
+	ADDPD X4, X1
+	MOVUPD X1, (R11)
+
+	ADDQ $16, R8
+	ADDQ $16, R11
+	ADDQ $16, R10
+	SUBQ $2, CX
+	CMPQ CX, $2
+	JGE lema_sse2_loop
+
+lema_sse2_tail:
+	CMPQ CX, $0
+	JLE lema_sse2_done
+	MOVSD (R8), X0
+	MOVSD (R11), X1
+	MOVSD (R10), X2
+
+	MOVAPD X2, X3
+	MULSD X3, X3
+	MULSD X8, X0
+	MOVAPD X2, X4
+	MULSD X9, X4
+	ADDSD X4, X0
+	MOVSD X0, (R8)
+	MULSD X10, X1
+	MOVAPD X3, X4
+	MULSD X11, X4
+	ADDSD X4, X1
+	MOVSD X1, (R11)
+
+lema_sse2_done:
+	RET
+
+
+TEXT ·lambL2NormSqSSE2(SB), NOSPLIT, $0-32
+	MOVQ a+0(FP), AX
+	MOVQ a_len+8(FP), CX
+	XORPD X0, X0
+	CMPQ CX, $2
+	JL ll2_sse2_tail
+ll2_sse2_loop:
+	MOVUPD (AX), X1
+	MULPD X1, X1
+	ADDPD X1, X0
+	ADDQ $16, AX
+	SUBQ $2, CX
+	CMPQ CX, $2
+	JGE ll2_sse2_loop
+	HADDPD X0, X0
+ll2_sse2_tail:
+	CMPQ CX, $0
+	JLE ll2_sse2_done
+	MOVSD (AX), X1
+	MULSD X1, X1
+	ADDSD X1, X0
+ll2_sse2_done:
+	MOVSD X0, ret+24(FP)
+	RET
+
+
+TEXT ·lambUpdateNormSqSSE2(SB), NOSPLIT, $0-112
+	MOVQ m+0(FP), R8
+	MOVQ v+24(FP), R11
+	MOVQ params+48(FP), R9
+	MOVQ m_len+8(FP), CX
+
+	MOVSD bc1Inv+72(FP), X9
+	SHUFPD $0, X9, X9
+	MOVSD bc2Inv+80(FP), X10
+	SHUFPD $0, X10, X10
+	MOVSD eps+88(FP), X11
+	SHUFPD $0, X11, X11
+	MOVSD wd+96(FP), X12
+	SHUFPD $0, X12, X12
+	XORPD X15, X15
+
+	CMPQ CX, $2
+	JL luns_sse2_tail
+luns_sse2_loop:
+	MOVUPD (R8), X0
+	MOVUPD (R11), X1
+	MOVUPD (R9), X2
+
+	MOVAPD X0, X3
+	MULPD X9, X3
+	MOVAPD X1, X4
+	MULPD X10, X4
+	MOVAPD X4, X5
+	SQRTPD X5, X5
+	ADDPD X11, X5
+	MOVAPD X3, X6
+	DIVPD X5, X6
+	MOVAPD X2, X13
+	MULPD X12, X13
+	ADDPD X13, X6
+	MOVAPD X6, X14
+	MULPD X14, X14
+	ADDPD X14, X15
+
+	ADDQ $16, R8
+	ADDQ $16, R11
+	ADDQ $16, R9
+	SUBQ $2, CX
+	CMPQ CX, $2
+	JGE luns_sse2_loop
+	HADDPD X15, X15
+
+luns_sse2_tail:
+	CMPQ CX, $0
+	JLE luns_sse2_done
+	MOVSD (R8), X0
+	MOVSD (R11), X1
+	MOVSD (R9), X2
+
+	MOVAPD X0, X3
+	MULSD X9, X3
+	MOVAPD X1, X4
+	MULSD X10, X4
+	MOVAPD X4, X5
+	SQRTSD X5, X5
+	ADDSD X11, X5
+	MOVAPD X3, X6
+	DIVSD X5, X6
+	MOVAPD X2, X13
+	MULSD X12, X13
+	ADDSD X13, X6
+	MOVAPD X6, X14
+	MULSD X14, X14
+	ADDSD X14, X15
+
+luns_sse2_done:
+	MOVSD X15, ret+104(FP)
+	RET

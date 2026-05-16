@@ -153,19 +153,40 @@ model interaction:
 ```bash
 caramba chat
 caramba chat --model openai-community/gpt2
+caramba chat --runtime preview --model openai-community/gpt2
+caramba chat --backend metal --model openai-community/gpt2
 caramba chat --prompt "Explain attention in one sentence."
+caramba chat --model openai-community/gpt2 --repetition-penalty 1.15
+caramba chat --model openai-community/gpt2 --temperature 0.8 --top-k 50 --top-p 0.95
 ```
 
-Until the CausalLM runner is connected, `chat` defaults to the explicit preview
-runtime. Preview mode can load the model tokenizer through the Hub cache and
-streams a deterministic response through the same generator boundary the model
-runtime will use.
+When `--model` or `--manifest` is provided, `chat` compiles the YAML model
+manifest through `pkg/manifest.Compiler`, lowers it through `pkg/manifest` into
+the compute IR, and executes through `pkg/backend/compute.Backend`. The first
+model manifest is `model/llm/gpt2.yml`, which declares architecture topology
+only. Hub files and serialized tensor formats are resolved outside the
+architecture spec and bind into matching manifest nodes by structure. The first
+weight binder reads SafeTensors checkpoints, including sharded
+`model.safetensors.index.json` layouts, and attaches `weight`/`bias` state to
+the lowered IR before backend execution. The model runtime uses causal
+attention, projects decode-time logits from the final token position, and
+streams token selection through configurable repetition penalty, temperature,
+top-k, top-p, seed, stop-token, and special-token stopping controls. Causal
+attention nodes receive a per-generation KV cache: the prompt is prefetched
+once, then each decode step executes a single-token graph with absolute position
+IDs and cached keys/values. Metal keeps that cache in resident GPU buffers,
+preallocates the generation token budget, and writes decode chunks in place
+without copying K/V through host memory. Use `--runtime preview` when you only
+want to exercise Hub/tokenizer loading without compiling a model manifest. Use
+`--backend metal` on macOS to run the manifest executor through Metal kernels;
+the CLI default `--backend auto` selects Metal on Darwin, CUDA on Linux, and CPU
+elsewhere without silently falling back after a backend is selected.
 
 ---
 
 ## Compute Backends
 
-The compute layer is organized around explicit tensor ownership and a typed, hardware-agnostic IR. Backend kernels upload values once into a resident tensor store and only download at real boundaries. The IR graph now travels through a compiler pipeline with verification, canonicalization, semantic CSE, algebraic simplification, legality-aware fusion, side-effect-aware DCE, memory planning, cost scheduling, and backend lowering before dispatch.
+The compute layer is organized around explicit tensor ownership and a typed, hardware-agnostic IR. Backend kernels upload values once into a resident tensor store and only download at real boundaries. The executor releases owned dependencies after their final graph consumer, and the host arena reuses released spans instead of silently falling back to heap allocation. The IR graph now travels through a compiler pipeline with verification, canonicalization, semantic CSE, algebraic simplification, legality-aware fusion, side-effect-aware DCE, memory planning, cost scheduling, and backend lowering before dispatch.
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -198,7 +219,13 @@ type Runner interface {
 }
 ```
 
-The optimizer does not silently invent fused nodes. Backend capability contracts declare supported operations, legal fusion patterns, and shape-aware costs. CPU declares broad host operation support; CUDA and XLA only declare implemented tensor kernels; Metal declares its native operation families explicitly.
+The optimizer does not silently invent fused nodes. Backend capability contracts declare supported operations, legal fusion patterns, and shape-aware costs. Required operation IDs flow through an explicit dispatch contract: each backend either routes to its native `state.Operation` registry or to a resident tensor kernel for that operation, with no wildcard capability declaration.
+
+CPU SIMD symbols are real architecture implementations, not scalar branch
+aliases. Activation kernels currently include AVX2, SSE2, and arm64 NEON
+assembly paths with scalar tails named by architecture rather than by a vector
+ISA they do not use, and the CPU test suite rejects SIMD files that only branch
+to scalar symbols.
 
 ### Building Backends
 
@@ -223,7 +250,7 @@ go test -tags "cgo xla" ./pkg/backend/compute/xla/...
 
 Metal uses `//go:build darwin && cgo`—there is no separate `metal` tag; Darwin + CGO selects the Metal implementation automatically.
 
-For XLA, PJRT include/plugin paths are loaded from `compute.xla` in `cmd/asset/config.yml`; direct environment-variable shadow config is intentionally not used.
+For XLA, PJRT include/plugin paths are loaded from `compute.xla` in `cmd/asset/config.yml`; the Go runtime resolves and passes the exact plugin file into the PJRT C layer, and direct environment-variable shadow config is intentionally not used.
 
 → [Deep dive: Compute Backends](./docs/compute.md)
 

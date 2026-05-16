@@ -18,5 +18,11 @@ func SwishKernel(dst, src []float64) {
 		panic(fmt.Sprintf("SwishKernel: dst shorter than src (dst=%d src=%d)", len(dst), len(src)))
 	}
 
-	swishNEON(dst[:len(src)], src)
+	limit := len(src) / 2 * 2
+
+	if limit > 0 {
+		swishNEON(dst[:limit], src[:limit])
+	}
+
+	scalarSwish(dst[limit:len(src)], src[limit:])
 }

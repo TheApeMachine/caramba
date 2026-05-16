@@ -92,7 +92,8 @@ func (c *CUDAActivation) LeakyReLU(input []float64, alpha float64) ([]float64, e
 	return dst, nil
 }
 
-// GELU computes the exact Gaussian Error Linear Unit: 0.5*x*(1+erf(x/sqrt(2))).
+// GELU computes the manifest GELU contract:
+// 0.5*x*(1+tanh(sqrt(2/pi)*(x+0.044715*x^3))).
 func (c *CUDAActivation) GELU(input []float64) ([]float64, error) {
 	n := len(input)
 	if n == 0 {
@@ -160,6 +161,24 @@ func (c *CUDAActivation) Swish(input []float64) ([]float64, error) {
 	)
 	if rc != 0 {
 		return nil, fmt.Errorf("cuda_swish failed (rc=%d)", rc)
+	}
+	return dst, nil
+}
+
+// SELU computes the self-normalizing scaled ELU element-wise.
+func (c *CUDAActivation) SELU(input []float64) ([]float64, error) {
+	n := len(input)
+	if n == 0 {
+		return []float64{}, nil
+	}
+	dst := make([]float64, n)
+	rc := C.cuda_selu(
+		(*C.double)(unsafe.Pointer(&input[0])),
+		(*C.double)(unsafe.Pointer(&dst[0])),
+		C.int(n),
+	)
+	if rc != 0 {
+		return nil, fmt.Errorf("cuda_selu failed (rc=%d)", rc)
 	}
 	return dst, nil
 }

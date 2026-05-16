@@ -26,3 +26,7 @@ func (m *MetalShapeOps) ViewAsHeads(input []float64, B, T, H, headDim int) ([]fl
 func (m *MetalShapeOps) MergeHeads(input []float64, B, H, T, headDim int) ([]float64, error) {
 	return nil, metalUnavailable()
 }
+
+func (m *MetalShapeOps) LastToken(input []float64, outer, sequenceLength, featureLength int) ([]float64, error) {
+	return nil, metalUnavailable()
+}

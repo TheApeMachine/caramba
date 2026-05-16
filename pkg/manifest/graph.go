@@ -3,6 +3,7 @@ package manifest
 import (
 	"fmt"
 	"maps"
+	"sort"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
@@ -88,6 +89,18 @@ func (graph *Graph) Edges() []*Edge {
 	copy(edges, graph.edges)
 
 	return edges
+}
+
+func (graph *Graph) ExternalInputs() []string {
+	inputs := make([]string, 0, len(graph.externalInputs))
+
+	for input := range graph.externalInputs {
+		inputs = append(inputs, input)
+	}
+
+	sort.Strings(inputs)
+
+	return inputs
 }
 
 /*

@@ -26,13 +26,9 @@ func finalizeXLAMarkovBlanket(op *XLAMarkovBlanket) {
 }
 
 func NewMarkovBlanket(platform string) (*XLAMarkovBlanket, error) {
-	config, err := NewPJRTConfig(platform)
+	config, err := newRuntimePJRTConfig(platform)
 
 	if err != nil {
-		return nil, err
-	}
-
-	if err := config.ValidateRuntime(); err != nil {
 		return nil, err
 	}
 
