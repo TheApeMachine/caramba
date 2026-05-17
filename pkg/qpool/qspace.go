@@ -2,99 +2,67 @@ package qpool
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 /*
-QSpace stores job results, waits, broadcast groups, and dependency edges behind a single actor goroutine.
+QSpace stores job results, waits, broadcast groups, and dependency edges.
 */
 type QSpace struct {
-	ops      chan func(*spaceState)
-	shutdown chan struct{}
-	done     chan struct{}
-	stopped  atomic.Bool
-}
+	valuesMu sync.RWMutex
+	values   map[string]*QValue
+	waiting  map[string][]chan *QValue
 
-type spaceState struct {
-	values          map[string]*QValue
-	waiting         map[string][]chan *QValue
-	groups          map[string]*BroadcastGroup
-	children        map[string]map[string]struct{}
-	parents         map[string]map[string]struct{}
+	groupsMu sync.RWMutex
+	groups   map[string]*BroadcastGroup
+
+	graphMu sync.RWMutex
+	children map[string]map[string]struct{}
+	parents  map[string]map[string]struct{}
+
 	cleanupInterval time.Duration
+	shutdown        chan struct{}
+	done            chan struct{}
+	stopped         atomic.Bool
 }
 
 /*
-NewQSpace starts the actor loop with periodic expiration passes.
+NewQSpace starts the expiration loop.
 */
 func NewQSpace() *QSpace {
-	qs := &QSpace{
-		ops:      make(chan func(*spaceState), 4096),
-		shutdown: make(chan struct{}),
-		done:     make(chan struct{}),
-	}
-
-	go qs.loop()
-
-	return qs
-}
-
-/*
-submit enqueues fn on the actor or returns false once the space is torn
-down so callers do not block indefinitely after Close.
-*/
-func (qs *QSpace) submit(fn func(*spaceState)) bool {
-	if qs.stopped.Load() {
-		return false
-	}
-
-	select {
-	case <-qs.done:
-		return false
-	case qs.ops <- fn:
-		return true
-	}
-}
-
-func (qs *QSpace) loop() {
-	defer close(qs.done)
-
-	st := &spaceState{
+	qspace := &QSpace{
 		values:          make(map[string]*QValue),
 		waiting:         make(map[string][]chan *QValue),
 		groups:          make(map[string]*BroadcastGroup),
 		children:        make(map[string]map[string]struct{}),
 		parents:         make(map[string]map[string]struct{}),
 		cleanupInterval: time.Minute,
+		shutdown:        make(chan struct{}),
+		done:            make(chan struct{}),
 	}
 
-	ticker := time.NewTicker(st.cleanupInterval)
+	go qspace.loop()
+
+	return qspace
+}
+
+func (qs *QSpace) loop() {
+	defer close(qs.done)
+
+	ticker := time.NewTicker(qs.cleanupInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case fn := <-qs.ops:
-			if fn != nil {
-				fn(st)
-			}
-
 		case <-ticker.C:
-			qspaceCleanup(st)
+			qs.cleanup(time.Now())
 
 		case <-qs.shutdown:
-			for {
-				select {
-				case fn := <-qs.ops:
-					if fn != nil {
-						fn(st)
-					}
-				default:
-					qspaceShutdown(st)
+			qs.shutdownState()
 
-					return
-				}
-			}
+			return
 		}
 	}
 }
@@ -103,154 +71,121 @@ func (qs *QSpace) loop() {
 Store persists a completed value and fulfills waiters.
 */
 func (qs *QSpace) Store(id string, value interface{}, ttl time.Duration) {
-	if !qs.submit(func(st *spaceState) {
-		qv := NewQValue(value)
-		qv.TTL = ttl
-		st.values[id] = qv
-
-		if channels, ok := st.waiting[id]; ok {
-			for _, ch := range append([]chan *QValue(nil), channels...) {
-				select {
-				case ch <- qv:
-				default:
-				}
-			}
-
-			delete(st.waiting, id)
-		}
-	}) {
+	if qs.stopped.Load() {
 		return
 	}
+
+	qvalue := NewQValue(value)
+	qvalue.TTL = ttl
+
+	qs.valuesMu.Lock()
+	defer qs.valuesMu.Unlock()
+
+	if qs.stopped.Load() {
+		return
+	}
+
+	qs.values[id] = qvalue
+	waiters := qs.waiting[id]
+	delete(qs.waiting, id)
+
+	qspaceDeliverWaiters(waiters, qvalue)
 }
 
 /*
 Await returns a channel that receives exactly one *QValue for id.
 */
 func (qs *QSpace) Await(id string) chan *QValue {
-	replySync := make(chan chan *QValue, 1)
-
-	closedRecv := func() chan *QValue {
-		ch := make(chan *QValue, 1)
-
-		close(ch)
-
-		return ch
+	if qs.stopped.Load() {
+		return closedQValueChannel()
 	}
 
-	work := func(st *spaceState) {
-		out := make(chan *QValue, 1)
+	resultChannel := make(chan *QValue, 1)
 
-		if qv, ok := st.values[id]; ok {
-			out <- qv
-			close(out)
-			replySync <- out
+	qs.valuesMu.Lock()
+	defer qs.valuesMu.Unlock()
 
-			return
-		}
+	if qs.stopped.Load() {
+		close(resultChannel)
 
-		st.waiting[id] = append(st.waiting[id], out)
-		replySync <- out
+		return resultChannel
 	}
 
-	if !qs.submit(work) {
-		return closedRecv()
+	if qvalue, ok := qs.values[id]; ok {
+		resultChannel <- qvalue
+		close(resultChannel)
+
+		return resultChannel
 	}
 
-	select {
-	case <-qs.done:
-		return closedRecv()
-	case out := <-replySync:
-		return out
-	}
+	qs.waiting[id] = append(qs.waiting[id], resultChannel)
+
+	return resultChannel
 }
 
 /*
-PeekResult returns (nil, false) when id has no stored completion, when the entry was removed by TTL-based cleanup in the actor loop (see qspaceCleanup and QValue.TTL), or when the space is stopped and the operation cannot complete.
+PeekResult returns (nil, false) when id has no stored completion, when the entry was removed by TTL cleanup, or when the space is stopped.
 
-When ok is true, it returns a shallow copy of the map's QValue: the QValue struct itself is copied onto a new heap pointer, which is race-free with respect to mutations to the internal map entry concurrent with Store — but fields such as QValue.Value (interface{}) and QValue.Error may still reference shared underlying objects. Callers must treat the returned QValue as read-only, or deep-copy before mutating those fields. Mutating nested state concurrently with Store or with other readers is unsafe.
-
-Concurrent calls to PeekResult alongside Store are safe for map lookup and for receiving this copied QValue shell; they do not serialize access to reference-type data inside QValue. Dependent jobs typically call PeekResult inside the job Fn after WithDependencies has synchronized execution with producers that already called Store on the dependency ids.
+When ok is true, it returns a shallow copy of the stored QValue. Fields such as QValue.Value and QValue.Error may still reference shared underlying objects, so callers must treat the returned value as read-only.
 */
 func (qs *QSpace) PeekResult(id string) (*QValue, bool) {
-	type peekReply struct {
-		qv *QValue
-		ok bool
-	}
+	qs.valuesMu.RLock()
+	defer qs.valuesMu.RUnlock()
 
-	reply := make(chan peekReply, 1)
-
-	if !qs.submit(func(st *spaceState) {
-		v, ok := st.values[id]
-
-		if !ok {
-			reply <- peekReply{nil, false}
-
-			return
-		}
-
-		cp := *v
-
-		reply <- peekReply{&cp, true}
-	}) {
+	if qs.stopped.Load() {
 		return nil, false
 	}
 
-	select {
-	case <-qs.done:
+	value, ok := qs.values[id]
+	if !ok {
 		return nil, false
-	case r := <-reply:
-		return r.qv, r.ok
 	}
+
+	copied := *value
+
+	return &copied, true
 }
 
 /*
 Exists reports whether id currently has a stored value.
 */
 func (qs *QSpace) Exists(id string) bool {
+	qs.valuesMu.RLock()
+	defer qs.valuesMu.RUnlock()
+
 	if qs.stopped.Load() {
 		return false
 	}
 
-	reply := make(chan bool, 1)
+	_, ok := qs.values[id]
 
-	if !qs.submit(func(st *spaceState) {
-		_, ok := st.values[id]
-		reply <- ok
-	}) {
-		return false
-	}
-
-	select {
-	case <-qs.done:
-		return false
-	case v := <-reply:
-		return v
-	}
+	return ok
 }
 
 /*
 StoreError stores a terminal error result for id.
 */
 func (qs *QSpace) StoreError(id string, err error, ttl time.Duration) {
-	if !qs.submit(func(st *spaceState) {
-		qv := NewQValue(nil)
-		qv.Error = err
-		qv.TTL = ttl
-		st.values[id] = qv
-
-		if channels, ok := st.waiting[id]; ok {
-			for _, ch := range append([]chan *QValue(nil), channels...) {
-				select {
-				case ch <- qv:
-				default:
-				}
-			}
-
-			delete(st.waiting, id)
-		}
-	}) {
+	if qs.stopped.Load() {
 		return
 	}
+
+	qvalue := NewQValue(nil)
+	qvalue.Error = err
+	qvalue.TTL = ttl
+
+	qs.valuesMu.Lock()
+	defer qs.valuesMu.Unlock()
+
+	if qs.stopped.Load() {
+		return
+	}
+
+	qs.values[id] = qvalue
+	waiters := qs.waiting[id]
+	delete(qs.waiting, id)
+
+	qspaceDeliverWaiters(waiters, qvalue)
 }
 
 /*
@@ -261,86 +196,64 @@ func (qs *QSpace) AddRelationship(parentID, childID string) error {
 		return fmt.Errorf("qpool: space closed")
 	}
 
-	reply := make(chan error, 1)
+	qs.graphMu.Lock()
+	defer qs.graphMu.Unlock()
 
-	if !qs.submit(func(st *spaceState) {
-		if qspaceWouldCreateCircle(st, parentID, childID) {
-			reply <- fmt.Errorf("qpool: circular dependency detected")
-
-			return
-		}
-
-		qspaceAddEdge(st, parentID, childID)
-		reply <- nil
-	}) {
+	if qs.stopped.Load() {
 		return fmt.Errorf("qpool: space closed")
 	}
 
-	select {
-	case <-qs.done:
-		return fmt.Errorf("qpool: space closed")
-	case err := <-reply:
-		return err
+	if qspaceWouldCreateCircle(qs.parents, parentID, childID) {
+		return fmt.Errorf("qpool: circular dependency detected")
 	}
+
+	qspaceAddEdge(qs.children, qs.parents, parentID, childID)
+
+	return nil
 }
 
 /*
 RegisterDependent records that jobID waits on depID when dependency polling fails.
-
-This mirrors prior bookkeeping used for relational jobs without exposing mutexes.
 */
 func (qs *QSpace) RegisterDependent(depID, jobID string) {
-	_ = qs.submit(func(st *spaceState) {
-		qspaceAddEdge(st, depID, jobID)
-	})
+	if qs.stopped.Load() {
+		return
+	}
+
+	qs.graphMu.Lock()
+	defer qs.graphMu.Unlock()
+
+	if qs.stopped.Load() {
+		return
+	}
+
+	qspaceAddEdge(qs.children, qs.parents, depID, jobID)
 }
 
 /*
 CreateBroadcastGroup registers a pub/sub group owned by this space.
 */
 func (qs *QSpace) CreateBroadcastGroup(id string, ttl time.Duration) *BroadcastGroup {
+	group := NewBroadcastGroup(id, ttl, 100)
+
 	if qs.stopped.Load() {
-		bg := NewBroadcastGroup(id, ttl, 1)
+		group.Close()
 
-		bg.Close()
-
-		return bg
+		return group
 	}
 
-	reply := make(chan *BroadcastGroup, 1)
+	qs.groupsMu.Lock()
+	defer qs.groupsMu.Unlock()
 
-	if !qs.submit(func(st *spaceState) {
-		if qs.stopped.Load() {
-			bg := NewBroadcastGroup(id, ttl, 1)
+	if qs.stopped.Load() {
+		group.Close()
 
-			bg.Close()
-
-			reply <- bg
-
-			return
-		}
-
-		group := NewBroadcastGroup(id, ttl, 100)
-		st.groups[id] = group
-		reply <- group
-	}) {
-		bg := NewBroadcastGroup(id, ttl, 1)
-
-		bg.Close()
-
-		return bg
+		return group
 	}
 
-	select {
-	case <-qs.done:
-		bg := NewBroadcastGroup(id, ttl, 1)
+	qs.groups[id] = group
 
-		bg.Close()
-
-		return bg
-	case g := <-reply:
-		return g
-	}
+	return group
 }
 
 /*
@@ -348,55 +261,23 @@ Subscribe attaches to a broadcast group by id.
 */
 func (qs *QSpace) Subscribe(groupID string) chan *QValue {
 	if qs.stopped.Load() {
-		ch := make(chan *QValue)
-
-		close(ch)
-
-		return ch
+		return closedQValueChannel()
 	}
 
-	reply := make(chan chan *QValue, 1)
+	qs.groupsMu.RLock()
+	group := qs.groups[groupID]
+	qs.groupsMu.RUnlock()
 
-	if !qs.submit(func(st *spaceState) {
-		if qs.stopped.Load() {
-			ch := make(chan *QValue)
-
-			close(ch)
-
-			reply <- ch
-
-			return
-		}
-
-		if group, ok := st.groups[groupID]; ok {
-			reply <- group.Subscribe("", 10)
-
-			return
-		}
-
-		dummy := make(chan *QValue)
-
-		close(dummy)
-
-		reply <- dummy
-	}) {
-		ch := make(chan *QValue)
-
-		close(ch)
-
-		return ch
+	if group == nil {
+		return closedQValueChannel()
 	}
 
-	select {
-	case <-qs.done:
-		ch := make(chan *QValue)
-
-		close(ch)
-
-		return ch
-	case ch := <-reply:
-		return ch
+	resultChannel := group.Subscribe("", 10)
+	if resultChannel == nil {
+		return closedQValueChannel()
 	}
+
+	return resultChannel
 }
 
 /*
@@ -411,37 +292,57 @@ func (qs *QSpace) Close() {
 	<-qs.done
 }
 
-func qspaceAddEdge(st *spaceState, parentID, childID string) {
-	if st.children[parentID] == nil {
-		st.children[parentID] = make(map[string]struct{})
+func (qs *QSpace) cleanup(now time.Time) {
+	expiredValues := qs.cleanupValues(now)
+	qs.cleanupBroadcastGroups(now)
+
+	if len(expiredValues) == 0 {
+		return
 	}
 
-	st.children[parentID][childID] = struct{}{}
+	qs.graphMu.Lock()
+	defer qs.graphMu.Unlock()
 
-	if st.parents[childID] == nil {
-		st.parents[childID] = make(map[string]struct{})
+	for _, id := range expiredValues {
+		qspacePruneEdges(qs.children, qs.parents, id)
 	}
-
-	st.parents[childID][parentID] = struct{}{}
 }
 
-func qspaceCleanup(st *spaceState) {
-	now := time.Now()
+func (qs *QSpace) cleanupValues(now time.Time) []string {
+	qs.valuesMu.Lock()
+	defer qs.valuesMu.Unlock()
 
-	for id, qv := range st.values {
-		if qv.TTL <= 0 {
-			continue
-		}
-
-		if now.Sub(qv.CreatedAt) <= qv.TTL {
-			continue
-		}
-
-		delete(st.values, id)
-		qspacePruneEdges(st, id)
+	if qs.stopped.Load() {
+		return nil
 	}
 
-	for id, group := range st.groups {
+	expired := make([]string, 0)
+
+	for id, qvalue := range qs.values {
+		if qvalue.TTL <= 0 {
+			continue
+		}
+
+		if now.Sub(qvalue.CreatedAt) <= qvalue.TTL {
+			continue
+		}
+
+		delete(qs.values, id)
+		expired = append(expired, id)
+	}
+
+	return expired
+}
+
+func (qs *QSpace) cleanupBroadcastGroups(now time.Time) {
+	qs.groupsMu.Lock()
+	defer qs.groupsMu.Unlock()
+
+	if qs.stopped.Load() {
+		return
+	}
+
+	for id, group := range qs.groups {
 		if group == nil {
 			continue
 		}
@@ -451,76 +352,131 @@ func qspaceCleanup(st *spaceState) {
 		}
 
 		group.Close()
-		delete(st.groups, id)
+		delete(qs.groups, id)
 	}
 }
 
-func qspacePruneEdges(st *spaceState, id string) {
-	delete(st.children, id)
+func (qs *QSpace) shutdownState() {
+	qs.valuesMu.Lock()
 
-	for parentID, childSet := range st.children {
-		delete(childSet, id)
-
-		if len(childSet) == 0 {
-			delete(st.children, parentID)
+	for _, waiters := range qs.waiting {
+		for _, resultChannel := range waiters {
+			close(resultChannel)
 		}
 	}
 
-	delete(st.parents, id)
+	qs.waiting = nil
+	qs.values = nil
+	qs.valuesMu.Unlock()
 
-	for childID, parentSet := range st.parents {
-		delete(parentSet, id)
+	qs.groupsMu.Lock()
 
-		if len(parentSet) == 0 {
-			delete(st.parents, childID)
-		}
-	}
-}
-
-func qspaceShutdown(st *spaceState) {
-	for _, channels := range st.waiting {
-		for _, ch := range channels {
-			close(ch)
-		}
-	}
-
-	for _, group := range st.groups {
+	for _, group := range qs.groups {
 		if group != nil {
 			group.Close()
 		}
 	}
 
-	st.waiting = nil
-	st.values = nil
-	st.groups = nil
-	st.children = nil
-	st.parents = nil
+	qs.groups = nil
+	qs.groupsMu.Unlock()
+
+	qs.graphMu.Lock()
+	qs.children = nil
+	qs.parents = nil
+	qs.graphMu.Unlock()
 }
 
-func qspaceWouldCreateCircle(st *spaceState, parentID, childID string) bool {
-	visited := make(map[string]bool)
+func closedQValueChannel() chan *QValue {
+	resultChannel := make(chan *QValue)
 
-	var dfs func(string) bool
+	close(resultChannel)
 
-	dfs = func(current string) bool {
-		if current == parentID {
+	return resultChannel
+}
+
+func qspaceDeliverWaiters(waiters []chan *QValue, qvalue *QValue) {
+	for _, resultChannel := range waiters {
+		select {
+		case resultChannel <- qvalue:
+		default:
+		}
+
+		close(resultChannel)
+	}
+}
+
+func qspaceAddEdge(
+	children map[string]map[string]struct{},
+	parents map[string]map[string]struct{},
+	parentID string,
+	childID string,
+) {
+	if children[parentID] == nil {
+		children[parentID] = make(map[string]struct{})
+	}
+
+	children[parentID][childID] = struct{}{}
+
+	if parents[childID] == nil {
+		parents[childID] = make(map[string]struct{})
+	}
+
+	parents[childID][parentID] = struct{}{}
+}
+
+func qspacePruneEdges(
+	children map[string]map[string]struct{},
+	parents map[string]map[string]struct{},
+	id string,
+) {
+	delete(children, id)
+
+	for parentID, childSet := range children {
+		delete(childSet, id)
+
+		if len(childSet) == 0 {
+			delete(children, parentID)
+		}
+	}
+
+	delete(parents, id)
+
+	for childID, parentSet := range parents {
+		delete(parentSet, id)
+
+		if len(parentSet) == 0 {
+			delete(parents, childID)
+		}
+	}
+}
+
+func qspaceWouldCreateCircle(
+	parents map[string]map[string]struct{},
+	parentID string,
+	childID string,
+) bool {
+	visited := make(map[string]struct{})
+	stack := []string{childID}
+
+	for len(stack) > 0 {
+		lastIndex := len(stack) - 1
+		currentID := stack[lastIndex]
+		stack = stack[:lastIndex]
+
+		if currentID == parentID {
 			return true
 		}
 
-		if visited[current] {
-			return false
+		if _, ok := visited[currentID]; ok {
+			continue
 		}
 
-		visited[current] = true
+		visited[currentID] = struct{}{}
 
-		for p := range st.parents[current] {
-			if dfs(p) {
-				return true
-			}
+		for nextParentID := range parents[currentID] {
+			stack = append(stack, nextParentID)
 		}
-
-		return false
 	}
 
-	return dfs(childID)
+	return false
 }

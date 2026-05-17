@@ -7,39 +7,9 @@ import (
 	"time"
 
 	"github.com/phuslu/log"
-	"golang.org/x/sync/errgroup"
 )
 
 func processJob(q *Q, workerCtx context.Context, job Job) {
-	if err := waitDependencies(q, workerCtx, job); err != nil {
-		latency := time.Since(job.StartTime)
-		q.metrics.RecordJobOutcome(latency, false)
-
-		if job.CircuitID != "" {
-			if cb := q.breakerForJob(&job); cb != nil {
-				cb.RecordFailure()
-			}
-		}
-
-		q.publishTelemetry(Event{
-			Component: "qpool",
-			Op:        "job-error",
-			Message:   fmt.Sprintf("dependencies unmet: %s (%v)", job.ID, err),
-			Time:      time.Now(),
-			Level:     log.WarnLevel,
-			Err:       err,
-			Fields: []Field{
-				{Key: "job", Value: job.ID},
-				{Key: "phase", Value: "dependency"},
-				{Key: "duration_ms", Value: latency.Milliseconds()},
-			},
-		})
-
-		q.space.StoreError(job.ID, err, job.TTL)
-
-		return
-	}
-
 	deadline := q.schedulingTimeout()
 
 	if job.ExecTimeout > 0 {
@@ -118,114 +88,6 @@ func processJob(q *Q, workerCtx context.Context, job Job) {
 	})
 
 	q.space.Store(job.ID, result, job.TTL)
-}
-
-func waitDependencies(q *Q, workerCtx context.Context, job Job) error {
-	if len(job.Dependencies) == 0 {
-		return nil
-	}
-
-	eg, egCtx := errgroup.WithContext(workerCtx)
-
-	for _, depID := range job.Dependencies {
-		eg.Go(func() error {
-			return waitOneDependency(q, egCtx, job, depID)
-		})
-	}
-
-	return eg.Wait()
-}
-
-func dependencyAwaitTimeout(policy *RetryPolicy, strategy RetryStrategy) time.Duration {
-	if policy != nil && policy.PerAttemptTimeout > 0 {
-		return policy.PerAttemptTimeout
-	}
-
-	var base time.Duration
-
-	if strategy != nil {
-		base = strategy.NextDelay(1)
-	}
-
-	if base <= 0 {
-		base = time.Second
-	}
-
-	const maxDerived = 60 * time.Second
-
-	if base > maxDerived {
-		return maxDerived
-	}
-
-	if base < time.Second {
-		return time.Second
-	}
-
-	return base
-}
-
-func waitOneDependency(q *Q, workerCtx context.Context, job Job, depID string) error {
-	maxAttempts := 1
-
-	strategy := RetryStrategy(&ExponentialBackoff{Initial: time.Second})
-	var lastErr error
-
-	if job.DependencyRetryPolicy != nil {
-		maxAttempts = job.DependencyRetryPolicy.MaxAttempts
-
-		if job.DependencyRetryPolicy.Strategy != nil {
-			strategy = job.DependencyRetryPolicy.Strategy
-		}
-	}
-
-	awaitTimeout := dependencyAwaitTimeout(job.DependencyRetryPolicy, strategy)
-
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		ch := q.space.Await(depID)
-
-		waitCtx, cancel := context.WithTimeout(workerCtx, awaitTimeout)
-
-		select {
-		case result := <-ch:
-			cancel()
-
-			if result == nil {
-				lastErr = fmt.Errorf("dependency %s returned nil result", depID)
-
-				if attempt < maxAttempts-1 {
-					time.Sleep(strategy.NextDelay(attempt + 1))
-				}
-
-				continue
-			}
-
-			if result.Error != nil {
-				return fmt.Errorf("dependency %s: %w", depID, result.Error)
-			}
-
-			return nil
-
-		case <-waitCtx.Done():
-			lastErr = waitCtx.Err()
-			cancel()
-
-			if err := workerCtx.Err(); err != nil {
-				return fmt.Errorf("dependency %s: %w", depID, err)
-			}
-
-			if attempt < maxAttempts-1 {
-				time.Sleep(strategy.NextDelay(attempt + 1))
-			}
-		}
-	}
-
-	q.space.RegisterDependent(depID, job.ID)
-
-	if lastErr != nil {
-		return fmt.Errorf("dependency %s failed after %d attempts: %w", depID, maxAttempts, lastErr)
-	}
-
-	return fmt.Errorf("dependency %s failed after %d attempts", depID, maxAttempts)
 }
 
 func runJobWithRetries(ctx context.Context, job Job) (any, error) {

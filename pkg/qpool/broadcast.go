@@ -20,6 +20,7 @@ type Subscription struct {
 	broadcaster *Broadcaster
 	id          uint64
 	events      chan Event
+	mu          sync.Mutex
 	once        sync.Once
 }
 
@@ -101,6 +102,9 @@ func (subscription *Subscription) Close() {
 }
 
 func (subscription *Subscription) deliver(event Event) {
+	subscription.mu.Lock()
+	defer subscription.mu.Unlock()
+
 	select {
 	case subscription.events <- event:
 		return

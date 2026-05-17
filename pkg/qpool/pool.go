@@ -159,6 +159,48 @@ func (q *Q) scheduleDoneError(ctx context.Context) (error, bool) {
 	return fmt.Errorf("job scheduling timeout: %w", ctx.Err()), true
 }
 
+func (q *Q) enqueueJob(ctx context.Context, job Job) error {
+	if q.stopping.Load() {
+		return fmt.Errorf("qpool: pool closed")
+	}
+
+	q.shutdownMu.RLock()
+	defer q.shutdownMu.RUnlock()
+
+	if q.stopping.Load() {
+		return fmt.Errorf("qpool: pool closed")
+	}
+
+	if err := q.ctx.Err(); err != nil {
+		return fmt.Errorf("qpool: pool closed: %w", err)
+	}
+
+	select {
+	case <-q.ctx.Done():
+		return fmt.Errorf("qpool: pool closed: %w", q.ctx.Err())
+	case q.jobCh <- job:
+		q.publishTelemetry(Event{
+			Component: "qpool",
+			Op:        "schedule",
+			Message:   fmt.Sprintf("job scheduled: %s", job.ID),
+			Time:      time.Now(),
+			Level:     log.InfoLevel,
+		})
+
+		q.metrics.incJobQueued()
+
+		return nil
+	case <-ctx.Done():
+		err, schedulingFailure := q.scheduleDoneError(ctx)
+
+		if schedulingFailure {
+			q.metrics.incSchedulingFailure()
+		}
+
+		return err
+	}
+}
+
 /*
 Schedule enqueues a job when regulators and optional circuit breaker permit.
 Results arrive on the returned channel backed by QSpace. The job id doubles as
@@ -222,49 +264,19 @@ func (q *Q) Schedule(
 		return errorFuture(fmt.Errorf("qpool: pool closed"))
 	}
 
-	q.shutdownMu.RLock()
-
-	if q.stopping.Load() {
-		q.shutdownMu.RUnlock()
-
-		return errorFuture(fmt.Errorf("qpool: pool closed"))
-	}
-
-	if q.ctx.Err() != nil {
-		q.shutdownMu.RUnlock()
-
-		return errorFuture(fmt.Errorf("qpool: pool closed: %w", q.ctx.Err()))
-	}
-
-	select {
-	case <-q.ctx.Done():
-		q.shutdownMu.RUnlock()
-
-		return errorFuture(fmt.Errorf("qpool: pool closed: %w", q.ctx.Err()))
-	case q.jobCh <- job:
-		q.publishTelemetry(Event{
-			Component: "qpool",
-			Op:        "schedule",
-			Message:   fmt.Sprintf("job scheduled: %s", id),
-			Time:      time.Now(),
-			Level:     log.InfoLevel,
-		})
-
-		q.metrics.incJobQueued()
-		q.shutdownMu.RUnlock()
-
-		return q.space.Await(id)
-	case <-ctx.Done():
-		q.shutdownMu.RUnlock()
-
-		err, schedulingFailure := q.scheduleDoneError(ctx)
-
-		if schedulingFailure {
-			q.metrics.incSchedulingFailure()
+	if len(job.Dependencies) > 0 {
+		if err := q.startDependencyWait(job); err != nil {
+			return errorFuture(err)
 		}
 
+		return q.space.Await(id)
+	}
+
+	if err := q.enqueueJob(ctx, job); err != nil {
 		return errorFuture(err)
 	}
+
+	return q.space.Await(id)
 }
 
 /*
