@@ -1,10 +1,20 @@
 # Chat runtime program.
 #
-# The compute graph (transformer topology) is provided by the model
-# manifest the adapter loads alongside this file; this manifest only
-# declares the runtime: assets, state, sampler, and the decode loop.
-# Edit values under system.runtime to change generation behavior
-# without touching Go code.
+# This manifest owns the entire chat session lifecycle: banner,
+# per-turn user prompt, command handling (/exit, /quit, /help),
+# tokenization, decode loop, and streaming output. The Go-side
+# Session is reduced to a stream connector that hands stdin and
+# stdout to the executor and calls Run once — the outer turn loop
+# below is what drives every prompt.
+#
+# State that should persist across turns (history token buffer,
+# decoder KV cache, streaming UTF-8 buffer) lives in state objects
+# and therefore survives every iteration of the outer loop. The
+# Generator does not need any cross-call persistence in Go.
+#
+# EOF on stdin (Ctrl-D) makes io.read_line raise op.ErrBreak,
+# which the outer control.loop_until catches and exits cleanly.
+# /exit and /quit do the same via value.equals + control.break_if.
 
 system:
   runtime:
@@ -26,82 +36,144 @@ system:
         topology: model
         outputs: { logits: lm_head }
     program:
-      - id: read_user
-        op: io.read_line
-        outputs: { text: user_text }
+      - id: banner
+        op: io.emit_text
+        config:
+          text: "caramba chat — /exit or /quit to leave, Ctrl-D also works\n"
 
-      - id: encode_user
-        op: tokenizer.encode
-        tokenizer: tokenizer
-        text: user_text
-        outputs: { tokens: input_ids }
-
-      - id: seed_history
-        op: state.append
-        value: input_ids
-        target: state.history
-
-      - id: generate
-        op: control.loop_count
-        count: 32
+      - id: chat_loop
+        op: control.loop_until
         body:
-          - id: forward
-            op: graph.call
-            graph: forward
+          - id: prompt_user
+            op: io.emit_text
+            config:
+              text: "you> "
+
+          - id: read_user
+            op: io.read_line
+            outputs: { text: user_text }
+
+          - id: check_exit
+            op: value.equals
             inputs:
-              input_ids: input_ids
-              history: state.history
-              kv_cache: state.kv
+              left: user_text
+            config:
+              right: "/exit"
             outputs:
-              logits: logits
+              result: is_exit
 
-          - id: sample
-            op: sampler.next_token
-            sampler: main
-            logits: logits
-            history: state.history
+          - id: break_when_exit
+            op: control.break_if
+            condition: is_exit
+
+          - id: check_quit
+            op: value.equals
+            inputs:
+              left: user_text
+            config:
+              right: "/quit"
             outputs:
-              token: next_token
-              stopped: stopped
+              result: is_quit
 
-          - id: append_history
+          - id: break_when_quit
+            op: control.break_if
+            condition: is_quit
+
+          - id: check_empty
+            op: value.equals
+            inputs:
+              left: user_text
+            config:
+              right: ""
+            outputs:
+              result: is_empty
+
+          - id: skip_when_empty
+            op: control.continue_if
+            condition: is_empty
+
+          - id: assistant_prefix
+            op: io.emit_text
+            config:
+              text: "caramba> "
+
+          - id: encode_user
+            op: tokenizer.encode
+            tokenizer: tokenizer
+            text: user_text
+            outputs: { tokens: input_ids }
+
+          - id: seed_history
             op: state.append
-            value: next_token
+            value: input_ids
             target: state.history
 
-          - id: stream_decode
-            op: tokenizer.stream_decode
+          - id: generate
+            op: control.loop_count
+            count: 128
+            body:
+              - id: forward
+                op: graph.call
+                graph: forward
+                inputs:
+                  input_ids: input_ids
+                  history: state.history
+                  kv_cache: state.kv
+                outputs:
+                  logits: logits
+
+              - id: sample
+                op: sampler.next_token
+                sampler: main
+                logits: logits
+                history: state.history
+                outputs:
+                  token: next_token
+                  stopped: stopped
+
+              - id: append_history
+                op: state.append
+                value: next_token
+                target: state.history
+
+              - id: stream_decode
+                op: tokenizer.stream_decode
+                tokenizer: tokenizer
+                stream: state.stream
+                token: next_token
+                outputs: { text: decoded }
+                config: { skip_special_tokens: true }
+
+              - id: emit
+                op: io.emit_text
+                text: decoded
+
+              - id: count_token
+                op: telemetry.counter
+                name: chat.tokens_generated
+                delta: 1
+
+              - id: stop
+                op: control.break_if
+                condition: stopped
+
+              - id: carry_token
+                op: value.assign
+                value: next_token
+                outputs: { target: input_ids }
+
+          - id: flush_stream
+            op: tokenizer.stream_flush
             tokenizer: tokenizer
             stream: state.stream
-            token: next_token
-            outputs: { text: decoded }
+            outputs: { text: tail }
             config: { skip_special_tokens: true }
 
-          - id: emit
+          - id: emit_tail
             op: io.emit_text
-            text: decoded
+            text: tail
 
-          - id: count_token
-            op: telemetry.counter
-            name: chat.tokens_generated
-            delta: 1
-
-          - id: stop
-            op: control.break_if
-            condition: stopped
-
-          - id: carry_token
-            op: value.assign
-            value: next_token
-            outputs: { target: input_ids }
-
-      - id: flush_stream
-        op: tokenizer.stream_flush
-        tokenizer: tokenizer
-        stream: state.stream
-        outputs: { text: tail }
-        config: { skip_special_tokens: true }
-
-      - id: emit_tail
-        op: io.emit_text
-        text: tail
+          - id: turn_separator
+            op: io.emit_text
+            config:
+              text: "\n"

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/runtime/op"
+	"github.com/theapemachine/caramba/pkg/runtime/program"
 )
 
 /*
@@ -155,9 +156,125 @@ func (Slice) Execute(execContext op.Context) error {
 	return execContext.Bind(targetRef, sliced)
 }
 
+/*
+Equals compares Inputs["left"] against either Inputs["right"] or
+Config["right"] and writes the boolean result to Outputs["result"].
+The Config form lets manifests compare against a literal without an
+intermediate value.assign step (e.g. `right: "/exit"` for chat
+command predicates). Comparison is via Go == for primitives and
+ShouldResemble-shaped element-by-element matching for the supported
+slice types ([]int, []float64, []string).
+*/
+type Equals struct{}
+
+func (Equals) Execute(execContext op.Context) error {
+	step := execContext.Step()
+	leftRef, ok := step.Inputs["left"]
+
+	if !ok {
+		return fmt.Errorf("value.equals: missing input 'left'")
+	}
+
+	resultRef, ok := step.Outputs["result"]
+
+	if !ok {
+		return fmt.Errorf("value.equals: missing output 'result'")
+	}
+
+	leftValue, err := execContext.Resolve(leftRef)
+
+	if err != nil {
+		return err
+	}
+
+	rightValue, hasRight, err := equalsRightOperand(execContext, step)
+
+	if err != nil {
+		return err
+	}
+
+	if !hasRight {
+		return fmt.Errorf("value.equals: missing right operand (inputs.right or config.right)")
+	}
+
+	return execContext.Bind(resultRef, equalsValues(leftValue, rightValue))
+}
+
+func equalsRightOperand(execContext op.Context, step program.Step) (any, bool, error) {
+	if ref, ok := step.Inputs["right"]; ok {
+		value, err := execContext.Resolve(ref)
+
+		if err != nil {
+			return nil, true, err
+		}
+
+		return value, true, nil
+	}
+
+	if raw, ok := step.Config["right"]; ok {
+		return raw, true, nil
+	}
+
+	return nil, false, nil
+}
+
+func equalsValues(left, right any) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+
+	switch leftTyped := left.(type) {
+	case []int:
+		rightTyped, ok := right.([]int)
+
+		if !ok || len(leftTyped) != len(rightTyped) {
+			return false
+		}
+
+		for index, value := range leftTyped {
+			if value != rightTyped[index] {
+				return false
+			}
+		}
+
+		return true
+	case []float64:
+		rightTyped, ok := right.([]float64)
+
+		if !ok || len(leftTyped) != len(rightTyped) {
+			return false
+		}
+
+		for index, value := range leftTyped {
+			if value != rightTyped[index] {
+				return false
+			}
+		}
+
+		return true
+	case []string:
+		rightTyped, ok := right.([]string)
+
+		if !ok || len(leftTyped) != len(rightTyped) {
+			return false
+		}
+
+		for index, value := range leftTyped {
+			if value != rightTyped[index] {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return left == right
+}
+
 func init() {
 	op.Default.MustRegister("value.assign", Assign{})
 	op.Default.MustRegister("value.append", Append{})
 	op.Default.MustRegister("value.clear", Clear{})
 	op.Default.MustRegister("value.slice", Slice{})
+	op.Default.MustRegister("value.equals", Equals{})
 }

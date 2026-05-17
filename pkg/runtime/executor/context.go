@@ -23,6 +23,7 @@ type runtimeContext struct {
 	runContext  context.Context
 	currentStep program.Step
 	scope       *Scope
+	bodyScope   *Scope
 }
 
 func (rc *runtimeContext) Context() context.Context {
@@ -182,14 +183,31 @@ func (rc *runtimeContext) Tokenizer(assetID string) (tokenizer.Tokenizer, error)
 }
 
 /*
-Run executes a nested body of steps in a fresh child scope. Control
-ops (loop_count, loop_each, loop_until) use this to evaluate their
-body without leaking local bindings into the parent.
+Run executes a nested body of steps in a fresh child scope. Each
+call creates a new scope so successive invocations are isolated.
+Use this when the body should not share bindings with sibling
+invocations.
 */
 func (rc *runtimeContext) Run(steps []program.Step) error {
 	child := rc.scope.Child()
 
 	return rc.executor.runSteps(rc.runContext, steps, child)
+}
+
+/*
+RunBody is like Run but uses a single child scope that persists
+across every call within the same op.Execute invocation. Loop ops
+(loop_count, loop_each, loop_until) call RunBody once per iteration
+so writes from one iteration's body (notably value.assign carries
+like chat's carry_token → input_ids) are visible to the next.
+The persistent scope is discarded when the outer op.Execute returns.
+*/
+func (rc *runtimeContext) RunBody(steps []program.Step) error {
+	if rc.bodyScope == nil {
+		rc.bodyScope = rc.scope.Child()
+	}
+
+	return rc.executor.runSteps(rc.runContext, steps, rc.bodyScope)
 }
 
 func (rc *runtimeContext) Stdin() io.Reader {

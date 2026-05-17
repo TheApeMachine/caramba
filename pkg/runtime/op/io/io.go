@@ -2,6 +2,7 @@ package io
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -47,6 +48,14 @@ func (readLine *ReadLine) Execute(execContext op.Context) error {
 	line, err := reader.ReadString('\n')
 	readLine.mu.Unlock()
 
+	// EOF on an empty line is the documented "session is over"
+	// signal: raising op.ErrBreak lets the enclosing loop
+	// (typically the chat manifest's outer control.loop_until)
+	// exit cleanly without surfacing the EOF as a program error.
+	if errors.Is(err, io.EOF) && line == "" {
+		return op.ErrBreak
+	}
+
 	if err != nil && line == "" {
 		return fmt.Errorf("io.read_line: %w", err)
 	}
@@ -64,6 +73,19 @@ type EmitText struct{}
 
 func (EmitText) Execute(execContext op.Context) error {
 	step := execContext.Step()
+
+	// Manifests that emit a fixed prompt or banner can put the
+	// literal in config.text so they do not have to thread a local
+	// ValueRef through value.assign first. Inputs.text still works
+	// for dynamically resolved strings (decoded tokens, etc.).
+	if literal, ok := step.Config["text"].(string); ok {
+		if _, err := execContext.Stdout().Write([]byte(literal)); err != nil {
+			return fmt.Errorf("io.emit_text: %w", err)
+		}
+
+		return nil
+	}
+
 	source, ok := step.Inputs["text"]
 
 	if !ok {

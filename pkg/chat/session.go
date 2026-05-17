@@ -75,8 +75,19 @@ func (config SessionConfig) WithDefaults() SessionConfig {
 
 /*
 Run starts the interactive prompt loop.
+
+When the underlying generator implements SessionRunner the entire
+session — banner, per-turn user prompt, command handling, decode
+loop — is driven by its runtime manifest, and Session.Run simply
+hands the terminal streams through and waits for the run to finish.
+Generators without a runtime program (e.g. PreviewGenerator) fall
+back to the legacy Go-side prompt loop below.
 */
 func (session *Session) Run() error {
+	if runner, ok := session.generator.(SessionRunner); ok {
+		return runner.RunSession(session.ctx, session.input, session.output)
+	}
+
 	if session.config.ShowBanner {
 		if err := session.writeBanner(); err != nil {
 			return err

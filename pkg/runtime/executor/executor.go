@@ -115,6 +115,25 @@ func (executor *Executor) Run(runContext context.Context) error {
 }
 
 /*
+SetStdin replaces the executor's stdin reader. The chat session uses
+this to feed a fresh prompt into io.read_line at the start of each
+turn while keeping the executor (and therefore state.history,
+state.kv, state.stream, etc.) alive across turns. Pass nil to fall
+back to os.Stdin.
+*/
+func (executor *Executor) SetStdin(reader io.Reader) {
+	executor.stdin = reader
+}
+
+/*
+SetStdout replaces the executor's stdout writer. Mirrors SetStdin so
+each chat turn can route emitted text into its own callback wrapper.
+*/
+func (executor *Executor) SetStdout(writer io.Writer) {
+	executor.stdout = writer
+}
+
+/*
 States returns the live state instances keyed by id. The runtime
 inspection surface consumes this directly.
 */

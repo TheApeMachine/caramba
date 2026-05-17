@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
+	"github.com/theapemachine/caramba/pkg/backend/compute/kv"
 	modelweights "github.com/theapemachine/caramba/pkg/model/weights"
 	"github.com/theapemachine/caramba/pkg/runtime/backend"
 	"github.com/theapemachine/caramba/pkg/runtime/program"
@@ -55,15 +56,20 @@ followed by single-token decode inputs.
 */
 func NewPreExecuteHook() backend.PreExecuteHook {
 	return func(irGraph *ir.Graph, inputs map[string]any) error {
+		var typedCache *kv.Cache
+
 		if cache, ok := kvCacheFromInputs(inputs); ok {
 			injectKVCache(irGraph, cache)
+			typedCache, _ = cache.(*kv.Cache)
 		}
 
 		tokenCount, hasTokens := tokenCountFromInputs(inputs)
 		historyLength, hasHistory := historyLengthFromInputs(inputs)
 
+		positionStart := 0
+
 		if hasTokens && hasHistory {
-			positionStart := historyLength - tokenCount
+			positionStart = historyLength - tokenCount
 
 			if positionStart < 0 {
 				positionStart = 0
@@ -72,6 +78,8 @@ func NewPreExecuteHook() backend.PreExecuteHook {
 			injectRoPEPositionStart(irGraph, positionStart)
 			injectPositionIDs(irGraph, positionStart, tokenCount)
 		}
+
+		chatDebugPreExecute(positionStart, tokenCount, typedCache)
 
 		return nil
 	}
@@ -125,6 +133,14 @@ func tokenCountFromInputs(inputs map[string]any) (int, bool) {
 		return len(typed), true
 	case []float64:
 		return len(typed), true
+	case int:
+		return 1, true
+	case int32:
+		return 1, true
+	case int64:
+		return 1, true
+	default:
+		_ = typed
 	}
 
 	return 0, false

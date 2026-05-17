@@ -2137,6 +2137,18 @@ func (tensorBackend *TensorBackend) cachedTensor(
 	return value, nil
 }
 
+// residentTensorFingerprint mixes shape, length, and a fixed number
+// of sampled values into a 64-bit identifier. The full-hash variant
+// previously here iterated every value on every call — for a GPT-2
+// scale parameter set that was ~1GB of float64 hashed per decode
+// iteration, which dominated wall time. Sampling at fixed positions
+// keeps the fingerprint O(1) in tensor size while still distinguishing
+// every realistic ML weight tensor: two genuinely different weights
+// will almost certainly differ in their first, last, and stride-spaced
+// values, and within a single run the weight binder returns the same
+// cached []float64 slice for each logical parameter so collisions
+// across distinct parameters cannot arise from re-binding the same
+// tensor.
 func residentTensorFingerprint(shapeData []int, values []float64) uint64 {
 	hasher := fnv.New64a()
 	var buffer [8]byte
@@ -2146,10 +2158,41 @@ func residentTensorFingerprint(shapeData []int, values []float64) uint64 {
 		_, _ = hasher.Write(buffer[:])
 	}
 
-	for _, value := range values {
-		binary.LittleEndian.PutUint64(buffer[:], math.Float64bits(value))
+	binary.LittleEndian.PutUint64(buffer[:], uint64(len(values)))
+	_, _ = hasher.Write(buffer[:])
+
+	const sampleCount = 32
+
+	count := sampleCount
+
+	if count > len(values) {
+		count = len(values)
+	}
+
+	if count == len(values) {
+		for _, value := range values {
+			binary.LittleEndian.PutUint64(buffer[:], math.Float64bits(value))
+			_, _ = hasher.Write(buffer[:])
+		}
+
+		return hasher.Sum64()
+	}
+
+	stride := len(values) / count
+
+	for sample := 0; sample < count; sample++ {
+		index := sample * stride
+
+		if index >= len(values) {
+			index = len(values) - 1
+		}
+
+		binary.LittleEndian.PutUint64(buffer[:], math.Float64bits(values[index]))
 		_, _ = hasher.Write(buffer[:])
 	}
+
+	binary.LittleEndian.PutUint64(buffer[:], math.Float64bits(values[len(values)-1]))
+	_, _ = hasher.Write(buffer[:])
 
 	return hasher.Sum64()
 }

@@ -45,6 +45,7 @@ type Context interface {
 	Scheduler(schedulerID string) (program.SchedulerDeclaration, error)
 	Graph(graphID string) (program.GraphModule, error)
 	Run(steps []program.Step) error
+	RunBody(steps []program.Step) error
 	Stdin() io.Reader
 	Stdout() io.Writer
 	Tokenizer(assetID string) (tokenizer.Tokenizer, error)

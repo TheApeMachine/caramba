@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -115,11 +116,13 @@ func NewRuntimeModelGenerator(
 	recorder := telemetry.NewInMemory()
 	ledger := newRunLedger(resolved, modelManifestPath, runtimeManifestPath, weightStore, tokenizerArtifact)
 
+	chatDebugStartup(string(computeBackend.Location()), resolved.Model)
+
 	inner, err := NewRuntimeGenerator(RuntimeGeneratorOptions{
 		Program:          runtimeProgram,
 		Tokenizer:        tokenizerArtifact.Tokenizer,
 		GraphRunner:      graphRunner,
-		SamplerRunner:    sampler.New(uint64(resolved.Seed)),
+		SamplerRunner:    newDebugSamplerWrapper(sampler.New(uint64(resolved.Seed))),
 		TokenizerAssetID: chatTokenizerAssetID,
 		Telemetry:        recorder,
 	})
@@ -150,6 +153,23 @@ func (generator *RuntimeModelGenerator) Generate(
 	}
 
 	return generator.inner.Generate(ctx, prompt, emit)
+}
+
+/*
+RunSession satisfies SessionRunner by handing the terminal streams to
+the inner RuntimeGenerator. The chat manifest owns the full session
+lifecycle (banner, per-turn prompt, /exit and /quit predicates,
+decode loop), so this method just connects stdin/stdout and waits
+for the program to return.
+*/
+func (generator *RuntimeModelGenerator) RunSession(
+	ctx context.Context, input io.Reader, output io.Writer,
+) error {
+	if generator == nil || generator.inner == nil {
+		return fmt.Errorf("chat.runtime: generator is not initialized")
+	}
+
+	return generator.inner.RunSession(ctx, input, output)
 }
 
 /*

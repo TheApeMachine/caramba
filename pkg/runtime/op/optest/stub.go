@@ -170,6 +170,10 @@ func (stubContext *StubContext) Run(steps []program.Step) error {
 	return stubContext.BodyHandler(steps)
 }
 
+func (stubContext *StubContext) RunBody(steps []program.Step) error {
+	return stubContext.Run(steps)
+}
+
 func (stubContext *StubContext) Stdin() io.Reader {
 	return stubContext.StdinBuf
 }

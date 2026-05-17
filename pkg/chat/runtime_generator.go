@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/theapemachine/caramba/pkg/asset"
@@ -95,10 +96,17 @@ func NewRuntimeGenerator(options RuntimeGeneratorOptions) (*RuntimeGenerator, er
 }
 
 /*
-Generate satisfies the Generator interface. The prompt is fed into
-the runtime's stdin so the program's io.read_line op picks it up;
-each io.emit_token call inside the loop arrives here as a chunk and
-is forwarded to the emit callback.
+Generate satisfies the Generator interface. It runs the runtime
+program once with the given prompt fed in through stdin and every
+io.emit_text call routed back through the emit callback. This is the
+one-shot path used by Session.RunPrompt and by callers that want a
+single prompt → completion round-trip without taking over stdin.
+
+For interactive multi-turn chat, Session.Run prefers the
+SessionRunner.RunSession path below, which hands the terminal
+streams straight to the executor so the manifest owns the entire
+turn loop (state.history, state.kv, and friends accumulate naturally
+across iterations of that outer loop).
 */
 func (generator *RuntimeGenerator) Generate(
 	ctx context.Context, prompt string, emit func(string) error,
@@ -110,15 +118,7 @@ func (generator *RuntimeGenerator) Generate(
 	stdin := strings.NewReader(prompt + "\n")
 	writer := &emitWriter{emit: emit}
 
-	exec, err := executor.New(executor.Options{
-		Program:       generator.program,
-		Tokenizers:    map[string]tokenizer.Tokenizer{generator.tokenizerName: generator.tokenizer},
-		GraphRunner:   generator.graphRunner,
-		SamplerRunner: generator.samplerRunner,
-		Telemetry:     generator.telemetry,
-		Stdin:         stdin,
-		Stdout:        writer,
-	})
+	exec, err := generator.newExecutor(stdin, writer)
 
 	if err != nil {
 		return err
@@ -129,6 +129,41 @@ func (generator *RuntimeGenerator) Generate(
 	}
 
 	return writer.err
+}
+
+/*
+RunSession implements SessionRunner. The runtime manifest is
+responsible for the outer turn loop, prompt printing, and command
+handling; this method just constructs an executor wired to the
+session's terminal streams and runs the program once. Persistent
+state (history, KV cache, decode stream) is owned by the executor's
+state objects and lives for the whole call, so context accumulates
+across every turn the manifest reads.
+*/
+func (generator *RuntimeGenerator) RunSession(
+	ctx context.Context, input io.Reader, output io.Writer,
+) error {
+	exec, err := generator.newExecutor(input, output)
+
+	if err != nil {
+		return err
+	}
+
+	return exec.Run(ctx)
+}
+
+func (generator *RuntimeGenerator) newExecutor(
+	stdin io.Reader, stdout io.Writer,
+) (*executor.Executor, error) {
+	return executor.New(executor.Options{
+		Program:       generator.program,
+		Tokenizers:    map[string]tokenizer.Tokenizer{generator.tokenizerName: generator.tokenizer},
+		GraphRunner:   generator.graphRunner,
+		SamplerRunner: generator.samplerRunner,
+		Telemetry:     generator.telemetry,
+		Stdin:         stdin,
+		Stdout:        stdout,
+	})
 }
 
 func resolveProgram(options RuntimeGeneratorOptions) (*program.Program, error) {

@@ -23,7 +23,7 @@ func (LoopCount) Execute(execContext op.Context) error {
 	}
 
 	for iteration := 0; iteration < count; iteration++ {
-		bodyErr := execContext.Run(execContext.Step().Body)
+		bodyErr := execContext.RunBody(execContext.Step().Body)
 
 		if bodyErr == nil {
 			continue
@@ -82,7 +82,7 @@ func (LoopEach) Execute(execContext op.Context) error {
 			return err
 		}
 
-		bodyErr := execContext.Run(step.Body)
+		bodyErr := execContext.RunBody(step.Body)
 
 		if bodyErr == nil {
 			continue
@@ -104,18 +104,18 @@ func (LoopEach) Execute(execContext op.Context) error {
 
 /*
 LoopUntil runs the body until the value referenced by Inputs["condition"]
-resolves to true. A maximum iteration cap from Config["max"] guards
-against accidental infinite loops; zero means unlimited.
+resolves to true. Inputs["condition"] is optional — when omitted, the
+loop runs indefinitely until a body step raises op.ErrBreak. That
+"loop forever" mode is what the chat manifest's outer turn loop uses
+(io.read_line raises ErrBreak on EOF, and /exit etc. use break_if).
+A maximum iteration cap from Config["max"] guards against accidental
+infinite loops; zero means unlimited.
 */
 type LoopUntil struct{}
 
 func (LoopUntil) Execute(execContext op.Context) error {
 	step := execContext.Step()
-	conditionRef, ok := step.Inputs["condition"]
-
-	if !ok {
-		return fmt.Errorf("control.loop_until: missing input 'condition'")
-	}
+	conditionRef, hasCondition := step.Inputs["condition"]
 
 	maxIterations, err := intFromConfig(step.Config, "max")
 
@@ -137,7 +137,7 @@ func (LoopUntil) Execute(execContext op.Context) error {
 			)
 		}
 
-		bodyErr := execContext.Run(step.Body)
+		bodyErr := execContext.RunBody(step.Body)
 
 		if errors.Is(bodyErr, op.ErrBreak) {
 			return nil
@@ -147,20 +147,22 @@ func (LoopUntil) Execute(execContext op.Context) error {
 			return bodyErr
 		}
 
-		conditionValue, err := execContext.Resolve(conditionRef)
+		if hasCondition {
+			conditionValue, err := execContext.Resolve(conditionRef)
 
-		if err != nil {
-			return err
-		}
+			if err != nil {
+				return err
+			}
 
-		satisfied, err := asBool(conditionValue)
+			satisfied, err := asBool(conditionValue)
 
-		if err != nil {
-			return fmt.Errorf("control.loop_until: %w", err)
-		}
+			if err != nil {
+				return fmt.Errorf("control.loop_until: %w", err)
+			}
 
-		if satisfied {
-			return nil
+			if satisfied {
+				return nil
+			}
 		}
 
 		iteration++

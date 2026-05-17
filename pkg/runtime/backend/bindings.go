@@ -27,6 +27,11 @@ func deriveDefaultShape(
 		if err == nil && len(tokens) > 0 {
 			return tensor.NewShape([]int{1, len(tokens)})
 		}
+
+		switch value.(type) {
+		case int, int32, int64:
+			return tensor.NewShape([]int{1, 1})
+		}
 	}
 
 	if raw, ok := module.Config["default_shape"]; ok {
