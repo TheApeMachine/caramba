@@ -3,26 +3,12 @@ package qpool
 import (
 	"context"
 	"fmt"
-	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/phuslu/log"
 )
-
-type breakerMap struct {
-	entries map[string]*CircuitBreaker
-}
-
-type workerToken struct {
-	id     uint64
-	cancel context.CancelFunc
-}
-
-type workerRegistry struct {
-	tokens []*workerToken
-}
 
 /*
 Q combines a buffered job queue, fixed worker set, optional regulators, and result tracking via QSpace.
@@ -43,8 +29,8 @@ type Q struct {
 	scaler  *Scaler
 	metrics *Metrics
 
-	breakers   atomic.Pointer[breakerMap]
-	registry   atomic.Pointer[workerRegistry]
+	breakers   *circuitBreakerCache
+	registry   *workerRegistry
 	nextWorker atomic.Uint64
 
 	config *Config
@@ -86,6 +72,8 @@ func NewQ(ctx context.Context, minWorkers, maxWorkers int, config *Config) *Q {
 		maxWorkers: maxWorkers,
 		space:      NewQSpace(),
 		metrics:    NewMetrics(),
+		breakers:   newCircuitBreakerCache(config.CircuitBreakerLimit),
+		registry:   newWorkerRegistry(),
 		config:     config,
 	}
 
@@ -126,9 +114,9 @@ func (q *Q) WorkerBounds() (minWorkers, maxWorkers int) {
 }
 
 /*
-PeriodicScalerConfigured reports whether NewQ wired the built-in interval scaler.
-
-Adaptive admission regulators may resize the pool independently; those are not mirrored here.
+PeriodicScalerConfigured reports whether NewQ wired the built-in
+interval scaler. Adaptive admission regulators may resize the pool
+independently; those are not mirrored here.
 */
 func (q *Q) PeriodicScalerConfigured() bool {
 	return q != nil && q.config != nil && q.config.Scaler != nil
@@ -152,6 +140,25 @@ func (q *Q) schedulingTimeout() time.Duration {
 	return 5 * time.Second
 }
 
+func errorFuture(err error) chan *QValue {
+	ch := make(chan *QValue, 1)
+	qv := NewQValue(nil)
+	qv.Error = err
+	ch <- qv
+
+	close(ch)
+
+	return ch
+}
+
+func (q *Q) scheduleDoneError(ctx context.Context) (error, bool) {
+	if err := q.ctx.Err(); err != nil {
+		return fmt.Errorf("qpool: pool closed: %w", err), false
+	}
+
+	return fmt.Errorf("job scheduling timeout: %w", ctx.Err()), true
+}
+
 /*
 Schedule enqueues a job when regulators and optional circuit breaker permit.
 Results arrive on the returned channel backed by QSpace. The job id doubles as
@@ -159,7 +166,11 @@ the result key until TTL expires — reuse the same id for a logically new piece
 of work while older results remain queued and callers will unblock with the
 stale completion first unless result cleanup removed it first.
 */
-func (q *Q) Schedule(id string, fn func(context.Context) (any, error), opts ...JobOption) chan *QValue {
+func (q *Q) Schedule(
+	id string,
+	fn func(context.Context) (any, error),
+	opts ...JobOption,
+) chan *QValue {
 	ctx, cancel := context.WithTimeout(q.ctx, q.schedulingTimeout())
 	defer cancel()
 
@@ -190,15 +201,7 @@ func (q *Q) Schedule(id string, fn func(context.Context) (any, error), opts ...J
 			if reg.Limit() {
 				q.metrics.incThrottled()
 
-				ch := make(chan *QValue, 1)
-				ch <- &QValue{
-					Error:     fmt.Errorf("qpool: regulator rejected schedule"),
-					CreatedAt: time.Now(),
-				}
-
-				close(ch)
-
-				return ch
+				return errorFuture(fmt.Errorf("qpool: regulator rejected schedule"))
 			}
 		}
 	}
@@ -207,28 +210,16 @@ func (q *Q) Schedule(id string, fn func(context.Context) (any, error), opts ...J
 		breaker := q.breakerFor(&job)
 
 		if breaker != nil && !breaker.Allow() {
-			ch := make(chan *QValue, 1)
-			ch <- &QValue{
-				Error:     fmt.Errorf("circuit breaker %s is open", job.CircuitID),
-				CreatedAt: time.Now(),
-			}
+			return errorFuture(fmt.Errorf("circuit breaker %s is open", job.CircuitID))
+		}
 
-			close(ch)
-
-			return ch
+		if breaker != nil {
+			job.circuitBreaker = breaker
 		}
 	}
 
 	if q.stopping.Load() {
-		ch := make(chan *QValue, 1)
-		ch <- &QValue{
-			Error:     fmt.Errorf("qpool: pool closed"),
-			CreatedAt: time.Now(),
-		}
-
-		close(ch)
-
-		return ch
+		return errorFuture(fmt.Errorf("qpool: pool closed"))
 	}
 
 	q.shutdownMu.RLock()
@@ -236,45 +227,20 @@ func (q *Q) Schedule(id string, fn func(context.Context) (any, error), opts ...J
 	if q.stopping.Load() {
 		q.shutdownMu.RUnlock()
 
-		ch := make(chan *QValue, 1)
-		ch <- &QValue{
-			Error:     fmt.Errorf("qpool: pool closed"),
-			CreatedAt: time.Now(),
-		}
-
-		close(ch)
-
-		return ch
+		return errorFuture(fmt.Errorf("qpool: pool closed"))
 	}
 
 	if q.ctx.Err() != nil {
 		q.shutdownMu.RUnlock()
 
-		ch := make(chan *QValue, 1)
-		ch <- &QValue{
-			Error:     fmt.Errorf("qpool: pool closed: %w", q.ctx.Err()),
-			CreatedAt: time.Now(),
-		}
-
-		close(ch)
-
-		return ch
+		return errorFuture(fmt.Errorf("qpool: pool closed: %w", q.ctx.Err()))
 	}
 
 	select {
 	case <-q.ctx.Done():
 		q.shutdownMu.RUnlock()
 
-		ch := make(chan *QValue, 1)
-		ch <- &QValue{
-			Error:     fmt.Errorf("qpool: pool closed: %w", q.ctx.Err()),
-			CreatedAt: time.Now(),
-		}
-
-		close(ch)
-
-		return ch
-
+		return errorFuture(fmt.Errorf("qpool: pool closed: %w", q.ctx.Err()))
 	case q.jobCh <- job:
 		q.publishTelemetry(Event{
 			Component: "qpool",
@@ -288,20 +254,16 @@ func (q *Q) Schedule(id string, fn func(context.Context) (any, error), opts ...J
 		q.shutdownMu.RUnlock()
 
 		return q.space.Await(id)
-
 	case <-ctx.Done():
 		q.shutdownMu.RUnlock()
 
-		ch := make(chan *QValue, 1)
-		ch <- &QValue{
-			Error:     fmt.Errorf("job scheduling timeout: %w", ctx.Err()),
-			CreatedAt: time.Now(),
+		err, schedulingFailure := q.scheduleDoneError(ctx)
+
+		if schedulingFailure {
+			q.metrics.incSchedulingFailure()
 		}
 
-		close(ch)
-		q.metrics.incSchedulingFailure()
-
-		return ch
+		return errorFuture(err)
 	}
 }
 
@@ -320,11 +282,12 @@ func (q *Q) Subscribe(groupID string) chan *QValue {
 }
 
 /*
-PeekResult returns a shallow copy of the stored QValue for job id when QSpace holds a non-expired result.
-
-It returns (nil, false) when no result is stored for id, when TTL expiration or eviction removed the entry, or when the pool or space cannot serve the query (including during shutdown).
-
-The returned *QValue points at a new struct value copied from the actor's map entry; see QSpace.PeekResult for concurrency and read-only semantics versus nested reference fields in QValue.
+PeekResult returns a shallow copy of the stored QValue for job id when QSpace holds
+a non-expired result. It returns (nil, false) when no result is stored for id, when
+TTL expiration or eviction removed the entry, or when the pool or space cannot serve
+the query (including during shutdown). The returned *QValue points at a new struct
+value copied from the actor's map entry; see QSpace.PeekResult for concurrency and
+read-only semantics versus nested reference fields in QValue.
 */
 func (q *Q) PeekResult(id string) (*QValue, bool) {
 	if q == nil {
@@ -348,9 +311,9 @@ func WithTTL(ttl time.Duration) JobOption {
 WithExecTimeout sets the per-invocation deadline passed to Fn. Zero selects
 the pool Config.SchedulingTimeout default (when positive) or five seconds.
 */
-func WithExecTimeout(d time.Duration) JobOption {
+func WithExecTimeout(duration time.Duration) JobOption {
 	return func(j *Job) {
-		j.ExecTimeout = d
+		j.ExecTimeout = duration
 	}
 }
 
@@ -359,253 +322,29 @@ WithDependencyAwaitTimeout sets how long a job waits for each dependency before
 its dependency wait attempt times out. It does not add dependencies; combine it
 with WithDependencies for dependency-ordered jobs.
 */
-func WithDependencyAwaitTimeout(d time.Duration) JobOption {
-	return func(j *Job) {
-		if d <= 0 {
+func WithDependencyAwaitTimeout(duration time.Duration) JobOption {
+	return func(job *Job) {
+		if duration <= 0 {
 			return
 		}
 
-		if j.DependencyRetryPolicy == nil {
-			j.DependencyRetryPolicy = &RetryPolicy{
+		if job.DependencyRetryPolicy == nil {
+			job.DependencyRetryPolicy = &RetryPolicy{
 				MaxAttempts: 1,
 				Strategy:    &ExponentialBackoff{Initial: time.Second},
 			}
 		}
 
-		if j.DependencyRetryPolicy.MaxAttempts <= 0 {
-			j.DependencyRetryPolicy.MaxAttempts = 1
+		if job.DependencyRetryPolicy.MaxAttempts <= 0 {
+			job.DependencyRetryPolicy.MaxAttempts = 1
 		}
 
-		if j.DependencyRetryPolicy.Strategy == nil {
-			j.DependencyRetryPolicy.Strategy = &ExponentialBackoff{Initial: time.Second}
-		}
-
-		j.DependencyRetryPolicy.PerAttemptTimeout = d
-	}
-}
-
-func (q *Q) breakerFor(job *Job) *CircuitBreaker {
-	if job.CircuitID == "" || job.CircuitConfig == nil {
-		return nil
-	}
-
-	for {
-		cur := q.breakers.Load()
-
-		var m map[string]*CircuitBreaker
-
-		if cur != nil {
-			m = cur.entries
-
-			if b, ok := m[job.CircuitID]; ok {
-				return b
+		if job.DependencyRetryPolicy.Strategy == nil {
+			job.DependencyRetryPolicy.Strategy = &ExponentialBackoff{
+				Initial: time.Second,
 			}
 		}
 
-		newM := make(map[string]*CircuitBreaker)
-
-		maps.Copy(newM, m)
-
-		cb := newCircuitBreakerFromConfig(job.CircuitConfig)
-		newM[job.CircuitID] = cb
-		next := &breakerMap{entries: newM}
-
-		if q.breakers.CompareAndSwap(cur, next) {
-			return cb
-		}
+		job.DependencyRetryPolicy.PerAttemptTimeout = duration
 	}
-}
-
-func (q *Q) registryPush(tok *workerToken) {
-	for {
-		old := q.registry.Load()
-
-		var cur []*workerToken
-
-		if old != nil {
-			cur = old.tokens
-		}
-
-		nextSlice := append(append([]*workerToken{}, cur...), tok)
-		next := &workerRegistry{tokens: nextSlice}
-
-		if q.registry.CompareAndSwap(old, next) {
-			return
-		}
-	}
-}
-
-func (q *Q) registryPopLast() *workerToken {
-	for {
-		old := q.registry.Load()
-
-		if old == nil || len(old.tokens) == 0 {
-			return nil
-		}
-
-		cur := old.tokens
-		last := cur[len(cur)-1]
-		nextSlice := make([]*workerToken, len(cur)-1)
-
-		copy(nextSlice, cur[:len(cur)-1])
-		next := &workerRegistry{tokens: nextSlice}
-
-		if q.registry.CompareAndSwap(old, next) {
-			return last
-		}
-	}
-}
-
-func (q *Q) registryRemove(id uint64) {
-	for {
-		old := q.registry.Load()
-
-		if old == nil {
-			return
-		}
-
-		cur := old.tokens
-		idx := -1
-
-		for i, t := range cur {
-			if t.id == id {
-				idx = i
-				break
-			}
-		}
-
-		if idx < 0 {
-			return
-		}
-
-		nextSlice := append(append([]*workerToken{}, cur[:idx]...), cur[idx+1:]...)
-		next := &workerRegistry{tokens: nextSlice}
-
-		if q.registry.CompareAndSwap(old, next) {
-			return
-		}
-	}
-}
-
-func (q *Q) startWorker() {
-	if !q.metrics.tryIncWorkerIfBelow(q.maxWorkers) {
-		return
-	}
-
-	workerCtx, cancel := context.WithCancel(q.ctx)
-
-	id := q.nextWorker.Add(1)
-	tok := &workerToken{id: id, cancel: cancel}
-
-	q.registryPush(tok)
-
-	q.wg.Go(func() {
-		q.runWorker(workerCtx, tok)
-	})
-
-	q.publishTelemetry(Event{
-		Component: "qpool",
-		Op:        "worker-start",
-		Message:   fmt.Sprintf("worker started; workers=%d", q.metrics.workerCount.Load()),
-		Time:      time.Now(),
-		Level:     log.DebugLevel,
-		Fields: []Field{
-			{Key: "workers", Value: q.metrics.workerCount.Load()},
-		},
-	})
-}
-
-func (q *Q) runWorker(workerCtx context.Context, tok *workerToken) {
-	defer q.registryRemove(tok.id)
-	defer q.metrics.decWorkerCount()
-
-	for {
-		select {
-		case <-workerCtx.Done():
-			q.publishTelemetry(Event{
-				Component: "qpool",
-				Op:        "worker-exit",
-				Message:   "worker exiting due to cancellation",
-				Time:      time.Now(),
-				Level:     log.DebugLevel,
-				Fields: []Field{
-					{Key: "worker", Value: tok.id},
-				},
-			})
-
-			return
-
-		case job, ok := <-q.jobCh:
-			if !ok {
-				return
-			}
-
-			q.metrics.decJobQueued()
-			q.metrics.incBusyWorker()
-
-			func() {
-				defer q.metrics.decBusyWorker()
-
-				processJob(q, workerCtx, job)
-			}()
-		}
-	}
-}
-
-func (q *Q) scaleDownWorkers(count int) {
-	for range count {
-		tok := q.registryPopLast()
-
-		if tok == nil {
-			return
-		}
-
-		tok.cancel()
-	}
-}
-
-/*
-Close cancels workers and drains queued jobs with shutdown errors.
-*/
-func (q *Q) Close() {
-	if q == nil {
-		return
-	}
-
-	q.publishTelemetry(Event{
-		Component: "qpool",
-		Op:        "close",
-		Message:   "closing Q pool",
-		Time:      time.Now(),
-		Level:     log.DebugLevel,
-	})
-
-	q.shutdownMu.Lock()
-	q.stopping.Store(true)
-
-	if q.cancel != nil {
-		q.cancel()
-	}
-
-	q.shutdownMu.Unlock()
-	q.wg.Wait()
-	q.shutdownMu.Lock()
-
-	q.closeJobOnce.Do(func() {
-		close(q.jobCh)
-	})
-
-	for job := range q.jobCh {
-		q.space.StoreError(job.ID, fmt.Errorf("qpool: pool shut down"), job.TTL)
-	}
-
-	q.shutdownMu.Unlock()
-	q.space.Close()
-	q.publishTelemetry(Event{
-		Component: "qpool",
-		Op:        "closed",
-		Message:   "Q pool closed",
-		Time:      time.Now(),
-		Level:     log.DebugLevel,
-	})
 }

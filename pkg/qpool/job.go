@@ -21,6 +21,7 @@ type Job struct {
 	LastError             error
 	DependencyRetryPolicy *RetryPolicy
 	StartTime             time.Time
+	circuitBreaker        *CircuitBreaker
 }
 
 /*

@@ -16,7 +16,7 @@ func processJob(q *Q, workerCtx context.Context, job Job) {
 		q.metrics.RecordJobOutcome(latency, false)
 
 		if job.CircuitID != "" {
-			if cb := q.breakerFor(&job); cb != nil {
+			if cb := q.breakerForJob(&job); cb != nil {
 				cb.RecordFailure()
 			}
 		}
@@ -71,7 +71,7 @@ func processJob(q *Q, workerCtx context.Context, job Job) {
 		q.metrics.RecordJobOutcome(latency, false)
 
 		if job.CircuitID != "" {
-			if cb := q.breakerFor(&job); cb != nil {
+			if cb := q.breakerForJob(&job); cb != nil {
 				cb.RecordFailure()
 			}
 		}
@@ -99,7 +99,7 @@ func processJob(q *Q, workerCtx context.Context, job Job) {
 	q.metrics.RecordJobOutcome(latency, true)
 
 	if job.CircuitID != "" {
-		if cb := q.breakerFor(&job); cb != nil {
+		if cb := q.breakerForJob(&job); cb != nil {
 			cb.RecordSuccess()
 		}
 	}

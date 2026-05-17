@@ -149,6 +149,10 @@ func evaluateArchitectureExpression(expression any, config map[string]any) (any,
 			return nil, fmt.Errorf("config key %q not found", configKey)
 		}
 
+		if number, ok := architectureNumber(value); ok {
+			return normalizeArchitectureNumber(number), nil
+		}
+
 		return value, nil
 	}
 

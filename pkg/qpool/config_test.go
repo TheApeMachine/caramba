@@ -71,6 +71,12 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			{
+				name: "CircuitBreakerLimit is default",
+				check: func() bool {
+					return cfg.CircuitBreakerLimit == defaultCircuitBreakerLimit
+				},
+			},
+			{
 				name: "TelemetryPublish is nil",
 				check: func() bool {
 					return cfg.TelemetryPublish == nil

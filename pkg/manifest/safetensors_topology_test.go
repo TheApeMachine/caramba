@@ -137,11 +137,11 @@ architectures:
 
 func tinyArchitectureManifest() string {
 	return `
-inputs: [${include.input_name}]
+inputs: ["${include.input_name}"]
 nodes:
   - id: projection
     op: projection.linear
-    in: [${include.input_name}]
+    in: ["${include.input_name}"]
     out: [projection]
     config:
       in_features: ${include.hidden_size}

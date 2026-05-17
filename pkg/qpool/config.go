@@ -11,7 +11,9 @@ type Config struct {
 	SchedulingTimeout  time.Duration
 	Regulators         []Regulator
 	JobChannelCapacity int
-	Scaler             *ScalerConfig
+	// CircuitBreakerLimit bounds the per-pool circuit breaker LRU.
+	CircuitBreakerLimit int
+	Scaler              *ScalerConfig
 
 	/*
 		TelemetryPublish forwards pool-originated events into the app’s telemetry
@@ -27,7 +29,8 @@ Set Scaler to nil to disable the built-in scaling goroutine (for example when us
 */
 func NewConfig() *Config {
 	return &Config{
-		SchedulingTimeout: 10 * time.Second,
+		SchedulingTimeout:   10 * time.Second,
+		CircuitBreakerLimit: defaultCircuitBreakerLimit,
 		Scaler: &ScalerConfig{
 			TargetLoad:         2.0,
 			ScaleUpThreshold:   4.0,

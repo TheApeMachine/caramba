@@ -10,6 +10,7 @@ func BenchmarkQ_Schedule_simpleJob(b *testing.B) {
 
 	cfg := NewConfig()
 	cfg.Scaler = nil
+	cfg.TelemetryPublish = func(Event) {}
 
 	q := NewQ(ctx, 4, 8, cfg)
 
@@ -40,6 +41,7 @@ func BenchmarkQ_Schedule_parallel(b *testing.B) {
 
 	cfg := NewConfig()
 	cfg.Scaler = nil
+	cfg.TelemetryPublish = func(Event) {}
 
 	q := NewQ(ctx, 4, 8, cfg)
 

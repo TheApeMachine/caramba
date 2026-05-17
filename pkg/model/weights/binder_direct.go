@@ -114,7 +114,13 @@ func (binder *Binder) bindLinearFromBinding(
 		return nil
 	}
 
-	bias, err := binder.linearBias(binding.biasName, outFeatures)
+	biasValues, err := binder.store.Values(binding.biasName)
+
+	if err != nil {
+		return err
+	}
+
+	bias, err := linearBindingBias(binding, biasValues, outFeatures)
 
 	if err != nil {
 		return fmt.Errorf("weights: node %q: %w", node.ID(), err)
@@ -233,6 +239,57 @@ func linearInputSliceWeight(
 		outFeatures,
 		binding.sliceStart,
 		size,
+	), nil
+}
+
+func linearBindingBias(
+	binding tensorBinding,
+	values []float64,
+	outFeatures int,
+) ([]float64, error) {
+	if strings.TrimSpace(binding.sliceAxis) != "output" {
+		if len(values) != outFeatures {
+			return nil, fmt.Errorf(
+				"bias %q length %d does not match out_features %d",
+				binding.biasName,
+				len(values),
+				outFeatures,
+			)
+		}
+
+		return values, nil
+	}
+
+	if binding.sliceStart < 0 {
+		return nil, fmt.Errorf("bias slice start must be non-negative")
+	}
+
+	size := binding.sliceSize
+
+	if size == 0 {
+		size = outFeatures
+	}
+
+	if size != outFeatures {
+		return nil, fmt.Errorf(
+			"bias output slice size %d does not match out_features %d",
+			size,
+			outFeatures,
+		)
+	}
+
+	if binding.sliceStart+size > len(values) {
+		return nil, fmt.Errorf(
+			"bias output slice [%d:%d] exceeds length %d",
+			binding.sliceStart,
+			binding.sliceStart+size,
+			len(values),
+		)
+	}
+
+	return append(
+		[]float64(nil),
+		values[binding.sliceStart:binding.sliceStart+size]...,
 	), nil
 }
 
