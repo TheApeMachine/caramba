@@ -13,11 +13,12 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/theapemachine/caramba/pkg/config"
-	"github.com/theapemachine/caramba/pkg/errnie"
 	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
 const devteamJobTimeout = 24 * time.Hour
+
+const reviewerMaxIterations = 10
 
 /*
 Orchestrator watches the kanban board for the "requests" project and manages
@@ -46,6 +47,8 @@ type Orchestrator struct {
 	cardPool      *qpool.Q
 	subtaskPool   *qpool.Q
 	integrationMu sync.Mutex
+	activeMu      sync.Mutex
+	activeCards   map[string]struct{}
 }
 
 type eventWatcher interface {
@@ -89,6 +92,7 @@ func NewOrchestrator(ctx context.Context, cfg *config.DevTeamConfig) (*Orchestra
 		watcherPool: newDevTeamPool(ctx, "watcher", 1),
 		cardPool:    newDevTeamPool(ctx, "card", maxConcurrent(cfg.MaxConcurrent)),
 		subtaskPool: newDevTeamPool(ctx, "subtask", maxConcurrent(cfg.MaxConcurrent)),
+		activeCards: map[string]struct{}{},
 	}, nil
 }
 
@@ -125,9 +129,14 @@ func (orchestrator *Orchestrator) Run() error {
 			}
 
 			if err != nil {
-				orchestrator.cancel()
+				qpool.Publish(qpool.NewWarningEvent(
+					"devteam",
+					"watcher",
+					"watcher reconnecting after error",
+					[]qpool.Field{{Key: "error", Value: err.Error()}},
+				))
 
-				return fmt.Errorf("orchestrator: watcher: %w", err)
+				continue
 			}
 
 		case event, ok := <-events:
@@ -142,9 +151,15 @@ func (orchestrator *Orchestrator) Run() error {
 			}
 
 			cardEvent := event
+
+			if !orchestrator.claimCard(cardEvent.ID) {
+				continue
+			}
+
 			orchestrator.cardPool.Schedule(
 				"devteam.card."+cardEvent.ID,
 				func(context.Context) (any, error) {
+					defer orchestrator.releaseCard(cardEvent.ID)
 					orchestrator.handle(cardEvent)
 
 					return nil, nil
@@ -153,6 +168,30 @@ func (orchestrator *Orchestrator) Run() error {
 			)
 		}
 	}
+}
+
+func (orchestrator *Orchestrator) claimCard(cardID string) bool {
+	orchestrator.activeMu.Lock()
+	defer orchestrator.activeMu.Unlock()
+
+	if orchestrator.activeCards == nil {
+		orchestrator.activeCards = map[string]struct{}{}
+	}
+
+	if _, exists := orchestrator.activeCards[cardID]; exists {
+		return false
+	}
+
+	orchestrator.activeCards[cardID] = struct{}{}
+
+	return true
+}
+
+func (orchestrator *Orchestrator) releaseCard(cardID string) {
+	orchestrator.activeMu.Lock()
+	defer orchestrator.activeMu.Unlock()
+
+	delete(orchestrator.activeCards, cardID)
 }
 
 /*
@@ -305,332 +344,4 @@ func (orchestrator *Orchestrator) handle(event ColumnEvent) {
 		_ = orchestrator.moveCard(event.ID, "backlog", "finalise error: "+err.Error())
 		return
 	}
-}
-
-/*
-runPlanner spins up a short-lived sandbox for the Planner agent (read-only
-access to the repo), runs the Planner, and returns the drafted subtasks.
-*/
-func (orchestrator *Orchestrator) runPlanner(
-	event ColumnEvent, blastContext string,
-) ([]SubtaskDraft, error) {
-	agentID := "planner-" + event.ID[:8]
-
-	sandbox, err := NewSandbox(orchestrator.ctx, SandboxConfig{
-		AgentID:       agentID,
-		Image:         orchestrator.cfg.DockerImage,
-		GitHubToken:   orchestrator.cfg.GitHubToken,
-		GitHubOwner:   orchestrator.cfg.GitHubOwner,
-		GitHubRepo:    orchestrator.cfg.GitHubRepo,
-		FeatureBranch: featureBranch(event),
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("planner sandbox: %w", err)
-	}
-
-	defer sandbox.Destroy()
-
-	if err := sandbox.Start(); err != nil {
-		return nil, fmt.Errorf("planner sandbox start: %w", err)
-	}
-
-	editor := NewVirtualEditor(agentID, sandbox, orchestrator.locks)
-	planner := NewPlanner(orchestrator.ctx, orchestrator.cfg.Planner, editor)
-
-	result, err := planner.Plan(event.Title, event.Description, blastContext)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return result.Subtasks, nil
-}
-
-/*
-persistSubtasks writes the Planner's drafts to the database, annotating each
-subtask's context snapshot with sibling awareness so developers know what
-neighbouring agents are working on.
-*/
-func (orchestrator *Orchestrator) persistSubtasks(
-	event ColumnEvent,
-	drafts []SubtaskDraft,
-	blastContext string,
-) ([]string, error) {
-	ids := make([]string, 0, len(drafts))
-
-	for i, draft := range drafts {
-		snap := SubtaskContext{
-			BlastRadius:  blastContext,
-			KeySymbols:   draft.KeySymbols,
-			FilesInScope: draft.FilesInScope,
-			SiblingNotes: draft.SiblingNotes,
-		}
-
-		id, err := orchestrator.subtasks.Insert(
-			orchestrator.ctx, event.ID, i, draft.Title, draft.Description, snap,
-		)
-
-		if err != nil {
-			return nil, err
-		}
-
-		ids = append(ids, id)
-	}
-
-	return ids, nil
-}
-
-/*
-runSubtask executes the full developer→reviewer loop for a single subtask in
-its own ephemeral sandbox on the shared feature branch.
-*/
-func (orchestrator *Orchestrator) runSubtask(
-	event ColumnEvent, subtask Subtask, branch string,
-) error {
-	agentID := "dev-" + subtask.ID[:8]
-
-	defer orchestrator.locks.ReleaseAll(agentID)
-
-	_ = orchestrator.subtasks.SetStatus(orchestrator.ctx, subtask.ID, "in-progress", agentID)
-
-	sandbox, err := NewSandbox(orchestrator.ctx, SandboxConfig{
-		AgentID:       agentID,
-		Image:         orchestrator.cfg.DockerImage,
-		GitHubToken:   orchestrator.cfg.GitHubToken,
-		GitHubOwner:   orchestrator.cfg.GitHubOwner,
-		GitHubRepo:    orchestrator.cfg.GitHubRepo,
-		FeatureBranch: branch,
-	})
-
-	if err != nil {
-		_ = orchestrator.subtasks.SetStatus(orchestrator.ctx, subtask.ID, "failed", agentID)
-		return fmt.Errorf("sandbox: %w", err)
-	}
-
-	defer sandbox.Destroy()
-
-	if err := sandbox.Start(); err != nil {
-		_ = orchestrator.subtasks.SetStatus(orchestrator.ctx, subtask.ID, "failed", agentID)
-		return fmt.Errorf("sandbox start: %w", err)
-	}
-
-	editor := NewVirtualEditor(agentID, sandbox, orchestrator.locks)
-	developer := NewDeveloper(orchestrator.ctx, orchestrator.cfg.Developer, editor)
-	reviewer := NewReviewer(orchestrator.ctx, orchestrator.cfg.Reviewer)
-
-	// Build the subtask-scoped context block injected into the developer prompt.
-	subtaskContext := formatSubtaskContext(subtask)
-
-	feedback := ""
-
-	for range maxIterations {
-		if err := developer.Implement(
-			subtask.Title, subtask.Description, subtaskContext, feedback,
-		); err != nil {
-			_ = orchestrator.subtasks.SetStatus(orchestrator.ctx, subtask.ID, "failed", agentID)
-			return err
-		}
-
-		verdict, err := reviewer.Review(sandbox, subtask.Title, subtask.Description)
-
-		if err != nil {
-			_ = orchestrator.subtasks.SetStatus(orchestrator.ctx, subtask.ID, "failed", agentID)
-			return err
-		}
-
-		if verdict.Pass {
-			break
-		}
-
-		feedback = verdict.Feedback
-	}
-
-	commitMsg := fmt.Sprintf("feat(%s): %s", event.ID[:8], subtask.Title)
-	orchestrator.integrationMu.Lock()
-	defer orchestrator.integrationMu.Unlock()
-
-	if err := sandbox.CommitAndPush(commitMsg); err != nil {
-		_ = orchestrator.subtasks.SetStatus(orchestrator.ctx, subtask.ID, "failed", agentID)
-		return fmt.Errorf("commit/push: %w", err)
-	}
-
-	_ = orchestrator.subtasks.SetStatus(orchestrator.ctx, subtask.ID, "done", agentID)
-
-	return nil
-}
-
-/*
-finalise opens the pull request for the completed feature branch and moves the
-parent card to the review column.
-*/
-func (orchestrator *Orchestrator) finalise(event ColumnEvent, branch string) error {
-	prURL, err := orchestrator.openPR(event, branch)
-
-	if err != nil {
-		return err
-	}
-
-	return orchestrator.moveCard(event.ID, "review", prURL)
-}
-
-func (orchestrator *Orchestrator) moveCard(cardID, columnKey, note string) error {
-	q := `UPDATE kanban_cards SET column_key = $1, updated_at = NOW() WHERE id = $2`
-
-	if _, err := orchestrator.db.ExecContext(orchestrator.ctx, q, columnKey, cardID); err != nil {
-		return errnie.Error(
-			fmt.Errorf("orchestrator: move card %s to %s: %w", cardID, columnKey, err),
-			"card_id", cardID,
-			"column_key", columnKey,
-		)
-	}
-
-	if note == "" {
-		return nil
-	}
-
-	desc := fmt.Sprintf("[devteam] %s", note)
-	if _, err := orchestrator.db.ExecContext(
-		orchestrator.ctx,
-		`UPDATE kanban_cards SET description = description || E'\n' || $1 WHERE id = $2`,
-		desc, cardID,
-	); err != nil {
-		return errnie.Error(
-			fmt.Errorf("orchestrator: append card %s move note: %w", cardID, err),
-			"card_id", cardID,
-			"column_key", columnKey,
-		)
-	}
-
-	return nil
-}
-
-func (orchestrator *Orchestrator) openPR(event ColumnEvent, branch string) (string, error) {
-	base := "main"
-	title := event.Title
-	body := fmt.Sprintf(
-		"Automated PR from the Caramba AI dev team.\n\nFeature request card: %s\n\n%s",
-		event.ID, event.Description,
-	)
-
-	pr, _, err := orchestrator.github.PullRequests.Create(
-		orchestrator.ctx,
-		orchestrator.cfg.GitHubOwner,
-		orchestrator.cfg.GitHubRepo,
-		&github.NewPullRequest{
-			Title: &title,
-			Head:  &branch,
-			Base:  &base,
-			Body:  &body,
-		},
-	)
-
-	if err != nil {
-		return "", fmt.Errorf("orchestrator: open PR: %w", err)
-	}
-
-	return pr.GetHTMLURL(), nil
-}
-
-func (orchestrator *Orchestrator) extractContext(event ColumnEvent) string {
-	keywords := keywordsFromCard(event.Title, event.Description)
-	radius, err := orchestrator.extractor.Extract(".", keywords, orchestrator.cfg.BlastRadiusDepth)
-
-	if err != nil || radius == nil {
-		return ""
-	}
-
-	return radius.Format()
-}
-
-func featureBranch(event ColumnEvent) string {
-	slug := strings.ToLower(event.Title)
-	slug = strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			return r
-		}
-
-		return '-'
-	}, slug)
-
-	parts := strings.FieldsFunc(slug, func(r rune) bool { return r == '-' })
-
-	if len(parts) > 6 {
-		parts = parts[:6]
-	}
-
-	return "devteam/" + event.ID[:8] + "-" + strings.Join(parts, "-")
-}
-
-func keywordsFromCard(title, description string) []string {
-	combined := title + " " + description
-	words := strings.FieldsFunc(combined, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z') && !(r >= 'A' && r <= 'Z') && !(r >= '0' && r <= '9')
-	})
-
-	seen := make(map[string]struct{})
-	keywords := make([]string, 0, len(words))
-
-	for _, word := range words {
-		lower := strings.ToLower(word)
-
-		if len(lower) < 3 {
-			continue
-		}
-
-		if _, ok := seen[lower]; ok {
-			continue
-		}
-
-		seen[lower] = struct{}{}
-		keywords = append(keywords, lower)
-	}
-
-	return keywords
-}
-
-/*
-formatSubtaskContext renders the subtask's stored context snapshot into a
-markdown block for injection into the developer agent's system prompt.
-*/
-func formatSubtaskContext(subtask Subtask) string {
-	snap := subtask.ContextSnapshot
-	var sb strings.Builder
-
-	if snap.BlastRadius != "" {
-		sb.WriteString(snap.BlastRadius)
-		sb.WriteString("\n")
-	}
-
-	if len(snap.FilesInScope) > 0 {
-		sb.WriteString("### Files in scope for this subtask\n")
-
-		for _, f := range snap.FilesInScope {
-			fmt.Fprintf(&sb, "- %s\n", f)
-		}
-
-		sb.WriteString("\n")
-	}
-
-	if len(snap.KeySymbols) > 0 {
-		sb.WriteString("### Key symbols\n")
-
-		for _, sym := range snap.KeySymbols {
-			fmt.Fprintf(&sb, "- `%s`\n", sym)
-		}
-
-		sb.WriteString("\n")
-	}
-
-	if len(snap.SiblingNotes) > 0 {
-		sb.WriteString("### Sibling subtask conflicts to be aware of\n")
-
-		for title, note := range snap.SiblingNotes {
-			fmt.Fprintf(&sb, "- **%s**: %s\n", title, note)
-		}
-
-		sb.WriteString("\n")
-	}
-
-	return sb.String()
 }

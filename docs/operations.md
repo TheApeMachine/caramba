@@ -95,6 +95,32 @@ No backend falls back silently. If a kernel isn't implemented for a target backe
 | `shape.reshape`  | Tensor reshape                 |
 | `shape.transpose`| Tensor transpose               |
 | `shape.expand`   | Tensor broadcast expansion     |
+| `shape.slice`    | Contiguous range extraction    |
+
+Metal `shape.slice` is handled by `operation_executor.applySlice`, which
+currently requires `start==0` and leading-dim slicing. The Metal failure maps to
+this exact error format:
+
+```text
+metal tensor: slice node %q currently supports start=0 with leading-dim slicing only (got start=%d, dim=%d, outer=%d)
+```
+
+Supported on Metal:
+
+```yaml
+op: shape.slice
+config: { dim: 1, start: 0, end: 4096 } # shape [1, 4112, 64], outer=1
+```
+
+Unsupported on Metal:
+
+```yaml
+op: shape.slice
+config: { dim: 1, start: 64, end: 128 } # start != 0
+```
+
+Run non-prefix slices on CPU or avoid them until Metal strided-copy support is
+implemented.
 
 ### Math
 

@@ -97,9 +97,9 @@ loop_cos_neon:
 	VFADD_D2(8, 9, 8)                            // V8 = cp
 
 	// Select sp or cp based on (j & 1). Cos picks sp on odd quadrants.
-	// CMTST builds a proper -1/0 per-lane mask from bit 0 of j (single-
-	// bit-set masks don't blend correctly through BSL — see sin_neon).
-	VCMTST_D2(28, 4, 11)                         // V11 = (j & 1) ? -1 : 0
+	VAND V28.B16, V4.B16, V11.B16                // V11 = j & 1 per lane
+	VEOR V12.B16, V12.B16, V12.B16               // V12 = 0
+	VSUB V11.D2, V12.D2, V11.D2                  // V11 = 0 - (j & 1), so 0 or -1
 	VBSL V8.B16, V7.B16, V11.B16                 // V11 = (mask) ? sp : cp
 
 	// Sign flip: bit 1 of (j+1).

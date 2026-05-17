@@ -50,6 +50,14 @@ const mathShortcut: WrapShortcut = {
 	icon: <SigmaIcon />,
 };
 
+function editableForRange(range: Range): HTMLElement | null {
+	const container = range.commonAncestorContainer;
+	const element =
+		container instanceof Element ? container : container.parentElement;
+
+	return element?.closest<HTMLElement>("[contenteditable]") ?? null;
+}
+
 function wrapSelection(prefix: string, suffix: string) {
 	const selection = window.getSelection();
 
@@ -57,30 +65,26 @@ function wrapSelection(prefix: string, suffix: string) {
 		return;
 	}
 
+	const range = selection.getRangeAt(0);
 	const text = selection.toString();
 	const wrapped = `${prefix}${text}${suffix}`;
+	const editable = editableForRange(range);
 
-	document.execCommand("insertText", false, wrapped);
+	range.deleteContents();
 
+	const textNode = document.createTextNode(wrapped);
+	range.insertNode(textNode);
+
+	const cursor = document.createRange();
 	if (text.length > 0) {
-		return;
+		cursor.setStartAfter(textNode);
+	} else {
+		cursor.setStart(textNode, prefix.length);
 	}
-
-	const refreshed = window.getSelection();
-
-	if (!refreshed || refreshed.rangeCount === 0) {
-		return;
-	}
-
-	const range = refreshed.getRangeAt(0);
-	const cursor = range.cloneRange();
-	cursor.setStart(
-		range.endContainer,
-		Math.max(0, range.endOffset - suffix.length),
-	);
 	cursor.collapse(true);
-	refreshed.removeAllRanges();
-	refreshed.addRange(cursor);
+	selection.removeAllRanges();
+	selection.addRange(cursor);
+	editable?.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function FormattingButton({ shortcut }: { shortcut: WrapShortcut }) {

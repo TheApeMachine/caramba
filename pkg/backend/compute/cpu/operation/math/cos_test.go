@@ -45,6 +45,19 @@ func TestCos_Forward(t *testing.T) {
 				}
 			})
 		}
+
+		Convey("It should return an error when stateDict.Out is too small", func() {
+			stateDict := state.NewDict().
+				WithShape([]int{3}).
+				WithInput([]float64{0, 1, 2}).
+				WithOut(make([]float64, 2))
+
+			_, err := op.Forward(stateDict)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "stateDict.Out length 2")
+			So(err.Error(), ShouldContainSubstring, "before cosKernel")
+		})
 	})
 }
 
@@ -54,8 +67,15 @@ func BenchmarkCos_Forward(b *testing.B) {
 	for index := range data {
 		data[index] = float64(index)*0.01 - 5.0
 	}
+
+	stateDict := state.NewDict().
+		WithShape([]int{1024}).
+		WithInput(data).
+		WithOut(make([]float64, len(data)))
+
+	b.ResetTimer()
+
 	for b.Loop() {
-		stateDict := state.NewDict().WithShape([]int{1024}).WithInput(data)
 		_, _ = op.Forward(stateDict)
 	}
 }

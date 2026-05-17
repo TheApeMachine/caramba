@@ -125,6 +125,16 @@ func Walk(subPath string) (map[string]Schema, error) {
 			return readErr
 		}
 
+		var raw map[string]any
+
+		if parseErr := yaml.Unmarshal(data, &raw); parseErr != nil {
+			return parseErr
+		}
+
+		if raw["kind"] == nil && raw["op"] == nil {
+			return nil
+		}
+
 		var schema Schema
 
 		if parseErr := yaml.Unmarshal(data, &schema); parseErr != nil {

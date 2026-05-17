@@ -4,22 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	openai "github.com/openai/openai-go"
 	openaiopt "github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/responses"
+	"github.com/openai/openai-go/shared"
 
 	devcfg "github.com/theapemachine/caramba/pkg/config"
 )
 
 /*
-OpenAIProvider implements Provider using the OpenAI Responses API.
-Because the SDK accepts a custom BaseURL it works with any OpenAI-compatible
-endpoint: OpenAI, Groq, Together, Ollama, vLLM, LM Studio, etc.
+OpenAIProvider implements Provider using OpenAI Responses for the default
+OpenAI endpoint and Chat Completions for OpenAI-compatible endpoints.
 */
 type OpenAIProvider struct {
-	client openai.Client
-	model  string
+	client             openai.Client
+	model              string
+	useChatCompletions bool
 }
 
 /*
@@ -39,8 +41,9 @@ func NewOpenAIProvider(cfg devcfg.ProviderConfig) *OpenAIProvider {
 	}
 
 	return &OpenAIProvider{
-		client: openai.NewClient(opts...),
-		model:  model,
+		client:             openai.NewClient(opts...),
+		model:              model,
+		useChatCompletions: cfg.BaseURL != "" || (cfg.Provider != "" && strings.ToLower(cfg.Provider) != "openai"),
 	}
 }
 
@@ -48,6 +51,21 @@ func NewOpenAIProvider(cfg devcfg.ProviderConfig) *OpenAIProvider {
 Chat sends one conversation turn via the Responses API and returns the reply.
 */
 func (provider *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error) {
+	if provider.useChatCompletions {
+		return runProviderChat(ctx, func(requestCtx context.Context) (ChatResponse, error) {
+			return provider.chatCompletions(requestCtx, req)
+		})
+	}
+
+	return runProviderChat(ctx, func(requestCtx context.Context) (ChatResponse, error) {
+		return provider.responses(requestCtx, req)
+	})
+}
+
+func (provider *OpenAIProvider) responses(
+	ctx context.Context,
+	req ChatRequest,
+) (ChatResponse, error) {
 	input, err := provider.buildInput(req.Messages)
 
 	if err != nil {
@@ -87,6 +105,47 @@ func (provider *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (Chat
 	}
 
 	return provider.parseResponse(resp)
+}
+
+func (provider *OpenAIProvider) chatCompletions(
+	ctx context.Context,
+	req ChatRequest,
+) (ChatResponse, error) {
+	messages, err := provider.buildChatMessages(req)
+
+	if err != nil {
+		return ChatResponse{}, err
+	}
+
+	tools, err := provider.buildChatTools(req.Tools)
+
+	if err != nil {
+		return ChatResponse{}, err
+	}
+
+	maxTokens := int64(req.MaxTokens)
+
+	if maxTokens == 0 {
+		maxTokens = 8192
+	}
+
+	params := openai.ChatCompletionNewParams{
+		Model:     openai.ChatModel(provider.model),
+		Messages:  messages,
+		MaxTokens: openai.Int(maxTokens),
+	}
+
+	if len(tools) > 0 {
+		params.Tools = tools
+	}
+
+	resp, err := provider.client.Chat.Completions.New(ctx, params)
+
+	if err != nil {
+		return ChatResponse{}, fmt.Errorf("openai: %w", err)
+	}
+
+	return provider.parseChatCompletion(resp)
 }
 
 func (provider *OpenAIProvider) buildInput(
@@ -159,8 +218,118 @@ func (provider *OpenAIProvider) buildTools(
 	return tools, nil
 }
 
+func (provider *OpenAIProvider) buildChatMessages(
+	req ChatRequest,
+) ([]openai.ChatCompletionMessageParamUnion, error) {
+	messages := make([]openai.ChatCompletionMessageParamUnion, 0, len(req.Messages)+1)
+
+	if strings.TrimSpace(req.System) != "" {
+		messages = append(messages, openai.SystemMessage(req.System))
+	}
+
+	for _, msg := range req.Messages {
+		switch msg.Role {
+		case "user":
+			messages = append(messages, openai.UserMessage(msg.Content))
+
+		case "assistant":
+			message, err := provider.chatAssistantMessage(msg)
+
+			if err != nil {
+				return nil, err
+			}
+
+			messages = append(messages, message)
+
+		case "tool":
+			messages = append(messages, openai.ToolMessage(msg.Content, msg.ToolCallID))
+
+		default:
+			return nil, fmt.Errorf("openai: unknown message role %q", msg.Role)
+		}
+	}
+
+	return messages, nil
+}
+
+func (provider *OpenAIProvider) chatAssistantMessage(
+	msg ChatMessage,
+) (openai.ChatCompletionMessageParamUnion, error) {
+	if len(msg.ToolCalls) == 0 {
+		return openai.AssistantMessage(msg.Content), nil
+	}
+
+	assistant := openai.ChatCompletionAssistantMessageParam{}
+
+	if msg.Content != "" {
+		assistant.Content.OfString = openai.String(msg.Content)
+	}
+
+	assistant.ToolCalls = make([]openai.ChatCompletionMessageToolCallParam, 0, len(msg.ToolCalls))
+
+	for _, toolCall := range msg.ToolCalls {
+		args, err := json.Marshal(toolCall.Input)
+
+		if err != nil {
+			return openai.ChatCompletionMessageParamUnion{}, fmt.Errorf(
+				"openai: marshal tool call %q arguments: %w",
+				toolCall.Name,
+				err,
+			)
+		}
+
+		assistant.ToolCalls = append(
+			assistant.ToolCalls,
+			openai.ChatCompletionMessageToolCallParam{
+				ID: toolCall.ID,
+				Function: openai.ChatCompletionMessageToolCallFunctionParam{
+					Arguments: string(args),
+					Name:      toolCall.Name,
+				},
+			},
+		)
+	}
+
+	return openai.ChatCompletionMessageParamUnion{OfAssistant: &assistant}, nil
+}
+
+func (provider *OpenAIProvider) buildChatTools(
+	defs []ToolDefinition,
+) ([]openai.ChatCompletionToolParam, error) {
+	tools := make([]openai.ChatCompletionToolParam, len(defs))
+
+	for index, def := range defs {
+		raw, err := json.Marshal(def.Parameters)
+
+		if err != nil {
+			return nil, fmt.Errorf("openai: marshal tool %q parameters: %w", def.Name, err)
+		}
+
+		var params shared.FunctionParameters
+
+		if err := json.Unmarshal(raw, &params); err != nil {
+			return nil, fmt.Errorf("openai: unmarshal tool %q parameters: %w", def.Name, err)
+		}
+
+		tools[index] = openai.ChatCompletionToolParam{
+			Function: shared.FunctionDefinitionParam{
+				Name:        def.Name,
+				Description: openai.String(def.Description),
+				Parameters:  params,
+			},
+		}
+	}
+
+	return tools, nil
+}
+
 func (provider *OpenAIProvider) parseResponse(resp *responses.Response) (ChatResponse, error) {
-	result := ChatResponse{Content: resp.OutputText()}
+	result := ChatResponse{
+		Content:      resp.OutputText(),
+		InputTokens:  resp.Usage.InputTokens,
+		OutputTokens: resp.Usage.OutputTokens,
+		TotalTokens:  resp.Usage.TotalTokens,
+	}
 
 	for _, item := range resp.Output {
 		fc := item.AsFunctionCall()
@@ -178,6 +347,43 @@ func (provider *OpenAIProvider) parseResponse(resp *responses.Response) (ChatRes
 		result.ToolCalls = append(result.ToolCalls, ToolCall{
 			ID:    fc.CallID,
 			Name:  fc.Name,
+			Input: input,
+		})
+	}
+
+	return result, nil
+}
+
+func (provider *OpenAIProvider) parseChatCompletion(
+	resp *openai.ChatCompletion,
+) (ChatResponse, error) {
+	result := ChatResponse{
+		InputTokens:  resp.Usage.PromptTokens,
+		OutputTokens: resp.Usage.CompletionTokens,
+		TotalTokens:  resp.Usage.TotalTokens,
+	}
+
+	if len(resp.Choices) == 0 {
+		return result, nil
+	}
+
+	message := resp.Choices[0].Message
+	result.Content = message.Content
+
+	for _, toolCall := range message.ToolCalls {
+		var input map[string]any
+
+		if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &input); err != nil {
+			return ChatResponse{}, fmt.Errorf(
+				"openai: unmarshal tool call %q arguments: %w",
+				toolCall.Function.Name,
+				err,
+			)
+		}
+
+		result.ToolCalls = append(result.ToolCalls, ToolCall{
+			ID:    toolCall.ID,
+			Name:  toolCall.Function.Name,
 			Input: input,
 		})
 	}

@@ -58,43 +58,43 @@ nodes:
         op: math.rmsnorm
         in: ["h_${i}"]
         out: ["tb_norm1_${i}"]
-        config: { eps: ${include.eps}, affine: false }
+        config: { eps: "${include.eps}", affine: false }
 
       - id: "transformer_blocks.${i}.attn.to_q"
         op: projection.linear
         in: ["tb_norm1_${i}"]
         out: ["tb_q_${i}"]
-        config: { in_features: ${include.hidden_size}, out_features: ${include.hidden_size} }
+        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
 
       - id: "transformer_blocks.${i}.attn.to_k"
         op: projection.linear
         in: ["tb_norm1_${i}"]
         out: ["tb_k_${i}"]
-        config: { in_features: ${include.hidden_size}, out_features: ${include.hidden_size} }
+        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
 
       - id: "transformer_blocks.${i}.attn.to_v"
         op: projection.linear
         in: ["tb_norm1_${i}"]
         out: ["tb_v_${i}"]
-        config: { in_features: ${include.hidden_size}, out_features: ${include.hidden_size} }
+        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
 
       - id: "tb_q_heads_${i}"
         op: shape.view_as_heads
         in: ["tb_q_${i}"]
         out: ["tb_qh_${i}"]
-        config: { num_heads: ${include.num_attention_heads} }
+        config: { num_heads: "${include.num_attention_heads}" }
 
       - id: "tb_k_heads_${i}"
         op: shape.view_as_heads
         in: ["tb_k_${i}"]
         out: ["tb_kh_${i}"]
-        config: { num_heads: ${include.num_attention_heads} }
+        config: { num_heads: "${include.num_attention_heads}" }
 
       - id: "tb_v_heads_${i}"
         op: shape.view_as_heads
         in: ["tb_v_${i}"]
         out: ["tb_vh_${i}"]
-        config: { num_heads: ${include.num_attention_heads} }
+        config: { num_heads: "${include.num_attention_heads}" }
 
       - id: "tb_rope_q_${i}"
         op: positional.rope
@@ -118,7 +118,7 @@ nodes:
         op: attention.sdpa
         in: ["tb_qr_${i}", "tb_kr_${i}", "tb_vh_${i}"]
         out: ["tb_attn_${i}"]
-        config: { num_heads: ${include.num_attention_heads}, head_dim: ${include.attention_head_dim}, causal: false }
+        config: { num_heads: "${include.num_attention_heads}", head_dim: "${include.attention_head_dim}", causal: false }
 
       - id: "tb_merge_heads_${i}"
         op: shape.merge_heads
@@ -129,7 +129,7 @@ nodes:
         op: projection.linear
         in: ["tb_attn_flat_${i}"]
         out: ["tb_attn_out_${i}"]
-        config: { in_features: ${include.hidden_size}, out_features: ${include.hidden_size} }
+        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
 
       - id: "tb_attn_residual_${i}"
         op: math.add
@@ -140,13 +140,13 @@ nodes:
         op: math.rmsnorm
         in: ["tb_mid_${i}"]
         out: ["tb_norm2_${i}"]
-        config: { eps: ${include.eps}, affine: false }
+        config: { eps: "${include.eps}", affine: false }
 
       - id: "transformer_blocks.${i}.ff.net.0.proj"
         op: projection.linear
         in: ["tb_norm2_${i}"]
         out: ["tb_gate_up_${i}"]
-        config: { in_features: ${include.hidden_size}, out_features: ${include.mlp_packed} }
+        config: { in_features: "${include.hidden_size}", out_features: "${include.mlp_packed}" }
 
       - id: "tb_swiglu_${i}"
         op: activation.swiglu
@@ -157,7 +157,7 @@ nodes:
         op: projection.linear
         in: ["tb_mlp_${i}"]
         out: ["tb_mlp_out_${i}"]
-        config: { in_features: ${include.mlp_inner}, out_features: ${include.hidden_size} }
+        config: { in_features: "${include.mlp_inner}", out_features: "${include.hidden_size}" }
 
       - id: "tb_mlp_residual_${i}"
         op: math.add
@@ -172,43 +172,43 @@ nodes:
         op: math.rmsnorm
         in: ["h_${offset_i}"]
         out: ["st_norm_${i}"]
-        config: { eps: ${include.eps}, affine: false }
+        config: { eps: "${include.eps}", affine: false }
 
       - id: "single_transformer_blocks.${i}.attn.to_q"
         op: projection.linear
         in: ["st_norm_${i}"]
         out: ["st_q_${i}"]
-        config: { in_features: ${include.hidden_size}, out_features: ${include.hidden_size} }
+        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
 
       - id: "single_transformer_blocks.${i}.attn.to_k"
         op: projection.linear
         in: ["st_norm_${i}"]
         out: ["st_k_${i}"]
-        config: { in_features: ${include.hidden_size}, out_features: ${include.hidden_size} }
+        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
 
       - id: "single_transformer_blocks.${i}.attn.to_v"
         op: projection.linear
         in: ["st_norm_${i}"]
         out: ["st_v_${i}"]
-        config: { in_features: ${include.hidden_size}, out_features: ${include.hidden_size} }
+        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
 
       - id: "st_q_heads_${i}"
         op: shape.view_as_heads
         in: ["st_q_${i}"]
         out: ["st_qh_${i}"]
-        config: { num_heads: ${include.num_attention_heads} }
+        config: { num_heads: "${include.num_attention_heads}" }
 
       - id: "st_k_heads_${i}"
         op: shape.view_as_heads
         in: ["st_k_${i}"]
         out: ["st_kh_${i}"]
-        config: { num_heads: ${include.num_attention_heads} }
+        config: { num_heads: "${include.num_attention_heads}" }
 
       - id: "st_v_heads_${i}"
         op: shape.view_as_heads
         in: ["st_v_${i}"]
         out: ["st_vh_${i}"]
-        config: { num_heads: ${include.num_attention_heads} }
+        config: { num_heads: "${include.num_attention_heads}" }
 
       - id: "st_rope_q_${i}"
         op: positional.rope
@@ -232,7 +232,7 @@ nodes:
         op: attention.sdpa
         in: ["st_qr_${i}", "st_kr_${i}", "st_vh_${i}"]
         out: ["st_attn_${i}"]
-        config: { num_heads: ${include.num_attention_heads}, head_dim: ${include.attention_head_dim}, causal: false }
+        config: { num_heads: "${include.num_attention_heads}", head_dim: "${include.attention_head_dim}", causal: false }
 
       - id: "st_merge_heads_${i}"
         op: shape.merge_heads
@@ -243,7 +243,7 @@ nodes:
         op: projection.linear
         in: ["st_attn_flat_${i}"]
         out: ["st_attn_out_${i}"]
-        config: { in_features: ${include.hidden_size}, out_features: ${include.hidden_size} }
+        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
 
       - id: "st_attn_residual_${i}"
         op: math.add
@@ -254,7 +254,7 @@ nodes:
         op: projection.linear
         in: ["st_norm_${i}"]
         out: ["st_gate_up_${i}"]
-        config: { in_features: ${include.hidden_size}, out_features: ${include.mlp_packed} }
+        config: { in_features: "${include.hidden_size}", out_features: "${include.mlp_packed}" }
 
       - id: "st_swiglu_${i}"
         op: activation.swiglu
@@ -265,7 +265,7 @@ nodes:
         op: projection.linear
         in: ["st_mlp_${i}"]
         out: ["st_mlp_out_${i}"]
-        config: { in_features: ${include.mlp_inner}, out_features: ${include.hidden_size} }
+        config: { in_features: "${include.mlp_inner}", out_features: "${include.hidden_size}" }
 
       - id: "st_mlp_residual_${i}"
         op: math.add
@@ -276,7 +276,7 @@ nodes:
     op: math.rmsnorm
     in: ["h_${include.joint_terminal_index}"]
     out: [final_norm]
-    config: { eps: ${include.eps}, affine: false }
+    config: { eps: "${include.eps}", affine: false }
 
   - id: proj_out
     op: projection.linear

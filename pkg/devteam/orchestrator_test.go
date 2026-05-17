@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"io"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,19 +21,19 @@ func init() {
 }
 
 func TestOrchestratorRun(t *testing.T) {
-	Convey("Given an Orchestrator with a failing watcher", t, func() {
+	Convey("Given an Orchestrator with a reconnecting watcher", t, func() {
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
 
 		watcher := newOrchestratorTestWatcher(errors.New("watch failed"))
 		orchestrator := newTestOrchestrator(ctx, cancel, watcher)
 		defer orchestrator.closePools()
 
-		Convey("It should return the watcher error instead of blocking", func() {
+		Convey("It should keep running until the context is cancelled", func() {
+			time.AfterFunc(50*time.Millisecond, cancel)
+
 			err := orchestrator.Run()
 
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "watch failed")
+			So(err, ShouldBeNil)
 		})
 	})
 
@@ -137,10 +138,12 @@ func TestOrchestrator_moveCard(t *testing.T) {
 		orchestrator := &Orchestrator{
 			ctx: context.Background(),
 			db:  database,
+			cfg: &config.DevTeamConfig{GitHubToken: "ghp_secret"},
 		}
 
 		orchestratorTestExecCount.Store(0)
 		orchestratorTestExecFailure.Store(false)
+		orchestratorTestLastNote.Store("")
 
 		Convey("It should update the card column and note", func() {
 			err := orchestrator.moveCard(
@@ -151,6 +154,17 @@ func TestOrchestrator_moveCard(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(orchestratorTestExecCount.Load(), ShouldEqual, 2)
+		})
+
+		Convey("It should redact secrets from card notes", func() {
+			err := orchestrator.moveCard(
+				"f47ac10b-58cc-4372-a567-0e02b2c3d479",
+				"backlog",
+				"git error for ghp_secret",
+			)
+
+			So(err, ShouldBeNil)
+			So(orchestratorTestLastNote.Load(), ShouldEqual, "[devteam] git error for [REDACTED]")
 		})
 
 		Convey("It should return SQL errors instead of swallowing them", func() {
@@ -166,6 +180,45 @@ func TestOrchestrator_moveCard(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "move card")
 			So(err.Error(), ShouldContainSubstring, "test exec failure")
 			So(orchestratorTestExecCount.Load(), ShouldEqual, 1)
+		})
+	})
+}
+
+func TestOrchestrator_claimCard(t *testing.T) {
+	Convey("Given an orchestrator tracking active cards", t, func() {
+		orchestrator := &Orchestrator{}
+
+		Convey("It should reject duplicate claims until release", func() {
+			So(orchestrator.claimCard("card-1"), ShouldBeTrue)
+			So(orchestrator.claimCard("card-1"), ShouldBeFalse)
+
+			orchestrator.releaseCard("card-1")
+
+			So(orchestrator.claimCard("card-1"), ShouldBeTrue)
+		})
+	})
+}
+
+func TestOrchestrator_setSubtaskStatus(t *testing.T) {
+	Convey("Given a transient database error while setting subtask status", t, func() {
+		database, err := sql.Open("devteam_orchestrator_test", "")
+		So(err, ShouldBeNil)
+		defer func() { So(database.Close(), ShouldBeNil) }()
+
+		orchestrator := &Orchestrator{
+			ctx:      context.Background(),
+			db:       database,
+			subtasks: NewSubtaskStore(database),
+		}
+		orchestratorTestExecCount.Store(0)
+		orchestratorTestExecFailure.Store(false)
+		orchestratorTestFailuresRemaining.Store(1)
+
+		Convey("It should retry and record the status", func() {
+			err := orchestrator.setSubtaskStatus("subtask-1", "done", "agent-1")
+
+			So(err, ShouldBeNil)
+			So(orchestratorTestExecCount.Load(), ShouldEqual, 2)
 		})
 	})
 }
@@ -356,6 +409,8 @@ func splitBranchSlug(branch string) []string {
 
 var orchestratorTestExecCount atomic.Int64
 var orchestratorTestExecFailure atomic.Bool
+var orchestratorTestFailuresRemaining atomic.Int64
+var orchestratorTestLastNote atomic.Value
 
 type orchestratorTestDriver struct{}
 
@@ -390,6 +445,18 @@ func (connection *orchestratorTestConn) ExecContext(
 
 	if orchestratorTestExecFailure.Load() {
 		return nil, errors.New("test exec failure")
+	}
+
+	if orchestratorTestFailuresRemaining.Load() > 0 {
+		orchestratorTestFailuresRemaining.Add(-1)
+
+		return nil, errors.New("transient test exec failure")
+	}
+
+	if len(args) > 0 {
+		if note, ok := args[0].Value.(string); ok && strings.HasPrefix(note, "[devteam]") {
+			orchestratorTestLastNote.Store(note)
+		}
 	}
 
 	return driver.RowsAffected(1), nil

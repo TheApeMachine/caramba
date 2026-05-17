@@ -47,6 +47,17 @@ func TestSin_Forward(t *testing.T) {
 				}
 			})
 		}
+
+		Convey("It should return an error for a nil input buffer", func() {
+			stateDict := state.NewDict().
+				WithShape([]int{0}).
+				WithInputs([]float64(nil))
+
+			_, err := op.Forward(stateDict)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "stateDict.Inputs[0] must be non-nil")
+		})
 	})
 }
 

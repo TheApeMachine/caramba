@@ -14,6 +14,8 @@ const subAgentTimeout = 2 * time.Minute
 
 const subAgentMaxTokens = 4096
 
+const subAgentMaxIterations = 10
+
 /*
 SubAgentTask is a single short-lived delegation requested by the developer.
 */
@@ -391,7 +393,8 @@ func (agent *subAgent) Run(system, userPrompt string) (string, error) {
 	history := []ChatMessage{{Role: "user", Content: userPrompt}}
 	lastContent := ""
 
-	for range maxIterations {
+	for range subAgentMaxIterations {
+		started := time.Now()
 		response, err := agent.provider.Chat(agent.ctx, ChatRequest{
 			System:    system,
 			Messages:  history,
@@ -402,6 +405,8 @@ func (agent *subAgent) Run(system, userPrompt string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+
+		publishChatUsage("sub_agent."+agent.name, started, response)
 
 		lastContent = strings.TrimSpace(response.Content)
 		history = append(history, ChatMessage{

@@ -2,9 +2,9 @@ package devteam
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/theapemachine/caramba/pkg/asset"
 	devcfg "github.com/theapemachine/caramba/pkg/config"
@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	maxIterations  = 10
-	agentAssetPath = "devteam/agent.yml"
+	developerMaxIterations = 10
+	agentAssetPath         = "devteam/agent.yml"
 )
 
 var agentAssets = loadAgentAssets()
@@ -177,7 +177,8 @@ func (developer *Developer) Implement(
 		{Role: "user", Content: userContent},
 	}
 
-	for range maxIterations {
+	for range developerMaxIterations {
+		started := time.Now()
 		resp, err := developer.llm.Chat(developer.ctx, ChatRequest{
 			System:    system,
 			Messages:  history,
@@ -188,6 +189,8 @@ func (developer *Developer) Implement(
 		if err != nil {
 			return fmt.Errorf("developer: %w", err)
 		}
+
+		publishChatUsage("developer", started, resp)
 
 		history = append(history, ChatMessage{
 			Role:      "assistant",
@@ -212,7 +215,10 @@ func (developer *Developer) Implement(
 		history = append(history, toolResults...)
 	}
 
-	return fmt.Errorf("developer: exceeded %d iterations without completing", maxIterations)
+	return fmt.Errorf(
+		"developer: exceeded %d iterations without completing",
+		developerMaxIterations,
+	)
 }
 
 /*
@@ -342,39 +348,6 @@ func (developer *Developer) dispatchTool(call ToolCall) (string, bool, error) {
 	}
 }
 
-/*
-checkDoneGate verifies that the agent has satisfied the test contract before
-accepting a done() signal. It returns a non-empty rejection message when any
-condition is unmet, which is fed back to the LLM as a tool result so it knows
-exactly what to fix.
-*/
-func (developer *Developer) checkDoneGate(input map[string]any) string {
-	testFile, _ := input["test_file"].(string)
-	testOutput, _ := input["test_output"].(string)
-
-	if testFile == "" {
-		return "REJECTED: test_file is required. Write at least one test file before calling done()."
-	}
-
-	if _, err := developer.editor.sandbox.ReadFile(testFile); err != nil {
-		return fmt.Sprintf(
-			"REJECTED: test file %q does not exist in the workspace. Create it before calling done().",
-			testFile,
-		)
-	}
-
-	lower := strings.ToLower(testOutput)
-
-	if strings.Contains(lower, "fail") || !strings.Contains(lower, "ok") {
-		return fmt.Sprintf(
-			"REJECTED: test output does not confirm a clean pass. Run go test and ensure all tests pass before calling done().\nOutput seen:\n%s",
-			truncate(testOutput, 800),
-		)
-	}
-
-	return ""
-}
-
 func toStringSlice(v any) []string {
 	raw, ok := v.([]any)
 
@@ -391,80 +364,4 @@ func toStringSlice(v any) []string {
 	}
 
 	return out
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-/*
-Reviewer is an AI agent that inspects the changes made by the Developer inside
-the Sandbox and decides whether they meet quality standards.
-*/
-type Reviewer struct {
-	ctx context.Context
-	llm Provider
-}
-
-/*
-NewReviewer constructs a Reviewer.
-*/
-func NewReviewer(ctx context.Context, cfg devcfg.ProviderConfig) *Reviewer {
-	return &Reviewer{
-		ctx: ctx,
-		llm: NewProvider(cfg),
-	}
-}
-
-/*
-Review inspects the git diff and test output inside the sandbox and returns a
-ReviewVerdict.
-*/
-func (reviewer *Reviewer) Review(
-	sandbox *Sandbox, title, description string,
-) (ReviewVerdict, error) {
-	diff, err := sandbox.Exec(
-		`git -C /workspace diff HEAD~1 HEAD 2>/dev/null || git -C /workspace diff --cached`,
-	)
-
-	if err != nil {
-		diff = "(could not read diff: " + err.Error() + ")"
-	}
-
-	testOutput, _ := sandbox.Exec(`cd /workspace && go test ./... 2>&1 | tail -60`)
-
-	system := reviewer.SystemPrompt()
-
-	userContent := fmt.Sprintf(
-		"Feature: %s\n\n%s\n\n--- git diff ---\n%s\n\n--- test output ---\n%s",
-		title, description, truncate(diff, 6000), truncate(testOutput, 2000),
-	)
-
-	resp, err := reviewer.llm.Chat(reviewer.ctx, ChatRequest{
-		System:    system,
-		Messages:  []ChatMessage{{Role: "user", Content: userContent}},
-		MaxTokens: 1024,
-	})
-
-	if err != nil {
-		return ReviewVerdict{}, fmt.Errorf("reviewer: %w", err)
-	}
-
-	raw := strings.TrimSpace(resp.Content)
-
-	var verdict struct {
-		Pass     bool   `json:"pass"`
-		Feedback string `json:"feedback"`
-	}
-
-	if err := json.Unmarshal([]byte(raw), &verdict); err != nil {
-		return ReviewVerdict{Pass: false, Feedback: raw}, nil
-	}
-
-	return ReviewVerdict{Pass: verdict.Pass, Feedback: verdict.Feedback}, nil
-}
-
-/*
-SystemPrompt returns the embedded reviewer prompt.
-*/
-func (reviewer *Reviewer) SystemPrompt() string {
-	return strings.TrimSpace(agentAssets.Reviewer.SystemPrompt)
 }

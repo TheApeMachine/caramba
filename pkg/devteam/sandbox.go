@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 )
 
 /*
@@ -26,19 +28,6 @@ type Sandbox struct {
 	docker      *client.Client
 	containerID string
 	cfg         SandboxConfig
-}
-
-/*
-SandboxConfig holds everything the sandbox needs to bootstrap the repository
-inside the container.
-*/
-type SandboxConfig struct {
-	AgentID       string
-	Image         string
-	GitHubToken   string
-	GitHubOwner   string
-	GitHubRepo    string
-	FeatureBranch string
 }
 
 /*
@@ -59,8 +48,8 @@ func NewSandbox(ctx context.Context, cfg SandboxConfig) (*Sandbox, error) {
 }
 
 /*
-Start pulls the image if needed, creates the container, installs git and the
-GitHub CLI, clones the repository, and checks out a fresh feature branch.
+Start pulls the image if needed, creates the container, injects Git credentials,
+clones the repository, and checks out a fresh feature branch.
 */
 func (sandbox *Sandbox) Start() error {
 	if err := sandbox.ensureImage(); err != nil {
@@ -75,11 +64,22 @@ func (sandbox *Sandbox) Start() error {
 		return fmt.Errorf("sandbox: start container: %w", err)
 	}
 
+	if err := sandbox.connectNetwork(); err != nil {
+		return err
+	}
+
+	defer sandbox.disconnectNetwork()
+
+	if err := sandbox.installGitCredentials(); err != nil {
+		return err
+	}
+
 	setup := []string{
-		"apt-get update -qq && apt-get install -y -qq git curl ca-certificates 2>/dev/null",
+		"git --version",
+		"go version",
 		fmt.Sprintf(
-			`git clone --depth=1 "https://%s@github.com/%s/%s.git" /workspace`,
-			sandbox.cfg.GitHubToken, sandbox.cfg.GitHubOwner, sandbox.cfg.GitHubRepo,
+			`git clone --depth=1 "https://github.com/%s/%s.git" /workspace`,
+			sandbox.cfg.GitHubOwner, sandbox.cfg.GitHubRepo,
 		),
 		fmt.Sprintf(`git -C /workspace checkout -b %s`, sandbox.cfg.FeatureBranch),
 		`git -C /workspace config user.email "devteam@caramba.ai"`,
@@ -88,7 +88,7 @@ func (sandbox *Sandbox) Start() error {
 
 	for _, cmd := range setup {
 		if _, err := sandbox.Exec(cmd); err != nil {
-			return fmt.Errorf("sandbox: setup %q: %w", truncate(cmd, 40), err)
+			return fmt.Errorf("sandbox: setup %q: %w", truncate(sandbox.Redact(cmd), 40), err)
 		}
 	}
 
@@ -99,8 +99,19 @@ func (sandbox *Sandbox) Start() error {
 Exec runs a shell command inside the container and returns combined stdout+stderr.
 */
 func (sandbox *Sandbox) Exec(command string) (string, error) {
-	execID, err := sandbox.docker.ContainerExecCreate(sandbox.ctx, sandbox.containerID, container.ExecOptions{
-		Cmd:          []string{"/bin/sh", "-c", command},
+	timeout := sandbox.execTimeout()
+	execCtx, cancel := context.WithTimeout(sandbox.ctx, timeout+5*time.Second)
+	defer cancel()
+
+	execID, err := sandbox.docker.ContainerExecCreate(execCtx, sandbox.containerID, container.ExecOptions{
+		Cmd: []string{
+			"timeout",
+			"--kill-after=5s",
+			fmt.Sprintf("%ds", int(timeout.Seconds())),
+			"/bin/sh",
+			"-c",
+			command,
+		},
 		AttachStdout: true,
 		AttachStderr: true,
 		WorkingDir:   "/workspace",
@@ -110,7 +121,7 @@ func (sandbox *Sandbox) Exec(command string) (string, error) {
 		return "", fmt.Errorf("sandbox: exec create: %w", err)
 	}
 
-	resp, err := sandbox.docker.ContainerExecAttach(sandbox.ctx, execID.ID, container.ExecStartOptions{})
+	resp, err := sandbox.docker.ContainerExecAttach(execCtx, execID.ID, container.ExecStartOptions{})
 
 	if err != nil {
 		return "", fmt.Errorf("sandbox: exec attach: %w", err)
@@ -118,22 +129,35 @@ func (sandbox *Sandbox) Exec(command string) (string, error) {
 
 	defer resp.Close()
 
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, resp.Reader); err != nil && err != io.EOF {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if _, err := stdcopy.StdCopy(&stdout, &stderr, resp.Reader); err != nil && err != io.EOF {
 		return "", fmt.Errorf("sandbox: exec read: %w", err)
 	}
 
-	inspect, err := sandbox.docker.ContainerExecInspect(sandbox.ctx, execID.ID)
+	inspect, err := sandbox.docker.ContainerExecInspect(execCtx, execID.ID)
+	output := sandbox.Redact(combinedOutput(stdout.String(), stderr.String()))
 
 	if err != nil {
-		return buf.String(), fmt.Errorf("sandbox: exec inspect: %w", err)
+		return output, fmt.Errorf("sandbox: exec inspect: %w", err)
 	}
 
 	if inspect.ExitCode != 0 {
-		return buf.String(), fmt.Errorf("sandbox: command exited %d: %s", inspect.ExitCode, truncate(buf.String(), 400))
+		if inspect.ExitCode == 124 {
+			return output, fmt.Errorf(
+				"sandbox: exec timed out after %s: %s",
+				timeout, truncate(output, 400),
+			)
+		}
+
+		return output, fmt.Errorf(
+			"sandbox: command exited %d: %s",
+			inspect.ExitCode, truncate(output, 400),
+		)
 	}
 
-	return buf.String(), nil
+	return output, nil
 }
 
 /*
@@ -196,24 +220,35 @@ func (sandbox *Sandbox) WriteFile(path, content string) error {
 }
 
 /*
-CommitAndPush stages all changes, commits with the given message, and force-pushes
-the feature branch to origin.
+CommitAndPush stages all changes, commits with the given message, rebases onto
+the remote feature branch, and pushes with a lease.
 */
 func (sandbox *Sandbox) CommitAndPush(message string) error {
-	cmds := []string{
-		`git -C /workspace add -A`,
-		fmt.Sprintf(`git -C /workspace commit -m %q`, message),
-		fmt.Sprintf(
-			`git -C /workspace push "https://%s@github.com/%s/%s.git" %s`,
-			sandbox.cfg.GitHubToken, sandbox.cfg.GitHubOwner, sandbox.cfg.GitHubRepo,
-			sandbox.cfg.FeatureBranch,
-		),
+	if err := sandbox.connectNetwork(); err != nil {
+		return err
 	}
 
-	for _, cmd := range cmds {
+	defer sandbox.disconnectNetwork()
+
+	commands := []string{
+		`git -C /workspace add -A`,
+		fmt.Sprintf(`git -C /workspace commit -m %q`, message),
+	}
+
+	for _, cmd := range commands {
 		if _, err := sandbox.Exec(cmd); err != nil {
-			return err
+			return fmt.Errorf("sandbox: git %q: %w", truncate(sandbox.Redact(cmd), 80), err)
 		}
+	}
+
+	if err := sandbox.rebaseRemoteBranch(); err != nil {
+		return err
+	}
+
+	cmd := fmt.Sprintf(`git -C /workspace push --force-with-lease origin %s`, sandbox.cfg.FeatureBranch)
+
+	if _, err := sandbox.Exec(cmd); err != nil {
+		return fmt.Errorf("sandbox: git %q: %w", truncate(sandbox.Redact(cmd), 80), err)
 	}
 
 	return nil
@@ -255,9 +290,7 @@ func (sandbox *Sandbox) createContainer() error {
 			Cmd:   []string{"/bin/sh", "-c", "tail -f /dev/null"},
 			Tty:   false,
 		},
-		&container.HostConfig{
-			AutoRemove: false,
-		},
+		sandbox.hostConfig(),
 		nil,
 		nil,
 		"",

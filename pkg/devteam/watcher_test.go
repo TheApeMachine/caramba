@@ -3,6 +3,7 @@ package devteam
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -41,6 +42,24 @@ func TestWatcherConstruction(t *testing.T) {
 
 		Convey("It should expose a readable events channel", func() {
 			So(watcher.Events(), ShouldNotBeNil)
+		})
+	})
+}
+
+func TestWatcher_publishError(t *testing.T) {
+	Convey("Given a watcher error channel", t, func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		watcher := NewWatcher(ctx, "postgres://localhost/test")
+
+		Convey("It should publish reconnect errors for the orchestrator to observe", func() {
+			watcher.publishError(errors.New("listener reconnect"))
+
+			err := <-watcher.Errors()
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "listener reconnect")
 		})
 	})
 }

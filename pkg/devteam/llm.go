@@ -53,8 +53,11 @@ type ChatRequest struct {
 ChatResponse is the assistant's reply for one turn.
 */
 type ChatResponse struct {
-	Content   string
-	ToolCalls []ToolCall
+	Content      string
+	ToolCalls    []ToolCall
+	InputTokens  int64
+	OutputTokens int64
+	TotalTokens  int64
 }
 
 /*
@@ -68,8 +71,7 @@ type Provider interface {
 /*
 NewProvider constructs the appropriate Provider from a ProviderConfig.
 "anthropic" routes to AnthropicProvider; everything else goes through the
-OpenAI Responses API, which covers OpenAI, Groq, Together, Ollama, vLLM,
-LM Studio, and any other compatible endpoint.
+OpenAI provider, which selects the request shape from the configured endpoint.
 */
 func NewProvider(cfg devcfg.ProviderConfig) Provider {
 	switch strings.ToLower(cfg.Provider) {

@@ -113,6 +113,33 @@ The `cuda` build tag gates all cgo imports. Without it, the package compiles to 
 
 The Metal backend exposes resident `MTLBuffer` tensors. Compute pipelines are compiled from Metal Shading Language sources embedded in the package.
 
+### Shape Slice
+
+`operation_executor.applySlice` dispatches Metal `shape.slice` through
+`SlicePrefixTensor`, so Metal currently requires `start==0` and leading-dim
+slicing. Unsupported manifests fail with this error:
+
+```text
+metal tensor: slice node %q currently supports start=0 with leading-dim slicing only (got start=%d, dim=%d, outer=%d)
+```
+
+Supported on Metal:
+
+```yaml
+op: shape.slice
+config: { dim: 1, start: 0, end: 4096 } # shape [1, 4112, 64], outer=1
+```
+
+Unsupported on Metal:
+
+```yaml
+op: shape.slice
+config: { dim: 1, start: 64, end: 128 } # start != 0
+```
+
+Run non-prefix slices on CPU or avoid them until Metal strided-copy support is
+implemented.
+
 ### Precision Contract
 
 Metal currently stores and executes tensor values as `float32`, then exposes them through the shared `Float64Tensor` API at host boundaries. This is an explicit backend contract, not a claim of `float64` arithmetic.

@@ -36,11 +36,11 @@ type DevTeamConfig struct {
 	GitHubRepo        string
 	RequestsProjectID string
 	DockerImage       string
-	MaxConcurrent    int
-	BlastRadiusDepth int
-	Planner          ProviderConfig
-	Developer        ProviderConfig
-	Reviewer         ProviderConfig
+	MaxConcurrent     int
+	BlastRadiusDepth  int
+	Planner           ProviderConfig
+	Developer         ProviderConfig
+	Reviewer          ProviderConfig
 }
 
 func providerConfig(prefix string) ProviderConfig {
@@ -65,11 +65,11 @@ func NewDevTeamConfig() *DevTeamConfig {
 		GitHubOwner:       WithDefault(root+".github_owner", ""),
 		GitHubRepo:        WithDefault(root+".github_repo", ""),
 		RequestsProjectID: WithDefault(root+".requests_project_id", ""),
-		DockerImage:       WithDefault(root+".docker_image", "ubuntu:24.04"),
-		MaxConcurrent:    WithDefault(root+".max_concurrent", 3),
-		BlastRadiusDepth: WithDefault(root+".blast_radius_depth", 2),
-		Planner:          providerConfig(root + ".planner"),
-		Developer:        providerConfig(root + ".developer"),
+		DockerImage:       WithDefault(root+".docker_image", "golang:1.26.1-bookworm"),
+		MaxConcurrent:     WithDefault(root+".max_concurrent", 3),
+		BlastRadiusDepth:  WithDefault(root+".blast_radius_depth", 2),
+		Planner:           providerConfig(root + ".planner"),
+		Developer:         providerConfig(root + ".developer"),
 		Reviewer:          providerConfig(root + ".reviewer"),
 	}
 }

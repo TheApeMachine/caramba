@@ -4,7 +4,10 @@ import { useStore } from "@tanstack/react-form";
 import { InfoIcon, PlusIcon, TableOfContentsIcon } from "lucide-react";
 import { usePaperEditor } from "#/components/latex/context";
 import type { BlockKindDescriptor } from "#/components/latex/model/block-catalog";
-import type { PaperMetadata } from "#/components/latex/model/types";
+import type {
+	PaperHeadingBlock,
+	PaperMetadata,
+} from "#/components/latex/model/types";
 import { BlockKindMenu } from "#/components/latex/panels/block-kind-menu";
 import { MetadataTab } from "#/components/latex/panels/metadata-tab";
 import { OutlinePanel } from "#/components/latex/panels/outline-panel";
@@ -48,15 +51,12 @@ function DocumentTitle() {
 	);
 
 	const headingFallback = blocks.find(
-		(block) => block.type === "heading" && block.level === 1,
+		(block): block is PaperHeadingBlock =>
+			block.type === "heading" && block.level === 1,
 	);
 
 	const display =
-		title?.trim() ||
-		(headingFallback && "text" in headingFallback
-			? headingFallback.text.trim()
-			: "") ||
-		"Untitled paper";
+		title?.trim() || headingFallback?.text.trim() || "Untitled paper";
 
 	return (
 		<Typography.Small
@@ -69,17 +69,26 @@ function DocumentTitle() {
 }
 
 export const LatexToolbar = () => {
-	const { blocks, focusedBlockId, insertBlockAfter, metadataForm } =
-		usePaperEditor();
+	const {
+		blocks,
+		dispatch,
+		focusBlock,
+		focusedBlockId,
+		insertBlockAfter,
+		metadataForm,
+	} = usePaperEditor();
 
 	const handleInsert = (descriptor: BlockKindDescriptor) => {
 		const targetId = focusedBlockId ?? lastBlockId(blocks);
+		const block = descriptor.build();
 
 		if (!targetId) {
+			dispatch({ type: "INSERT_AT_START", block });
+			queueMicrotask(() => focusBlock(block.id));
 			return;
 		}
 
-		insertBlockAfter(targetId, descriptor.build());
+		insertBlockAfter(targetId, block);
 	};
 
 	return (

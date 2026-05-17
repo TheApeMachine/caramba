@@ -46,7 +46,7 @@ func NewWatcher(ctx context.Context, databaseURL string) *Watcher {
 		ctx:         ctx,
 		databaseURL: databaseURL,
 		events:      make(chan ColumnEvent, 64),
-		errors:      make(chan error, 1),
+		errors:      make(chan error, 64),
 	}
 }
 
@@ -88,14 +88,17 @@ func (watcher *Watcher) Watch() error {
 func (watcher *Watcher) publishError(err error) {
 	select {
 	case watcher.errors <- err:
-	default:
+	case <-watcher.ctx.Done():
 	}
 }
 
 func (watcher *Watcher) listenLoop() error {
 	listener := pq.NewListener(watcher.databaseURL, reconnectDelay, time.Minute, func(ev pq.ListenerEventType, err error) {
-		_ = ev
-		_ = err
+		if err == nil {
+			return
+		}
+
+		watcher.publishError(fmt.Errorf("watcher: listener event %v: %w", ev, err))
 	})
 
 	defer listener.Close()

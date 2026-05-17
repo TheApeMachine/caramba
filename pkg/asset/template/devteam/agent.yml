@@ -130,8 +130,7 @@ developer:
         Signal that the feature implementation is complete.
         Before calling this you MUST:
         1. Have written at least one test file covering the new/changed behaviour.
-        2. Have called run_shell with "go test ./..." (or a scoped equivalent) and
-           confirmed the output shows no failures.
+        2. Have called run_shell with "go test -json ./..." (or a scoped equivalent).
         If either condition is unmet the tool will reject the signal and tell you what
         is missing.
       parameters:
@@ -145,7 +144,7 @@ developer:
             description: The exact go test command you ran
           test_output:
             type: string
-            description: Last output from go test (must show PASS or ok lines, no FAIL)
+            description: Last output from go test
         required:
           - test_file
           - test_command

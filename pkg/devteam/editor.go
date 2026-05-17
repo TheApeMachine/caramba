@@ -30,20 +30,20 @@ type SearchResult struct {
 VirtualEditor wraps a Sandbox and provides a structured, safety-checked
 interface for the developer agent. It enforces two invariants:
 
-  1. Read-before-write: a file must be viewed (or created fresh) before any
-     edit is accepted. This prevents blind overwrites and forces the agent to
-     reason about existing content before mutating it.
+ 1. Read-before-write: a file must be viewed (or created fresh) before any
+    edit is accepted. This prevents blind overwrites and forces the agent to
+    reason about existing content before mutating it.
 
-  2. Claim-before-write: before mutating a file the agent must hold the
-     FileLockRegistry claim for that path. Concurrent agents working in
-     separate containers therefore cannot unknowingly produce conflicting
-     changes to the same logical path.
+ 2. Claim-before-write: before mutating a file the agent must hold the
+    FileLockRegistry claim for that path. Concurrent agents working in
+    separate containers therefore cannot unknowingly produce conflicting
+    changes to the same logical path.
 */
 type VirtualEditor struct {
-	agentID  string
-	sandbox  *Sandbox
-	locks    *FileLockRegistry
-	readSet  map[string]struct{}
+	agentID string
+	sandbox *Sandbox
+	locks   *FileLockRegistry
+	readSet map[string]struct{}
 }
 
 /*
@@ -167,6 +167,8 @@ func (editor *VirtualEditor) Edit(req EditRequest) error {
 		)
 	}
 
+	defer editor.locks.Release(editor.agentID, req.Path)
+
 	content, err := editor.sandbox.ReadFile(req.Path)
 
 	if err != nil {
@@ -196,6 +198,8 @@ func (editor *VirtualEditor) Create(path, content, claimIntent string) error {
 			path, result.HolderID, result.Intent,
 		)
 	}
+
+	defer editor.locks.Release(editor.agentID, path)
 
 	editor.readSet[path] = struct{}{}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -45,6 +46,12 @@ func NewAnthropicProvider(cfg devcfg.ProviderConfig) *AnthropicProvider {
 Chat sends one conversation turn and returns the assistant reply.
 */
 func (provider *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error) {
+	return runProviderChat(ctx, func(requestCtx context.Context) (ChatResponse, error) {
+		return provider.chat(requestCtx, req)
+	})
+}
+
+func (provider *AnthropicProvider) chat(ctx context.Context, req ChatRequest) (ChatResponse, error) {
 	messages, err := provider.buildMessages(req.Messages)
 
 	if err != nil {
@@ -63,13 +70,18 @@ func (provider *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (C
 		maxTokens = 8192
 	}
 
-	resp, err := provider.client.Messages.New(ctx, anthropic.MessageNewParams{
+	params := anthropic.MessageNewParams{
 		Model:     provider.model,
 		MaxTokens: maxTokens,
-		System:    []anthropic.TextBlockParam{{Text: req.System}},
 		Tools:     tools,
 		Messages:  messages,
-	})
+	}
+
+	if strings.TrimSpace(req.System) != "" {
+		params.System = []anthropic.TextBlockParam{{Text: req.System}}
+	}
+
+	resp, err := provider.client.Messages.New(ctx, params)
 
 	if err != nil {
 		return ChatResponse{}, fmt.Errorf("anthropic: %w", err)
@@ -148,7 +160,11 @@ func (provider *AnthropicProvider) buildTools(
 }
 
 func (provider *AnthropicProvider) parseResponse(resp *anthropic.Message) (ChatResponse, error) {
-	result := ChatResponse{}
+	result := ChatResponse{
+		InputTokens:  resp.Usage.InputTokens,
+		OutputTokens: resp.Usage.OutputTokens,
+		TotalTokens:  resp.Usage.InputTokens + resp.Usage.OutputTokens,
+	}
 
 	for _, block := range resp.Content {
 		toolUse := block.AsToolUse()

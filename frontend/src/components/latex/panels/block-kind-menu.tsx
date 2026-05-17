@@ -116,7 +116,15 @@ function BlockKindDialogBody({
 		() => assistantBridge.get() !== null,
 	);
 
-	useEffect(() => assistantBridge.subscribe(setAssistantReady), []);
+	useEffect(() => {
+		const unsubscribe = assistantBridge.subscribe(setAssistantReady);
+
+		return () => {
+			if (typeof unsubscribe === "function") {
+				unsubscribe();
+			}
+		};
+	}, []);
 
 	const exitAskMode = useCallback(() => {
 		setAsk(initialAskAIState);
@@ -154,6 +162,8 @@ function BlockKindDialogBody({
 		[searchQuery],
 	);
 
+	// When ask.active is true, handler deliberately runs in capture phase so
+	// exitAskMode handles Escape first; other capture handlers will not see it.
 	useEffect(() => {
 		if (!ask.active) return;
 
@@ -240,6 +250,8 @@ function BlockKindDialogBody({
 	}
 
 	return (
+		// Command remounts via key={commandResetKey.current}; exitAskMode increments
+		// the ref to reset Command state without storing a render-only counter.
 		<Command
 			filter={(item, query) =>
 				matchBlockKindQuery(item as BlockKindDescriptor, query)

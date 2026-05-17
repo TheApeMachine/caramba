@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	devcfg "github.com/theapemachine/caramba/pkg/config"
 )
+
+const plannerMaxIterations = 10
 
 // plannerTools is the tool set for the Planner agent. It is intentionally
 // read-only with respect to the filesystem — the Planner shapes context and
@@ -95,11 +98,11 @@ SubtaskDraft is a subtask as produced by the Planner before it has been
 assigned an ID or a developer agent.
 */
 type SubtaskDraft struct {
-	Title         string
-	Description   string
-	FilesInScope  []string
-	KeySymbols    []string
-	SiblingNotes  map[string]string
+	Title        string
+	Description  string
+	FilesInScope []string
+	KeySymbols   []string
+	SiblingNotes map[string]string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,7 +176,8 @@ Rules:
 
 	result := &PlannerResult{}
 
-	for range maxIterations {
+	for range plannerMaxIterations {
+		started := time.Now()
 		resp, err := planner.llm.Chat(planner.ctx, ChatRequest{
 			System:    system,
 			Messages:  history,
@@ -184,6 +188,8 @@ Rules:
 		if err != nil {
 			return nil, fmt.Errorf("planner: %w", err)
 		}
+
+		publishChatUsage("planner", started, resp)
 
 		history = append(history, ChatMessage{
 			Role:      "assistant",

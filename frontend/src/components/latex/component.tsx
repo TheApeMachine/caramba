@@ -33,7 +33,11 @@ function PaperContextSnapshot() {
 			}
 
 			if (block.type === "list") {
-				const items = block.text.split("\n").filter(Boolean).length;
+				const lines = block.text.split("\n");
+				const markedItems = lines.filter((line) =>
+					/^\s*(?:\d+\.\s+|[-*+]\s+)/.test(line),
+				).length;
+				const items = markedItems || lines.filter(Boolean).length;
 				const kind = block.ordered ? "ordered" : "unordered";
 				return `  [${index}] list (${kind}, ${items} items) id=${block.id}`;
 			}

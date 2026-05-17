@@ -152,14 +152,12 @@ loop_sin_neon:
 	VFADD_D2(8, 9, 8)                            // V8 = cp
 
 	// Select sp or cp based on (j & 1). VBSL operates bitwise, so the
-	// mask must be all-ones or all-zeros per lane — a single bit set is
-	// not enough. CMTST builds exactly that pattern by testing bit 0
-	// of each j lane against V28={1,1}: lane→-1 where bit set, lane→0
-	// elsewhere.
-	VCMTST_D2(28, 4, 11)                         // V11 = (j & 1) ? -1 : 0 per lane
-	// BSL.B16 Vd, Vn, Vm: Vd = (Vd AND Vn) OR (NOT Vd AND Vm). Plan-9
-	// reverses the source order: `VBSL Vm, Vn, Vd`. (mask==1) → cp (V8),
-	// (mask==0) → sp (V7), so Vn=V8 (true) and Vm=V7 (false).
+	// mask must be all-ones or all-zeros per lane, not a single set bit.
+	VAND V28.B16, V4.B16, V11.B16                // V11 = j & 1 per lane
+	VEOR V12.B16, V12.B16, V12.B16               // V12 = 0
+	VSUB V11.D2, V12.D2, V11.D2                  // V11 = 0 - (j & 1), so 0 or -1
+	// Plan 9 VBSL picks the first source when mask bits are clear and the
+	// second source when mask bits are set: (mask==0) → sp, (mask==1) → cp.
 	VBSL V7.B16, V8.B16, V11.B16                 // V11 = (mask) ? cp : sp
 
 	// Sign flip: bit 1 of j → bit 63

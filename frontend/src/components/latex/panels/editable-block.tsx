@@ -66,7 +66,35 @@ export const EditableBlock = forwardRef<HTMLDivElement, EditableBlockProps>(
 		const handlePaste: ClipboardEventHandler<HTMLDivElement> = (event) => {
 			event.preventDefault();
 			const text = event.clipboardData.getData("text/plain");
-			document.execCommand("insertText", false, text);
+			const editable = event.currentTarget;
+			const selection = window.getSelection();
+
+			editable.focus();
+
+			if (!selection) {
+				return;
+			}
+
+			const range =
+				selection.rangeCount > 0
+					? selection.getRangeAt(0)
+					: document.createRange();
+
+			if (!editable.contains(range.commonAncestorContainer)) {
+				range.selectNodeContents(editable);
+				range.collapse(false);
+			}
+
+			range.deleteContents();
+
+			const textNode = document.createTextNode(text);
+			range.insertNode(textNode);
+			range.setStartAfter(textNode);
+			range.collapse(true);
+
+			selection.removeAllRanges();
+			selection.addRange(range);
+			onChange(editable.innerText);
 		};
 
 		return (

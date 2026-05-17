@@ -12,6 +12,7 @@ export type SetBlockKindOptions = {
 export type PaperAction =
 	| { type: "UPDATE_TEXT"; id: string; text: string }
 	| { type: "UPDATE_LATEX"; id: string; latex: string }
+	| { type: "INSERT_AT_START"; block: PaperBlock }
 	| { type: "INSERT_AFTER"; afterId: string; block: PaperBlock }
 	| { type: "REMOVE_BLOCK"; id: string }
 	| {
@@ -127,6 +128,9 @@ export function paperReducer(
 					? { ...block, latex: action.latex }
 					: block,
 			);
+
+		case "INSERT_AT_START":
+			return [action.block, ...blocks];
 
 		case "INSERT_AFTER": {
 			const index = blocks.findIndex((block) => block.id === action.afterId);

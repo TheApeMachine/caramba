@@ -1,5 +1,6 @@
 import { toolDefinition } from "@tanstack/ai";
 import { editorBridge } from "#/components/latex/editor-bridge";
+import type { PaperBlockKind } from "#/components/latex/model/types";
 
 /*
 paper_list_blocks — read current paper state.
@@ -20,19 +21,28 @@ export const paperListBlocks = toolDefinition({
 	return {
 		metadata: meta,
 		blocks: blocks.map((b) => {
-			if (b.type === "heading")
-				return { id: b.id, type: "heading", level: b.level, text: b.text };
-			if (b.type === "paragraph")
-				return { id: b.id, type: "paragraph", text: b.text };
-			if (b.type === "list")
-				return { id: b.id, type: "list", ordered: b.ordered, text: b.text };
-			return {
-				id: b.id,
-				type: "equation",
-				latex: b.latex,
-				label: b.label,
-				display: b.display,
-			};
+			const blockKind: PaperBlockKind = b.type;
+
+			switch (blockKind) {
+				case "heading":
+					return { id: b.id, type: "heading", level: b.level, text: b.text };
+				case "paragraph":
+					return { id: b.id, type: "paragraph", text: b.text };
+				case "list":
+					return { id: b.id, type: "list", ordered: b.ordered, text: b.text };
+				case "equation":
+					return {
+						id: b.id,
+						type: "equation",
+						latex: b.latex,
+						label: b.label,
+						display: b.display,
+					};
+				default: {
+					const rawBlock = b as { id: string; type: PaperBlockKind };
+					return { id: rawBlock.id, type: rawBlock.type, raw: b };
+				}
+			}
 		}),
 	};
 });

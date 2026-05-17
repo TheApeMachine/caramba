@@ -14,7 +14,7 @@ devteam:
   github_owner: ${GITHUB_OWNER}
   github_repo: ${GITHUB_REPO}
   requests_project_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-  docker_image: "ubuntu:24.04"
+  docker_image: "golang:1.26.1-bookworm"
   # How many developer+reviewer pairs can run concurrently.
   max_concurrent: 3
   # Each agent role has its own provider config.

@@ -118,14 +118,37 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 		setFocusedBlockId(block.id);
 	};
 
-	const handleBlur: React.FocusEventHandler<HTMLDivElement> = (event) => {
-		const next = event.relatedTarget as HTMLElement | null;
-
-		if (next && shellRef.current?.contains(next)) {
-			return;
+	const isProtectedFocusTarget = (target: EventTarget | null): boolean => {
+		if (!(target instanceof Node)) {
+			return false;
 		}
 
-		setIsFocused(false);
+		if (shellRef.current?.contains(target)) {
+			return true;
+		}
+
+		if (target instanceof Element && target.closest("[data-portal]")) {
+			return true;
+		}
+
+		return false;
+	};
+
+	const handleBlur: React.FocusEventHandler<HTMLDivElement> = (event) => {
+		const relatedTarget = event.relatedTarget;
+
+		window.setTimeout(() => {
+			window.requestAnimationFrame(() => {
+				if (
+					isProtectedFocusTarget(relatedTarget) ||
+					isProtectedFocusTarget(document.activeElement)
+				) {
+					return;
+				}
+
+				setIsFocused(false);
+			});
+		});
 	};
 
 	useEffect(() => {
@@ -160,10 +183,15 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 		event.currentTarget.classList.add("opacity-50");
 	};
 
-	const onDragEnd: React.DragEventHandler<HTMLDivElement> = (event) => {
-		event.currentTarget.classList.remove("opacity-50");
+	const clearDragState = (target: HTMLElement | null) => {
+		target?.classList.remove("opacity-50");
 		setDragArmed(false);
 		setDropEdge(null);
+		dnd.end();
+	};
+
+	const onDragEnd: React.DragEventHandler<HTMLDivElement> = (event) => {
+		clearDragState(event.currentTarget);
 	};
 
 	const onDragOver: React.DragEventHandler<HTMLDivElement> = (event) => {
@@ -178,8 +206,27 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 		setDropEdge(readDropPosition(event));
 	};
 
-	const onDragLeave: React.DragEventHandler<HTMLDivElement> = () => {
+	const onDragLeave: React.DragEventHandler<HTMLDivElement> = (event) => {
 		setDropEdge(null);
+
+		if (event.relatedTarget instanceof Node) {
+			return;
+		}
+
+		clearDragState(event.currentTarget);
+	};
+
+	const onMouseDown: React.MouseEventHandler<HTMLDivElement> = (event) => {
+		const target = event.target;
+
+		if (
+			target instanceof Element &&
+			target.closest("[data-paper-drag-handle]")
+		) {
+			return;
+		}
+
+		clearDragState(shellRef.current);
 	};
 
 	const onDrop: React.DragEventHandler<HTMLDivElement> = (event) => {
@@ -187,6 +234,7 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 		setDropEdge(null);
 
 		if (!payload || payload.blockId === block.id) {
+			dnd.end();
 			return;
 		}
 
@@ -203,6 +251,7 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 			<button
 				aria-label="Drag to reorder"
 				className="flex size-6 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
+				data-paper-drag-handle
 				onMouseDown={() => setDragArmed(true)}
 				onMouseUp={() => setDragArmed(false)}
 				type="button"
@@ -261,6 +310,7 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 				onDragOver={onDragOver}
 				onDragStart={onDragStart}
 				onDrop={onDrop}
+				onMouseDown={onMouseDown}
 				ref={shellRef}
 			>
 				{gutter}
@@ -292,8 +342,14 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 
 		updateText(block.id, value);
 
-		const openSlash = textual.type === "paragraph" && value === "/";
-		setSlashOpen(openSlash);
+		if (textual.type === "paragraph" && value === "/") {
+			setSlashOpen(true);
+			return;
+		}
+
+		if (value.length > 1 || value[0] !== "/") {
+			setSlashOpen(false);
+		}
 	};
 
 	const onKeyDown: React.KeyboardEventHandler<HTMLDivElement> = (event) => {
@@ -305,6 +361,10 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 
 		if (event.key === "Enter" && !event.shiftKey && textual.type !== "list") {
 			event.preventDefault();
+
+			if (textual.text.trim().length === 0) {
+				return;
+			}
 
 			if (textual.type === "heading") {
 				insertParagraphAfter(block.id, "");
@@ -337,6 +397,7 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 			onDragOver={onDragOver}
 			onDragStart={onDragStart}
 			onDrop={onDrop}
+			onMouseDown={onMouseDown}
 			ref={shellRef}
 		>
 			{gutter}
