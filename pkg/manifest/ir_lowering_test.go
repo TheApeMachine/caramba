@@ -170,6 +170,33 @@ func TestLowerGraphToIR(t *testing.T) {
 		})
 	})
 
+	Convey("Given a shape.slice node with a negative end", t, func() {
+		graph := newGraph()
+		graph.externalInputs["x"] = true
+		So(graph.addNode(&Node{
+			ID:     "slice",
+			OpID:   "shape.slice",
+			Config: map[string]any{"dim": 1, "start": 0, "end": -1},
+			In:     []string{"x"},
+			Out:    []string{"y"},
+		}), ShouldBeNil)
+		So(graph.rebuildEdgesFromNodes(), ShouldBeNil)
+
+		shape, err := tensor.NewShape([]int{2, 8})
+		So(err, ShouldBeNil)
+
+		Convey("It should reject the end value with a targeted error", func() {
+			_, err := LowerGraphToIR(graph, shape)
+
+			So(err, ShouldNotBeNil)
+			So(
+				err.Error(),
+				ShouldContainSubstring,
+				"manifest: shape.slice end -1 out of range for dim 1 size 8",
+			)
+		})
+	})
+
 	Convey("Given a convolution-shaped manifest graph", t, func() {
 		graph := newGraph()
 		graph.externalInputs["image"] = true

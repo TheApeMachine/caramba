@@ -1,0 +1,34 @@
+architectures:
+  Flux2Transformer2DModel:
+    include: model.architecture.flux2
+    variables:
+      in_channels: { config: in_channels }
+      hidden_size: { config: hidden_size }
+      double_hidden_size:
+        product:
+          - { config: hidden_size }
+          - 2
+      triple_hidden_size:
+        product:
+          - { config: hidden_size }
+          - 3
+      joint_attention_dim: { config: joint_attention_dim }
+      num_layers: { config: num_layers }
+      num_single_layers: { config: num_single_layers }
+      num_attention_heads: { config: num_attention_heads }
+      attention_head_dim: { config: attention_head_dim }
+      mlp_inner:
+        product:
+          - { config: hidden_size }
+          - { config: mlp_ratio }
+      mlp_packed:
+        product:
+          - { config: hidden_size }
+          - { config: mlp_ratio }
+          - 2
+      rope_theta: { config: rope_theta }
+      eps: { config: eps }
+      joint_terminal_index:
+        sum:
+          - { config: num_layers }
+          - { config: num_single_layers }

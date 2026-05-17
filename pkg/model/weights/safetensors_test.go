@@ -150,7 +150,7 @@ func TestBindIR(test *testing.T) {
 		})
 	})
 
-	Convey("Given compact GPT-2 safetensors names", test, func() {
+	Convey("Given explicit SafeTensors binding metadata", test, func() {
 		path := filepath.Join(test.TempDir(), "model.safetensors")
 		err := writeTestSafeTensors(path, []testTensor{
 			{
@@ -193,13 +193,19 @@ func TestBindIR(test *testing.T) {
 		So(err, ShouldBeNil)
 
 		graph := ir.NewGraph()
-		layerNorm := ir.NewNode("ln_1_0", ir.OpType("math.layernorm"), shape)
+		layerNorm := ir.NewNode("h.0.ln_1", ir.OpType("math.layernorm"), shape)
 		layerNorm.SetOperationID("math.layernorm")
 		qProjection := ir.NewNode("q_proj_0", ir.OpType("projection.linear"), shape)
 		qProjection.SetOperationID("projection.linear")
 		qProjection.SetMetadata("in_features", 2)
 		qProjection.SetMetadata("out_features", 2)
-		attentionProjection := ir.NewNode("attention_projection_0", ir.OpType("projection.linear"), shape)
+		qProjection.SetMetadata("from_safetensors", map[string]any{
+			"weight":      "h.0.attn.c_attn.weight",
+			"bias":        "h.0.attn.c_attn.bias",
+			"slice_axis":  "output",
+			"slice_start": 0,
+		})
+		attentionProjection := ir.NewNode("h.0.attn.c_proj", ir.OpType("projection.linear"), shape)
 		attentionProjection.SetOperationID("projection.linear")
 		attentionProjection.SetMetadata("in_features", 2)
 		attentionProjection.SetMetadata("out_features", 2)
@@ -207,12 +213,15 @@ func TestBindIR(test *testing.T) {
 		lmHead.SetOperationID("projection.linear")
 		lmHead.SetMetadata("in_features", 2)
 		lmHead.SetMetadata("out_features", 3)
+		lmHead.SetMetadata("from_safetensors", map[string]any{
+			"weight": "wte.weight",
+		})
 		graph.AddNode(layerNorm)
 		graph.AddNode(qProjection)
 		graph.AddNode(attentionProjection)
 		graph.AddNode(lmHead)
 
-		Convey("It should bind compact GPT-2 aliases", func() {
+		Convey("It should bind exact names and declared tensor slices", func() {
 			err := BindIR(graph, store)
 			So(err, ShouldBeNil)
 
@@ -224,7 +233,7 @@ func TestBindIR(test *testing.T) {
 			So(lmHead.Metadata()["weight"], ShouldResemble, []float64{19, 21, 23, 20, 22, 24})
 		})
 
-		Convey("It should cache derived GPT-2 weight views", func() {
+		Convey("It should cache derived direct weight views", func() {
 			err := BindIR(graph, store)
 			So(err, ShouldBeNil)
 			qWeight := qProjection.Metadata()["weight"].([]float64)
@@ -372,7 +381,7 @@ func TestBindIR(test *testing.T) {
 		query.SetMetadata("in_features", 2)
 		query.SetMetadata("out_features", 2)
 		feedForwardIn := ir.NewNode(
-			"transformer_blocks.0.ff.net.0.proj",
+			"transformer_blocks.0.ff.linear_in",
 			ir.OpType("projection.linear"),
 			shape,
 		)
@@ -387,6 +396,11 @@ func TestBindIR(test *testing.T) {
 		singleQuery.SetOperationID("projection.linear")
 		singleQuery.SetMetadata("in_features", 2)
 		singleQuery.SetMetadata("out_features", 2)
+		singleQuery.SetMetadata("from_safetensors", map[string]any{
+			"weight":      "single_transformer_blocks.0.attn.to_qkv_mlp_proj.weight",
+			"slice_axis":  "output",
+			"slice_start": 0,
+		})
 		singleMLP := ir.NewNode(
 			"single_transformer_blocks.0.proj_mlp",
 			ir.OpType("projection.linear"),
@@ -395,6 +409,11 @@ func TestBindIR(test *testing.T) {
 		singleMLP.SetOperationID("projection.linear")
 		singleMLP.SetMetadata("in_features", 2)
 		singleMLP.SetMetadata("out_features", 4)
+		singleMLP.SetMetadata("from_safetensors", map[string]any{
+			"weight":      "single_transformer_blocks.0.attn.to_qkv_mlp_proj.weight",
+			"slice_axis":  "output",
+			"slice_start": 6,
+		})
 		singleAttentionOut := ir.NewNode(
 			"single_transformer_blocks.0.attn.to_out.0",
 			ir.OpType("projection.linear"),
@@ -403,6 +422,11 @@ func TestBindIR(test *testing.T) {
 		singleAttentionOut.SetOperationID("projection.linear")
 		singleAttentionOut.SetMetadata("in_features", 2)
 		singleAttentionOut.SetMetadata("out_features", 2)
+		singleAttentionOut.SetMetadata("from_safetensors", map[string]any{
+			"weight":      "single_transformer_blocks.0.attn.to_out.weight",
+			"slice_axis":  "input",
+			"slice_start": 0,
+		})
 		singleMLPOut := ir.NewNode(
 			"single_transformer_blocks.0.proj_out",
 			ir.OpType("projection.linear"),
@@ -411,6 +435,11 @@ func TestBindIR(test *testing.T) {
 		singleMLPOut.SetOperationID("projection.linear")
 		singleMLPOut.SetMetadata("in_features", 4)
 		singleMLPOut.SetMetadata("out_features", 2)
+		singleMLPOut.SetMetadata("from_safetensors", map[string]any{
+			"weight":      "single_transformer_blocks.0.attn.to_out.weight",
+			"slice_axis":  "input",
+			"slice_start": 2,
+		})
 		graph.AddNode(affineFreeNorm)
 		graph.AddNode(query)
 		graph.AddNode(feedForwardIn)
@@ -478,11 +507,19 @@ func TestBindIR(test *testing.T) {
 		So(err, ShouldBeNil)
 
 		graph := ir.NewGraph()
-		qProjection := ir.NewNode("q_proj_0", ir.OpType("projection.linear"), shape)
+		qProjection := ir.NewNode(
+			"model.layers.0.self_attn.q_proj",
+			ir.OpType("projection.linear"),
+			shape,
+		)
 		qProjection.SetOperationID("projection.linear")
 		qProjection.SetMetadata("in_features", 2)
 		qProjection.SetMetadata("out_features", 3)
-		oProjection := ir.NewNode("o_proj_0", ir.OpType("projection.linear"), shape)
+		oProjection := ir.NewNode(
+			"model.layers.0.self_attn.o_proj",
+			ir.OpType("projection.linear"),
+			shape,
+		)
 		oProjection.SetOperationID("projection.linear")
 		oProjection.SetMetadata("in_features", 2)
 		oProjection.SetMetadata("out_features", 2)

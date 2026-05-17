@@ -26,7 +26,7 @@ func NewStyles(hasDarkBg bool) *Styles {
 		lightDark = lipgloss.LightDark(hasDarkBg)
 	)
 
-	s.Red = lightDark(lipgloss.Color("#FE5F86"), lipgloss.Color("#FE5F86"))
+	s.Red = lightDark(lipgloss.Color("#FE5F86"), lipgloss.Color("#D9365F"))
 	s.Indigo = lightDark(lipgloss.Color("#5A56E0"), lipgloss.Color("#7571F9"))
 	s.Green = lightDark(lipgloss.Color("#02BA84"), lipgloss.Color("#02BF87"))
 	s.Base = lipgloss.NewStyle().

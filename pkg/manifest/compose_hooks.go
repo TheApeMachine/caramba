@@ -34,16 +34,6 @@ func AddComposedNode(graph *Graph, node *Node) error {
 		return err
 	}
 
-	for _, binding := range node.In {
-		if graph.externalInputs[binding] {
-			continue
-		}
-
-		// Edge construction happens later when LowerGraphToIR walks
-		// the node list; compose just needs the topology to be in
-		// place so ExternalInputs() and the lowering pass can read it.
-	}
-
 	return nil
 }
 

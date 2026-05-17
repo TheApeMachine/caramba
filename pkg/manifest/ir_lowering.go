@@ -280,6 +280,16 @@ func sliceShape(dimensions []int, dim, start, end int) (tensor.Shape, error) {
 	}
 
 	dimSize := dimensions[dim]
+
+	if end < 0 {
+		return tensor.Shape{}, fmt.Errorf(
+			"manifest: shape.slice end %d out of range for dim %d size %d",
+			end,
+			dim,
+			dimSize,
+		)
+	}
+
 	resolvedEnd := end
 
 	if resolvedEnd == 0 {

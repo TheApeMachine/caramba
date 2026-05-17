@@ -4,13 +4,18 @@ import (
 	"github.com/theapemachine/caramba/pkg/manifest"
 )
 
+const (
+	defaultLayerNormEpsilon = 1e-5
+	defaultRMSNormEpsilon   = 1e-6
+)
+
 /*
 layerNormPattern matches a rank-1 weight + rank-1 bias pair and
 emits a math.layernorm node. PyTorch's LayerNorm stores both
 tensors at the module's prefix:
 
-  <prefix>.weight  shape [dim]
-  <prefix>.bias    shape [dim]
+	<prefix>.weight  shape [dim]
+	<prefix>.bias    shape [dim]
 
 If only weight is present (no bias), rmsNormPattern picks the group
 up instead.
@@ -48,12 +53,18 @@ func (layerNormPattern) Emit(group TensorGroup, ctx *BuilderContext) error {
 	wInfo, _ := group.Info(weight)
 	nodeID := group.Prefix
 
+	epsilon, err := ctx.hints.GetFloat(HintLayerNormEpsilon, defaultLayerNormEpsilon)
+
+	if err != nil {
+		return err
+	}
+
 	node := &manifest.Node{
 		ID:   nodeID,
 		OpID: "math.layernorm",
 		Config: map[string]any{
 			"normalized_shape":      []int{wInfo.Shape[0]},
-			"eps":                   1e-5,
+			"eps":                   epsilon,
 			"compose.weight_tensor": weight,
 			"compose.bias_tensor":   bias,
 		},
@@ -103,12 +114,18 @@ func (rmsNormPattern) Emit(group TensorGroup, ctx *BuilderContext) error {
 	wInfo, _ := group.Info(weight)
 	nodeID := group.Prefix
 
+	epsilon, err := ctx.hints.GetFloat(HintRMSNormEpsilon, defaultRMSNormEpsilon)
+
+	if err != nil {
+		return err
+	}
+
 	node := &manifest.Node{
 		ID:   nodeID,
 		OpID: "math.rmsnorm",
 		Config: map[string]any{
 			"normalized_shape":      []int{wInfo.Shape[0]},
-			"eps":                   1e-6,
+			"eps":                   epsilon,
 			"affine":                true,
 			"compose.weight_tensor": weight,
 		},

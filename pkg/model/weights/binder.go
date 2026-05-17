@@ -2,7 +2,6 @@ package weights
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
@@ -38,108 +37,61 @@ func (binder *Binder) BindIR(graph *ir.Graph) error {
 	return nil
 }
 
-/*
-bindFromComposeKeys handles nodes emitted by pkg/model/compose, which
-carry the exact safetensors tensor names in their metadata as
-compose.weight_tensor / compose.bias_tensor / compose.transpose. When
-present, those names trump the legacy per-architecture alias lookup
-— the compose compiler already resolved tensor identity at graph
-construction time, so no name-mangling is needed at bind time.
-
-Returns (handled=true, err) when at least the weight key was present,
-so the caller can skip the legacy path. (handled=false, nil) when no
-compose metadata is on the node and the legacy aliasing should run.
-*/
-func (binder *Binder) bindFromComposeKeys(node *ir.Node) (bool, error) {
-	metadata := node.Metadata()
-
-	weightName, _ := metadata["compose.weight_tensor"].(string)
-	if weightName == "" {
-		return false, nil
-	}
-
-	if !binder.store.Has(weightName) {
-		return true, fmt.Errorf(
-			"weights: compose weight tensor %q not found for node %q",
-			weightName, node.ID(),
-		)
-	}
-
-	values, err := binder.store.Values(weightName)
-
-	if err != nil {
-		return true, err
-	}
-
-	// projection.linear keeps the same orientation rules the YAML
-	// path uses — apply them here so the rest of the runtime sees the
-	// expected [in_features, out_features] layout regardless of how
-	// the source framework stored the tensor.
-	if string(node.OperationID()) == "projection.linear" {
-		inFeatures := nodeConfigInt(node, "in_features")
-		outFeatures := nodeConfigInt(node, "out_features")
-
-		if inFeatures > 0 && outFeatures > 0 {
-			info, _ := binder.store.Info(weightName)
-
-			oriented, orientErr := orientLinearWeight(
-				weightName, values, info.Shape, inFeatures, outFeatures,
-			)
-
-			if orientErr != nil {
-				return true, fmt.Errorf("weights: node %q: %w", node.ID(), orientErr)
-			}
-
-			values = oriented
-		}
-	}
-
-	node.SetMetadata("weight", values)
-
-	if biasName, ok := metadata["compose.bias_tensor"].(string); ok && biasName != "" {
-		biasValues, err := binder.store.Values(biasName)
-
-		if err != nil {
-			return true, err
-		}
-
-		node.SetMetadata("bias", biasValues)
-	}
-
-	return true, nil
-}
-
 func (binder *Binder) bindNode(node *ir.Node) error {
-	if handled, err := binder.bindFromComposeKeys(node); handled || err != nil {
+	if handled, err := binder.bindFromMetadataKeys(node); handled || err != nil {
 		return err
 	}
 
-	switch string(node.OperationID()) {
-	case "embedding.token":
-		return binder.bindVectorOrMatrix(node, "weight", weightNames(node.ID()))
-	case "math.layernorm":
-		if err := binder.bindVectorOrMatrix(node, "weight", weightNames(node.ID())); err != nil {
+	switch node.OperationID() {
+	case ir.OpEmbeddingToken:
+		return binder.bindVectorOrMatrix(
+			node,
+			"weight",
+			exactTensorNames(node.ID(), "weight"),
+		)
+	case ir.OpMathLayerNorm:
+		if err := binder.bindVectorOrMatrix(
+			node,
+			"weight",
+			exactTensorNames(node.ID(), "weight"),
+		); err != nil {
 			return err
 		}
 
-		return binder.bindVectorOrMatrix(node, "bias", biasNames(node.ID()))
-	case "math.rmsnorm":
+		return binder.bindVectorOrMatrix(
+			node,
+			"bias",
+			exactTensorNames(node.ID(), "bias"),
+		)
+	case ir.OpMathRMSNorm:
 		if !nodeRMSNormAffine(node) {
 			return nil
 		}
 
-		return binder.bindVectorOrMatrix(node, "weight", weightNames(node.ID()))
-	case "math.groupnorm":
-		if err := binder.bindVectorOrMatrix(node, "weight", weightNames(node.ID())); err != nil {
+		return binder.bindVectorOrMatrix(
+			node,
+			"weight",
+			exactTensorNames(node.ID(), "weight"),
+		)
+	case ir.OpMathGroupNorm:
+		if err := binder.bindVectorOrMatrix(
+			node,
+			"weight",
+			exactTensorNames(node.ID(), "weight"),
+		); err != nil {
 			return err
 		}
 
-		return binder.bindVectorOrMatrix(node, "bias", biasNames(node.ID()))
-	case "projection.linear":
+		return binder.bindVectorOrMatrix(
+			node,
+			"bias",
+			exactTensorNames(node.ID(), "bias"),
+		)
+	case ir.OpProjectionLinear:
 		return binder.bindLinear(node)
-	case "convolution.conv2d":
+	case ir.OpConvolutionConv2D:
 		return binder.bindConv2D(node)
-	case "convolution.conv_transpose2d":
+	case ir.OpConvolutionConvT2D:
 		return binder.bindConvTranspose2D(node)
 	default:
 		return nil
@@ -174,51 +126,7 @@ func (binder *Binder) bindLinear(node *ir.Node) error {
 		return fmt.Errorf("weights: node %q linear dimensions are required", node.ID())
 	}
 
-	if weight, bias, ok, err := binder.fusedGateUp(node, inFeatures, outFeatures); ok || err != nil {
-		if err != nil {
-			return err
-		}
-
-		node.SetMetadata("weight", weight)
-
-		if len(bias) > 0 {
-			node.SetMetadata("bias", bias)
-		}
-
-		return nil
-	}
-
-	if weight, bias, ok, err := binder.fusedQKV(node, inFeatures, outFeatures); ok || err != nil {
-		if err != nil {
-			return err
-		}
-
-		node.SetMetadata("weight", weight)
-
-		if len(bias) > 0 {
-			node.SetMetadata("bias", bias)
-		}
-
-		return nil
-	}
-
-	if weight, bias, ok, err := binder.fluxSinglePackedLinear(
-		node, inFeatures, outFeatures,
-	); ok || err != nil {
-		if err != nil {
-			return err
-		}
-
-		node.SetMetadata("weight", weight)
-
-		if len(bias) > 0 {
-			node.SetMetadata("bias", bias)
-		}
-
-		return nil
-	}
-
-	weightName, ok := binder.first(weightNames(node.ID()))
+	weightName, ok := binder.first(exactTensorNames(node.ID(), "weight"))
 
 	if !ok {
 		return fmt.Errorf("weights: no tensor found for node %q weight", node.ID())
@@ -232,7 +140,7 @@ func (binder *Binder) bindLinear(node *ir.Node) error {
 
 	node.SetMetadata("weight", weight)
 
-	if biasName, ok := binder.first(biasNames(node.ID())); ok {
+	if biasName, ok := binder.first(exactTensorNames(node.ID(), "bias")); ok {
 		bias, err := binder.linearBias(biasName, outFeatures)
 
 		if err != nil {
@@ -299,11 +207,21 @@ func (binder *Binder) bindConv2D(node *ir.Node) error {
 		expectedWeight = outChannels * (inChannels / groups) * kernelH * kernelW
 	}
 
-	if err := binder.bindTensor(node, "weight", weightNames(node.ID()), expectedWeight); err != nil {
+	if err := binder.bindTensor(
+		node,
+		"weight",
+		exactTensorNames(node.ID(), "weight"),
+		expectedWeight,
+	); err != nil {
 		return err
 	}
 
-	return binder.bindTensor(node, "bias", biasNames(node.ID()), outChannels)
+	return binder.bindTensor(
+		node,
+		"bias",
+		exactTensorNames(node.ID(), "bias"),
+		outChannels,
+	)
 }
 
 func (binder *Binder) bindConvTranspose2D(node *ir.Node) error {
@@ -323,11 +241,21 @@ func (binder *Binder) bindConvTranspose2D(node *ir.Node) error {
 		expectedWeight = inChannels * (outChannels / groups) * kernelH * kernelW
 	}
 
-	if err := binder.bindTensor(node, "weight", weightNames(node.ID()), expectedWeight); err != nil {
+	if err := binder.bindTensor(
+		node,
+		"weight",
+		exactTensorNames(node.ID(), "weight"),
+		expectedWeight,
+	); err != nil {
 		return err
 	}
 
-	return binder.bindTensor(node, "bias", biasNames(node.ID()), outChannels)
+	return binder.bindTensor(
+		node,
+		"bias",
+		exactTensorNames(node.ID(), "bias"),
+		outChannels,
+	)
 }
 
 func (binder *Binder) bindTensor(
@@ -363,130 +291,6 @@ func (binder *Binder) bindTensor(
 	return nil
 }
 
-func (binder *Binder) fusedQKV(
-	node *ir.Node, inFeatures, outFeatures int,
-) ([]float64, []float64, bool, error) {
-	base, layer, ok := splitLayerNode(node.ID())
-
-	if !ok {
-		return nil, nil, false, nil
-	}
-
-	sliceIndex := map[string]int{
-		"q_proj": 0,
-		"k_proj": 1,
-		"v_proj": 2,
-	}[base]
-
-	if base != "q_proj" && base != "k_proj" && base != "v_proj" {
-		return nil, nil, false, nil
-	}
-
-	name, ok := binder.first([]string{
-		"transformer.h." + layer + ".attn.c_attn.weight",
-		"h." + layer + ".attn.c_attn.weight",
-	})
-
-	if !ok {
-		return nil, nil, false, nil
-	}
-
-	info, _ := binder.store.Info(name)
-	values, err := binder.store.Values(name)
-
-	if err != nil {
-		return nil, nil, true, err
-	}
-
-	weight, err := binder.store.Derived(
-		fmt.Sprintf("packed-linear:%s:%d:%d:%d", name, inFeatures, outFeatures, sliceIndex),
-		func() ([]float64, error) {
-			return slicePackedLinear(values, info.Shape, inFeatures, outFeatures, sliceIndex)
-		},
-	)
-
-	if err != nil {
-		return nil, nil, true, fmt.Errorf("node %q: %w", node.ID(), err)
-	}
-
-	var bias []float64
-
-	if biasName, ok := binder.first([]string{
-		"transformer.h." + layer + ".attn.c_attn.bias",
-		"h." + layer + ".attn.c_attn.bias",
-	}); ok {
-		packedBias, err := binder.store.Values(biasName)
-
-		if err != nil {
-			return nil, nil, true, err
-		}
-
-		bias, err = binder.store.Derived(
-			fmt.Sprintf("packed-bias:%s:%d:%d", biasName, outFeatures, sliceIndex),
-			func() ([]float64, error) {
-				return slicePackedBias(packedBias, outFeatures, sliceIndex)
-			},
-		)
-
-		if err != nil {
-			return nil, nil, true, err
-		}
-	}
-
-	return weight, bias, true, nil
-}
-
-func (binder *Binder) fusedGateUp(
-	node *ir.Node, inFeatures, outFeatures int,
-) ([]float64, []float64, bool, error) {
-	base, layer, ok := splitLayerNode(node.ID())
-
-	if !ok || base != "gate_up_proj" {
-		return nil, nil, false, nil
-	}
-
-	if outFeatures%2 != 0 {
-		return nil, nil, true, fmt.Errorf("node %q out_features must be even", node.ID())
-	}
-
-	gateName, gateOK := binder.first([]string{
-		"model.layers." + layer + ".mlp.gate_proj.weight",
-	})
-	upName, upOK := binder.first([]string{
-		"model.layers." + layer + ".mlp.up_proj.weight",
-	})
-
-	if !gateOK || !upOK {
-		return nil, nil, false, nil
-	}
-
-	half := outFeatures / 2
-	gate, err := binder.linearWeight(gateName, inFeatures, half)
-
-	if err != nil {
-		return nil, nil, true, err
-	}
-
-	up, err := binder.linearWeight(upName, inFeatures, half)
-
-	if err != nil {
-		return nil, nil, true, err
-	}
-
-	weight, err := binder.store.Derived(
-		fmt.Sprintf("gate-up:%s:%s:%d:%d", gateName, upName, inFeatures, half),
-		func() ([]float64, error) {
-			return concatenateLinearColumns(gate, up, inFeatures, half), nil
-		},
-	)
-
-	if err != nil {
-		return nil, nil, true, err
-	}
-
-	return weight, nil, true, nil
-}
-
 func (binder *Binder) first(names []string) (string, bool) {
 	for _, name := range names {
 		if binder.store.Has(name) {
@@ -495,121 +299,6 @@ func (binder *Binder) first(names []string) (string, bool) {
 	}
 
 	return "", false
-}
-
-func weightNames(nodeID string) []string {
-	return tensorNames(prefixes(nodeID), "weight")
-}
-
-func biasNames(nodeID string) []string {
-	return tensorNames(prefixes(nodeID), "bias")
-}
-
-func tensorNames(prefixes []string, suffix string) []string {
-	seen := make(map[string]bool, len(prefixes))
-	names := make([]string, 0, len(prefixes))
-
-	for _, prefix := range prefixes {
-		name := prefix + "." + suffix
-
-		if seen[name] {
-			continue
-		}
-
-		seen[name] = true
-		names = append(names, name)
-	}
-
-	return names
-}
-
-func prefixes(nodeID string) []string {
-	out := []string{nodeID}
-
-	out = append(out, fluxTransformerAliases(nodeID)...)
-
-	switch nodeID {
-	case "token_embedding":
-		out = append(out, "transformer.wte", "wte")
-	case "position_embedding":
-		out = append(out, "transformer.wpe", "wpe")
-	case "embed_tokens":
-		out = append(out, "model.embed_tokens")
-	case "final_norm":
-		out = append(out, "transformer.ln_f", "ln_f")
-	case "norm":
-		out = append(out, "model.norm")
-	case "lm_head":
-		out = append(out, "lm_head", "transformer.wte", "wte", "model.embed_tokens")
-	}
-
-	base, layer, ok := splitLayerNode(nodeID)
-
-	if !ok {
-		return out
-	}
-
-	switch base {
-	case "ln_1", "ln_2":
-		out = append(out, "transformer.h."+layer+"."+base, "h."+layer+"."+base)
-	case "attention_projection":
-		out = append(
-			out,
-			"transformer.h."+layer+".attn.c_proj",
-			"h."+layer+".attn.c_proj",
-		)
-	case "mlp_fc":
-		out = append(out, "transformer.h."+layer+".mlp.c_fc", "h."+layer+".mlp.c_fc")
-	case "mlp_projection":
-		out = append(out, "transformer.h."+layer+".mlp.c_proj", "h."+layer+".mlp.c_proj")
-	case "q_proj", "k_proj", "v_proj":
-		out = append(out, "model.layers."+layer+".self_attn."+base)
-	case "o_proj":
-		out = append(out, "model.layers."+layer+".self_attn.o_proj")
-	case "input_layernorm", "post_attention_layernorm":
-		out = append(out, "model.layers."+layer+"."+base)
-	case "down_proj":
-		out = append(out, "model.layers."+layer+".mlp.down_proj")
-	}
-
-	return out
-}
-
-func fluxTransformerAliases(nodeID string) []string {
-	aliases := make([]string, 0, 1)
-
-	if strings.HasSuffix(nodeID, ".ff.net.0.proj") {
-		aliases = append(
-			aliases,
-			strings.TrimSuffix(nodeID, ".ff.net.0.proj")+".ff.linear_in",
-		)
-	}
-
-	if strings.HasSuffix(nodeID, ".ff.net.2") {
-		aliases = append(
-			aliases,
-			strings.TrimSuffix(nodeID, ".ff.net.2")+".ff.linear_out",
-		)
-	}
-
-	return aliases
-}
-
-func splitLayerNode(nodeID string) (string, string, bool) {
-	index := strings.LastIndex(nodeID, "_")
-
-	if index < 0 {
-		return "", "", false
-	}
-
-	before := nodeID[:index]
-	after := nodeID[index+1:]
-
-	if _, err := strconv.Atoi(after); err != nil {
-		return "", "", false
-	}
-
-	return before, after, true
 }
 
 func orientLinearWeight(
@@ -670,162 +359,6 @@ func torchLinearWeight(name string) bool {
 		strings.HasPrefix(name, "proj_out.")
 }
 
-func (binder *Binder) fluxSinglePackedLinear(
-	node *ir.Node, inFeatures, outFeatures int,
-) ([]float64, []float64, bool, error) {
-	layer, part, ok := fluxSinglePart(node.ID())
-
-	if !ok {
-		return nil, nil, false, nil
-	}
-
-	switch part {
-	case "attn.to_q", "attn.to_k", "attn.to_v", "proj_mlp":
-		if !binder.store.Has(fluxSingleQKVMLPName(layer)) {
-			return nil, nil, false, nil
-		}
-
-		weight, err := binder.fluxSingleQKVMLPWeight(
-			layer, part, inFeatures, outFeatures,
-		)
-
-		return weight, nil, true, err
-	case "attn.to_out.0", "proj_out":
-		if !binder.store.Has(fluxSingleOutputName(layer)) {
-			return nil, nil, false, nil
-		}
-
-		weight, err := binder.fluxSingleOutputWeight(
-			layer, part, inFeatures, outFeatures,
-		)
-
-		return weight, nil, true, err
-	default:
-		return nil, nil, false, nil
-	}
-}
-
-func fluxSinglePart(nodeID string) (string, string, bool) {
-	rest, ok := strings.CutPrefix(nodeID, "single_transformer_blocks.")
-
-	if !ok {
-		return "", "", false
-	}
-
-	layer, part, ok := strings.Cut(rest, ".")
-
-	if !ok {
-		return "", "", false
-	}
-
-	if _, err := strconv.Atoi(layer); err != nil {
-		return "", "", false
-	}
-
-	return layer, part, true
-}
-
-func (binder *Binder) fluxSingleQKVMLPWeight(
-	layer string, part string, inFeatures int, outFeatures int,
-) ([]float64, error) {
-	name := fluxSingleQKVMLPName(layer)
-
-	info, _ := binder.store.Info(name)
-	values, err := binder.store.Values(name)
-
-	if err != nil {
-		return nil, err
-	}
-
-	start := fluxSingleQKVMLPStart(part, inFeatures, outFeatures)
-
-	return binder.store.Derived(
-		fmt.Sprintf("flux-single-qkv-mlp:%s:%s:%d:%d", name, part, inFeatures, outFeatures),
-		func() ([]float64, error) {
-			return slicePackedLinearRows(
-				values, info.Shape, inFeatures, outFeatures, start, outFeatures,
-			)
-		},
-	)
-}
-
-func fluxSingleQKVMLPName(layer string) string {
-	return "single_transformer_blocks." + layer + ".attn.to_qkv_mlp_proj.weight"
-}
-
-func fluxSingleQKVMLPStart(part string, inFeatures int, outFeatures int) int {
-	switch part {
-	case "attn.to_q":
-		return 0
-	case "attn.to_k":
-		return outFeatures
-	case "attn.to_v":
-		return outFeatures * 2
-	default:
-		return inFeatures * 3
-	}
-}
-
-func (binder *Binder) fluxSingleOutputWeight(
-	layer string, part string, inFeatures int, outFeatures int,
-) ([]float64, error) {
-	name := fluxSingleOutputName(layer)
-
-	info, _ := binder.store.Info(name)
-	values, err := binder.store.Values(name)
-
-	if err != nil {
-		return nil, err
-	}
-
-	totalInFeatures, err := linearInputFeatures(info.Shape, outFeatures)
-
-	if err != nil {
-		return nil, err
-	}
-
-	start := 0
-
-	if part == "proj_out" {
-		start = totalInFeatures - inFeatures
-	}
-
-	if start < 0 || start+inFeatures > totalInFeatures {
-		return nil, fmt.Errorf(
-			"single stream output slice [%d:%d] exceeds input width %d",
-			start,
-			start+inFeatures,
-			totalInFeatures,
-		)
-	}
-
-	return binder.store.Derived(
-		fmt.Sprintf(
-			"flux-single-output:%s:%s:%d:%d:%d",
-			name,
-			part,
-			inFeatures,
-			outFeatures,
-			start,
-		),
-		func() ([]float64, error) {
-			weight, err := orientLinearWeight(
-				name, values, info.Shape, totalInFeatures, outFeatures,
-			)
-
-			if err != nil {
-				return nil, err
-			}
-
-			return sliceRows(weight, totalInFeatures, outFeatures, start, inFeatures), nil
-		},
-	)
-}
-
-func fluxSingleOutputName(layer string) string {
-	return "single_transformer_blocks." + layer + ".attn.to_out.weight"
-}
-
 func linearInputFeatures(shape []int, outFeatures int) (int, error) {
 	if len(shape) != 2 {
 		return 0, fmt.Errorf("linear tensor must be rank 2, got %v", shape)
@@ -840,28 +373,6 @@ func linearInputFeatures(shape []int, outFeatures int) (int, error) {
 	}
 
 	return 0, fmt.Errorf("linear tensor shape %v does not include out_features %d", shape, outFeatures)
-}
-
-func slicePackedLinear(
-	values []float64, shape []int, inFeatures, outFeatures, index int,
-) ([]float64, error) {
-	if len(shape) != 2 {
-		return nil, fmt.Errorf("packed qkv tensor must be rank 2, got %v", shape)
-	}
-
-	switch {
-	case shape[0] == inFeatures && shape[1] == outFeatures*3:
-		return sliceColumns(values, inFeatures, outFeatures*3, index*outFeatures, outFeatures), nil
-	case shape[0] == outFeatures*3 && shape[1] == inFeatures:
-		rows := sliceRows(values, outFeatures*3, inFeatures, index*outFeatures, outFeatures)
-
-		return transpose(rows, outFeatures, inFeatures), nil
-	default:
-		return nil, fmt.Errorf(
-			"packed qkv shape %v does not match [%d %d] or [%d %d]",
-			shape, inFeatures, outFeatures*3, outFeatures*3, inFeatures,
-		)
-	}
 }
 
 func slicePackedLinearRows(
@@ -894,19 +405,6 @@ func slicePackedLinearRows(
 	}
 }
 
-func slicePackedBias(values []float64, outFeatures, index int) ([]float64, error) {
-	if len(values) != outFeatures*3 {
-		return nil, fmt.Errorf(
-			"packed qkv bias length %d does not match %d",
-			len(values), outFeatures*3,
-		)
-	}
-
-	start := index * outFeatures
-
-	return append([]float64(nil), values[start:start+outFeatures]...), nil
-}
-
 func sliceColumns(values []float64, rows, cols, start, width int) []float64 {
 	out := make([]float64, rows*width)
 
@@ -934,17 +432,6 @@ func transpose(values []float64, rows, cols int) []float64 {
 		for col := 0; col < cols; col++ {
 			out[col*rows+row] = values[row*cols+col]
 		}
-	}
-
-	return out
-}
-
-func concatenateLinearColumns(left, right []float64, rows, cols int) []float64 {
-	out := make([]float64, rows*cols*2)
-
-	for row := 0; row < rows; row++ {
-		copy(out[row*cols*2:row*cols*2+cols], left[row*cols:(row+1)*cols])
-		copy(out[row*cols*2+cols:(row+1)*cols*2], right[row*cols:(row+1)*cols])
 	}
 
 	return out

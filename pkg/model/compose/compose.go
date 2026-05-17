@@ -50,30 +50,6 @@ type TensorCatalog interface {
 }
 
 /*
-InputSpec describes a graph-level input the compiled topology needs
-to declare. Kind is an optional hint that helps patterns pick the
-right entry node (e.g. "tokens" for an embedding lookup, "latent"
-for a diffusion noise tensor).
-*/
-type InputSpec struct {
-	Name string
-	Kind string
-}
-
-/*
-Hints carry the small amount of context that cannot be inferred from
-the safetensors file alone — what the graph's external inputs are
-called and which tensor name the runtime should treat as the final
-output. The compiler chooses among recognized architectures using
-these hints plus what it finds in the tensor list; there is no
-"architecture: flux2" switch.
-*/
-type Hints struct {
-	Inputs []InputSpec
-	Output string
-}
-
-/*
 TensorRef points a node back at the safetensors entry whose values
 should be bound to its weight slot. Patterns set this on the nodes
 they emit; the runtime's WeightBinder uses it to load values at
@@ -126,8 +102,8 @@ The compiler builds groups by splitting tensor names on dots and
 grouping tensors whose first N components match.
 */
 type TensorGroup struct {
-	Prefix string                 // e.g. "transformer.h.0"
-	Names  []string               // full tensor names in the group, sorted
+	Prefix string   // e.g. "transformer.h.0"
+	Names  []string // full tensor names in the group, sorted
 	Info   func(string) (modelweights.TensorInfo, bool)
 }
 
@@ -148,6 +124,7 @@ type BuilderContext struct {
 	nextLocal int
 	catalog   TensorCatalog
 	consumed  map[string]bool
+	hints     Hints
 }
 
 /*
@@ -291,6 +268,7 @@ func FromSafetensorsWithRegistry(
 		graph:    graph,
 		catalog:  catalog,
 		consumed: make(map[string]bool, len(tensorNames)),
+		hints:    hints,
 	}
 
 	for _, input := range hints.Inputs {

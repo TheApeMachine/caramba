@@ -1,14 +1,19 @@
 package tui
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 )
 
+const AppName = "Caramba"
+
 type App struct {
 	form      *huh.Form
 	styles    func(bool) *Styles
+	title     string
 	hasDarkBg bool
 	width     int
 }
@@ -17,6 +22,7 @@ func NewApp() *App {
 	return &App{
 		form:      huh.NewForm(),
 		styles:    NewStyles,
+		title:     AppName,
 		hasDarkBg: false,
 		width:     0,
 	}
@@ -63,13 +69,13 @@ func (app *App) View() tea.View {
 	s := app.styles(app.hasDarkBg)
 
 	errors := app.form.Errors()
-	header := app.appBoundaryView("Caramba")
+	header := app.appBoundaryView(app.title)
 
 	if len(errors) > 0 {
 		header = app.appErrorBoundaryView(app.errorView())
 	}
 
-	form := ""
+	form := app.form.View()
 	status := ""
 
 	body := lipgloss.JoinHorizontal(lipgloss.Left, form, status)
@@ -83,11 +89,13 @@ func (app *App) View() tea.View {
 }
 
 func (app *App) errorView() string {
-	var s string
+	messages := make([]string, 0, len(app.form.Errors()))
+
 	for _, err := range app.form.Errors() {
-		s += err.Error()
+		messages = append(messages, err.Error())
 	}
-	return s
+
+	return strings.Join(messages, "\n")
 }
 
 func (app *App) appBoundaryView(text string) string {

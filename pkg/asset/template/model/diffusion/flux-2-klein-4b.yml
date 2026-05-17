@@ -92,18 +92,21 @@ system:
   # pkg/asset/template/model/architecture/flux2.yml and contains only
   # primitive ops + repeat blocks — no Go-side architecture knowledge.
   topology:
-    include: model.architecture.flux2
-    variables:
-      in_channels: 128
-      hidden_size: 3072
-      joint_attention_dim: 7680
-      num_layers: 5
-      num_single_layers: 20
-      num_attention_heads: 24
-      attention_head_dim: 128
-      mlp_inner: 9216
-      mlp_packed: 18432
-      rope_theta: 2000
-      eps: 1e-06
-      latent_seq_len: 4096
-      joint_terminal_index: 25
+    from_safetensors:
+      source: black-forest-labs/FLUX.2-klein-4B
+      file: transformer/diffusion_pytorch_model.safetensors
+      architecture: Flux2Transformer2DModel
+      config:
+        architectures: [Flux2Transformer2DModel]
+        in_channels: 128
+        hidden_size: 3072
+        joint_attention_dim: 7680
+        mlp_ratio: 3.0
+        num_layers: 5
+        num_single_layers: 20
+        num_attention_heads: 24
+        attention_head_dim: 128
+        rope_theta: 2000
+        eps: 1e-06
+      variables:
+        latent_seq_len: 4096

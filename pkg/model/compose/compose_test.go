@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"sort"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -18,6 +19,8 @@ func (catalog fakeCatalog) Names() []string {
 	for name := range catalog {
 		names = append(names, name)
 	}
+	sort.Strings(names)
+
 	return names
 }
 
@@ -40,7 +43,7 @@ func TestFromSafetensors(t *testing.T) {
 			"model.norm.weight": {Name: "model.norm.weight", DType: "F32", Shape: []int{2560}},
 
 			// Linear: rank-2 weight + optional bias.
-			"lm_head.weight":         {Name: "lm_head.weight", DType: "F32", Shape: []int{50257, 768}},
+			"lm_head.weight":          {Name: "lm_head.weight", DType: "F32", Shape: []int{50257, 768}},
 			"transformer.proj.weight": {Name: "transformer.proj.weight", DType: "F32", Shape: []int{768, 768}},
 			"transformer.proj.bias":   {Name: "transformer.proj.bias", DType: "F32", Shape: []int{768}},
 		}
@@ -81,6 +84,37 @@ func TestFromSafetensors(t *testing.T) {
 			So(nodesByID["transformer.proj"], ShouldEqual, "projection.linear")
 		})
 
+		Convey("FromSafetensors should apply optional norm epsilon hints", func() {
+			graph, err := FromSafetensors(catalog, Hints{
+				Metadata: map[string]any{
+					HintLayerNormEpsilon: 2e-5,
+					HintRMSNormEpsilon:   1e-5,
+				},
+			})
+
+			So(err, ShouldBeNil)
+
+			configsByID := map[string]map[string]any{}
+			for _, node := range graph.Nodes() {
+				configsByID[node.ID] = node.Config
+			}
+
+			So(configsByID["transformer.ln_f"]["eps"], ShouldEqual, 2e-5)
+			So(configsByID["model.norm"]["eps"], ShouldEqual, 1e-5)
+		})
+
+		Convey("FromSafetensors should reject invalid norm epsilon hints", func() {
+			_, err := FromSafetensors(catalog, Hints{
+				Metadata: map[string]any{
+					HintRMSNormEpsilon: 0,
+				},
+			})
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, HintRMSNormEpsilon)
+			So(err.Error(), ShouldContainSubstring, "must be > 0")
+		})
+
 		Convey("FromSafetensors should reject unclaimed prefixes loudly", func() {
 			catalogWithUnknown := fakeCatalog{}
 			for k, v := range catalog {
@@ -117,12 +151,25 @@ func TestFromSafetensors(t *testing.T) {
 	})
 }
 
+func TestFakeCatalogNames(test *testing.T) {
+	Convey("Given a fake tensor catalog", test, func() {
+		catalog := fakeCatalog{
+			"z.weight": {Name: "z.weight"},
+			"a.weight": {Name: "a.weight"},
+		}
+
+		Convey("Names should return sorted tensor names", func() {
+			So(catalog.Names(), ShouldResemble, []string{"a.weight", "z.weight"})
+		})
+	})
+}
+
 func TestRegistryPriority(t *testing.T) {
 	Convey("Given a registry with patterns of different priorities", t, func() {
 		registry := NewRegistry()
-		registry.Register(linearPattern{})        // priority 10
-		registry.Register(layerNormPattern{})     // priority 20
-		registry.Register(embeddingPattern{})     // priority 30
+		registry.Register(linearPattern{})    // priority 10
+		registry.Register(layerNormPattern{}) // priority 20
+		registry.Register(embeddingPattern{}) // priority 30
 
 		Convey("Patterns() should return them in descending priority order", func() {
 			patterns := registry.Patterns()

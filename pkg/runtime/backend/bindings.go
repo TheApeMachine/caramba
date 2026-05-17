@@ -57,7 +57,7 @@ func deriveDefaultShape(
 deriveInputShapes turns the GraphModule.Config["input_shapes"] entry
 into a per-input map of tensor.Shape values. The format is:
 
-  input_shapes: { encoder_hidden_states: [1, 256, 7680], timestep: [1] }
+	input_shapes: { encoder_hidden_states: [1, 256, 7680], timestep: [1] }
 
 This is the runtime equivalent of LowerGraphToIRWithInputShapes,
 which lets multi-input graphs (diffusion denoisers, multi-encoder
@@ -142,10 +142,6 @@ func resolveDynamicDims(dims []int, value any) ([]int, error) {
 
 	if err != nil {
 		return nil, err
-	}
-
-	if values == nil {
-		return nil, fmt.Errorf("dimension -1 requires a non-nil input value")
 	}
 
 	if knownProduct <= 0 || len(values)%knownProduct != 0 {

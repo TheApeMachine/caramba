@@ -10,6 +10,8 @@
 #
 #   in_channels             latent channels (e.g. 128)
 #   hidden_size             model dim (e.g. 3072)
+#   double_hidden_size      2*hidden_size
+#   triple_hidden_size      3*hidden_size
 #   joint_attention_dim     text encoder hidden dim (e.g. 7680)
 #   num_layers              dual-stream block count (e.g. 5)
 #   num_single_layers       single-stream block count (e.g. 20)
@@ -142,7 +144,7 @@ nodes:
         out: ["tb_norm2_${i}"]
         config: { eps: "${include.eps}", affine: false }
 
-      - id: "transformer_blocks.${i}.ff.net.0.proj"
+      - id: "transformer_blocks.${i}.ff.linear_in"
         op: projection.linear
         in: ["tb_norm2_${i}"]
         out: ["tb_gate_up_${i}"]
@@ -153,7 +155,7 @@ nodes:
         in: ["tb_gate_up_${i}"]
         out: ["tb_mlp_${i}"]
 
-      - id: "transformer_blocks.${i}.ff.net.2"
+      - id: "transformer_blocks.${i}.ff.linear_out"
         op: projection.linear
         in: ["tb_mlp_${i}"]
         out: ["tb_mlp_out_${i}"]
@@ -178,19 +180,37 @@ nodes:
         op: projection.linear
         in: ["st_norm_${i}"]
         out: ["st_q_${i}"]
-        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
+        config:
+          in_features: "${include.hidden_size}"
+          out_features: "${include.hidden_size}"
+          from_safetensors:
+            weight: "single_transformer_blocks.${i}.attn.to_qkv_mlp_proj.weight"
+            slice_axis: output
+            slice_start: 0
 
       - id: "single_transformer_blocks.${i}.attn.to_k"
         op: projection.linear
         in: ["st_norm_${i}"]
         out: ["st_k_${i}"]
-        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
+        config:
+          in_features: "${include.hidden_size}"
+          out_features: "${include.hidden_size}"
+          from_safetensors:
+            weight: "single_transformer_blocks.${i}.attn.to_qkv_mlp_proj.weight"
+            slice_axis: output
+            slice_start: "${include.hidden_size}"
 
       - id: "single_transformer_blocks.${i}.attn.to_v"
         op: projection.linear
         in: ["st_norm_${i}"]
         out: ["st_v_${i}"]
-        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
+        config:
+          in_features: "${include.hidden_size}"
+          out_features: "${include.hidden_size}"
+          from_safetensors:
+            weight: "single_transformer_blocks.${i}.attn.to_qkv_mlp_proj.weight"
+            slice_axis: output
+            slice_start: "${include.double_hidden_size}"
 
       - id: "st_q_heads_${i}"
         op: shape.view_as_heads
@@ -243,7 +263,13 @@ nodes:
         op: projection.linear
         in: ["st_attn_flat_${i}"]
         out: ["st_attn_out_${i}"]
-        config: { in_features: "${include.hidden_size}", out_features: "${include.hidden_size}" }
+        config:
+          in_features: "${include.hidden_size}"
+          out_features: "${include.hidden_size}"
+          from_safetensors:
+            weight: "single_transformer_blocks.${i}.attn.to_out.weight"
+            slice_axis: input
+            slice_start: 0
 
       - id: "st_attn_residual_${i}"
         op: math.add
@@ -254,7 +280,13 @@ nodes:
         op: projection.linear
         in: ["st_norm_${i}"]
         out: ["st_gate_up_${i}"]
-        config: { in_features: "${include.hidden_size}", out_features: "${include.mlp_packed}" }
+        config:
+          in_features: "${include.hidden_size}"
+          out_features: "${include.mlp_packed}"
+          from_safetensors:
+            weight: "single_transformer_blocks.${i}.attn.to_qkv_mlp_proj.weight"
+            slice_axis: output
+            slice_start: "${include.triple_hidden_size}"
 
       - id: "st_swiglu_${i}"
         op: activation.swiglu
@@ -265,7 +297,13 @@ nodes:
         op: projection.linear
         in: ["st_mlp_${i}"]
         out: ["st_mlp_out_${i}"]
-        config: { in_features: "${include.mlp_inner}", out_features: "${include.hidden_size}" }
+        config:
+          in_features: "${include.mlp_inner}"
+          out_features: "${include.hidden_size}"
+          from_safetensors:
+            weight: "single_transformer_blocks.${i}.attn.to_out.weight"
+            slice_axis: input
+            slice_start: "${include.hidden_size}"
 
       - id: "st_mlp_residual_${i}"
         op: math.add

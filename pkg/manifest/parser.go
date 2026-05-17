@@ -319,6 +319,10 @@ func (ctx *parseContext) resolveNode(yamlNode *yaml.Node) (any, error) {
 	}
 
 	if yamlNode.Kind == yaml.MappingNode {
+		if specNode, ok := ctx.extractSafeTensorsTopology(yamlNode); ok {
+			return ctx.resolveSafeTensorsTopology(specNode)
+		}
+
 		if dotPath, vars, ok, err := ctx.extractIncludeMapping(yamlNode); ok || err != nil {
 			if err != nil {
 				return nil, err

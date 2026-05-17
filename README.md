@@ -2,11 +2,17 @@
 
 **A substrate for A.I. research.**
 
-Aiming to be an end-to-end research stack, caramba does everything in its power to let the researcher focus on their ideas, without having to worry about having to micro-manage the process.
+**Caramba** is a comprehensive machine learning research stack built to guide you through the entire lifecycle of A.I. development. Whether you want to rapidly prototype a new concept or dive deep into low-level hardware optimization, Caramba provides a dedicated environment tailored to your exact workflow. 
 
-Out of the box, caramba provides you with the tools to quickly iterate on ideas, and the ability to deeply inspect results.
+Operating on the core philosophy that **a manifest is a model**, Caramba allows you to define complex architectures entirely via YAML files instead of writing code. It acts as a complete laboratory, seamlessly taking you from your initial idea to a heavily optimized, fully profiled pipeline.
 
----
+**Core Capabilities:**
+
+* 📝 **Fully Manifest-Driven:** Declare your topology in simple YAML. Caramba goes far beyond standard layers and operations, allowing you to easily express sophisticated, non-standard mathematical primitives and advanced custom architectures.
+* 🚀 **Flexibility & Optimization:** Dedicated to high performance, Caramba gives you the tools to choose your level of abstraction. Move fast to iterate on high-level ideas, or drop down for granular, low-level control over compute and memory.
+* 🔬 **Sophisticated Inspection:** Deeply understand your network's behavior. Caramba is equipped with advanced inspection and profiling tooling, bringing clarity to every step of the end-to-end research process.
+* 🤖 **Integrated A.I. Collaboration:** Supercharge your workflow with a built-in A.I. assistant and virtual research team. Caramba is built from the ground up to support both human team collaboration and agentic brainstorming.
+* 🔐 **Zero-Compromise Privacy:** Working with proprietary or sensitive data? Caramba can operate entirely in an optional "local-only" mode, ensuring your research and intellectual property never leave your secure environment.
 
 ## ✨ Features
 
@@ -15,7 +21,7 @@ Out of the box, caramba provides you with the tools to quickly iterate on ideas,
   - [x] Attention (SDPA, MQA, GQA, sliding window, softmax)
   - [x] Convolution (Conv1D, Conv2D, Conv3D, ConvTranspose2D)
   - [x] Embedding (token, RoPE, ALiBi, tied)
-  - [x] Math (matmul, add/mul, exp/log, rmsnorm, layernorm, groupnorm, softmax, logsumexp, dropout)
+  - [x] Math (matmul, add/mul, exp/log, rmsnorm, layernorm, groupnorm, softmax, logsumexp, dropout, sin, cos)
   - [x] Pooling (avg, max, adaptive avg, adaptive max)
   - [x] Projection (linear, fused QKV, tied embedding)
   - [x] Shape (reshape, transpose, concat, split, view_as_heads, merge_heads, last_token, nearest upsample)
@@ -65,159 +71,17 @@ Out of the box, caramba provides you with the tools to quickly iterate on ideas,
 - [ ] Ergonomic WYSIWYG LaTeX Paper Editor
 - [ ] Multi-User/Team Collaboration
 
-## A manifest is a model
-
-Architectures are declared, not coded. Here is a slice of Llama 3.2 1B Instruct as caramba sees it:
-
-The complete research-platform contract lives in [`docs/research-platform-requirements.md`](docs/research-platform-requirements.md). It defines the manifest-driven runtime, state, KV cache, rotary, chat, diffusion, training, inspection, backend, and verification requirements needed for Caramba to serve as a machine learning architecture laboratory. The voluntary compute grid contract lives in [`docs/voluntary-distributed-compute.md`](docs/voluntary-distributed-compute.md).
-
-```yaml
-name: Llama 3.2 1B Instruct
-
-system:
-  runtime:
-    type: model
-    backend: metal
-    model:     { source: meta-llama/Llama-3.2-1B-Instruct }
-    tokenizer: { source: meta-llama/Llama-3.2-1B-Instruct }
-    generation:
-      max_new_tokens: 256
-      temperature: 0.8
-      top_k: 50
-      top_p: 0.95
-      prompt_template: |+
-        <|begin_of_text|><|start_header_id|>system<|end_header_id|>
-
-        Cutting Knowledge Date: December 2023
-        Today Date: 26 Jul 2024
-
-        <|eot_id|><|start_header_id|>user<|end_header_id|>
-
-        {{prompt}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
-
-  topology:
-    nodes:
-      - id: embed_tokens
-        op: embedding.token
-        in:  [input_ids]
-        out: [h_0]
-        config: { vocab_size: 128256, d_model: 2048 }
-
-      - id: transformer_layers
-        op: control.repeat
-        in:  [h_0]
-        out: [h_16]
-        repeat: 16
-        index: i
-        template:
-          - { id: norm_${i},    op: math.rmsnorm,        in: [h_${i}],          out: [n_${i}],   config: { eps: 1e-05 } }
-          - { id: q_${i},       op: projection.linear,   in: [n_${i}],          out: [q_${i}],   config: { in_features: 2048, out_features: 2048 } }
-          - { id: k_${i},       op: projection.linear,   in: [n_${i}],          out: [k_${i}],   config: { in_features: 2048, out_features: 512  } }
-          - { id: v_${i},       op: projection.linear,   in: [n_${i}],          out: [v_${i}],   config: { in_features: 2048, out_features: 512  } }
-          - { id: qh_${i},      op: shape.view_as_heads, in: [q_${i}],          out: [qh_${i}],  config: { num_heads: 32 } }
-          - { id: kh_${i},      op: shape.view_as_heads, in: [k_${i}],          out: [kh_${i}],  config: { num_heads: 8  } }
-          - { id: vh_${i},      op: shape.view_as_heads, in: [v_${i}],          out: [vh_${i}],  config: { num_heads: 8  } }
-          - id: rope_q_${i}
-            op: positional.rope
-            in:  [qh_${i}]
-            out: [qr_${i}]
-            config:
-              base: 500000.0
-              head_dim: 64
-              mode: half
-              rope_type: llama3
-              rope_factor: 32.0
-              rope_low_freq_factor: 1.0
-              rope_high_freq_factor: 4.0
-              rope_original_context: 8192
-          - id: rope_k_${i}
-            op: positional.rope
-            in:  [kh_${i}]
-            out: [kr_${i}]
-            config:
-              base: 500000.0
-              head_dim: 64
-              mode: half
-              rope_type: llama3
-              rope_factor: 32.0
-              rope_low_freq_factor: 1.0
-              rope_high_freq_factor: 4.0
-              rope_original_context: 8192
-          - { id: attn_${i},    op: attention.gqa,       in: [qr_${i}, kr_${i}, vh_${i}], out: [ah_${i}], config: { num_heads: 32, num_kv_heads: 8, head_dim: 64, causal: true } }
-          - { id: merge_${i},   op: shape.merge_heads,   in: [ah_${i}],         out: [a_${i}] }
-          # ... swiglu MLP, residuals, etc.
-
-      - id: lm_head
-        op: projection.linear
-        in:  [final_norm]
-        out: [logits]
-        config: { in_features: 2048, out_features: 128256 }
-```
-
-Run it:
-
-```bash
-caramba chat --manifest model/llm/llama-3-2-1b-instruct.yml
-```
-
-caramba pulls the weights from the Hugging Face Hub (revision-pinned, cached, content-addressed), binds the safetensors into the named graph nodes by structure, lowers the graph to your selected backend, and streams tokens with a KV cache that lives in resident GPU memory.
-Startup publishes `qpool` progress events for manifest resolution, backend selection, tokenizer loading, SafeTensors resolution, and runtime readiness, so long first-run Hub downloads do not look like a dead terminal.
-The CLI subscribes to the same `qpool` broadcast stream and renders terminal progress bars for Hub transfers, SafeTensors loading, token generation, and diffusion denoising. While that TUI is active, standard JSON logging is suppressed and the latest `qpool` event is rendered as the status line above the progress bar.
-Application-level concurrency is scheduled through `qpool`; goroutine creation is isolated inside the pool internals so downloads, long-running services, and background work share the same telemetry, cancellation, and backpressure path.
-Developer-team role prompts and tool schemas are embedded YAML assets under `pkg/asset/template/devteam`, keeping the agent contract in data files instead of Go literals.
-
-You did not write a model class. You did not write a forward pass. You described an architecture, and the substrate ran it.
-
-Diffusion models use the same manifest path. The FLUX.2 Klein 4B denoiser
-template lives at `model/diffusion/flux-2-klein-4b.yml`; its Qwen3 prompt
-encoder lives at `model/diffusion/flux-2-klein-4b-text-encoder.yml`; its VAE
-decoder lives at `model/diffusion/flux-2-klein-4b-vae-decoder.yml`.
-
-The FLUX.2 runtime validates checkpoint wiring before generation. The manifest
-must consume timestep conditioning and bind the double-stream modulation,
-text-side feed-forward, added attention projections, Q/K norms, single-stream
-modulation, and final norm projection tensors from the checkpoint. When those
-required paths are absent, `caramba image` stops during setup instead of
-decoding unconditioned noise into a PNG.
-
-```bash
-caramba image --manifest model/diffusion/flux-2-klein-4b.yml "a brass observatory on a storm cliff"
-```
-
----
-
-## What you get
-
-**One IR, four resident backends.** Every operation has a Go scalar reference, and accelerator graphs are only legal when the selected backend advertises a resident kernel for that operation:
-
-- **CPU** with hand-written AVX2, SSE2, and NEON assembly — each ISA has its own kernel, no scalar branches in disguise.
-- **CUDA** native `.cu` kernels for activations, shape transforms, attention, convolution, embeddings, causal masking, pooling.
-- **Metal** native `.metal` shaders with resident KV caches, shape transforms, and on-device tensor lifecycle.
-- **XLA** via PJRT — shape and math graph nodes become StableHLO modules and run through whichever plugin you point caramba at.
-
-**A real operation library.** Standard primitives — attention (SDPA, GQA, flash, causal), activations (GeLU tanh-form, SwiGLU, Mish, …), normalization, convolution, pooling, projection, embedding (token, RoPE, ALiBi, sinusoidal), shape transforms and nearest-neighbor upsample — plus a set of operations you will not find in PyTorch: active inference, Hawkes processes, Markov blanket detection, predictive coding, vector symbolic architectures. Optimizers include SGD, Adam(W), Lion, LARS, LAMB, L-BFGS, each with native kernels on every backend. Diffusion decoder support now binds VAE convolution and GroupNorm tensors through the same SafeTensors-to-IR path.
-
-**A compiler, not an interpreter.** Manifests pass through `pkg/manifest`'s pipeline: verification, canonicalization, semantic CSE, algebraic simplification, legality-aware fusion, side-effect-aware DCE, memory planning, and cost scheduling — before lowering. Fusions are declared and validated against per-backend capability contracts, not invented at runtime.
-
-**A visual editor.** The frontend (`frontend/`) is a Vite + React + Flume canvas that reads the operation registry from the backend, supports template blocks (`TransformerBlock`, `MLP`, `DBA`, `GQA`, …), and serializes back to the same YAML the CLI consumes. Dragging nodes and editing text are two paths to the same artifact.
-
-**Hub-native asset resolution.** `pkg/hub` provides a revision-aware local cache that mirrors `hf_hub_download` / `snapshot_download` semantics: refs or cached `info/<revision>` metadata, commit-pinned snapshots, content-addressed blobs, per-file metadata, Xet CAS reconstruction. The default cache is `${HOME}/.cache/huggingface/hub`, so existing Hugging Face snapshots are checked before caramba downloads. Manifests reference assets by plain ID (`openai-community/gpt2`) or by explicit locator (`hf://model/openai-community/gpt2@main`).
-
-**Provenance that travels with the artifact.** A trained model is its weights *and* the graph that produced them *and* a ledger entry signed by `pkg/notary`. Share a model and you share its history.
-
----
-
-## Quick start
+## 🚀 Quick start
 
 ```bash
 go install github.com/theapemachine/caramba@latest
 
-caramba serve                                                    # HTTP API
-caramba chat                                                     # terminal chat against the default manifest
-caramba chat --manifest model/llm/llama-3-2-1b-instruct.yml      # pick a different one
-caramba research my-ablation-study                               # scaffold a study
+caramba serve
 ```
+
+The above command brings up just the HTTP API, which means you still have to bring up the data stores yourself.
+
+Alternatively you could grab the `docker-compose.yml` from this repository to make this process much easier.
 
 `caramba research <name>` lays out a project as a directory under version control:
 
@@ -232,8 +96,6 @@ research/project/my-ablation-study/
 Configuration lives in [cmd/asset/config.yml](cmd/asset/config.yml) and is loaded through [pkg/config](pkg/config). The resolver tries `--config`, then `./cmd/asset/config.yml`, `./config.yml`, `$HOME/.caramba/config.yml`, and finally the binary's embedded default.
 
 → [Getting Started](./docs/getting-started.md)
-
----
 
 ## Building for a specific backend
 
@@ -270,35 +132,7 @@ Backend kernels upload values once into a resident tensor store and only downloa
 
 → [Compute Backends](./docs/compute.md)
 
----
-
-## Operations at a glance
-
-| Category          | Examples                                            |
-|-------------------|-----------------------------------------------------|
-| Activation        | ReLU, GeLU (exact erf), SwiGLU, Tanh, Mish          |
-| Attention         | SDPA, DBA, GQA, Multi-head, Causal, Flash           |
-| Embedding         | Token, Positional (RoPE, ALiBi, sinusoidal)         |
-| Normalization     | LayerNorm, RMSNorm, GroupNorm, BatchNorm            |
-| Projection        | Linear, FusedQKV, LoRA                              |
-| Convolution       | Conv1D, Conv2D, depthwise, grouped, transposed      |
-| Shape             | Reshape, transpose, concat, split, nearest upsample |
-| Pooling           | Mean, Max, Attention pooling                        |
-| Active Inference  | Free energy minimization, precision weighting       |
-| Causal            | Temporal difference, causal intervention            |
-| Hawkes Process    | Point process attention kernels                     |
-| Markov Blanket    | Blanket detection, free energy decomposition        |
-| Predictive Coding | Hierarchical prediction error                       |
-| VSA               | Hyperdimensional binding, bundling, cleanup memory  |
-| Optimizers        | SGD, Adam(W), Lion, LARS, LAMB, L-BFGS              |
-
-If a kernel is missing for a backend, lowering or execution fails loudly at that backend boundary. There is no silent alternate execution path.
-
-→ [Operations](./docs/operations.md)
-
----
-
-## Repository layout
+## 💾 Repository layout
 
 ```
 cmd/                Cobra CLI: serve, chat, research
@@ -322,7 +156,7 @@ AGENTS.md           Backend implementation contract — required reading for ker
 
 ---
 
-## Testing
+## 🔬 Testing
 
 Every code file has a `_test.go` mirror. Tests are GoConvey-style ("Given X, it should Y", nested). Backend kernels run parity tests against the scalar reference at `N ∈ {1, 7, 64, 1024, 8192}` with tight ULP bounds — the tolerance is a contract, not a knob.
 
@@ -335,7 +169,7 @@ CGO_ENABLED=1 go test -tags "cgo cuda"     ./pkg/backend/compute/cuda/...
 
 ---
 
-## Documentation
+## 📓 Documentation
 
 | Document                                       | What's inside                                       |
 |------------------------------------------------|-----------------------------------------------------|
@@ -354,9 +188,3 @@ CGO_ENABLED=1 go test -tags "cgo cuda"     ./pkg/backend/compute/cuda/...
 ## License
 
 MIT
-
----
-
-<p align="center">
-  <i>The model knows how it was made.</i>
-</p>
