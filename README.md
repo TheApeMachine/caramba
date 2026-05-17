@@ -45,6 +45,7 @@ Operating on the core philosophy that **a manifest is a model**, Caramba allows 
 - [ ] Training Models
 - [ ] Fine-tuning Models
 - [x] Manifest Compiler (verify, canonicalize, CSE, algebraic simplify, fusion, DCE, memory planning, cost scheduling)
+- [x] SafeTensors architecture manifests (`from_safetensors`, config-driven registry lookup, direct tensor binding)
 - [x] Hugging Face Hub Asset Resolver (revision-pinned, content-addressed, Xet CAS)
 - [x] Provenance Ledger (signed by `pkg/notary`)
 - [x] Streaming Chat Runtime (KV cache, sampling, `qpool` startup events)
