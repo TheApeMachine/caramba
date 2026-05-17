@@ -8,9 +8,13 @@
 
 variables:
   generation:
+    # Latent token count: image_height * image_width / latent_downsample^2
+    # = 1024 * 1024 / 16^2 = 4096 latent positions per FLUX-2 sample.
     sequence_length: 4096
-    latent_channels: 64
-    prompt_embed_dim: 4096
+    # FLUX-2 latents are 128-channel patch tokens.
+    latent_channels: 128
+    # Text-encoder hidden width per token (Qwen3 concat output).
+    prompt_embed_dim: 7680
     output_width: 1024
     output_height: 1024
     output_channels: 3
@@ -45,15 +49,19 @@ system:
         outputs: { prompt_embeds: prompt_embeds }
       denoiser:
         topology: denoiser
-        outputs: { velocity: lm_head }
+        outputs: { velocity: denoiser_output }
         input_shapes:
           hidden_states:
             - 1
             - ${generation.sequence_length}
             - ${generation.latent_channels}
+          # The text-token axis is dynamic per prompt — -1 tells the
+          # runtime to derive it from the actual prompt_embeds length
+          # (len(values) / (1 * prompt_embed_dim)). Hard-coding it
+          # would only work if the tokenizer padded to a fixed length.
           encoder_hidden_states:
             - 1
-            - ${generation.sequence_length}
+            - -1
             - ${generation.prompt_embed_dim}
           timestep:
             - 1
@@ -63,7 +71,7 @@ system:
           - ${generation.latent_channels}
       vae:
         topology: vae
-        outputs: { image: vae_output }
+        outputs: { image: decoder.conv_out }
         default_shape:
           - 1
           - ${generation.sequence_length}

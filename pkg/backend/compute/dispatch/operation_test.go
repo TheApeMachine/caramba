@@ -209,6 +209,18 @@ func (registry operationRegistry) LastToken(config *state.Dict) (state.Operation
 	return registry.operation(config)
 }
 
+func (registry operationRegistry) Slice(config *state.Dict) (state.Operation, error) {
+	return registry.operation(config)
+}
+
+func (registry operationRegistry) Sin(config *state.Dict) (state.Operation, error) {
+	return registry.operation(config)
+}
+
+func (registry operationRegistry) Cos(config *state.Dict) (state.Operation, error) {
+	return registry.operation(config)
+}
+
 func (registry operationRegistry) RoPE(config *state.Dict) (state.Operation, error) {
 	return registry.operation(config)
 }

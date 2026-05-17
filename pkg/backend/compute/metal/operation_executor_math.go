@@ -21,6 +21,28 @@ func (tensorBackend *TensorBackend) Exp(
 	return mathOps.ExpTensor(input)
 }
 
+func (tensorBackend *TensorBackend) Sin(
+	input tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	mathOps, err := tensorBackend.math()
+	if err != nil {
+		return nil, err
+	}
+
+	return mathOps.SinTensor(input)
+}
+
+func (tensorBackend *TensorBackend) Cos(
+	input tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	mathOps, err := tensorBackend.math()
+	if err != nil {
+		return nil, err
+	}
+
+	return mathOps.CosTensor(input)
+}
+
 func (tensorBackend *TensorBackend) Log(
 	input tensor.Float64Tensor,
 ) (tensor.Float64Tensor, error) {
@@ -109,6 +131,22 @@ func (tensorBackend *TensorBackend) applyExp(
 	inputs []tensor.Float64Tensor,
 ) (tensor.Float64Tensor, error) {
 	return tensorBackend.applyUnaryMath(ctx, node, inputs, tensorBackend.Exp)
+}
+
+func (tensorBackend *TensorBackend) applySin(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	return tensorBackend.applyUnaryMath(ctx, node, inputs, tensorBackend.Sin)
+}
+
+func (tensorBackend *TensorBackend) applyCos(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	return tensorBackend.applyUnaryMath(ctx, node, inputs, tensorBackend.Cos)
 }
 
 func (tensorBackend *TensorBackend) applyLog(

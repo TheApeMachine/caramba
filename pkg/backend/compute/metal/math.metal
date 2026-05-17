@@ -168,6 +168,27 @@ kernel void exp_kernel(
 }
 
 // ---------------------------------------------------------------------------
+// sin_kernel / cos_kernel: elementwise sin(x) and cos(x). Uses MSL's built-in
+// transcendentals, which lower to the GPU's hardware sin/cos units on Apple
+// silicon. Same precision contract as the CPU paths.
+// ---------------------------------------------------------------------------
+kernel void sin_kernel(
+    device const float* src [[buffer(0)]],
+    device float* dst       [[buffer(1)]],
+    uint i                  [[thread_position_in_grid]])
+{
+    dst[i] = sin(src[i]);
+}
+
+kernel void cos_kernel(
+    device const float* src [[buffer(0)]],
+    device float* dst       [[buffer(1)]],
+    uint i                  [[thread_position_in_grid]])
+{
+    dst[i] = cos(src[i]);
+}
+
+// ---------------------------------------------------------------------------
 // log_kernel: elementwise log(x)
 // ---------------------------------------------------------------------------
 kernel void log_kernel(

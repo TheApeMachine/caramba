@@ -81,7 +81,13 @@ func deriveInputShapes(
 	out := make(map[string]tensor.Shape, len(entries))
 
 	for name, dims := range entries {
-		shape, err := tensor.NewShape(dims)
+		resolved, err := resolveDynamicDims(dims, inputs[name])
+
+		if err != nil {
+			return nil, fmt.Errorf("input_shapes.%s: %w", name, err)
+		}
+
+		shape, err := tensor.NewShape(resolved)
 
 		if err != nil {
 			return nil, fmt.Errorf("input_shapes.%s: %w", name, err)
@@ -91,6 +97,69 @@ func deriveInputShapes(
 	}
 
 	return out, nil
+}
+
+/*
+resolveDynamicDims replaces a single -1 entry in dims with the size
+that makes the shape consume exactly len(value) elements. This lets
+manifests express "this dimension is the natural data dimension" —
+typically the text-sequence axis on diffusion encoder_hidden_states,
+where the actual length depends on the prompt and cannot be known at
+manifest authoring time. At most one dim may be -1; the rest are
+treated as fixed.
+*/
+func resolveDynamicDims(dims []int, value any) ([]int, error) {
+	dynamicIndex := -1
+	knownProduct := 1
+
+	for index, dim := range dims {
+		if dim == -1 {
+			if dynamicIndex >= 0 {
+				return nil, fmt.Errorf("at most one dimension may be -1")
+			}
+
+			dynamicIndex = index
+
+			continue
+		}
+
+		if dim <= 0 {
+			return nil, fmt.Errorf("dimension %d must be positive, got %d", index, dim)
+		}
+
+		knownProduct *= dim
+	}
+
+	if dynamicIndex < 0 {
+		return dims, nil
+	}
+
+	if value == nil {
+		return nil, fmt.Errorf("dimension -1 requires the input value to derive size, got nil")
+	}
+
+	values, err := coerceValues(value)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if values == nil {
+		return nil, fmt.Errorf("dimension -1 requires a non-nil input value")
+	}
+
+	if knownProduct <= 0 || len(values)%knownProduct != 0 {
+		return nil, fmt.Errorf(
+			"input length %d is not divisible by the product of fixed dimensions (%d)",
+			len(values), knownProduct,
+		)
+	}
+
+	resolved := make([]int, len(dims))
+	copy(resolved, dims)
+	resolved[dynamicIndex] = len(values) / knownProduct
+
+	return resolved, nil
 }
 
 func shapeMap(raw any) (map[string][]int, error) {

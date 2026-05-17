@@ -2,8 +2,10 @@ package manifest
 
 import (
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -39,6 +41,7 @@ Inside the included file, those variables are reachable as ${include.d_model}.
 */
 type Parser struct {
 	root          string
+	fileSystem    fs.FS
 	maxIncludes   int
 	maxRepeat     int
 	maxExpansions int
@@ -60,6 +63,24 @@ func NewParser(projectRoot string) *Parser {
 		maxRepeat:     defaultMaxRepeat,
 		maxExpansions: defaultMaxExpansions,
 	}
+}
+
+/*
+WithFS switches the parser to read every file (including includes) from
+the provided fs.FS instead of the operating system. The fs.FS is treated
+as the root of all manifest resolution — caller-side sub-rooting (e.g.
+fs.Sub(embedded, "template")) handles any prefix selection. Returns the
+same parser to allow chaining.
+
+Use this when manifests live in embed.FS (e.g. pkg/asset/template/...) so
+that include directives can resolve sibling files inside the embedded
+tree the same way they would on disk.
+*/
+func (parser *Parser) WithFS(fileSystem fs.FS) *Parser {
+	parser.fileSystem = fileSystem
+	parser.root = "."
+
+	return parser
 }
 
 type parseContext struct {
@@ -99,13 +120,17 @@ func (parser *Parser) Parse(relativePath string) (map[string]any, error) {
 }
 
 func (parser *Parser) resolveRootPath(relativePath string) (string, error) {
-	path := relativePath
-
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(parser.root, path)
+	if parser.fileSystem != nil {
+		return parser.resolveFSPath(relativePath)
 	}
 
-	absolutePath, err := filepath.Abs(path)
+	candidate := relativePath
+
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(parser.root, candidate)
+	}
+
+	absolutePath, err := filepath.Abs(candidate)
 
 	if err != nil {
 		return "", err
@@ -123,6 +148,33 @@ func (parser *Parser) resolveRootPath(relativePath string) (string, error) {
 	}
 
 	return cleanPath, nil
+}
+
+/*
+resolveFSPath resolves a manifest path against the parser's fs.FS root.
+fs.FS uses forward slashes and disallows leading slashes or ".." escapes,
+so we do all path math on the slash form, anchor to parser.root, and
+reject anything that would climb above the root.
+*/
+func (parser *Parser) resolveFSPath(relativePath string) (string, error) {
+	slashPath := filepath.ToSlash(relativePath)
+	candidate := path.Clean(slashPath)
+
+	if path.IsAbs(candidate) || strings.HasPrefix(candidate, "/") {
+		return "", fmt.Errorf("manifest: absolute path %q not allowed with fs.FS", relativePath)
+	}
+
+	if parser.root != "" && parser.root != "." {
+		candidate = path.Join(parser.root, candidate)
+	}
+
+	candidate = path.Clean(candidate)
+
+	if candidate == ".." || strings.HasPrefix(candidate, "../") {
+		return "", fmt.Errorf("manifest: path %q escapes parser root %q", relativePath, parser.root)
+	}
+
+	return candidate, nil
 }
 
 func (ctx *parseContext) resolveDocument(documentNode *yaml.Node) (map[string]any, error) {
@@ -158,10 +210,22 @@ func (ctx *parseContext) resolveDocument(documentNode *yaml.Node) (map[string]an
 }
 
 /*
-loadYAMLNode reads a file and parses it into a yaml.Node tree.
+loadYAMLNode reads a file and parses it into a yaml.Node tree. When the
+parser was built with WithFS, reads go through that fs.FS; otherwise the
+operating system is used. The path encoding follows whichever source is
+active (forward-slash for fs.FS, OS-native for os.ReadFile).
 */
 func (parser *Parser) loadYAMLNode(absolutePath string) (*yaml.Node, error) {
-	fileBytes, err := os.ReadFile(absolutePath)
+	var (
+		fileBytes []byte
+		err       error
+	)
+
+	if parser.fileSystem != nil {
+		fileBytes, err = fs.ReadFile(parser.fileSystem, absolutePath)
+	} else {
+		fileBytes, err = os.ReadFile(absolutePath)
+	}
 
 	if err != nil {
 		return nil, fmt.Errorf("manifest: cannot read %s: %w", absolutePath, err)
@@ -598,12 +662,30 @@ func (ctx *parseContext) loadIncludeTarget(dotPath string, includeVars map[strin
 
 /*
 interpolateString replaces ${var.path} using parser.vars; missing keys are an error.
+
+When the entire scalar is a single placeholder (e.g. just
+"${generation.sequence_length}" with no surrounding text) the
+resolved variable's native type is preserved — ints stay ints, floats
+stay floats, lists stay lists. Mixed strings ("steps=${steps}") fall
+through to fmt-style stringification because the result must concat
+into a single string.
 */
 func (ctx *parseContext) interpolateString(scalar string) (any, error) {
 	matches := substitutionPattern.FindAllStringSubmatchIndex(scalar, -1)
 
 	if len(matches) == 0 {
 		return scalar, nil
+	}
+
+	if len(matches) == 1 && matches[0][0] == 0 && matches[0][1] == len(scalar) {
+		placeholderKey := strings.TrimSpace(scalar[matches[0][2]:matches[0][3]])
+		raw, found := ctx.lookupSubstitutionRaw(placeholderKey)
+
+		if !found {
+			return nil, fmt.Errorf("manifest: undefined variable reference ${%s}", placeholderKey)
+		}
+
+		return raw, nil
 	}
 
 	var builder strings.Builder
@@ -626,6 +708,35 @@ func (ctx *parseContext) interpolateString(scalar string) (any, error) {
 	builder.WriteString(scalar[writeOffset:])
 
 	return builder.String(), nil
+}
+
+/*
+lookupSubstitutionRaw resolves a dot path against parser.vars and
+returns the underlying value with its native type intact. Used for
+single-placeholder scalars where preserving int/float/list types
+matters (default_shape, count, dimensions, etc.).
+*/
+func (ctx *parseContext) lookupSubstitutionRaw(dotPath string) (any, bool) {
+	segments := strings.SplitN(dotPath, ".", 2)
+	raw, ok := ctx.vars[segments[0]]
+
+	if !ok {
+		return nil, false
+	}
+
+	if len(segments) == 1 {
+		return raw, true
+	}
+
+	nested, ok := raw.(map[string]any)
+
+	if !ok {
+		return nil, false
+	}
+
+	child := &parseContext{parser: ctx.parser, vars: nested}
+
+	return child.lookupSubstitutionRaw(segments[1])
 }
 
 /*

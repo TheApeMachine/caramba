@@ -645,6 +645,59 @@ func (m *MetalShapeOps) TransposeTensor(
 	return output, nil
 }
 
+/*
+SlicePrefixTensor copies the first outputShape.Len() elements of
+input into a fresh tensor sized outputShape. It is the Metal-side
+implementation of shape.slice for the start=0 case — the FLUX-2
+joint-stream → latent-only transition needs exactly this: take the
+first N latent tokens after the joint dual blocks have processed
+the concatenated latent+text sequence. A strided variant supporting
+start>0 or interior dim slicing is the next thing to add when a
+manifest needs it; until then operation_executor.applySlice rejects
+those shapes with a clear error rather than silently miscopying.
+*/
+func (m *MetalShapeOps) SlicePrefixTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if outputShape.Len() > metalInput.Len() {
+		return nil, fmt.Errorf(
+			"metal shape: slice output length %d exceeds input length %d",
+			outputShape.Len(), metalInput.Len(),
+		)
+	}
+
+	output, err := m.runtime.NewFloat32Tensor(outputShape, MetalAllocationTensor)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if outputShape.Len() == 0 {
+		return output, nil
+	}
+
+	rc := C.metal_copy_tensor(
+		metalInput.buffer,
+		output.buffer,
+		C.int(outputShape.Len()),
+	)
+
+	if rc != 0 {
+		_ = output.Close()
+
+		return nil, fmt.Errorf("metal_copy_tensor (slice) failed (rc=%d)", rc)
+	}
+
+	return output, nil
+}
+
 func (m *MetalShapeOps) ConcatTensor(
 	left computetensor.Float64Tensor,
 	right computetensor.Float64Tensor,

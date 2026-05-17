@@ -165,6 +165,7 @@ caramba pulls the weights from the Hugging Face Hub (revision-pinned, cached, co
 Startup publishes `qpool` progress events for manifest resolution, backend selection, tokenizer loading, SafeTensors resolution, and runtime readiness, so long first-run Hub downloads do not look like a dead terminal.
 The CLI subscribes to the same `qpool` broadcast stream and renders terminal progress bars for Hub transfers, SafeTensors loading, token generation, and diffusion denoising. While that TUI is active, standard JSON logging is suppressed and the latest `qpool` event is rendered as the status line above the progress bar.
 Application-level concurrency is scheduled through `qpool`; goroutine creation is isolated inside the pool internals so downloads, long-running services, and background work share the same telemetry, cancellation, and backpressure path.
+Developer-team role prompts and tool schemas are embedded YAML assets under `pkg/asset/template/devteam`, keeping the agent contract in data files instead of Go literals.
 
 You did not write a model class. You did not write a forward pass. You described an architecture, and the substrate ran it.
 

@@ -12,7 +12,6 @@ import {
 import { Slider } from "#/components/ui/slider";
 import { Switch } from "#/components/ui/switch";
 import { Textarea } from "#/components/ui/textarea";
-import { useAssistantMode } from "../use-assistant-mode";
 import {
 	type AdapterType,
 	AVAILABLE_MODELS,
@@ -22,6 +21,7 @@ import {
 	type Provider,
 	type Session,
 } from "../types";
+import { useAssistantMode } from "../use-assistant-mode";
 
 const PROVIDER_LABELS: Record<Provider, string> = {
 	openai: "OpenAI",
@@ -136,7 +136,9 @@ function PersonaCard({
 					<Label className="text-xs text-muted-foreground">Endpoint URL</Label>
 					<Input
 						value={persona.endpointUrl}
-						onChange={(e) => onUpdate({ ...persona, endpointUrl: e.target.value })}
+						onChange={(e) =>
+							onUpdate({ ...persona, endpointUrl: e.target.value })
+						}
 						placeholder={
 							persona.adapterType === "ollama"
 								? "http://localhost:11434"
@@ -248,13 +250,11 @@ export function SettingsPanel({
 					<div className="flex flex-col">
 						<span className="text-sm font-medium">Local-only mode</span>
 						<span className="text-xs text-muted-foreground">
-							Store everything in browser storage. Chat goes to per-persona local endpoints.
+							Store everything in browser storage. Chat goes to per-persona
+							local endpoints.
 						</span>
 					</div>
-					<Switch
-						checked={mode === "local"}
-						onCheckedChange={() => toggle()}
-					/>
+					<Switch checked={mode === "local"} onCheckedChange={() => toggle()} />
 				</div>
 
 				{mode === "local" && (

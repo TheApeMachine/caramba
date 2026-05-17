@@ -265,12 +265,24 @@ func (pipeline *RuntimeDiffusionPipeline) dimensions() (int, int) {
 func loadDiffusionAssets(
 	ctx context.Context, config Config,
 ) (map[string]*manifest.Graph, map[string]*modelweights.Store, error) {
+	// The umbrella diffusion manifest's system.topology block is the
+	// denoiser/transformer IR by convention — text_encoder and vae
+	// live in separate files because they are separate models, but
+	// the transformer is described inline. When the umbrella does
+	// not specify a separate transformer manifest path, fall back to
+	// the umbrella itself so CompileManifest reads its topology.
+	denoiserSource := config.Transformer
+
+	if strings.TrimSpace(denoiserSource.Manifest) == "" {
+		denoiserSource.Manifest = config.Manifest
+	}
+
 	specs := []struct {
 		ID     string
 		Source Source
 	}{
 		{ID: "text_encoder", Source: config.TextEncoder},
-		{ID: "denoiser", Source: config.Transformer},
+		{ID: "denoiser", Source: denoiserSource},
 		{ID: "vae", Source: config.VAE},
 	}
 

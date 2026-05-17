@@ -38,7 +38,82 @@ func (binder *Binder) BindIR(graph *ir.Graph) error {
 	return nil
 }
 
+/*
+bindFromComposeKeys handles nodes emitted by pkg/model/compose, which
+carry the exact safetensors tensor names in their metadata as
+compose.weight_tensor / compose.bias_tensor / compose.transpose. When
+present, those names trump the legacy per-architecture alias lookup
+— the compose compiler already resolved tensor identity at graph
+construction time, so no name-mangling is needed at bind time.
+
+Returns (handled=true, err) when at least the weight key was present,
+so the caller can skip the legacy path. (handled=false, nil) when no
+compose metadata is on the node and the legacy aliasing should run.
+*/
+func (binder *Binder) bindFromComposeKeys(node *ir.Node) (bool, error) {
+	metadata := node.Metadata()
+
+	weightName, _ := metadata["compose.weight_tensor"].(string)
+	if weightName == "" {
+		return false, nil
+	}
+
+	if !binder.store.Has(weightName) {
+		return true, fmt.Errorf(
+			"weights: compose weight tensor %q not found for node %q",
+			weightName, node.ID(),
+		)
+	}
+
+	values, err := binder.store.Values(weightName)
+
+	if err != nil {
+		return true, err
+	}
+
+	// projection.linear keeps the same orientation rules the YAML
+	// path uses — apply them here so the rest of the runtime sees the
+	// expected [in_features, out_features] layout regardless of how
+	// the source framework stored the tensor.
+	if string(node.OperationID()) == "projection.linear" {
+		inFeatures := nodeConfigInt(node, "in_features")
+		outFeatures := nodeConfigInt(node, "out_features")
+
+		if inFeatures > 0 && outFeatures > 0 {
+			info, _ := binder.store.Info(weightName)
+
+			oriented, orientErr := orientLinearWeight(
+				weightName, values, info.Shape, inFeatures, outFeatures,
+			)
+
+			if orientErr != nil {
+				return true, fmt.Errorf("weights: node %q: %w", node.ID(), orientErr)
+			}
+
+			values = oriented
+		}
+	}
+
+	node.SetMetadata("weight", values)
+
+	if biasName, ok := metadata["compose.bias_tensor"].(string); ok && biasName != "" {
+		biasValues, err := binder.store.Values(biasName)
+
+		if err != nil {
+			return true, err
+		}
+
+		node.SetMetadata("bias", biasValues)
+	}
+
+	return true, nil
+}
+
 func (binder *Binder) bindNode(node *ir.Node) error {
+	if handled, err := binder.bindFromComposeKeys(node); handled || err != nil {
+		return err
+	}
+
 	switch string(node.OperationID()) {
 	case "embedding.token":
 		return binder.bindVectorOrMatrix(node, "weight", weightNames(node.ID()))

@@ -2,6 +2,7 @@ package asset
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
 	"path"
 	"strings"
@@ -84,6 +85,25 @@ template root (e.g. "manifest/project.yml").
 */
 func ReadFile(name string) ([]byte, error) {
 	return embedded.ReadFile("template/" + name)
+}
+
+/*
+TemplateFS returns a sub-fs rooted at the embedded template/ directory so
+that callers (e.g. the manifest parser) can resolve include directives
+relative to the same prefix that ReadFile uses. Paths inside the returned
+fs.FS look identical to the names passed to ReadFile — e.g. "manifest/project.yml".
+*/
+func TemplateFS() fs.FS {
+	sub, err := fs.Sub(embedded, "template")
+
+	if err != nil {
+		// fs.Sub only fails for invalid prefixes, which is a programmer
+		// error in this package — surface it loudly rather than handing
+		// back a half-broken FS.
+		panic(fmt.Sprintf("asset: cannot sub template/ FS: %v", err))
+	}
+
+	return sub
 }
 
 /*

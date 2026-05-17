@@ -226,6 +226,13 @@ func outputShapeForNode(
 		return mergeHeadsShape(dimensions)
 	case "shape.concat":
 		return concatShape(inputShapes, configInt(node.Config, "dim", 0))
+	case "shape.slice":
+		return sliceShape(
+			dimensions,
+			configInt(node.Config, "dim", 0),
+			configInt(node.Config, "start", 0),
+			configInt(node.Config, "end", 0),
+		)
 	case "shape.transpose":
 		return transposeShape(
 			dimensions,
@@ -257,6 +264,37 @@ func appendShapeDim(dimensions []int, dimension int) (tensor.Shape, error) {
 	}
 
 	out := append(append([]int(nil), dimensions...), dimension)
+
+	return tensor.NewShape(out)
+}
+
+func sliceShape(dimensions []int, dim, start, end int) (tensor.Shape, error) {
+	if len(dimensions) == 0 {
+		return tensor.Shape{}, fmt.Errorf("manifest: shape.slice requires a non-empty input shape")
+	}
+
+	if dim < 0 || dim >= len(dimensions) {
+		return tensor.Shape{}, fmt.Errorf(
+			"manifest: shape.slice dim %d out of range rank %d", dim, len(dimensions),
+		)
+	}
+
+	dimSize := dimensions[dim]
+	resolvedEnd := end
+
+	if resolvedEnd == 0 {
+		resolvedEnd = dimSize
+	}
+
+	if start < 0 || resolvedEnd > dimSize || start >= resolvedEnd {
+		return tensor.Shape{}, fmt.Errorf(
+			"manifest: shape.slice range [%d:%d) invalid for dim %d size %d",
+			start, resolvedEnd, dim, dimSize,
+		)
+	}
+
+	out := append([]int(nil), dimensions...)
+	out[dim] = resolvedEnd - start
 
 	return tensor.NewShape(out)
 }

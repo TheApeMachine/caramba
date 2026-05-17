@@ -15,9 +15,18 @@ import {
 	createInitialPaperBlocks,
 	type PaperAction,
 	paperReducer,
+	type SetBlockKindOptions,
 } from "#/components/latex/model/paper-reducer";
-import type { HeadingLevel, PaperBlock, PaperMetadata } from "#/components/latex/model/types";
-import { usePaperMetadataForm, type PaperMetadataFormApi } from "#/components/latex/panels/metadata-tab";
+import type {
+	HeadingLevel,
+	PaperBlock,
+	PaperBlockKind,
+	PaperMetadata,
+} from "#/components/latex/model/types";
+import {
+	type PaperMetadataFormApi,
+	usePaperMetadataForm,
+} from "#/components/latex/panels/metadata-tab";
 import { editorBridge } from "./editor-bridge";
 
 type PaperEditorContextValue = {
@@ -31,11 +40,18 @@ type PaperEditorContextValue = {
 	insertParagraphAfter: (afterId: string, text?: string) => string;
 	insertEquationAfter: (afterId: string, latex?: string) => string;
 	insertHeadingAfter: (afterId: string, level: HeadingLevel) => string;
+	insertListAfter: (afterId: string, ordered: boolean) => string;
+	insertBlockAfter: (afterId: string, block: PaperBlock) => string;
 	removeBlockAndFocusPrevious: (id: string) => void;
+	reorderBlock: (
+		sourceId: string,
+		targetId: string,
+		position: "above" | "below",
+	) => void;
 	setBlockKind: (
 		id: string,
-		kind: "paragraph" | "heading" | "equation",
-		level?: HeadingLevel,
+		kind: PaperBlockKind,
+		options?: SetBlockKindOptions,
 	) => void;
 	focusBlock: (id: string) => void;
 	registerBlockAnchor: (id: string, el: HTMLElement | null) => void;
@@ -43,6 +59,10 @@ type PaperEditorContextValue = {
 };
 
 const PaperEditorContext = createContext<PaperEditorContextValue | null>(null);
+
+function newId(): string {
+	return crypto.randomUUID();
+}
 
 export function PaperEditorProvider({
 	children,
@@ -58,7 +78,6 @@ export function PaperEditorProvider({
 	const anchorsRef = useRef(new Map<string, HTMLElement>());
 	const metadataForm = usePaperMetadataForm();
 
-	// Stable ref to latest blocks so bridge callbacks are never stale.
 	const blocksRef = useRef(blocks);
 	blocksRef.current = blocks;
 
@@ -66,17 +85,18 @@ export function PaperEditorProvider({
 		(id: string, el: HTMLElement | null) => {
 			if (el) {
 				anchorsRef.current.set(id, el);
-			} else {
-				anchorsRef.current.delete(id);
+				return;
 			}
+
+			anchorsRef.current.delete(id);
 		},
 		[],
 	);
 
 	const focusBlock = useCallback((id: string) => {
 		const root = anchorsRef.current.get(id);
-		const textarea = root?.querySelector("textarea");
-		textarea?.focus();
+		const editable = root?.querySelector<HTMLElement>("[contenteditable]");
+		editable?.focus();
 		root?.scrollIntoView({ behavior: "smooth", block: "center" });
 	}, []);
 
@@ -95,54 +115,81 @@ export function PaperEditorProvider({
 		dispatch({ type: "UPDATE_LATEX", id, latex });
 	}, []);
 
-	const insertParagraphAfter = useCallback(
-		(afterId: string, text = ""): string => {
-			const block: PaperBlock = { id: crypto.randomUUID(), type: "paragraph", text };
+	const insertBlockAfter = useCallback(
+		(afterId: string, block: PaperBlock): string => {
 			dispatch({ type: "INSERT_AFTER", afterId, block });
 			queueMicrotask(() => focusBlock(block.id));
 			return block.id;
 		},
 		[focusBlock],
+	);
+
+	const insertParagraphAfter = useCallback(
+		(afterId: string, text = ""): string =>
+			insertBlockAfter(afterId, { id: newId(), type: "paragraph", text }),
+		[insertBlockAfter],
 	);
 
 	const insertEquationAfter = useCallback(
-		(afterId: string, latex = ""): string => {
-			const block: PaperBlock = { id: crypto.randomUUID(), type: "equation", latex, display: true };
-			dispatch({ type: "INSERT_AFTER", afterId, block });
-			queueMicrotask(() => focusBlock(block.id));
-			return block.id;
-		},
-		[focusBlock],
+		(afterId: string, latex = ""): string =>
+			insertBlockAfter(afterId, {
+				id: newId(),
+				type: "equation",
+				latex,
+				display: true,
+			}),
+		[insertBlockAfter],
 	);
 
 	const insertHeadingAfter = useCallback(
-		(afterId: string, level: HeadingLevel): string => {
-			const block: PaperBlock = { id: crypto.randomUUID(), type: "heading", level, text: "" };
-			dispatch({ type: "INSERT_AFTER", afterId, block });
-			queueMicrotask(() => focusBlock(block.id));
-			return block.id;
-		},
-		[focusBlock],
+		(afterId: string, level: HeadingLevel): string =>
+			insertBlockAfter(afterId, {
+				id: newId(),
+				type: "heading",
+				level,
+				text: "",
+			}),
+		[insertBlockAfter],
+	);
+
+	const insertListAfter = useCallback(
+		(afterId: string, ordered: boolean): string =>
+			insertBlockAfter(afterId, {
+				id: newId(),
+				type: "list",
+				ordered,
+				text: "",
+			}),
+		[insertBlockAfter],
 	);
 
 	const removeBlockAndFocusPrevious = useCallback(
 		(id: string) => {
-			const idx = blocksRef.current.findIndex((b) => b.id === id);
+			const idx = blocksRef.current.findIndex((block) => block.id === id);
 			const prevId = idx > 0 ? blocksRef.current[idx - 1]?.id : undefined;
 			dispatch({ type: "REMOVE_BLOCK", id });
-			if (prevId) queueMicrotask(() => focusBlock(prevId));
+
+			if (prevId) {
+				queueMicrotask(() => focusBlock(prevId));
+			}
 		},
 		[focusBlock],
 	);
 
-	const setBlockKind = useCallback(
-		(id: string, kind: "paragraph" | "heading" | "equation", level?: HeadingLevel) => {
-			dispatch({ type: "SET_BLOCK_KIND", id, kind, level });
+	const reorderBlock = useCallback(
+		(sourceId: string, targetId: string, position: "above" | "below") => {
+			dispatch({ type: "REORDER_BLOCK", sourceId, targetId, position });
 		},
 		[],
 	);
 
-	// Register / unregister the bridge when this provider mounts / unmounts.
+	const setBlockKind = useCallback(
+		(id: string, kind: PaperBlockKind, options?: SetBlockKindOptions) => {
+			dispatch({ type: "SET_BLOCK_KIND", id, kind, options });
+		},
+		[],
+	);
+
 	useEffect(() => {
 		editorBridge.register({
 			getBlocks: () => blocksRef.current,
@@ -152,17 +199,19 @@ export function PaperEditorProvider({
 			insertParagraphAfter,
 			insertHeadingAfter,
 			insertEquationAfter,
+			insertListAfter,
+			insertBlockAfter,
 			removeBlock: (id) => dispatch({ type: "REMOVE_BLOCK", id }),
+			reorderBlock,
 			setBlockKind,
 			updateMetadata: (patch) => {
-				const current = metadataForm.store.state.values as PaperMetadata;
 				for (const [key, val] of Object.entries(patch)) {
 					metadataForm.setFieldValue(key as keyof PaperMetadata, val as string);
 				}
-				void current;
 			},
 			scrollToBlock,
 		});
+
 		return () => editorBridge.unregister();
 	}, [
 		updateText,
@@ -170,6 +219,9 @@ export function PaperEditorProvider({
 		insertParagraphAfter,
 		insertHeadingAfter,
 		insertEquationAfter,
+		insertListAfter,
+		insertBlockAfter,
+		reorderBlock,
 		setBlockKind,
 		scrollToBlock,
 		metadataForm,
@@ -187,7 +239,10 @@ export function PaperEditorProvider({
 			insertParagraphAfter,
 			insertEquationAfter,
 			insertHeadingAfter,
+			insertListAfter,
+			insertBlockAfter,
 			removeBlockAndFocusPrevious,
+			reorderBlock,
 			setBlockKind,
 			focusBlock,
 			registerBlockAnchor,
@@ -202,7 +257,10 @@ export function PaperEditorProvider({
 			insertParagraphAfter,
 			insertEquationAfter,
 			insertHeadingAfter,
+			insertListAfter,
+			insertBlockAfter,
 			removeBlockAndFocusPrevious,
+			reorderBlock,
 			setBlockKind,
 			focusBlock,
 			registerBlockAnchor,
@@ -219,6 +277,10 @@ export function PaperEditorProvider({
 
 export function usePaperEditor(): PaperEditorContextValue {
 	const ctx = useContext(PaperEditorContext);
-	if (!ctx) throw new Error("usePaperEditor must be used within PaperEditorProvider");
+
+	if (!ctx) {
+		throw new Error("usePaperEditor must be used within PaperEditorProvider");
+	}
+
 	return ctx;
 }

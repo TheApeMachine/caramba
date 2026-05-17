@@ -103,6 +103,14 @@ func (registry *OperationRegistry) Exp(*state.Dict) (state.Operation, error) {
 	return mathop.NewExp(), nil
 }
 
+func (registry *OperationRegistry) Sin(*state.Dict) (state.Operation, error) {
+	return mathop.NewSin(), nil
+}
+
+func (registry *OperationRegistry) Cos(*state.Dict) (state.Operation, error) {
+	return mathop.NewCos(), nil
+}
+
 func (registry *OperationRegistry) Log(*state.Dict) (state.Operation, error) {
 	return mathop.NewLog(), nil
 }
@@ -173,6 +181,10 @@ func (registry *OperationRegistry) MergeHeads(*state.Dict) (state.Operation, err
 
 func (registry *OperationRegistry) LastToken(*state.Dict) (state.Operation, error) {
 	return shape.NewLastToken(), nil
+}
+
+func (registry *OperationRegistry) Slice(*state.Dict) (state.Operation, error) {
+	return shape.NewSlice(), nil
 }
 
 func (registry *OperationRegistry) RoPE(*state.Dict) (state.Operation, error) {

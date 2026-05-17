@@ -33,6 +33,18 @@ func (m *MathOps) ExpTensor(
 	return m.unaryTensor(input, "exp")
 }
 
+func (m *MathOps) SinTensor(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return m.unaryTensor(input, "sin")
+}
+
+func (m *MathOps) CosTensor(
+	input computetensor.Float64Tensor,
+) (computetensor.Float64Tensor, error) {
+	return m.unaryTensor(input, "cos")
+}
+
 func (m *MathOps) LogTensor(
 	input computetensor.Float64Tensor,
 ) (computetensor.Float64Tensor, error) {
@@ -213,6 +225,10 @@ func (m *MathOps) dispatchUnaryTensor(
 	switch name {
 	case "exp":
 		return C.metal_exp_tensor(input.buffer, output.buffer, C.int(input.Len()))
+	case "sin":
+		return C.metal_sin_tensor(input.buffer, output.buffer, C.int(input.Len()))
+	case "cos":
+		return C.metal_cos_tensor(input.buffer, output.buffer, C.int(input.Len()))
 	case "log":
 		return C.metal_log_tensor(input.buffer, output.buffer, C.int(input.Len()))
 	case "sign":

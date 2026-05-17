@@ -287,6 +287,10 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyTokenEmbedding(ctx, node, inputs)
 	case "math.exp":
 		return tensorBackend.applyExp(ctx, node, inputs)
+	case "math.sin":
+		return tensorBackend.applySin(ctx, node, inputs)
+	case "math.cos":
+		return tensorBackend.applyCos(ctx, node, inputs)
 	case "math.log":
 		return tensorBackend.applyLog(ctx, node, inputs)
 	case "math.sign":
@@ -317,6 +321,8 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyConcat(ctx, node, inputs)
 	case "shape.split":
 		return tensorBackend.applySplit(ctx, node, inputs)
+	case "shape.slice":
+		return tensorBackend.applySlice(ctx, node, inputs)
 	case "shape.view_as_heads":
 		return tensorBackend.applyViewAsHeads(ctx, node, inputs)
 	case "shape.merge_heads":
@@ -623,6 +629,83 @@ func (tensorBackend *TensorBackend) applySplit(
 		intConfig(node, "split_size", inputShape[dimension]),
 		inner,
 	)
+}
+
+/*
+applySlice extracts the contiguous [start:end) range along the
+configured dim of the single input tensor. The current Metal path
+uses metal_copy_tensor for the start==0 case (the only one FLUX-2's
+denoiser slice needs — keep the first N latent tokens after the
+joint dual-stream blocks); a strided-copy kernel for start>0 or
+non-leading dims is the next thing to wire when a manifest needs it.
+*/
+func (tensorBackend *TensorBackend) applySlice(
+	ctx context.Context,
+	node executor.NodeSpec,
+	inputs []tensor.Float64Tensor,
+) (tensor.Float64Tensor, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(inputs) != 1 {
+		return nil, fmt.Errorf("metal tensor: slice node %q requires 1 input", node.ID)
+	}
+
+	inputShape := inputs[0].Shape().Dims()
+	rank := len(inputShape)
+
+	if rank == 0 {
+		return nil, fmt.Errorf("metal tensor: slice node %q input has empty shape", node.ID)
+	}
+
+	dim := intConfig(node, "dim", 0)
+
+	if dim < 0 || dim >= rank {
+		return nil, fmt.Errorf("metal tensor: slice node %q dim %d out of range %d", node.ID, dim, rank)
+	}
+
+	dimSize := inputShape[dim]
+	start := intConfig(node, "start", 0)
+	end := intConfig(node, "end", 0)
+
+	if end == 0 {
+		end = dimSize
+	}
+
+	if start < 0 || end > dimSize || start >= end {
+		return nil, fmt.Errorf(
+			"metal tensor: slice node %q range [%d:%d) invalid for dim %d size %d",
+			node.ID, start, end, dim, dimSize,
+		)
+	}
+
+	outer := 1
+
+	for axis := 0; axis < dim; axis++ {
+		outer *= inputShape[axis]
+	}
+
+	if start != 0 || (dim != 0 && outer != 1) {
+		return nil, fmt.Errorf(
+			"metal tensor: slice node %q currently supports start=0 with leading-dim slicing only (got start=%d, dim=%d, outer=%d)",
+			node.ID, start, dim, outer,
+		)
+	}
+
+	outputShape, err := tensor.NewShape(node.Shape)
+
+	if err != nil {
+		return nil, err
+	}
+
+	shapeOps, err := tensorBackend.shape()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return shapeOps.SlicePrefixTensor(inputs[0], outputShape)
 }
 
 func (tensorBackend *TensorBackend) applyTokenEmbedding(

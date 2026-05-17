@@ -126,8 +126,7 @@ function materializeSession(
 		title: row.title,
 		createdAt: row.created_at.getTime(),
 		messages,
-		personas:
-			personas.length > 0 ? personas : [{ ...DEFAULT_PERSONA }],
+		personas: personas.length > 0 ? personas : [{ ...DEFAULT_PERSONA }],
 		windowSize: row.window_size,
 	};
 }
@@ -182,7 +181,8 @@ export function useSession() {
 	const personasCollection: AnyCollection = getPersonasCollection(mode);
 	const sessionsCollection: AnyCollection = getSessionsCollection(mode);
 	const messagesCollection: AnyCollection = getMessagesCollection(mode);
-	const sessionPersonasCollection: AnyCollection = getSessionPersonasCollection(mode);
+	const sessionPersonasCollection: AnyCollection =
+		getSessionPersonasCollection(mode);
 
 	const importedRef = useRef<string | null>(null);
 
@@ -195,7 +195,13 @@ export function useSession() {
 			messages: messagesCollection,
 			sessionPersonas: sessionPersonasCollection,
 		});
-	}, [mode, personasCollection, sessionsCollection, messagesCollection, sessionPersonasCollection]);
+	}, [
+		mode,
+		personasCollection,
+		sessionsCollection,
+		messagesCollection,
+		sessionPersonasCollection,
+	]);
 
 	const personasQuery = useLiveQuery(
 		(query) => query.from({ row: personasCollection }),
@@ -214,13 +220,18 @@ export function useSession() {
 		[sessionPersonasCollection],
 	);
 
-	const personas = (personasQuery.data as AssistantPersonaRow[] | undefined) ?? [];
-	const sessions = (sessionsQuery.data as AssistantSessionRow[] | undefined) ?? [];
-	const messages = (messagesQuery.data as AssistantMessageRow[] | undefined) ?? [];
-	const joins = (joinsQuery.data as AssistantSessionPersonaRow[] | undefined) ?? [];
+	const personas =
+		(personasQuery.data as AssistantPersonaRow[] | undefined) ?? [];
+	const sessions =
+		(sessionsQuery.data as AssistantSessionRow[] | undefined) ?? [];
+	const messages =
+		(messagesQuery.data as AssistantMessageRow[] | undefined) ?? [];
+	const joins =
+		(joinsQuery.data as AssistantSessionPersonaRow[] | undefined) ?? [];
 
 	const materializedSessions = useMemo(
-		() => sessions.map((row) => materializeSession(row, messages, joins, personas)),
+		() =>
+			sessions.map((row) => materializeSession(row, messages, joins, personas)),
 		[sessions, messages, joins, personas],
 	);
 
@@ -232,7 +243,11 @@ export function useSession() {
 			return;
 		}
 
-		if (activeId && materializedSessions.some((session) => session.id === activeId)) return;
+		if (
+			activeId &&
+			materializedSessions.some((session) => session.id === activeId)
+		)
+			return;
 
 		const fallback = materializedSessions[0]?.id ?? null;
 
@@ -290,7 +305,9 @@ export function useSession() {
 
 			for (const join of joins) {
 				if (join.session_id !== id) continue;
-				await sessionPersonasCollection.delete(`${join.session_id}:${join.persona_id}`);
+				await sessionPersonasCollection.delete(
+					`${join.session_id}:${join.persona_id}`,
+				);
 			}
 
 			for (const message of messages) {
@@ -298,7 +315,13 @@ export function useSession() {
 				await messagesCollection.delete(message.id);
 			}
 		},
-		[sessionsCollection, sessionPersonasCollection, messagesCollection, joins, messages],
+		[
+			sessionsCollection,
+			sessionPersonasCollection,
+			messagesCollection,
+			joins,
+			messages,
+		],
 	);
 
 	const appendMessages = useCallback(
@@ -320,9 +343,12 @@ export function useSession() {
 			const existing = messagesCollection.get(message.id);
 
 			if (existing) {
-				await messagesCollection.update(message.id, (draft: AssistantMessageRow) => {
-					Object.assign(draft, row);
-				});
+				await messagesCollection.update(
+					message.id,
+					(draft: AssistantMessageRow) => {
+						Object.assign(draft, row);
+					},
+				);
 				return;
 			}
 
@@ -336,9 +362,12 @@ export function useSession() {
 			const row = rowFromPersona(persona);
 
 			if (personasCollection.get(persona.id)) {
-				await personasCollection.update(persona.id, (draft: AssistantPersonaRow) => {
-					Object.assign(draft, row);
-				});
+				await personasCollection.update(
+					persona.id,
+					(draft: AssistantPersonaRow) => {
+						Object.assign(draft, row);
+					},
+				);
 				return;
 			}
 
@@ -364,7 +393,13 @@ export function useSession() {
 				);
 			}
 		},
-		[personasCollection, sessionPersonasCollection, session.id, session.personas, joins],
+		[
+			personasCollection,
+			sessionPersonasCollection,
+			session.id,
+			session.personas,
+			joins,
+		],
 	);
 
 	const removePersona = useCallback(

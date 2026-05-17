@@ -33,6 +33,8 @@ int metal_mul_tensor(const void* a, const void* b, void* out, int n);
 
 int metal_inv_sqrt_dim_scale_tensor(const void* src, void* dst, int n, int dim);
 int metal_exp_tensor(const void* src, void* dst, int n);
+int metal_sin_tensor(const void* src, void* dst, int n);
+int metal_cos_tensor(const void* src, void* dst, int n);
 int metal_log_tensor(const void* src, void* dst, int n);
 int metal_sign_tensor(const void* src, void* dst, int n);
 int metal_softmax_tensor(const void* src, void* dst, int num_rows, int dim_size);

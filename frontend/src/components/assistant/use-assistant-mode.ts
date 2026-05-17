@@ -31,7 +31,9 @@ localStorage so the choice survives reloads without touching the database.
 */
 export function useAssistantMode() {
 	const [mode, setMode] = useState<AssistantBackendMode>(() => readMode());
-	const [endpoint, setEndpoint] = useState<LocalEndpointConfig>(() => readEndpoint());
+	const [endpoint, setEndpoint] = useState<LocalEndpointConfig>(() =>
+		readEndpoint(),
+	);
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;

@@ -1,25 +1,24 @@
-import {
-	AlignCenterIcon,
-	AlignRightIcon,
-	DollarSignIcon,
-	InfoIcon,
-	PercentIcon,
-	TableOfContentsIcon,
-} from "lucide-react";
+"use client";
+
+import { useStore } from "@tanstack/react-form";
+import { InfoIcon, PlusIcon, TableOfContentsIcon } from "lucide-react";
+import { usePaperEditor } from "#/components/latex/context";
+import type { BlockKindDescriptor } from "#/components/latex/model/block-catalog";
+import type { PaperMetadata } from "#/components/latex/model/types";
+import { BlockKindMenu } from "#/components/latex/panels/block-kind-menu";
+import { MetadataTab } from "#/components/latex/panels/metadata-tab";
+import { OutlinePanel } from "#/components/latex/panels/outline-panel";
 import { Button } from "#/components/ui/button";
-import { Form } from "#/components/ui/form";
+import { Flex } from "#/components/ui/flex";
 import {
 	Sheet,
 	SheetClose,
-	SheetDescription,
-	SheetFooter,
 	SheetHeader,
 	SheetPanel,
 	SheetPopup,
 	SheetTitle,
 	SheetTrigger,
 } from "#/components/ui/sheet";
-import { ToggleGroup, ToggleGroupItem } from "#/components/ui/toggle-group";
 import {
 	Toolbar,
 	ToolbarButton,
@@ -32,144 +31,151 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "#/components/ui/tooltip";
+import { Typography } from "#/components/ui/typography";
 
-import { MetadataTab, usePaperMetadataForm } from "./panels/metadata-tab";
-import { OutlinePanel } from "./panels/outline-panel";
+function lastBlockId(
+	blocks: ReturnType<typeof usePaperEditor>["blocks"],
+): string | null {
+	const focusable = blocks.at(-1);
+	return focusable ? focusable.id : null;
+}
+
+function DocumentTitle() {
+	const { metadataForm, blocks } = usePaperEditor();
+	const title = useStore(
+		metadataForm.store,
+		(state) => (state.values as PaperMetadata).title,
+	);
+
+	const headingFallback = blocks.find(
+		(block) => block.type === "heading" && block.level === 1,
+	);
+
+	const display =
+		title?.trim() ||
+		(headingFallback && "text" in headingFallback
+			? headingFallback.text.trim()
+			: "") ||
+		"Untitled paper";
+
+	return (
+		<Typography.Small
+			className="truncate px-2 text-foreground"
+			variant="foreground"
+		>
+			{display}
+		</Typography.Small>
+	);
+}
 
 export const LatexToolbar = () => {
+	const { blocks, focusedBlockId, insertBlockAfter, metadataForm } =
+		usePaperEditor();
+
+	const handleInsert = (descriptor: BlockKindDescriptor) => {
+		const targetId = focusedBlockId ?? lastBlockId(blocks);
+
+		if (!targetId) {
+			return;
+		}
+
+		insertBlockAfter(targetId, descriptor.build());
+	};
+
 	return (
 		<TooltipProvider>
-			<Toolbar>
-				<ToggleGroup className="border-none p-0" defaultValue={["left"]}>
-					<Tooltip>
-						<TooltipTrigger
-							render={
-								<ToolbarButton
-									aria-label="Align left"
-									render={<ToggleGroupItem value="left" />}
-								>
-									<Sheet>
-										<SheetTrigger render={<Button variant="outline" />}>
-											<TableOfContentsIcon />
-										</SheetTrigger>
-										<SheetPopup variant="inset" side="left">
-											<SheetHeader>
-												<SheetTitle>Edit profile</SheetTitle>
-												<SheetDescription>
-													Make changes to your profile here. Click save when
-													you&apos;re done.
-												</SheetDescription>
-											</SheetHeader>
-											<Form className="contents">
-												<SheetPanel className="grid gap-4">
-													<OutlinePanel />
-												</SheetPanel>
-												<SheetFooter>
-													<SheetClose render={<Button variant="ghost" />}>
-														Cancel
-													</SheetClose>
-													<Button type="submit">Save</Button>
-												</SheetFooter>
-											</Form>
-										</SheetPopup>
-									</Sheet>
-								</ToolbarButton>
-							}
-						/>
-						<TooltipPopup sideOffset={8}>Align left</TooltipPopup>
-					</Tooltip>
-					<Tooltip>
-						<TooltipTrigger
-							render={
-								<ToolbarButton
-									aria-label="Align center"
-									render={
-										<ToggleGroupItem
-											aria-label="Toggle center"
-											value="center"
-										/>
-									}
-								>
-									<AlignCenterIcon />
-								</ToolbarButton>
-							}
-						/>
-						<TooltipPopup sideOffset={8}>Align center</TooltipPopup>
-					</Tooltip>
-					<Tooltip>
-						<TooltipTrigger
-							render={
-								<ToolbarButton
-									aria-label="Align right"
-									render={
-										<ToggleGroupItem aria-label="Toggle right" value="right" />
-									}
-								>
-									<AlignRightIcon />
-								</ToolbarButton>
-							}
-						/>
-						<TooltipPopup sideOffset={8}>Align right</TooltipPopup>
-					</Tooltip>
-				</ToggleGroup>
-				<ToolbarSeparator />
+			<Toolbar className="m-3">
 				<ToolbarGroup>
-					<Tooltip>
-						<TooltipTrigger
-							render={
-								<ToolbarButton
-									aria-label="Format as currency"
-									render={<Button size="icon" variant="ghost" />}
-								>
-									<DollarSignIcon />
-								</ToolbarButton>
-							}
-						/>
-						<TooltipPopup sideOffset={8}>Format as currency</TooltipPopup>
-					</Tooltip>
-					<Tooltip>
-						<TooltipTrigger
-							render={
-								<ToolbarButton
-									aria-label="Format as percent"
-									render={<Button size="icon" variant="ghost" />}
-								>
-									<PercentIcon />
-								</ToolbarButton>
-							}
-						/>
-						<TooltipPopup sideOffset={8}>Format as percent</TooltipPopup>
-					</Tooltip>
+					<Sheet>
+						<Tooltip>
+							<TooltipTrigger
+								render={
+									<ToolbarButton
+										aria-label="Outline"
+										render={
+											<SheetTrigger
+												render={<Button size="icon" variant="ghost" />}
+											>
+												<TableOfContentsIcon />
+											</SheetTrigger>
+										}
+									/>
+								}
+							/>
+							<TooltipPopup sideOffset={8}>Outline</TooltipPopup>
+						</Tooltip>
+
+						<SheetPopup side="left" variant="inset">
+							<SheetHeader>
+								<SheetTitle>Outline</SheetTitle>
+							</SheetHeader>
+
+							<SheetPanel className="p-0">
+								<OutlinePanel />
+							</SheetPanel>
+						</SheetPopup>
+					</Sheet>
 				</ToolbarGroup>
+
 				<ToolbarSeparator />
+
 				<ToolbarGroup>
-					<ToolbarButton render={<Button />}>
-						<Sheet>
-							<SheetTrigger render={<Button variant="outline" />}>
-								<InfoIcon />
-							</SheetTrigger>
-							<SheetPopup variant="inset">
-								<SheetHeader>
-									<SheetTitle>Edit profile</SheetTitle>
-									<SheetDescription>
-										Make changes to your profile here. Click save when
-										you&apos;re done.
-									</SheetDescription>
-								</SheetHeader>
-								<Form>
-									<SheetPanel className="grid gap-4">
-										<MetadataTab form={usePaperMetadataForm()} />
-									</SheetPanel>
-									<SheetFooter>
-										<SheetClose render={<Button variant="ghost" />}>
-											Cancel
-										</SheetClose>
-										<Button type="submit">Save</Button>
-									</SheetFooter>
-								</Form>
-							</SheetPopup>
-						</Sheet>
-					</ToolbarButton>
+					<BlockKindMenu
+						variant="trigger"
+						onSelect={handleInsert}
+						trigger={
+							<ToolbarButton
+								render={
+									<Button size="sm" variant="outline">
+										<PlusIcon />
+										Insert block
+									</Button>
+								}
+							/>
+						}
+					/>
+				</ToolbarGroup>
+
+				<Flex.Row align="center" className="min-w-0 flex-1" justify="center">
+					<DocumentTitle />
+				</Flex.Row>
+
+				<ToolbarGroup>
+					<Sheet>
+						<Tooltip>
+							<TooltipTrigger
+								render={
+									<ToolbarButton
+										aria-label="Paper details"
+										render={
+											<SheetTrigger
+												render={<Button size="icon" variant="ghost" />}
+											>
+												<InfoIcon />
+											</SheetTrigger>
+										}
+									/>
+								}
+							/>
+							<TooltipPopup sideOffset={8}>Paper details</TooltipPopup>
+						</Tooltip>
+
+						<SheetPopup variant="inset">
+							<SheetHeader>
+								<SheetTitle>Paper details</SheetTitle>
+							</SheetHeader>
+
+							<SheetPanel>
+								<MetadataTab form={metadataForm} />
+							</SheetPanel>
+
+							<Flex.Row justify="end" padding={3}>
+								<SheetClose render={<Button variant="ghost" />}>
+									Close
+								</SheetClose>
+							</Flex.Row>
+						</SheetPopup>
+					</Sheet>
 				</ToolbarGroup>
 			</Toolbar>
 		</TooltipProvider>

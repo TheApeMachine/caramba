@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"fmt"
+	"io/fs"
 )
 
 /*
@@ -28,6 +29,17 @@ func NewCompilerWithRegistry(projectRoot string, operationRegistry *OperationReg
 		parser:   NewParser(projectRoot),
 		registry: operationRegistry,
 	}
+}
+
+/*
+WithFS switches the underlying parser to read every file (including
+includes) from the provided fs.FS instead of the operating system. See
+Parser.WithFS for details. Returns the compiler to allow chaining.
+*/
+func (compiler *Compiler) WithFS(fileSystem fs.FS) *Compiler {
+	compiler.parser = compiler.parser.WithFS(fileSystem)
+
+	return compiler
 }
 
 /*

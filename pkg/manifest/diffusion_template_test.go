@@ -10,13 +10,18 @@ import (
 
 func TestCompiler_CompileFlux2Klein4B(test *testing.T) {
 	Convey("Given the embedded FLUX.2 Klein 4B diffusion manifest", test, func() {
-		data, err := asset.ReadFile("model/diffusion/flux-2-klein-4b.yml")
+		// The runtime manifest pulls its topology from an architecture
+		// include, so the compiler must read through the asset FS so
+		// the include can resolve against sibling embedded files. The
+		// old CompileBytes path could not see siblings and would fail
+		// on the include directive.
+		_, err := asset.ReadFile("model/diffusion/flux-2-klein-4b.yml")
 		So(err, ShouldBeNil)
 
-		compiler := NewCompiler(".")
+		compiler := NewCompiler(".").WithFS(asset.TemplateFS())
 
 		Convey("It should compile the denoiser topology", func() {
-			graph, err := compiler.CompileBytes(data)
+			graph, err := compiler.Compile("model/diffusion/flux-2-klein-4b.yml")
 
 			So(err, ShouldBeNil)
 			So(graph, ShouldNotBeNil)
@@ -25,14 +30,22 @@ func TestCompiler_CompileFlux2Klein4B(test *testing.T) {
 				"hidden_states",
 				"timestep",
 			})
-			So(graph.nodes[len(graph.nodes)-1].ID, ShouldEqual, "proj_out")
+			// denoiser_output is the final node now — it slices the
+			// joint latent+text sequence back down to just the latent
+			// 4096 tokens before the runtime hands the result to the
+			// flow-match scheduler.
+			So(graph.nodes[len(graph.nodes)-1].ID, ShouldEqual, "denoiser_output")
 		})
 
 		Convey("It should lower to IR with latent input and output shapes", func() {
-			graph, err := compiler.CompileBytes(data)
+			graph, err := compiler.Compile("model/diffusion/flux-2-klein-4b.yml")
 			So(err, ShouldBeNil)
 
-			latentShape, err := tensor.NewShape([]int{1, 16, 128})
+			// 4096 latent tokens matches a real 1024x1024 generation
+			// (1024*1024 / 16^2); the joint dual-stream concat with the
+			// 16-token prompt gives a 4112-position joint sequence
+			// which the final shape.slice trims back to 4096.
+			latentShape, err := tensor.NewShape([]int{1, 4096, 128})
 			So(err, ShouldBeNil)
 			promptShape, err := tensor.NewShape([]int{1, 16, 7680})
 			So(err, ShouldBeNil)
@@ -52,13 +65,24 @@ func TestCompiler_CompileFlux2Klein4B(test *testing.T) {
 			index, err := irGraph.Index()
 			So(err, ShouldBeNil)
 
-			outputNode := index.Node("proj_out")
-			So(outputNode, ShouldNotBeNil)
-			So(outputNode.Shape().Dims(), ShouldResemble, []int{1, 16, 128})
+			// proj_out emits the joint sequence projected to 128 ch.
+			projOutNode := index.Node("proj_out")
+			So(projOutNode, ShouldNotBeNil)
+			So(projOutNode.Shape().Dims(), ShouldResemble, []int{1, 4112, 128})
 
+			// denoiser_output is proj_out sliced back to just latents.
+			denoiserOutput := index.Node("denoiser_output")
+			So(denoiserOutput, ShouldNotBeNil)
+			So(denoiserOutput.Shape().Dims(), ShouldResemble, []int{1, 4096, 128})
+
+			// The to_q projection sits inside the first dual transformer
+			// block, which operates on the *joint* latent+text stream
+			// after conditioning_concat — so its input/output sequence
+			// length is 4096 + 16 = 4112, not 4096. The slice back down
+			// to 4096 only happens at the very end (denoiser_output).
 			queryNode := index.Node("transformer_blocks.0.attn.to_q")
 			So(queryNode, ShouldNotBeNil)
-			So(queryNode.Shape().Dims(), ShouldResemble, []int{1, 16, 3072})
+			So(queryNode.Shape().Dims(), ShouldResemble, []int{1, 4112, 3072})
 
 			contextNode := index.Node("context_embedder")
 			So(contextNode, ShouldNotBeNil)
@@ -152,16 +176,14 @@ func TestCompiler_CompileFlux2Klein4BVAE(test *testing.T) {
 }
 
 func BenchmarkCompiler_CompileFlux2Klein4B(benchmark *testing.B) {
-	data, err := asset.ReadFile("model/diffusion/flux-2-klein-4b.yml")
-
-	if err != nil {
+	if _, err := asset.ReadFile("model/diffusion/flux-2-klein-4b.yml"); err != nil {
 		benchmark.Fatal(err)
 	}
 
-	compiler := NewCompiler(".")
+	compiler := NewCompiler(".").WithFS(asset.TemplateFS())
 
 	for benchmark.Loop() {
-		if _, err := compiler.CompileBytes(data); err != nil {
+		if _, err := compiler.Compile("model/diffusion/flux-2-klein-4b.yml"); err != nil {
 			benchmark.Fatal(err)
 		}
 	}

@@ -16,6 +16,8 @@ static id<MTLComputePipelineState> gPSO_add        = nil;
 static id<MTLComputePipelineState> gPSO_mul        = nil;
 static id<MTLComputePipelineState> gPSO_isdscale   = nil;
 static id<MTLComputePipelineState> gPSO_exp        = nil;
+static id<MTLComputePipelineState> gPSO_sin        = nil;
+static id<MTLComputePipelineState> gPSO_cos        = nil;
 static id<MTLComputePipelineState> gPSO_log        = nil;
 static id<MTLComputePipelineState> gPSO_softmax    = nil;
 static id<MTLComputePipelineState> gPSO_logsumexp  = nil;
@@ -69,6 +71,8 @@ int metal_math_init(const char* metallib_path) {
         gPSO_mul       = make_mpso(lib, @"mul_kernel");
         gPSO_isdscale  = make_mpso(lib, @"inv_sqrt_dim_scale_kernel");
         gPSO_exp       = make_mpso(lib, @"exp_kernel");
+        gPSO_sin       = make_mpso(lib, @"sin_kernel");
+        gPSO_cos       = make_mpso(lib, @"cos_kernel");
         gPSO_log       = make_mpso(lib, @"log_kernel");
         gPSO_softmax   = make_mpso(lib, @"softmax_kernel");
         gPSO_logsumexp = make_mpso(lib, @"logsumexp_kernel");
@@ -97,7 +101,7 @@ int metal_math_init(const char* metallib_path) {
 
         if (!gPSO_matmul || !gPSO_matmul_add || !gPSO_matmul_add_gelu ||
             !gPSO_add || !gPSO_mul || !gPSO_isdscale ||
-            !gPSO_exp || !gPSO_log || !gPSO_softmax ||
+            !gPSO_exp || !gPSO_sin || !gPSO_cos || !gPSO_log || !gPSO_softmax ||
             !gPSO_logsumexp || !gPSO_dropout ||
             !gPSO_layernorm || !gPSO_rmsnorm || !gPSO_groupnorm ||
             !gPSO_sign || !gPSO_outer ||
@@ -121,6 +125,8 @@ int metal_math_shutdown(void) {
         gPSO_mul = nil;
         gPSO_isdscale = nil;
         gPSO_exp = nil;
+        gPSO_sin = nil;
+        gPSO_cos = nil;
         gPSO_log = nil;
         gPSO_softmax = nil;
         gPSO_logsumexp = nil;
@@ -517,6 +523,14 @@ int metal_inv_sqrt_dim_scale_tensor(const void* src, void* dst, int n, int dim) 
 
 int metal_exp_tensor(const void* src, void* dst, int n) {
     return dispatch_unary_tensor(gPSO_exp, src, dst, n);
+}
+
+int metal_sin_tensor(const void* src, void* dst, int n) {
+    return dispatch_unary_tensor(gPSO_sin, src, dst, n);
+}
+
+int metal_cos_tensor(const void* src, void* dst, int n) {
+    return dispatch_unary_tensor(gPSO_cos, src, dst, n);
 }
 
 int metal_log_tensor(const void* src, void* dst, int n) {

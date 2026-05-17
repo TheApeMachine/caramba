@@ -235,6 +235,8 @@ func applyStateMetadata(stateDict *state.Dict, node NodeSpec) {
 	stateDict.Dim = intConfig(node, "dim", stateDict.Dim)
 	stateDict.Dim0 = intConfig(node, "dim0", stateDict.Dim0)
 	stateDict.Dim1 = intConfig(node, "dim1", stateDict.Dim1)
+	stateDict.SliceStart = intConfig(node, "start", stateDict.SliceStart)
+	stateDict.SliceEnd = intConfig(node, "end", stateDict.SliceEnd)
 	stateDict.SplitSize = intConfig(node, "split_size", stateDict.SplitSize)
 	stateDict.ScaleH = intConfig(node, "scale_factor", stateDict.ScaleH)
 	stateDict.ScaleW = intConfig(node, "scale_factor", stateDict.ScaleW)

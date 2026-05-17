@@ -6,10 +6,19 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/theapemachine/caramba/pkg/asset"
 	devcfg "github.com/theapemachine/caramba/pkg/config"
+	"gopkg.in/yaml.v3"
 )
 
-const maxIterations = 10
+const (
+	maxIterations  = 10
+	agentAssetPath = "devteam/agent.yml"
+)
+
+var agentAssets = loadAgentAssets()
+
+var editorTools = agentAssets.Developer.Tools
 
 /*
 ReviewVerdict is the outcome returned by a Reviewer pass.
@@ -19,120 +28,101 @@ type ReviewVerdict struct {
 	Feedback string
 }
 
-// editorTools is the canonical tool set exposed to the developer agent.
-// search and view are always safe; edit/create require prior read and a lock.
-var editorTools = []ToolDefinition{
-	{
-		Name:        "search_code",
-		Description: "Search the repository for a pattern (regex). Returns file:line:text hits.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"pattern":     map[string]any{"type": "string", "description": "Grep -E regex"},
-				"max_results": map[string]any{"type": "integer", "description": "Max hits (default 40)"},
-			},
-			"required": []string{"pattern"},
-		},
-	},
-	{
-		Name:        "view_file",
-		Description: "Read a file. Optionally restrict to a line range. Always call this before edit_file.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"path":      map[string]any{"type": "string"},
-				"from_line": map[string]any{"type": "integer", "description": "1-based start line (0 = beginning)"},
-				"to_line":   map[string]any{"type": "integer", "description": "1-based end line (0 = end)"},
-			},
-			"required": []string{"path"},
-		},
-	},
-	{
-		Name: "edit_file",
-		Description: `Replace a contiguous block of lines in an existing file.
-You MUST have called view_file on this path first.
-Provide old_lines exactly as they appear in the file (trailing spaces ignored).
-new_lines replaces that block verbatim.`,
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"path":         map[string]any{"type": "string"},
-				"old_lines":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				"new_lines":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				"claim_intent": map[string]any{"type": "string", "description": "One-line description of what you are changing and why"},
-			},
-			"required": []string{"path", "old_lines", "new_lines", "claim_intent"},
-		},
-	},
-	{
-		Name:        "create_file",
-		Description: "Create a new file. Do not use to overwrite existing files — use edit_file for that.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"path":         map[string]any{"type": "string"},
-				"content":      map[string]any{"type": "string"},
-				"claim_intent": map[string]any{"type": "string"},
-			},
-			"required": []string{"path", "content", "claim_intent"},
-		},
-	},
-	{
-		Name:        "run_shell",
-		Description: "Run a shell command in /workspace (build, test, lint). Avoid using this to read or write files.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"command": map[string]any{"type": "string"},
-			},
-			"required": []string{"command"},
-		},
-	},
-	{
-		Name: "sub_agent",
-		Description: `Deploy one or more short-lived read-only sub-agents in parallel.
-Each sub-agent receives its own system prompt and user prompt, runs in a separate
-context window, and returns a concise result. Use this for isolated repository
-research, code reading, or parallel analysis. Sub-agents cannot edit files or run
-shell commands.`,
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"tasks": map[string]any{
-					"type": "array",
-					"items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"name":          map[string]any{"type": "string", "description": "Short stable name for this sub-agent task"},
-							"system_prompt": map[string]any{"type": "string", "description": "Persona and constraints for the sub-agent"},
-							"user_prompt":   map[string]any{"type": "string", "description": "Specific task the sub-agent should perform"},
-						},
-						"required": []string{"name", "system_prompt", "user_prompt"},
-					},
-				},
-			},
-			"required": []string{"tasks"},
-		},
-	},
-	{
-		Name: "done",
-		Description: `Signal that the feature implementation is complete.
-Before calling this you MUST:
-1. Have written at least one test file covering the new/changed behaviour.
-2. Have called run_shell with "go test ./..." (or a scoped equivalent) and
-   confirmed the output shows no failures.
-If either condition is unmet the tool will reject the signal and tell you what
-is missing.`,
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"test_file":    map[string]any{"type": "string", "description": "Path to the test file you wrote or extended"},
-				"test_command": map[string]any{"type": "string", "description": "The exact go test command you ran"},
-				"test_output":  map[string]any{"type": "string", "description": "Last output from go test (must show PASS or ok lines, no FAIL)"},
-			},
-			"required": []string{"test_file", "test_command", "test_output"},
-		},
-	},
+/*
+AgentAssets holds the embedded developer-team role prompts and tool schemas.
+*/
+type AgentAssets struct {
+	Developer AgentRoleAssets `yaml:"developer"`
+	Reviewer  AgentRoleAssets `yaml:"reviewer"`
+}
+
+/*
+AgentRoleAssets holds the prompt and tool schemas for one LLM role.
+*/
+type AgentRoleAssets struct {
+	SystemPrompt string           `yaml:"system_prompt"`
+	Tools        []ToolDefinition `yaml:"tools"`
+}
+
+func loadAgentAssets() AgentAssets {
+	data, err := asset.ReadFile(agentAssetPath)
+
+	if err != nil {
+		panic(fmt.Sprintf("devteam agent asset: %v", err))
+	}
+
+	var assets AgentAssets
+
+	if err := yaml.Unmarshal(data, &assets); err != nil {
+		panic(fmt.Sprintf("devteam agent asset: %v", err))
+	}
+
+	if err := assets.Validate(); err != nil {
+		panic(fmt.Sprintf("devteam agent asset: %v", err))
+	}
+
+	return assets
+}
+
+/*
+Validate verifies that embedded role prompts and tool schemas are usable.
+*/
+func (assets AgentAssets) Validate() error {
+	if strings.TrimSpace(assets.Developer.SystemPrompt) == "" {
+		return fmt.Errorf("developer system_prompt is required")
+	}
+
+	if !strings.Contains(assets.Developer.SystemPrompt, "{{blast_context}}") {
+		return fmt.Errorf("developer system_prompt must include {{blast_context}}")
+	}
+
+	if strings.TrimSpace(assets.Reviewer.SystemPrompt) == "" {
+		return fmt.Errorf("reviewer system_prompt is required")
+	}
+
+	return validateToolDefinitions("developer", assets.Developer.Tools)
+}
+
+func validateToolDefinitions(role string, tools []ToolDefinition) error {
+	if len(tools) == 0 {
+		return fmt.Errorf("%s tools are required", role)
+	}
+
+	seen := make(map[string]struct{}, len(tools))
+
+	for toolIndex, toolDefinition := range tools {
+		name := strings.TrimSpace(toolDefinition.Name)
+
+		if name == "" {
+			return fmt.Errorf("%s tool %d name is required", role, toolIndex)
+		}
+
+		if _, exists := seen[name]; exists {
+			return fmt.Errorf("%s tool %q is duplicated", role, name)
+		}
+
+		if strings.TrimSpace(toolDefinition.Description) == "" {
+			return fmt.Errorf("%s tool %q description is required", role, name)
+		}
+
+		if len(toolDefinition.Parameters) == 0 {
+			return fmt.Errorf("%s tool %q parameters are required", role, name)
+		}
+
+		seen[name] = struct{}{}
+	}
+
+	return nil
+}
+
+func renderAgentPrompt(prompt string, values map[string]string) string {
+	rendered := prompt
+
+	for placeholder, value := range values {
+		rendered = strings.ReplaceAll(rendered, "{{"+placeholder+"}}", value)
+	}
+
+	return strings.TrimSpace(rendered)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -175,15 +165,7 @@ from the previous iteration (empty on first call).
 func (developer *Developer) Implement(
 	title, description, blastContext, feedback string,
 ) error {
-	system := fmt.Sprintf(`You are a senior Go software engineer working inside a git repository at /workspace.
-You implement features using the provided tools. Rules:
-- Always call view_file before edit_file on the same path.
-- Prefer edit_file over create_file for existing files.
-- Write tests alongside implementation code.
-- Follow the repository's coding conventions (see CLAUDE.md if present).
-- When all tests pass and the feature is complete, call done().
-
-%s`, blastContext)
+	system := developer.SystemPrompt(blastContext)
 
 	userContent := fmt.Sprintf("Feature: %s\n\n%s", title, description)
 
@@ -231,6 +213,15 @@ You implement features using the provided tools. Rules:
 	}
 
 	return fmt.Errorf("developer: exceeded %d iterations without completing", maxIterations)
+}
+
+/*
+SystemPrompt renders the embedded developer prompt with task-specific context.
+*/
+func (developer *Developer) SystemPrompt(blastContext string) string {
+	return renderAgentPrompt(agentAssets.Developer.SystemPrompt, map[string]string{
+		"blast_context": blastContext,
+	})
 }
 
 func (developer *Developer) handleToolCalls(
@@ -440,11 +431,7 @@ func (reviewer *Reviewer) Review(
 
 	testOutput, _ := sandbox.Exec(`cd /workspace && go test ./... 2>&1 | tail -60`)
 
-	system := `You are a senior Go code reviewer.
-Evaluate the provided git diff and test output for a feature implementation.
-Reply ONLY with a JSON object: {"pass": true/false, "feedback": "..."}
-Pass if the implementation is correct, has tests, and tests pass.
-Fail with actionable feedback otherwise.`
+	system := reviewer.SystemPrompt()
 
 	userContent := fmt.Sprintf(
 		"Feature: %s\n\n%s\n\n--- git diff ---\n%s\n\n--- test output ---\n%s",
@@ -473,4 +460,11 @@ Fail with actionable feedback otherwise.`
 	}
 
 	return ReviewVerdict{Pass: verdict.Pass, Feedback: verdict.Feedback}, nil
+}
+
+/*
+SystemPrompt returns the embedded reviewer prompt.
+*/
+func (reviewer *Reviewer) SystemPrompt() string {
+	return strings.TrimSpace(agentAssets.Reviewer.SystemPrompt)
 }

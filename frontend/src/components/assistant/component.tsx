@@ -1,8 +1,9 @@
 import type { UIMessage } from "@tanstack/ai-client";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CardFrame } from "#/components/ui/card";
 import { Flex } from "#/components/ui/flex";
 import { cn } from "@/lib/utils";
+import { assistantBridge } from "./assistant-bridge";
 import { Body } from "./body";
 import { Footer } from "./footer";
 import { Header } from "./header";
@@ -58,6 +59,18 @@ export function Assistant() {
 		input.clear();
 		send(msg);
 	};
+
+	useEffect(() => {
+		assistantBridge.register({
+			send: (text: string) => {
+				const trimmed = text.trim();
+				if (!trimmed) return;
+				send(buildUserMessage(trimmed, capture()));
+			},
+			setMode,
+		});
+		return () => assistantBridge.unregister();
+	}, [send, capture]);
 
 	const isClosed = mode === "closed";
 	const isMini = mode === "mini";

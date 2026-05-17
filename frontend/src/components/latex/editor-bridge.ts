@@ -1,10 +1,11 @@
-import type { HeadingLevel, PaperBlock, PaperMetadata } from "./model/types";
+import type { SetBlockKindOptions } from "./model/paper-reducer";
+import type {
+	HeadingLevel,
+	PaperBlock,
+	PaperBlockKind,
+	PaperMetadata,
+} from "./model/types";
 
-/*
-EditorBridge is a singleton that the PaperEditorProvider registers its methods
-into when it mounts, and clears when it unmounts. Agent tools call into this
-bridge so they can manipulate the editor from outside the React tree.
-*/
 export type EditorBridgeAPI = {
 	getBlocks: () => PaperBlock[];
 	getMetadata: () => PaperMetadata;
@@ -13,8 +14,19 @@ export type EditorBridgeAPI = {
 	insertParagraphAfter: (afterId: string, text?: string) => string;
 	insertHeadingAfter: (afterId: string, level: HeadingLevel) => string;
 	insertEquationAfter: (afterId: string, latex?: string) => string;
+	insertListAfter: (afterId: string, ordered: boolean) => string;
+	insertBlockAfter: (afterId: string, block: PaperBlock) => string;
 	removeBlock: (id: string) => void;
-	setBlockKind: (id: string, kind: "paragraph" | "heading" | "equation", level?: HeadingLevel) => void;
+	reorderBlock: (
+		sourceId: string,
+		targetId: string,
+		position: "above" | "below",
+	) => void;
+	setBlockKind: (
+		id: string,
+		kind: PaperBlockKind,
+		options?: SetBlockKindOptions,
+	) => void;
 	updateMetadata: (patch: Partial<PaperMetadata>) => void;
 	scrollToBlock: (id: string) => void;
 };

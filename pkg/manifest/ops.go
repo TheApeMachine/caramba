@@ -253,6 +253,12 @@ func registerMath() {
 	Register("math.exp", func(_ map[string]any) (operation.Operation, error) {
 		return math.NewExp(), nil
 	})
+	Register("math.sin", func(_ map[string]any) (operation.Operation, error) {
+		return math.NewSin(), nil
+	})
+	Register("math.cos", func(_ map[string]any) (operation.Operation, error) {
+		return math.NewCos(), nil
+	})
 	Register("math.log", func(_ map[string]any) (operation.Operation, error) {
 		return math.NewLog(), nil
 	})
@@ -428,6 +434,9 @@ func registerShape() {
 	})
 	Register("shape.last_token", func(_ map[string]any) (operation.Operation, error) {
 		return shape.NewLastToken(), nil
+	})
+	Register("shape.slice", func(_ map[string]any) (operation.Operation, error) {
+		return shape.NewSlice(), nil
 	})
 	Register("shape.merge_heads", func(_ map[string]any) (operation.Operation, error) {
 		return shape.NewMergeHeads(), nil

@@ -56,16 +56,10 @@ func CompileManifest(path string) (*manifest.Graph, string, error) {
 		return nil, path, err
 	}
 
-	data, err := asset.ReadFile(path)
+	graph, err = manifest.NewCompiler(".").WithFS(asset.TemplateFS()).Compile(path)
 
 	if err != nil {
 		return nil, path, fmt.Errorf("diffusion: manifest %s: %w", path, err)
-	}
-
-	graph, err = manifest.NewCompiler(".").CompileBytes(data)
-
-	if err != nil {
-		return nil, path, err
 	}
 
 	return graph, path, nil
@@ -88,16 +82,10 @@ func parseManifestDocument(path string) (map[string]any, string, error) {
 		return nil, path, err
 	}
 
-	data, err := asset.ReadFile(path)
+	document, err = manifest.NewParser(".").WithFS(asset.TemplateFS()).Parse(path)
 
 	if err != nil {
 		return nil, path, fmt.Errorf("diffusion: manifest %s: %w", path, err)
-	}
-
-	document, err = manifest.NewParser(".").ParseBytes(data)
-
-	if err != nil {
-		return nil, path, err
 	}
 
 	return document, path, nil

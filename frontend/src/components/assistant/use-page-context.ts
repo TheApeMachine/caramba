@@ -30,13 +30,20 @@ type ExtractionType = "text" | "value" | "json" | "count";
 
 function isVisible(el: Element): boolean {
 	const style = window.getComputedStyle(el);
-	return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+	return (
+		style.display !== "none" &&
+		style.visibility !== "hidden" &&
+		style.opacity !== "0"
+	);
 }
 
 function extractValue(el: Element, type: ExtractionType): string {
 	switch (type) {
 		case "value": {
-			const input = el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+			const input = el as
+				| HTMLInputElement
+				| HTMLTextAreaElement
+				| HTMLSelectElement;
 			return input.value ?? "";
 		}
 		case "json": {
@@ -51,7 +58,7 @@ function extractValue(el: Element, type: ExtractionType): string {
 			const children = el.querySelectorAll("[data-context-item]");
 			return children.length > 0
 				? `${children.length} item${children.length === 1 ? "" : "s"}`
-				: (el.childElementCount.toString());
+				: el.childElementCount.toString();
 		}
 		default: {
 			return (el.textContent ?? "").replace(/\s+/g, " ").trim();
@@ -67,8 +74,11 @@ function scrape(): ContextEntry[] {
 		if (!isVisible(node)) continue;
 
 		const label = node.getAttribute("data-context") ?? "";
-		const key = node.getAttribute("data-context-key") ?? label.toLowerCase().replace(/\s+/g, "_");
-		const type = (node.getAttribute("data-context-type") ?? "text") as ExtractionType;
+		const key =
+			node.getAttribute("data-context-key") ??
+			label.toLowerCase().replace(/\s+/g, "_");
+		const type = (node.getAttribute("data-context-type") ??
+			"text") as ExtractionType;
 
 		const raw = extractValue(node, type);
 		const value = raw.length > MAX_CHARS ? `${raw.slice(0, MAX_CHARS)}…` : raw;
@@ -88,7 +98,9 @@ function format(entries: ContextEntry[], route: string): string {
 	];
 
 	const full = lines.join("\n");
-	return full.length > MAX_TOTAL_CHARS ? `${full.slice(0, MAX_TOTAL_CHARS)}…` : full;
+	return full.length > MAX_TOTAL_CHARS
+		? `${full.slice(0, MAX_TOTAL_CHARS)}…`
+		: full;
 }
 
 export function usePageContext() {

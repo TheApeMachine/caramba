@@ -21,7 +21,20 @@ export type PaperEquationBlock = {
 	display: boolean;
 };
 
-export type PaperBlock = PaperHeadingBlock | PaperParagraphBlock | PaperEquationBlock;
+export type PaperListBlock = {
+	id: string;
+	type: "list";
+	ordered: boolean;
+	text: string;
+};
+
+export type PaperBlock =
+	| PaperHeadingBlock
+	| PaperParagraphBlock
+	| PaperEquationBlock
+	| PaperListBlock;
+
+export type PaperBlockKind = PaperBlock["type"];
 
 export type PaperMetadata = {
 	title: string;

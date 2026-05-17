@@ -2,9 +2,9 @@ import { EventType } from "@tanstack/ai";
 import type { MessagePart } from "@tanstack/ai-client";
 import { fetchServerSentEvents } from "@tanstack/ai-react";
 import { useCallback, useRef, useState } from "react";
+import { windowedMessages } from "./storage";
 import { paperEditorTools } from "./tools/paper-editor";
 import type { Persona, Session, UIMessage } from "./types";
-import { windowedMessages } from "./storage";
 
 export type TeamChatStatus = "idle" | "running" | "error";
 
@@ -24,7 +24,9 @@ async function executeClientTool(name: string, args: unknown): Promise<string> {
 		const result = await tool.execute(args as never);
 		return JSON.stringify(result);
 	} catch (err) {
-		return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+		return JSON.stringify({
+			error: err instanceof Error ? err.message : String(err),
+		});
 	}
 }
 
@@ -73,7 +75,10 @@ async function runTurn(
 	const emitStreamingMessage = () => {
 		const parts: MessagePart[] = [];
 		if (reasoningContent) {
-			parts.push({ type: "thinking", content: reasoningContent } as MessagePart);
+			parts.push({
+				type: "thinking",
+				content: reasoningContent,
+			} as MessagePart);
 		}
 		if (textContent) {
 			parts.push({ type: "text", content: textContent } as MessagePart);
@@ -130,7 +135,11 @@ async function runTurn(
 				const toolCallId = currentToolCallId;
 				const toolName = currentToolName;
 				let parsedArgs: unknown = {};
-				try { parsedArgs = JSON.parse(currentToolArgs); } catch { /* use empty */ }
+				try {
+					parsedArgs = JSON.parse(currentToolArgs);
+				} catch {
+					/* use empty */
+				}
 
 				const result = await executeClientTool(toolName, parsedArgs);
 
@@ -138,8 +147,19 @@ async function runTurn(
 					id: crypto.randomUUID(),
 					role: "assistant",
 					parts: [
-						{ type: "tool-call", id: toolCallId, name: toolName, arguments: currentToolArgs, state: "input-complete" },
-						{ type: "tool-result", toolCallId, content: result, state: "complete" },
+						{
+							type: "tool-call",
+							id: toolCallId,
+							name: toolName,
+							arguments: currentToolArgs,
+							state: "input-complete",
+						},
+						{
+							type: "tool-result",
+							toolCallId,
+							content: result,
+							state: "complete",
+						},
 					],
 					createdAt: new Date(),
 				};
@@ -165,7 +185,10 @@ async function runTurn(
 	if (hasStreamingMessage) {
 		const finalParts: MessagePart[] = [];
 		if (reasoningContent) {
-			finalParts.push({ type: "thinking", content: reasoningContent } as MessagePart);
+			finalParts.push({
+				type: "thinking",
+				content: reasoningContent,
+			} as MessagePart);
 		}
 		if (textContent) {
 			finalParts.push({
@@ -192,7 +215,9 @@ export function useTeamChat(
 	upsertMessage: (msg: UIMessage) => void,
 ) {
 	const [status, setStatus] = useState<TeamChatStatus>("idle");
-	const [streamingPersonaId, setStreamingPersonaId] = useState<string | null>(null);
+	const [streamingPersonaId, setStreamingPersonaId] = useState<string | null>(
+		null,
+	);
 	const [reasoningActive, setReasoningActive] = useState(false);
 	const abortRef = useRef<AbortController | null>(null);
 

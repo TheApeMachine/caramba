@@ -21,7 +21,7 @@ const themeIcons: Record<Theme, React.ReactNode> = {
 ModeToggle exposes light/dim/dark/system theme selection and a high-contrast
 toggle. State is owned by the ThemeProvider and persisted to localStorage.
 */
-export function ModeToggle() {
+export const ModeToggle = () => {
 	const { theme, setTheme, contrast, setContrast } = useTheme();
 
 	return (

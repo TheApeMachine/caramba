@@ -68,6 +68,8 @@ func (operationDispatchContract OperationDispatchContract) SupportedIDSet() map[
 		"math.mul":                              true,
 		"math.matmul":                           true,
 		"math.exp":                              true,
+		"math.sin":                              true,
+		"math.cos":                              true,
 		"math.log":                              true,
 		"math.logsumexp":                        true,
 		"math.softmax":                          true,
@@ -85,6 +87,7 @@ func (operationDispatchContract OperationDispatchContract) SupportedIDSet() map[
 		"shape.upsample_nearest2d":              true,
 		"shape.view_as_heads":                   true,
 		"shape.last_token":                      true,
+		"shape.slice":                           true,
 		"shape.merge_heads":                     true,
 		"positional.rope":                       true,
 		"positional.alibi":                      true,
@@ -271,6 +274,10 @@ func (tensorBackend *TensorBackend) applyOperation(
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, masking.NewCausalMask())
 	case "math.exp":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewExp())
+	case "math.sin":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewSin())
+	case "math.cos":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewCos())
 	case "math.log":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, math.NewLog())
 	case "math.logsumexp":
@@ -317,6 +324,8 @@ func (tensorBackend *TensorBackend) applyOperation(
 		)
 	case "shape.last_token":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, shape.NewLastToken())
+	case "shape.slice":
+		return executor.RunOperation(ctx, tensorBackend, node, inputs, shape.NewSlice())
 	case "shape.merge_heads":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, shape.NewMergeHeads())
 	case "positional.rope":

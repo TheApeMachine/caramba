@@ -72,6 +72,8 @@ type Dict struct {
 	Dim                 int
 	Dim0                int
 	Dim1                int
+	SliceStart          int
+	SliceEnd            int
 	SplitSize           int
 	ScaleH              int
 	ScaleW              int

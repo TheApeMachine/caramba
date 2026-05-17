@@ -31,11 +31,16 @@ func TestSessionDrivesRuntimeGenerator(t *testing.T) {
 			Model:   "tiny",
 		})
 
-		Convey("Session.Run should stream the assistant prompt, the tokens, and exit", func() {
+		Convey("Session.Run should drive the manifest and stream its emitted tokens", func() {
+			// Session.Run takes the SessionRunner fast-path when the
+			// generator implements it, handing the terminal streams
+			// straight to the runtime program. Prompts/banners/etc.
+			// belong to whichever manifest is loaded — the production
+			// chat runtime emits "you> "/"caramba> " via io.emit_text
+			// steps in chat.yml; the deterministicChatYAML fixture here
+			// only emits sampled tokens, so that's what we verify.
 			So(session.Run(), ShouldBeNil)
 			text := output.String()
-			So(text, ShouldContainSubstring, "you> ")
-			So(text, ShouldContainSubstring, "caramba> ")
 			So(text, ShouldContainSubstring, "<0><1><2><3><4>")
 		})
 	})

@@ -30,6 +30,8 @@ type OperationRegistry interface {
 	Mul(*state.Dict) (state.Operation, error)
 	Matmul(*state.Dict) (state.Operation, error)
 	Exp(*state.Dict) (state.Operation, error)
+	Sin(*state.Dict) (state.Operation, error)
+	Cos(*state.Dict) (state.Operation, error)
 	Log(*state.Dict) (state.Operation, error)
 	LogSumExp(*state.Dict) (state.Operation, error)
 	Softmax(*state.Dict) (state.Operation, error)
@@ -48,6 +50,7 @@ type OperationRegistry interface {
 	ViewAsHeads(*state.Dict) (state.Operation, error)
 	MergeHeads(*state.Dict) (state.Operation, error)
 	LastToken(*state.Dict) (state.Operation, error)
+	Slice(*state.Dict) (state.Operation, error)
 	RoPE(*state.Dict) (state.Operation, error)
 	ALiBi(*state.Dict) (state.Operation, error)
 	TokenEmbedding(*state.Dict) (state.Operation, error)
@@ -206,6 +209,10 @@ func BuildOperation(
 		return registry.CausalMask(config)
 	case "math.exp":
 		return registry.Exp(config)
+	case "math.sin":
+		return registry.Sin(config)
+	case "math.cos":
+		return registry.Cos(config)
 	case "math.log":
 		return registry.Log(config)
 	case "math.logsumexp":
@@ -242,6 +249,8 @@ func BuildOperation(
 		return registry.MergeHeads(config)
 	case "shape.last_token":
 		return registry.LastToken(config)
+	case "shape.slice":
+		return registry.Slice(config)
 	case "positional.rope":
 		return registry.RoPE(config)
 	case "positional.alibi":

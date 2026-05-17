@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 
 	. "github.com/smartystreets/goconvey/convey"
 )
@@ -29,11 +30,15 @@ func TestParser_Parse(t *testing.T) {
 				So(document["value"], ShouldEqual, 42)
 			})
 
-			Convey("It should interpolate ${variable} references", func() {
+			Convey("It should interpolate ${variable} references and preserve native types", func() {
+				// A scalar that is *just* a placeholder returns the
+				// underlying value with its native type intact — int
+				// dims stay int, list shapes stay lists. Mixed scalars
+				// ("steps=${steps}") still stringify via the builder.
 				write("master.yml", "variables:\n  model:\n    dim: 512\nresult: ${model.dim}\n")
 				document, err := parser.Parse("master.yml")
 				So(err, ShouldBeNil)
-				So(document["result"], ShouldEqual, "512")
+				So(document["result"], ShouldEqual, 512)
 			})
 
 			Convey("It should reject undefined variable references", func() {
@@ -66,7 +71,7 @@ func TestParser_Parse(t *testing.T) {
 				So(err, ShouldBeNil)
 				included, ok := document["ffn"].(map[string]any)
 				So(ok, ShouldBeTrue)
-				So(included["d_model"], ShouldEqual, "256")
+				So(included["d_model"], ShouldEqual, 256)
 				So(included["bias"], ShouldEqual, false)
 			})
 
@@ -77,7 +82,7 @@ func TestParser_Parse(t *testing.T) {
 				So(err, ShouldBeNil)
 				included, ok := document["proj"].(map[string]any)
 				So(ok, ShouldBeTrue)
-				So(included["out"], ShouldEqual, "128")
+				So(included["out"], ShouldEqual, 128)
 			})
 
 			Convey("It should return an error for a missing file", func() {
@@ -137,6 +142,82 @@ include_result:
 
 				So(fromBytes, ShouldResemble, fromFile)
 			})
+		})
+	})
+}
+
+func TestParser_WithFS(t *testing.T) {
+	Convey("Given a Parser backed by an in-memory fs.FS", t, func() {
+		Convey("It should resolve includes through the same FS", func() {
+			fileSystem := fstest.MapFS{
+				"block/attention.yml": &fstest.MapFile{
+					Data: []byte("type: sdpa\nheads: ${include.heads}\n"),
+				},
+				"master.yml": &fstest.MapFile{
+					Data: []byte("attn:\n  include: block.attention\n  variables:\n    heads: 24\n"),
+				},
+			}
+
+			parser := NewParser(".").WithFS(fileSystem)
+
+			document, err := parser.Parse("master.yml")
+			So(err, ShouldBeNil)
+
+			included, ok := document["attn"].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(included["type"], ShouldEqual, "sdpa")
+			So(included["heads"], ShouldEqual, 24)
+		})
+
+		Convey("It should reject absolute paths", func() {
+			fileSystem := fstest.MapFS{
+				"a.yml": &fstest.MapFile{Data: []byte("ok: true\n")},
+			}
+
+			parser := NewParser(".").WithFS(fileSystem)
+
+			_, err := parser.Parse("/a.yml")
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "absolute path")
+		})
+
+		Convey("It should reject paths that escape the FS root", func() {
+			fileSystem := fstest.MapFS{
+				"a.yml": &fstest.MapFile{Data: []byte("ok: true\n")},
+			}
+
+			parser := NewParser(".").WithFS(fileSystem)
+
+			_, err := parser.Parse("../a.yml")
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "escapes parser root")
+		})
+
+		Convey("It should expand repeat blocks inside FS-loaded files", func() {
+			fileSystem := fstest.MapFS{
+				"master.yml": &fstest.MapFile{
+					Data: []byte(`
+nodes:
+  - repeat: 3
+    index: i
+    template:
+      id: layer_${i}
+`),
+				},
+			}
+
+			parser := NewParser(".").WithFS(fileSystem)
+
+			document, err := parser.Parse("master.yml")
+			So(err, ShouldBeNil)
+
+			nodes, ok := document["nodes"].([]any)
+			So(ok, ShouldBeTrue)
+			So(len(nodes), ShouldEqual, 3)
+
+			first, ok := nodes[0].(map[string]any)
+			So(ok, ShouldBeTrue)
+			So(first["id"], ShouldEqual, "layer_0")
 		})
 	})
 }
