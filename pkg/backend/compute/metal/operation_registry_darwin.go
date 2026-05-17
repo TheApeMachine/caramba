@@ -382,6 +382,16 @@ func (registry OperationRegistry) RoPE(config *state.Dict) (state.Operation, err
 	return &RoPE{positional: positional}, nil
 }
 
+func (registry OperationRegistry) Laplacian(config *state.Dict) (state.Operation, error) {
+	physics, err := newMetalPhysics(config)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &Laplacian{physics: physics}, nil
+}
+
 func (registry OperationRegistry) ALiBi(config *state.Dict) (state.Operation, error) {
 	positional, err := newMetalPositional(config)
 
@@ -1365,6 +1375,41 @@ func (lastToken *LastToken) Forward(stateDict *state.Dict) (*state.Dict, error) 
 
 type RoPE struct{ positional *MetalPositional }
 type ALiBi struct{ positional *MetalPositional }
+type Laplacian struct{ physics *MetalPhysics }
+
+func (laplacian *Laplacian) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("metal.physics.laplacian"); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
+	if len(shape) < 1 || len(shape) > 3 {
+		return nil, fmt.Errorf(
+			"metal.physics.laplacian: input rank must be 1, 2, or 3 (got %d)",
+			len(shape),
+		)
+	}
+
+	spacing := stateDict.Spacing
+
+	if !(spacing > 0) {
+		spacing = 1.0
+	}
+
+	if stateDict.Boundary != "" && stateDict.Boundary != "periodic" {
+		return nil, fmt.Errorf(
+			"metal.physics.laplacian: only \"periodic\" boundary supported in v1 (got %q)",
+			stateDict.Boundary,
+		)
+	}
+
+	invH2 := 1.0 / (spacing * spacing)
+
+	output, err := laplacian.physics.Laplacian(shape, invH2, stateDict.Inputs[0])
+
+	return setMetalOutput(stateDict, output, err)
+}
 
 func (rope *RoPE) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("metal.positional.rope"); err != nil {
@@ -1976,6 +2021,10 @@ func newMetalShape(config *state.Dict) (*MetalShapeOps, error) {
 
 func newMetalPositional(config *state.Dict) (*MetalPositional, error) {
 	return NewPositional(metalLibrary(config, "positional.metallib"))
+}
+
+func newMetalPhysics(config *state.Dict) (*MetalPhysics, error) {
+	return NewPhysics(metalLibrary(config, "physics.metallib"))
 }
 
 func newMetalConvolution(config *state.Dict) (*ConvolutionOps, error) {

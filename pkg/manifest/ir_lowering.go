@@ -218,6 +218,8 @@ func outputShapeForNode(
 		out[last] /= 2
 
 		return tensor.NewShape(out)
+	case "math.logsumexp":
+		return reduceLastShapeDim(dimensions)
 	case "shape.view_as_heads":
 		return viewAsHeadsShape(dimensions, configInt(node.Config, "num_heads", 0))
 	case "shape.last_token":
@@ -387,6 +389,20 @@ func replaceLastShapeDim(dimensions []int, dimension int) (tensor.Shape, error) 
 
 	out := append([]int(nil), dimensions...)
 	out[len(out)-1] = dimension
+
+	return tensor.NewShape(out)
+}
+
+func reduceLastShapeDim(dimensions []int) (tensor.Shape, error) {
+	if len(dimensions) == 0 {
+		return tensor.Shape{}, fmt.Errorf("manifest: math.logsumexp requires a non-empty input shape")
+	}
+
+	if len(dimensions) == 1 {
+		return tensor.NewShape([]int{1})
+	}
+
+	out := append([]int(nil), dimensions[:len(dimensions)-1]...)
 
 	return tensor.NewShape(out)
 }

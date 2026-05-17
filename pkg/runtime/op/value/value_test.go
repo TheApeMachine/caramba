@@ -7,6 +7,7 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/runtime/op/optest"
 	"github.com/theapemachine/caramba/pkg/runtime/program"
+	"github.com/theapemachine/caramba/pkg/runtime/state"
 )
 
 func TestAssign(t *testing.T) {
@@ -94,4 +95,102 @@ func TestClear(t *testing.T) {
 			So(stub.Scope["history"], ShouldResemble, []int{})
 		})
 	})
+}
+
+func TestLength(t *testing.T) {
+	Convey("Given a Length op measuring input tokens", t, func() {
+		stub := optest.NewStubContext()
+		stub.Scope["tokens"] = []int{10, 20, 30}
+		stub.StepRef = program.Step{
+			ID: "length",
+			Op: "value.length",
+			Inputs: map[string]program.ValueRef{
+				"value": {Namespace: program.NamespaceLocal, Name: "tokens"},
+			},
+			Outputs: map[string]program.ValueRef{
+				"length": {Namespace: program.NamespaceLocal, Name: "token_count"},
+			},
+		}
+
+		Convey("Execute should bind the element count", func() {
+			So(Length{}.Execute(stub), ShouldBeNil)
+			So(stub.Scope["token_count"], ShouldEqual, 3)
+		})
+	})
+}
+
+func TestPositions(t *testing.T) {
+	Convey("Given a Positions op with a counter start", t, func() {
+		stub := optest.NewStubContext()
+		counter, err := state.Default.Build("counter", "position", map[string]any{"initial": 7})
+		So(err, ShouldBeNil)
+		stub.States["position"] = counter
+		stub.Scope["tokens"] = []int{101, 102, 103}
+		stub.StepRef = program.Step{
+			ID: "positions",
+			Op: "value.positions",
+			Inputs: map[string]program.ValueRef{
+				"start":  {Namespace: program.NamespaceState, Name: "position"},
+				"tokens": {Namespace: program.NamespaceLocal, Name: "tokens"},
+			},
+			Outputs: map[string]program.ValueRef{
+				"positions": {Namespace: program.NamespaceLocal, Name: "position_ids"},
+			},
+		}
+
+		Convey("Execute should bind contiguous position ids", func() {
+			So(Positions{}.Execute(stub), ShouldBeNil)
+			So(stub.Scope["position_ids"], ShouldResemble, []int{7, 8, 9})
+		})
+	})
+}
+
+func BenchmarkLength_Execute(benchmark *testing.B) {
+	stub := optest.NewStubContext()
+	stub.Scope["tokens"] = []int{10, 20, 30, 40}
+	stub.StepRef = program.Step{
+		ID: "length",
+		Op: "value.length",
+		Inputs: map[string]program.ValueRef{
+			"value": {Namespace: program.NamespaceLocal, Name: "tokens"},
+		},
+		Outputs: map[string]program.ValueRef{
+			"length": {Namespace: program.NamespaceLocal, Name: "token_count"},
+		},
+	}
+
+	for benchmark.Loop() {
+		if err := (Length{}).Execute(stub); err != nil {
+			benchmark.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkPositions_Execute(benchmark *testing.B) {
+	stub := optest.NewStubContext()
+	counter, err := state.Default.Build("counter", "position", map[string]any{"initial": 7})
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	stub.States["position"] = counter
+	stub.Scope["tokens"] = []int{101, 102, 103, 104}
+	stub.StepRef = program.Step{
+		ID: "positions",
+		Op: "value.positions",
+		Inputs: map[string]program.ValueRef{
+			"start":  {Namespace: program.NamespaceState, Name: "position"},
+			"tokens": {Namespace: program.NamespaceLocal, Name: "tokens"},
+		},
+		Outputs: map[string]program.ValueRef{
+			"positions": {Namespace: program.NamespaceLocal, Name: "position_ids"},
+		},
+	}
+
+	for benchmark.Loop() {
+		if err := (Positions{}).Execute(stub); err != nil {
+			benchmark.Fatal(err)
+		}
+	}
 }

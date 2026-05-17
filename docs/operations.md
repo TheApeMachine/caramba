@@ -145,6 +145,31 @@ Implements free energy minimization and precision-weighted prediction error. Use
 | `active_inference.precision`     | Precision-weighted prediction error   |
 | `active_inference.belief_update` | Bayesian belief updating              |
 
+### Energy-Based Models
+
+Energy-based model experiments start as composite blocks built from resident math
+operations, so the backend operation contract is not expanded by these templates.
+
+| Block ID                               | Description                                      |
+|----------------------------------------|--------------------------------------------------|
+| `block.energy.boltzmann_distribution`  | Converts energies into Boltzmann probabilities   |
+| `block.energy.free_energy`             | Computes `-beta^{-1} logsumexp(-beta E)`         |
+| `block.energy.langevin_step`           | Applies one externally differentiated sampler step |
+| `block.energy.contrastive_phase`       | Produces per-sample positive/negative phase deltas |
+
+### Physics — Quantum Hydrodynamics
+
+Spatial-stencil operators for PDE-flavoured physics workflows: Madelung /
+Bohm quantum hydrodynamics, diffusion / Fokker–Planck, wave equations,
+reaction-diffusion. Unlike the thermodynamic blocks above, these are real
+backend kernels — they cannot be composed from `math.add` / `math.mul`
+because no `shape.shift` / `shape.roll` primitive exists, so the operator
+ships its own SIMD assembly per ISA.
+
+| Op ID               | Description                                              |
+|---------------------|----------------------------------------------------------|
+| `stencil.laplacian` | 2nd-order central-difference Laplacian on a uniform 1D / 2D / 3D grid, periodic boundary conditions. |
+
 ### Causal Inference
 
 | Op ID                      | Description                          |
@@ -286,6 +311,7 @@ Beyond individual operations, Caramba provides pre-wired **blocks**—composite 
 |--------------------|------------------------------------------------------|
 | `active_inference` | Free energy minimization block                       |
 | `causal`           | Causal temporal block                                |
+| `energy`           | Boltzmann normalization, EBM free energy, sampler steps |
 | `hawkes`           | Hawkes process attention block                       |
 | `markov_blanket`   | Markov blanket hierarchy block                       |
 | `memory`           | External memory read/write block                     |

@@ -227,6 +227,11 @@ func (registry OperationRegistry) RoPE(config *state.Dict) (state.Operation, err
 	return &RoPE{positional: positional}, err
 }
 
+func (registry OperationRegistry) Laplacian(config *state.Dict) (state.Operation, error) {
+	physics, err := NewPhysics(xlaPlatform(config))
+	return &Laplacian{physics: physics}, err
+}
+
 func (registry OperationRegistry) ALiBi(config *state.Dict) (state.Operation, error) {
 	positional, err := NewPositional(xlaPlatform(config))
 	return &ALiBi{positional: positional}, err
@@ -969,6 +974,41 @@ func (lastToken *LastToken) Forward(stateDict *state.Dict) (*state.Dict, error) 
 
 type RoPE struct{ positional *XLAPositionalOps }
 type ALiBi struct{ positional *XLAPositionalOps }
+type Laplacian struct{ physics *XLAPhysicsOps }
+
+func (laplacian *Laplacian) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("xla.physics.laplacian"); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
+	if len(shape) < 1 || len(shape) > 3 {
+		return nil, fmt.Errorf(
+			"xla.physics.laplacian: input rank must be 1, 2, or 3 (got %d)",
+			len(shape),
+		)
+	}
+
+	spacing := stateDict.Spacing
+
+	if !(spacing > 0) {
+		spacing = 1.0
+	}
+
+	if stateDict.Boundary != "" && stateDict.Boundary != "periodic" {
+		return nil, fmt.Errorf(
+			"xla.physics.laplacian: only \"periodic\" boundary supported in v1 (got %q)",
+			stateDict.Boundary,
+		)
+	}
+
+	invH2 := 1.0 / (spacing * spacing)
+
+	output, err := laplacian.physics.Laplacian(shape, invH2, stateDict.Inputs[0])
+
+	return setXLAOutput(stateDict, output, err)
+}
 
 func (rope *RoPE) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("xla.positional.rope"); err != nil {

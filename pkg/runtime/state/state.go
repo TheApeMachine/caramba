@@ -157,6 +157,7 @@ var Default = NewRegistry()
 func init() {
 	Default.MustRegister("token_buffer", newTokenBufferFromConfig)
 	Default.MustRegister("counter", newCounterFromConfig)
+	Default.MustRegister("kv_cache", newKVCacheFromConfig)
 	Default.MustRegister("rng", newRNGFromConfig)
 	Default.MustRegister("tensor", newTensorFromConfig)
 }

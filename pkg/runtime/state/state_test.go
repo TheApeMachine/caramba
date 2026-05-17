@@ -40,12 +40,13 @@ func TestRegistry(t *testing.T) {
 			So(types, ShouldResemble, []string{"counter", "token_buffer"})
 		})
 
-		Convey("Default registry should include token_buffer, counter, rng, tensor", func() {
+		Convey("Default registry should include token_buffer, counter, rng, tensor, kv_cache", func() {
 			defaults := Default.Types()
 			So(defaults, ShouldContain, "token_buffer")
 			So(defaults, ShouldContain, "counter")
 			So(defaults, ShouldContain, "rng")
 			So(defaults, ShouldContain, "tensor")
+			So(defaults, ShouldContain, "kv_cache")
 		})
 	})
 }
@@ -179,4 +180,85 @@ func TestTensor(t *testing.T) {
 			So(restored.Values(), ShouldResemble, []float64{1.5, -2.5, 3.25, 4.0625})
 		})
 	})
+}
+
+func TestKVCache(t *testing.T) {
+	Convey("Given a KVCache runtime state", t, func() {
+		ctx := context.Background()
+		built, err := Default.Build("kv_cache", "kv", map[string]any{"capacity": 128})
+		So(err, ShouldBeNil)
+
+		cacheState := built.(*KVCache)
+
+		Convey("It should expose the underlying decoder cache", func() {
+			So(cacheState.Cache(), ShouldNotBeNil)
+			So(cacheState.Cache().Capacity(), ShouldEqual, 128)
+		})
+
+		Convey("Reset should advance the cache epoch and clear entries", func() {
+			_, _, _, err := cacheState.Cache().Append(
+				"attention",
+				[]int{1, 1, 1, 1},
+				[]float64{1},
+				[]float64{2},
+			)
+			So(err, ShouldBeNil)
+			before := cacheState.Cache().Epoch()
+
+			So(cacheState.Reset(ctx), ShouldBeNil)
+			So(cacheState.Cache().Epoch(), ShouldEqual, before+1)
+			So(cacheState.Cache().EntryCount(), ShouldEqual, 0)
+		})
+
+		Convey("Snapshot then Restore should round-trip cache contents", func() {
+			_, _, _, err := cacheState.Cache().Append(
+				"attention",
+				[]int{1, 1, 2, 1},
+				[]float64{3, 4},
+				[]float64{5, 6},
+			)
+			So(err, ShouldBeNil)
+
+			snapshot, err := cacheState.Snapshot(ctx)
+			So(err, ShouldBeNil)
+
+			restoredState, err := Default.Build("kv_cache", "clone", nil)
+			So(err, ShouldBeNil)
+
+			restored := restoredState.(*KVCache)
+			So(restored.Restore(ctx, snapshot), ShouldBeNil)
+
+			inspection, err := restored.Inspect(ctx)
+			So(err, ShouldBeNil)
+			So(inspection.Type, ShouldEqual, "kv_cache")
+			So(inspection.Values["capacity"], ShouldEqual, 128)
+			So(inspection.Values["entries"], ShouldEqual, 1)
+		})
+	})
+}
+
+func BenchmarkKVCache_Snapshot(benchmark *testing.B) {
+	built, err := Default.Build("kv_cache", "kv", map[string]any{"capacity": 128})
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	cacheState := built.(*KVCache)
+	_, _, _, err = cacheState.Cache().Append(
+		"attention",
+		[]int{1, 12, 8, 64},
+		make([]float64, 1*12*8*64),
+		make([]float64, 1*12*8*64),
+	)
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	for benchmark.Loop() {
+		if _, err := cacheState.Snapshot(context.Background()); err != nil {
+			benchmark.Fatal(err)
+		}
+	}
 }

@@ -59,6 +59,31 @@ func TestCache(t *testing.T) {
 			So(value, ShouldResemble, []float64{4})
 			So(cache.Epoch(), ShouldEqual, epoch+1)
 		})
+
+		Convey("Snapshot and Restore should preserve entries and capacity", func() {
+			So(cache.SetCapacity(64), ShouldBeNil)
+			_, _, _, err := cache.Append(
+				"attention",
+				[]int{1, 1, 2, 2},
+				[]float64{1, 2, 3, 4},
+				[]float64{5, 6, 7, 8},
+			)
+			So(err, ShouldBeNil)
+
+			snapshot, err := cache.Snapshot()
+			So(err, ShouldBeNil)
+			So(snapshot.Capacity, ShouldEqual, 64)
+			So(snapshot.Entries["attention"].Shape, ShouldResemble, []int{1, 1, 2, 2})
+
+			restored := NewCache()
+			So(restored.Restore(snapshot), ShouldBeNil)
+			So(restored.Capacity(), ShouldEqual, 64)
+			So(restored.EntryCount(), ShouldEqual, 1)
+
+			restoredSnapshot, err := restored.Snapshot()
+			So(err, ShouldBeNil)
+			So(restoredSnapshot, ShouldResemble, snapshot)
+		})
 	})
 }
 
@@ -131,5 +156,17 @@ func BenchmarkCache_Capacity(benchmark *testing.B) {
 
 	for benchmark.Loop() {
 		_ = cache.Capacity()
+	}
+}
+
+func BenchmarkCache_Snapshot(benchmark *testing.B) {
+	cache := NewCache()
+	shape := []int{1, 12, 8, 64}
+	key := make([]float64, 1*12*8*64)
+	value := make([]float64, 1*12*8*64)
+	_, _, _, _ = cache.Append("attention", shape, key, value)
+
+	for benchmark.Loop() {
+		_, _ = cache.Snapshot()
 	}
 }

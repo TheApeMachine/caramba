@@ -154,6 +154,10 @@ func (registry *OperationRegistry) RoPE(_ *state.Dict) (state.Operation, error) 
 	return unavailableOperation()
 }
 
+func (registry *OperationRegistry) Laplacian(_ *state.Dict) (state.Operation, error) {
+	return unavailableOperation()
+}
+
 func (registry *OperationRegistry) ALiBi(_ *state.Dict) (state.Operation, error) {
 	return unavailableOperation()
 }

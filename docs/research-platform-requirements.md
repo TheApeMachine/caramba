@@ -24,13 +24,16 @@ The platform is complete for research use only when all of the following hold:
 The current useful pieces are:
 
 - `pkg/manifest`: YAML parsing, includes, variables, repeat expansion, static topology compilation.
-- `pkg/chat/session.go`: terminal input loop.
-- `pkg/chat/model.go`: model manifest compilation, token loop, KV and RoPE metadata binding, backend execution.
+- `pkg/runtime/program`, `pkg/runtime/compiler`, `pkg/runtime/executor`: typed runtime program IR, YAML lowering, and step execution.
+- `pkg/runtime/op`: manifest-driven IO, tokenizer, control, value, graph, sampler, scheduler, state, and telemetry operations.
+- `pkg/runtime/state`: token buffers, counters, RNG, tensor state, token streams, and KV cache state.
+- `pkg/runtime/backend`: graph-call bridge, manifest topology execution, weight binding, and state binding for KV and RoPE metadata.
+- `cmd/chat.go` and `cmd/image.go`: command adapters that hand terminal or prompt streams to runtime programs.
+- `pkg/asset/template/runtime/chat.yml` and `pkg/asset/template/runtime/diffusion.yml`: canonical chat and diffusion runtime programs.
 - `pkg/backend/compute/kv/cache.go`: current decoder KV store.
 - `pkg/backend/compute/rotary/config.go`: current inverse-frequency schedules.
-- `pkg/diffusion/pipeline.go`: prompt encode, scheduler loop, denoise, VAE decode, image write.
 
-The missing piece is a typed runtime program layer. Static topology manifests describe tensor DAGs. They do not yet describe loops, state mutation, IO, sampling, scheduling, training, or inspection.
+The remaining platform gaps are resident runtime state strategies, direct state-bearing graph operation contracts, training and evaluation programs, backend legality checks, and complete operation coverage across every backend.
 
 ## Manifest System V2
 
@@ -94,7 +97,7 @@ Required runtime operation families:
 | IO         | `io.read_line`, `io.read_record`, `io.emit_text`, `io.emit_token`, `io.write_image`, `io.write_tensor`, `io.write_checkpoint` |
 | Tokenizer  | `tokenizer.encode`, `tokenizer.decode`, `tokenizer.stream_decode`                                                             |
 | Control    | `control.loop_count`, `control.loop_each`, `control.loop_until`, `control.break_if`, `control.continue_if`                    |
-| Value      | `value.assign`, `value.slice`, `value.append`, `value.clear`                                                                  |
+| Value      | `value.assign`, `value.slice`, `value.append`, `value.clear`, `value.length`, `value.positions`                                |
 | Graph      | `graph.call`, `graph.call_sequence`, `graph.bind_weights`                                                                     |
 | Sampler    | `sampler.next_token`, `sampler.stop_matched`, `sampler.logprobs`                                                              |
 | Scheduler  | `scheduler.timesteps`, `scheduler.step`, `scheduler.scale_input`                                                              |
@@ -251,7 +254,7 @@ Required strategies:
 
 Every strategy must declare dtype, layout, page or window size, maximum batch, maximum heads, maximum tokens, head dimension, residency, backend capability requirements, mutation semantics, and checkpoint encoding.
 
-Attention operations must consume KV state through explicit graph inputs. Metadata injection in `pkg/chat/model.go` must be replaced by manifest-declared bindings.
+Attention operations must consume KV state through explicit graph inputs. `runtime/chat.yml` declares `kv_cache: state.kv`; `pkg/runtime/backend.NewStateBindingHook` binds that manifest input into the backend IR nodes that currently read cache metadata. The remaining contract is a direct attention operation input for cache views on every backend.
 
 ## Rotary And Position Requirements
 
@@ -272,23 +275,23 @@ Required implementations:
 - resident sin/cos cache generation,
 - resident RoPE application kernels for every backend.
 
-`position_start` must be a runtime value. It must not be injected by scanning graph nodes in Go code.
+`position_start` must be a runtime value. `runtime/chat.yml` declares position counters, `value.positions`, and `position_start: state.position`; the remaining contract is a direct RoPE operation input for position starts on every backend.
 
 ## Chat Runtime Requirements
 
-`pkg/chat` must become a command adapter over `pkg/runtime/executor`.
+Chat is implemented by `cmd/chat.go`, `pkg/runtime`, and `runtime/chat.yml`. There is no standalone chat implementation package.
 
-Required changes:
+Required runtime behavior:
 
-1. `Session.Run` only reads and writes terminal streams.
+1. `runtime.Session.Run` only connects terminal streams to a `SessionRunner`.
 2. Generation behavior is loaded from a runtime manifest.
 3. Prompt formatting, tokenization, sampling, stop policies, streaming, KV cache, RoPE position, and graph execution are runtime operations or state objects.
 4. Token-by-token graph execution is a runtime loop.
-5. The hard-coded loop in `ModelGenerator.Generate` is expressed by the runtime program compiler.
+5. Model manifests provide topology, weight, tokenizer, backend, and seed configuration; runtime manifests provide loop behavior.
 
 ## Diffusion Runtime Requirements
 
-`pkg/diffusion` must become a command adapter over `pkg/runtime/executor`.
+Diffusion is implemented by `cmd/image.go`, `pkg/runtime`, and `runtime/diffusion.yml`. There is no standalone diffusion implementation package.
 
 Required runtime features:
 
@@ -307,7 +310,7 @@ Required runtime features:
 - latent checkpointing,
 - seed-controlled reproducibility.
 
-The denoising loop in `Pipeline.Generate` is expressed by the runtime program compiler.
+The denoising loop is expressed by the runtime program compiler and executed through `pkg/runtime/executor`.
 
 ## Training Requirements
 
@@ -374,9 +377,9 @@ Benchmarks must include scalar reference, AVX2, SSE2, NEON, Metal, CUDA, XLA, me
 
 ## Package Implementation Map
 
-Required new packages: `pkg/runtime/program`, `pkg/runtime/compiler`, `pkg/runtime/executor`, `pkg/runtime/state`, `pkg/runtime/op`, `pkg/runtime/io`, `pkg/runtime/sampler`, `pkg/runtime/scheduler`, `pkg/runtime/training`, and `pkg/runtime/inspection`.
+Runtime-owned packages: `pkg/runtime/program`, `pkg/runtime/compiler`, `pkg/runtime/executor`, `pkg/runtime/state`, `pkg/runtime/op`, `pkg/runtime/sampler`, `pkg/runtime/scheduler`, `pkg/runtime/backend`, `pkg/runtime/provenance`, `pkg/runtime/telemetry`, plus required future packages `pkg/runtime/training` and `pkg/runtime/inspection`.
 
-Required package rewrites: `pkg/chat` as a command and terminal adapter over runtime executor; `pkg/diffusion` as a command and image adapter over runtime executor; `pkg/backend/compute/kv` as a strategy-based backend-bound cache system; `pkg/backend/compute/rotary` as the full graph operation and backend kernel surface; `pkg/manifest` as graph plus runtime program compiler; `pkg/backend/compute/orchestrator` as legality checks over operation, state, dtype, layout, and fusion; `pkg/backend/compute/{cpu,metal,cuda,xla}` as complete operation and state contracts.
+Required package rewrites: `cmd/chat.go` as a terminal stream adapter over runtime; `cmd/image.go` as a prompt and artifact adapter over runtime; `pkg/backend/compute/kv` as a strategy-based backend-bound cache system; `pkg/backend/compute/rotary` as the full graph operation and backend kernel surface; `pkg/manifest` as graph plus runtime program compiler; `pkg/backend/compute/orchestrator` as legality checks over operation, state, dtype, layout, and fusion; `pkg/backend/compute/{cpu,metal,cuda,xla}` as complete operation and state contracts.
 
 ## Researcher Definition Of Done
 

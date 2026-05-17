@@ -6,11 +6,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/theapemachine/caramba/pkg/diffusion"
+	runtimepkg "github.com/theapemachine/caramba/pkg/runtime"
 )
 
 var imageOptions = imageCommandOptions{
-	Manifest: diffusion.DefaultManifest,
+	Manifest: runtimepkg.DefaultDiffusionManifest,
 }
 
 var imageCmd = &cobra.Command{
@@ -68,10 +68,10 @@ func runImage(command *cobra.Command, args []string) error {
 		return fmt.Errorf("image: prompt is required")
 	}
 
-	var result diffusion.Result
+	var result runtimepkg.Result
 
 	err := runWithQPoolProgress(command, func() error {
-		pipeline, err := diffusion.NewRuntimeDiffusionPipeline(command.Context(), options.Config())
+		pipeline, err := runtimepkg.NewRuntimeDiffusionPipeline(command.Context(), options.Config())
 
 		if err != nil {
 			return err
@@ -115,8 +115,8 @@ type imageCommandOptions struct {
 	ProvenanceOutput string
 }
 
-func (options imageCommandOptions) Config() diffusion.Config {
-	return diffusion.Config{
+func (options imageCommandOptions) Config() runtimepkg.DiffusionConfig {
+	return runtimepkg.DiffusionConfig{
 		Manifest:        strings.TrimSpace(options.Manifest),
 		RuntimeManifest: strings.TrimSpace(options.RuntimeManifest),
 		Prompt:          strings.TrimSpace(options.Prompt),

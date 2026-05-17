@@ -3,6 +3,7 @@ package qpool
 import (
 	"math"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -57,6 +58,35 @@ func TestResourceGovernorObserveAndThresholds(t *testing.T) {
 
 		So(mem2, ShouldEqual, mem1)
 		So(cpu, ShouldEqual, 0.35)
+	})
+
+	Convey("Observe elects one memory sampler inside the check interval", t, func() {
+		rg := NewResourceGovernorRegulator(0.9, 0.99, time.Second)
+		var calls atomic.Int64
+
+		rg.readMemStats = func(memStats *runtime.MemStats) {
+			calls.Add(1)
+			memStats.Sys = 100
+			memStats.Alloc = 25
+		}
+
+		rg.Observe(&MetricReading{ResourceUtilization: 0.2})
+		rg.Observe(&MetricReading{ResourceUtilization: 0.3})
+
+		cpu, memory := rg.GetResourceUsage()
+
+		So(calls.Load(), ShouldEqual, 1)
+		So(cpu, ShouldEqual, 0.3)
+		So(memory, ShouldEqual, 0.25)
+	})
+
+	Convey("tryStartMemorySample only permits one sampler per timestamp", t, func() {
+		rg := NewResourceGovernorRegulator(0.9, 0.99, time.Second)
+		now := int64(time.Second)
+
+		So(rg.tryStartMemorySample(now), ShouldBeTrue)
+		So(rg.tryStartMemorySample(now), ShouldBeFalse)
+		So(rg.tryStartMemorySample(now+int64(time.Second)), ShouldBeTrue)
 	})
 
 	Convey("GetThresholds returns configured ceilings", t, func() {

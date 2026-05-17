@@ -18,7 +18,7 @@ type QSpace struct {
 	groupsMu sync.RWMutex
 	groups   map[string]*BroadcastGroup
 
-	graphMu sync.RWMutex
+	graphMu  sync.RWMutex
 	children map[string]map[string]struct{}
 	parents  map[string]map[string]struct{}
 
@@ -203,7 +203,7 @@ func (qs *QSpace) AddRelationship(parentID, childID string) error {
 		return fmt.Errorf("qpool: space closed")
 	}
 
-	if qspaceWouldCreateCircle(qs.parents, parentID, childID) {
+	if qspaceWouldCreateCircle(qs.children, parentID, childID) {
 		return fmt.Errorf("qpool: circular dependency detected")
 	}
 
@@ -451,7 +451,7 @@ func qspacePruneEdges(
 }
 
 func qspaceWouldCreateCircle(
-	parents map[string]map[string]struct{},
+	children map[string]map[string]struct{},
 	parentID string,
 	childID string,
 ) bool {
@@ -473,8 +473,8 @@ func qspaceWouldCreateCircle(
 
 		visited[currentID] = struct{}{}
 
-		for nextParentID := range parents[currentID] {
-			stack = append(stack, nextParentID)
+		for nextChildID := range children[currentID] {
+			stack = append(stack, nextChildID)
 		}
 	}
 

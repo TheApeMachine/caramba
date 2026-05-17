@@ -339,3 +339,11 @@ When starting a task on this codebase, read in this order:
 4. The test files for those packages, to understand the existing contract.
 
 Then reason through the task before writing code. If something in the existing code looks wrong, read it carefully before concluding it is wrong — the user is building toward a goal and existing structure is usually load-bearing.
+
+## 10. Ambiguity Resolution
+
+Always keep the following non-negotiable rules in mind.
+
+1. Accuracy and Performance are the primary concerns, always. If we compromise on Accuracy or Performance, there is no point for anyone to use this framework.
+2. You should NOT optimize for the path of least resistance, just to get tests green, or compiler errors resolved. Optimize for Accuracy, Performance, and Maintainability.
+3. If you notice you are drifting to any kind of escape hatch, or less than optimal solution, stop, reconsider, and make better choices.

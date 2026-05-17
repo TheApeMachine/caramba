@@ -82,5 +82,45 @@ func TestCounterIncrement(t *testing.T) {
 			So(Update{}.Execute(stub), ShouldBeNil)
 			So(counter.(*state.Counter).Value(), ShouldEqual, 3)
 		})
+
+		Convey("Execute should prefer inputs.delta when it is supplied", func() {
+			stub.Scope["delta"] = 4
+			stub.StepRef.Config["delta"] = 2
+			stub.StepRef.Inputs = map[string]program.ValueRef{
+				"delta": {Namespace: program.NamespaceLocal, Name: "delta"},
+			}
+
+			So(Update{}.Execute(stub), ShouldBeNil)
+			So(counter.(*state.Counter).Value(), ShouldEqual, 4)
+		})
 	})
+}
+
+func BenchmarkUpdate_CounterDeltaInput(benchmark *testing.B) {
+	stub := optest.NewStubContext()
+	counter, err := state.Default.Build("counter", "position", map[string]any{"initial": 0})
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	stub.States["position"] = counter
+	stub.Scope["delta"] = 4
+	stub.StepRef = program.Step{
+		ID:     "advance",
+		Op:     "state.update",
+		Config: map[string]any{"update": "increment"},
+		Inputs: map[string]program.ValueRef{
+			"delta": {Namespace: program.NamespaceLocal, Name: "delta"},
+		},
+		Outputs: map[string]program.ValueRef{
+			"target": {Namespace: program.NamespaceState, Name: "position"},
+		},
+	}
+
+	for benchmark.Loop() {
+		if err := (Update{}).Execute(stub); err != nil {
+			benchmark.Fatal(err)
+		}
+	}
 }

@@ -152,6 +152,10 @@ func (registry OperationRegistry) RoPE(*state.Dict) (state.Operation, error) {
 	return nil, xlaOptimizerUnavailable()
 }
 
+func (registry OperationRegistry) Laplacian(*state.Dict) (state.Operation, error) {
+	return nil, xlaOptimizerUnavailable()
+}
+
 func (registry OperationRegistry) ALiBi(*state.Dict) (state.Operation, error) {
 	return nil, xlaOptimizerUnavailable()
 }

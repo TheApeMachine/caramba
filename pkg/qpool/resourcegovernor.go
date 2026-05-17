@@ -20,6 +20,7 @@ type ResourceGovernorRegulator struct {
 	lastReading             atomic.Pointer[MetricReading]
 	lastRenormalizeUnixNano atomic.Int64
 	lastMemSampleUnixNano   atomic.Int64
+	readMemStats            func(*runtime.MemStats)
 }
 
 /*
@@ -30,6 +31,7 @@ func NewResourceGovernorRegulator(maxCPUPercent, maxMemoryPercent float64, check
 		maxCPUPercent:    maxCPUPercent,
 		maxMemoryPercent: maxMemoryPercent,
 		checkIntervalNs:  checkInterval.Nanoseconds(),
+		readMemStats:     runtime.ReadMemStats,
 	}
 }
 
@@ -49,19 +51,13 @@ func (rg *ResourceGovernorRegulator) Observe(reading *MetricReading) {
 
 	now := time.Now().UnixNano()
 
-	if rg.checkIntervalNs > 0 {
-		lastMem := rg.lastMemSampleUnixNano.Load()
-
-		if lastMem != 0 && now-lastMem < rg.checkIntervalNs {
-			return
-		}
-
-		rg.lastMemSampleUnixNano.Store(now)
+	if !rg.tryStartMemorySample(now) {
+		return
 	}
 
 	var memStats runtime.MemStats
 
-	runtime.ReadMemStats(&memStats)
+	rg.readRuntimeMemStats(&memStats)
 
 	totalMemory := float64(memStats.Sys)
 	if totalMemory <= 0 {
@@ -70,6 +66,30 @@ func (rg *ResourceGovernorRegulator) Observe(reading *MetricReading) {
 
 	usedMemory := float64(memStats.Alloc)
 	rg.currentMemory.Store(math.Float64bits(usedMemory / totalMemory))
+}
+
+func (rg *ResourceGovernorRegulator) tryStartMemorySample(now int64) bool {
+	if rg.checkIntervalNs <= 0 {
+		return true
+	}
+
+	lastMem := rg.lastMemSampleUnixNano.Load()
+
+	if lastMem != 0 && now-lastMem < rg.checkIntervalNs {
+		return false
+	}
+
+	return rg.lastMemSampleUnixNano.CompareAndSwap(lastMem, now)
+}
+
+func (rg *ResourceGovernorRegulator) readRuntimeMemStats(memStats *runtime.MemStats) {
+	if rg.readMemStats == nil {
+		runtime.ReadMemStats(memStats)
+
+		return
+	}
+
+	rg.readMemStats(memStats)
 }
 
 /*

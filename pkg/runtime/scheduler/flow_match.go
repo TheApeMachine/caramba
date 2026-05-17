@@ -10,9 +10,8 @@ import (
 
 /*
 FlowMatchEuler implements op.SchedulerRunner for the discrete
-flow-match Euler scheduler. It mirrors the math of the standalone
-scheduler in pkg/diffusion but is owned by the runtime so the
-diffusion package can be slimmed down to an adapter.
+flow-match Euler scheduler used by manifest-declared diffusion
+programs.
 
 State is cached per scheduler-id so Timesteps and Step share the same
 sigma schedule; cache entries are rebuilt when the declared config

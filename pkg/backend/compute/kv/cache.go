@@ -26,6 +26,15 @@ type Entry struct {
 }
 
 /*
+Snapshot is a serializable view of the cache contents.
+*/
+type Snapshot struct {
+	Epoch    uint64
+	Capacity int
+	Entries  map[string]Entry
+}
+
+/*
 NewCache instantiates an empty decoder KV cache.
 */
 func NewCache() *Cache {
@@ -100,6 +109,83 @@ func (cache *Cache) Epoch() uint64 {
 	defer cache.mu.Unlock()
 
 	return cache.epoch
+}
+
+/*
+Snapshot copies every cache entry into a serializable value.
+*/
+func (cache *Cache) Snapshot() (Snapshot, error) {
+	if cache == nil {
+		return Snapshot{}, fmt.Errorf("kv cache: cache is required")
+	}
+
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	entries := make(map[string]Entry, len(cache.entries))
+
+	for nodeID, entry := range cache.entries {
+		if entry == nil {
+			continue
+		}
+
+		entries[nodeID] = Entry{
+			Shape: append([]int(nil), entry.Shape...),
+			Key:   append([]float64(nil), entry.Key...),
+			Value: append([]float64(nil), entry.Value...),
+		}
+	}
+
+	return Snapshot{
+		Epoch:    cache.epoch,
+		Capacity: cache.capacity,
+		Entries:  entries,
+	}, nil
+}
+
+/*
+Restore replaces the cache contents with a prior snapshot.
+*/
+func (cache *Cache) Restore(snapshot Snapshot) error {
+	if cache == nil {
+		return fmt.Errorf("kv cache: cache is required")
+	}
+
+	entries := make(map[string]*Entry, len(snapshot.Entries))
+
+	for nodeID, entry := range snapshot.Entries {
+		if len(entry.Shape) != 0 && len(entry.Shape) != 4 {
+			return fmt.Errorf("kv cache: snapshot entry %q rank %d != 4", nodeID, len(entry.Shape))
+		}
+
+		entries[nodeID] = &Entry{
+			Shape: append([]int(nil), entry.Shape...),
+			Key:   append([]float64(nil), entry.Key...),
+			Value: append([]float64(nil), entry.Value...),
+		}
+	}
+
+	cache.mu.Lock()
+	cache.epoch = snapshot.Epoch
+	cache.capacity = snapshot.Capacity
+	cache.entries = entries
+	cache.mu.Unlock()
+
+	return nil
+}
+
+/*
+EntryCount returns the number of attention-node entries currently stored.
+*/
+func (cache *Cache) EntryCount() int {
+	if cache == nil {
+		return 0
+	}
+
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+
+	return len(cache.entries)
 }
 
 /*

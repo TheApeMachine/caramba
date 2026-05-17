@@ -23,6 +23,7 @@ system:
     state:
       history: { type: token_buffer }
       kv: { type: kv_cache, capacity: 4096 }
+      position: { type: counter, initial: 0 }
       stream: { type: token_stream }
     samplers:
       main:
@@ -112,15 +113,39 @@ system:
             op: control.loop_count
             count: 128
             body:
+              - id: make_position_ids
+                op: value.positions
+                inputs:
+                  start: state.position
+                  tokens: input_ids
+                outputs:
+                  positions: position_ids
+
+              - id: measure_input
+                op: value.length
+                inputs:
+                  value: input_ids
+                outputs:
+                  length: input_token_count
+
               - id: forward
                 op: graph.call
                 graph: forward
                 inputs:
                   input_ids: input_ids
+                  position_ids: position_ids
+                  position_start: state.position
                   history: state.history
                   kv_cache: state.kv
                 outputs:
                   logits: logits
+
+              - id: advance_position
+                op: state.update
+                update: increment
+                inputs:
+                  delta: input_token_count
+                target: state.position
 
               - id: sample
                 op: sampler.next_token

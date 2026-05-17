@@ -5,11 +5,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	chatpkg "github.com/theapemachine/caramba/pkg/chat"
+	runtimepkg "github.com/theapemachine/caramba/pkg/runtime"
 )
 
 var chatOptions = chatCommandOptions{
-	Manifest: chatpkg.DefaultModelManifest,
+	Manifest: runtimepkg.DefaultModelManifest,
 }
 
 var chatCmd = &cobra.Command{
@@ -45,7 +45,7 @@ func init() {
 
 func runChat(command *cobra.Command, _ []string) error {
 	return runWithQPoolProgress(command, func() error {
-		generator, err := chatpkg.NewRuntimeModelGenerator(
+		generator, err := runtimepkg.NewRuntimeModelGenerator(
 			command.Context(), chatOptions.ModelConfig(),
 		)
 
@@ -53,17 +53,11 @@ func runChat(command *cobra.Command, _ []string) error {
 			return err
 		}
 
-		session := chatpkg.NewSession(
+		session := runtimepkg.NewSession(
 			command.Context(),
 			command.InOrStdin(),
 			command.OutOrStdout(),
 			generator,
-			chatpkg.SessionConfig{
-				Runtime:    "model",
-				Backend:    generator.BackendName(),
-				Model:      generator.ModelName(),
-				ShowBanner: true,
-			},
 		)
 
 		if err := session.Run(); err != nil {
@@ -84,8 +78,8 @@ type chatCommandOptions struct {
 	ProvenanceOutput string
 }
 
-func (options chatCommandOptions) ModelConfig() chatpkg.ModelConfig {
-	return chatpkg.ModelConfig{
+func (options chatCommandOptions) ModelConfig() runtimepkg.ModelConfig {
+	return runtimepkg.ModelConfig{
 		Manifest:        strings.TrimSpace(options.Manifest),
 		RuntimeManifest: strings.TrimSpace(options.RuntimeManifest),
 	}

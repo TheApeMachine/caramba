@@ -158,6 +158,10 @@ func (registry OperationRegistry) RoPE(*state.Dict) (state.Operation, error) {
 	return &RoPE{positional: NewPositional()}, nil
 }
 
+func (registry OperationRegistry) Laplacian(*state.Dict) (state.Operation, error) {
+	return &Laplacian{physics: NewPhysics()}, nil
+}
+
 func (registry OperationRegistry) ALiBi(*state.Dict) (state.Operation, error) {
 	return &ALiBi{positional: NewPositional()}, nil
 }
@@ -830,6 +834,41 @@ func (lastToken *LastToken) Forward(stateDict *state.Dict) (*state.Dict, error) 
 
 type RoPE struct{ positional *CUDAPositionalOps }
 type ALiBi struct{ positional *CUDAPositionalOps }
+type Laplacian struct{ physics *CUDAPhysicsOps }
+
+func (laplacian *Laplacian) Forward(stateDict *state.Dict) (*state.Dict, error) {
+	if err := stateDict.RequireOperation("cuda.physics.laplacian"); err != nil {
+		return nil, err
+	}
+
+	shape := stateDict.OperationShape()
+
+	if len(shape) < 1 || len(shape) > 3 {
+		return nil, fmt.Errorf(
+			"cuda.physics.laplacian: input rank must be 1, 2, or 3 (got %d)",
+			len(shape),
+		)
+	}
+
+	spacing := stateDict.Spacing
+
+	if !(spacing > 0) {
+		spacing = 1.0
+	}
+
+	if stateDict.Boundary != "" && stateDict.Boundary != "periodic" {
+		return nil, fmt.Errorf(
+			"cuda.physics.laplacian: only \"periodic\" boundary supported in v1 (got %q)",
+			stateDict.Boundary,
+		)
+	}
+
+	invH2 := 1.0 / (spacing * spacing)
+
+	output, err := laplacian.physics.Laplacian(shape, invH2, stateDict.Inputs[0])
+
+	return setCUDAOutput(stateDict, output, err)
+}
 
 func (rope *RoPE) Forward(stateDict *state.Dict) (*state.Dict, error) {
 	if err := stateDict.RequireOperation("cuda.positional.rope"); err != nil {

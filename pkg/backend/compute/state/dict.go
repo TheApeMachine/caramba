@@ -69,6 +69,8 @@ type Dict struct {
 	SkipSpecialTokens   bool
 	HistSize            int
 	C1                  float64
+	Spacing             float64
+	Boundary            string
 	Dim                 int
 	Dim0                int
 	Dim1                int

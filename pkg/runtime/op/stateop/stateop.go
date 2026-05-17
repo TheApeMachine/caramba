@@ -171,16 +171,10 @@ func updateCounter(
 ) error {
 	switch update {
 	case "", "increment":
-		delta := 1
+		delta, err := counterDelta(execContext, config)
 
-		if raw, ok := config["delta"]; ok {
-			value, err := asInt(raw)
-
-			if err != nil {
-				return fmt.Errorf("state.update: counter delta: %w", err)
-			}
-
-			delta = value
+		if err != nil {
+			return err
 		}
 
 		counter.Increment(delta)
@@ -211,6 +205,38 @@ func updateCounter(
 	}
 
 	return fmt.Errorf("state.update: counter does not support update %q", update)
+}
+
+func counterDelta(execContext op.Context, config map[string]any) (int, error) {
+	if valueRef, ok := execContext.Step().Inputs["delta"]; ok {
+		raw, err := execContext.Resolve(valueRef)
+
+		if err != nil {
+			return 0, err
+		}
+
+		value, err := asInt(raw)
+
+		if err != nil {
+			return 0, fmt.Errorf("state.update: counter delta: %w", err)
+		}
+
+		return value, nil
+	}
+
+	raw, ok := config["delta"]
+
+	if !ok {
+		return 1, nil
+	}
+
+	value, err := asInt(raw)
+
+	if err != nil {
+		return 0, fmt.Errorf("state.update: counter delta: %w", err)
+	}
+
+	return value, nil
 }
 
 func asInt(value any) (int, error) {

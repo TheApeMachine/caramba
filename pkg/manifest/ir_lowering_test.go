@@ -136,6 +136,36 @@ func TestLowerGraphToIR(t *testing.T) {
 		})
 	})
 
+	Convey("Given a logsumexp-shaped manifest graph", t, func() {
+		graph := newGraph()
+		graph.externalInputs["energy"] = true
+		So(graph.addNode(&Node{
+			ID:     "log_partition",
+			OpID:   "math.logsumexp",
+			Config: map[string]any{},
+			In:     []string{"energy"},
+			Out:    []string{"z"},
+		}), ShouldBeNil)
+		So(graph.rebuildEdgesFromNodes(), ShouldBeNil)
+
+		shape, err := tensor.NewShape([]int{2, 3, 5})
+		So(err, ShouldBeNil)
+
+		Convey("It should reduce the last dimension", func() {
+			irGraph, err := LowerGraphToIR(graph, shape)
+
+			So(err, ShouldBeNil)
+
+			index, err := irGraph.Index()
+			So(err, ShouldBeNil)
+
+			node := index.Node("log_partition")
+
+			So(node.Shape().Dims(), ShouldResemble, []int{2, 3})
+			So(node.Metadata()["op_shape"], ShouldResemble, []int{2, 3, 5})
+		})
+	})
+
 	Convey("Given a manifest graph with multiple input shapes", t, func() {
 		graph := newGraph()
 		graph.externalInputs["left"] = true

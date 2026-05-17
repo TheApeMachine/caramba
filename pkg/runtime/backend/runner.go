@@ -24,10 +24,9 @@ so repeated calls reuse a single compile. The IR graph itself is
 rebuilt per call because input shapes can vary between iterations.
 
 WeightBinder and PreExecute hooks let callers add policy on top of
-the bridge without forking the runner. The chat adapter installs a
-WeightBinder to bind model parameters and a PreExecute hook for
-KV-cache and RoPE-position metadata injection until those become
-first-class runtime state types.
+the bridge without forking the runner. Runtime model adapters use
+them to bind parameters and attach graph-declared state inputs such
+as KV-cache and RoPE position metadata.
 */
 type GraphRunner struct {
 	compute          *compute.Backend
@@ -52,8 +51,7 @@ type WeightBinder func(irGraph *ir.Graph, module program.GraphModule) error
 /*
 PreExecuteHook runs after input binding and weight binding, just
 before the backend executes the IR. It is the slot for per-call
-metadata injection — currently used by chat to attach KV-cache
-pointers and RoPE position offsets onto the appropriate nodes.
+metadata injection driven by graph.call inputs.
 */
 type PreExecuteHook func(irGraph *ir.Graph, inputs map[string]any) error
 
@@ -109,9 +107,7 @@ func New(options Options) (*GraphRunner, error) {
 
 /*
 Preload caches a manifest.Graph by key so subsequent Call invocations
-that reference the same key skip disk lookup and compilation. This
-is the entry point chat uses to register manifests loaded from
-embedded assets.
+that reference the same key skip disk lookup and compilation.
 */
 func (graphRunner *GraphRunner) Preload(key string, graph *manifest.Graph) {
 	graphRunner.mu.Lock()

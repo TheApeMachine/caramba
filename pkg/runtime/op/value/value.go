@@ -276,5 +276,7 @@ func init() {
 	op.Default.MustRegister("value.append", Append{})
 	op.Default.MustRegister("value.clear", Clear{})
 	op.Default.MustRegister("value.slice", Slice{})
+	op.Default.MustRegister("value.length", Length{})
+	op.Default.MustRegister("value.positions", Positions{})
 	op.Default.MustRegister("value.equals", Equals{})
 }

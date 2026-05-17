@@ -27,6 +27,7 @@ Operating on the core philosophy that **a manifest is a model**, Caramba allows 
   - [x] Shape (reshape, transpose, concat, split, view_as_heads, merge_heads, last_token, nearest upsample)
   - [x] Masking (causal mask, apply mask)
   - [x] Active Inference (free energy, expected free energy, belief update, precision weighting)
+  - [x] Energy-Based Model Blocks (Boltzmann distribution, EBM free energy, Langevin step, contrastive phase)
   - [x] Causal Inference (do-calculus, backdoor, frontdoor, CATE, IV, counterfactual, DAG factorization)
   - [x] Hawkes Process (intensity, kernel matrix, simulate, log-likelihood)
   - [x] Markov Blanket (partition, mutual information, internal/active flow)
@@ -136,14 +137,14 @@ Backend kernels upload values once into a resident tensor store and only downloa
 ## 💾 Repository layout
 
 ```
-cmd/                Cobra CLI: serve, chat, research
+cmd/                Cobra CLI: serve, chat, image, research
   asset/config.yml  The single config source
 pkg/
   manifest/         YAML → IR compiler, registry, lowering
+  runtime/          Manifest runtime programs, state, ops, schedulers, graph bridge
   backend/
     compute/        Runner interface + cpu/, cuda/, metal/, xla/
     api/            HTTP server
-  chat/             Streaming chat session, sampling, KV cache
   hub/              Hugging Face cache, Xet CAS
   tokenizer/        ByteLevel BPE
   model/            Weight binding, SafeTensors loader

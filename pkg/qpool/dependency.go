@@ -72,12 +72,12 @@ func (q *Q) recordDependencyFailure(job Job, err error) {
 	q.space.StoreError(job.ID, err, job.TTL)
 }
 
-func (q *Q) waitDependencies(workerCtx context.Context, job Job) error {
+func (q *Q) waitDependencies(dependencyCtx context.Context, job Job) error {
 	if len(job.Dependencies) == 0 {
 		return nil
 	}
 
-	errGroup, errGroupCtx := errgroup.WithContext(workerCtx)
+	errGroup, errGroupCtx := errgroup.WithContext(dependencyCtx)
 
 	for _, dependencyID := range job.Dependencies {
 		dependencyID := dependencyID
@@ -119,7 +119,7 @@ func dependencyAwaitTimeout(policy *RetryPolicy, strategy RetryStrategy) time.Du
 }
 
 func (q *Q) waitOneDependency(
-	workerCtx context.Context,
+	dependencyCtx context.Context,
 	job Job,
 	dependencyID string,
 ) error {
@@ -139,7 +139,7 @@ func (q *Q) waitOneDependency(
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		resultChannel := q.space.Await(dependencyID)
-		waitCtx, cancel := context.WithTimeout(workerCtx, awaitTimeout)
+		waitCtx, cancel := context.WithTimeout(dependencyCtx, awaitTimeout)
 
 		select {
 		case result := <-resultChannel:
@@ -165,7 +165,7 @@ func (q *Q) waitOneDependency(
 			lastErr = waitCtx.Err()
 			cancel()
 
-			if err := workerCtx.Err(); err != nil {
+			if err := dependencyCtx.Err(); err != nil {
 				return fmt.Errorf("dependency %s: %w", dependencyID, err)
 			}
 
