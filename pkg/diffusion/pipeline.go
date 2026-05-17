@@ -3,6 +3,7 @@ package diffusion
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"strings"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/theapemachine/caramba/pkg/qpool"
 	"github.com/theapemachine/caramba/pkg/tokenizer"
 )
+
+const fluxVAEBatchNormEpsilon = 0.0001
 
 type Pipeline struct {
 	config             Config
@@ -485,7 +488,18 @@ func (pipeline *Pipeline) decodeLatents(
 		return RGBImage{}, err
 	}
 
-	if err := bindInputValues(index, "latents", latents); err != nil {
+	decodeInput, err := denormalizePackedLatents(
+		pipeline.vaeWeights,
+		latents,
+		pipeline.config.Generation.LatentChannels,
+		fluxVAEBatchNormEpsilon,
+	)
+
+	if err != nil {
+		return RGBImage{}, err
+	}
+
+	if err := bindInputValues(index, "latents", decodeInput); err != nil {
 		return RGBImage{}, err
 	}
 
@@ -636,6 +650,73 @@ func closeOutputs(outputs map[string]tensor.Float64Tensor) {
 			_ = output.Close()
 		}
 	}
+}
+
+func denormalizePackedLatents(
+	store *modelweights.Store,
+	latents []float64,
+	channels int,
+	epsilon float64,
+) ([]float64, error) {
+	if store == nil || !store.Has("bn.running_mean") && !store.Has("bn.running_var") {
+		return latents, nil
+	}
+
+	if channels <= 0 {
+		return nil, fmt.Errorf("diffusion: latent channel count must be positive")
+	}
+
+	if len(latents)%channels != 0 {
+		return nil, fmt.Errorf(
+			"diffusion: packed latent length %d is not divisible by channels %d",
+			len(latents),
+			channels,
+		)
+	}
+
+	if !store.Has("bn.running_mean") {
+		return nil, fmt.Errorf("diffusion: VAE bn.running_mean tensor is required")
+	}
+
+	if !store.Has("bn.running_var") {
+		return nil, fmt.Errorf("diffusion: VAE bn.running_var tensor is required")
+	}
+
+	runningMean, err := store.Values("bn.running_mean")
+
+	if err != nil {
+		return nil, err
+	}
+
+	runningVariance, err := store.Values("bn.running_var")
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(runningMean) != channels || len(runningVariance) != channels {
+		return nil, fmt.Errorf(
+			"diffusion: VAE BN tensors must have %d channels, got mean=%d var=%d",
+			channels,
+			len(runningMean),
+			len(runningVariance),
+		)
+	}
+
+	out := make([]float64, len(latents))
+
+	for index, latent := range latents {
+		channel := index % channels
+		variance := runningVariance[channel] + epsilon
+
+		if variance < 0 {
+			return nil, fmt.Errorf("diffusion: VAE BN variance at channel %d is negative", channel)
+		}
+
+		out[index] = latent*math.Sqrt(variance) + runningMean[channel]
+	}
+
+	return out, nil
 }
 
 func fitTokenIDs(tokenIDs []int, length int, padTokenID int) []int {

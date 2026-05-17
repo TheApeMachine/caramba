@@ -206,6 +206,35 @@ kernel void docalc_extract_kernel(
     }
 }
 
+kernel void docalc_full_extract_kernel(
+    device const float* cov [[buffer(0)]],
+    device const float* mask [[buffer(1)]],
+    device const float* values [[buffer(2)]],
+    device float* sigII [[buffer(3)]],
+    device float* sigFI [[buffer(4)]],
+    device float* sigFF [[buffer(5)]],
+    device float* sigIF [[buffer(6)]],
+    device float* xInt [[buffer(7)]],
+    constant int& N [[buffer(8)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid != 0) return;
+
+    for (int row = 0; row < N; row++) {
+        bool rowIntervened = mask[row] != 0.f;
+        xInt[row] = rowIntervened ? values[row] : 0.f;
+
+        for (int col = 0; col < N; col++) {
+            bool colIntervened = mask[col] != 0.f;
+            float value = cov[row * N + col];
+            sigII[row * N + col] = rowIntervened && colIntervened ? value : (row == col ? 1.f : 0.f);
+            sigFI[row * N + col] = !rowIntervened && colIntervened ? value : 0.f;
+            sigFF[row * N + col] = !rowIntervened && !colIntervened ? value : 0.f;
+            sigIF[row * N + col] = rowIntervened && !colIntervened ? value : 0.f;
+        }
+    }
+}
+
 kernel void docalc_assemble_kernel(
     device float* out [[buffer(0)]],
     device const float* values [[buffer(1)]],
@@ -235,6 +264,32 @@ kernel void docalc_assemble_kernel(
         adjMean[freev[k]] = delta[k];
         for (int c = 0; c < nf; c++) {
             adjCov[freev[k] * N + freev[c]] = sigFF[k * nf + c] - correction[k * nf + c];
+        }
+    }
+}
+
+kernel void docalc_full_assemble_kernel(
+    device float* out [[buffer(0)]],
+    device const float* mask [[buffer(1)]],
+    device const float* values [[buffer(2)]],
+    device const float* delta [[buffer(3)]],
+    device const float* sigFF [[buffer(4)]],
+    device const float* correction [[buffer(5)]],
+    constant int& N [[buffer(6)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid != 0) return;
+
+    device float* adjMean = out;
+    device float* adjCov = out + N;
+
+    for (int row = 0; row < N; row++) {
+        bool rowIntervened = mask[row] != 0.f;
+        adjMean[row] = rowIntervened ? values[row] : delta[row];
+
+        for (int col = 0; col < N; col++) {
+            bool colIntervened = mask[col] != 0.f;
+            adjCov[row * N + col] = rowIntervened || colIntervened ? 0.f : sigFF[row * N + col] - correction[row * N + col];
         }
     }
 }
@@ -275,7 +330,7 @@ kernel void backdoor_effect_kernel(
     if (gid >= (uint)ny) return;
     float eff = 0.f;
     for (int xDim = 0; xDim < nx; xDim++) {
-        float b = beta[gid * p + 1 + xDim];
+        float b = beta[(1 + xDim) * ny + gid];
         eff += (b >= 0.f) ? b : -b;
     }
     effect[gid] = eff / (float)nx;
@@ -326,6 +381,31 @@ kernel void cate_effect_kernel(
     uint gid [[thread_position_in_grid]])
 {
     if (gid >= (uint)T) return;
+    float p1 = b1[0];
+    float p0 = b0[0];
+    for (int j = 0; j < nx; j++) {
+        float xv = X[gid * nx + j];
+        p1 += b1[1 + j] * xv;
+        p0 += b0[1 + j] * xv;
+    }
+    cate[gid] = p1 - p0;
+}
+
+kernel void cate_effect_counted_kernel(
+    device const float* X [[buffer(0)]],
+    device const float* b1 [[buffer(1)]],
+    device const float* b0 [[buffer(2)]],
+    device const int* counts [[buffer(3)]],
+    device float* cate [[buffer(4)]],
+    constant int& T [[buffer(5)]],
+    constant int& nx [[buffer(6)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid >= (uint)T) return;
+    if (counts[0] == 0 || counts[1] == 0) {
+        cate[gid] = NAN;
+        return;
+    }
     float p1 = b1[0];
     float p0 = b0[0];
     for (int j = 0; j < nx; j++) {
@@ -561,6 +641,30 @@ kernel void dag_markov_prep_kernel(
     counts[0] = np;
 }
 
+kernel void dag_markov_full_prep_kernel(
+    device const float* X [[buffer(0)]],
+    device const float* adj [[buffer(1)]],
+    device float* pMat [[buffer(2)]],
+    device float* nodeVals [[buffer(3)]],
+    constant int& T [[buffer(4)]],
+    constant int& N [[buffer(5)]],
+    constant int& nodeIdx [[buffer(6)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid != 0) return;
+    int p = N + 1;
+
+    for (int observation = 0; observation < T; observation++) {
+        pMat[observation * p] = 1.f;
+        nodeVals[observation] = X[observation * N + nodeIdx];
+
+        for (int parent = 0; parent < N; parent++) {
+            float keep = adj[nodeIdx * N + parent] != 0.f ? 1.f : 0.f;
+            pMat[observation * p + 1 + parent] = keep * X[observation * N + parent];
+        }
+    }
+}
+
 kernel void dag_markov_sigma2_kernel(
     device const float* pMat [[buffer(0)]],
     device const float* nodeVals [[buffer(1)]],
@@ -618,5 +722,38 @@ kernel void dag_markov_score_kernel(
         float diff = xVal - pred;
         logP += -0.5f * log(2.f * pi * s2) - 0.5f * diff * diff / s2;
     }
+    log_prob[gid] = logP;
+}
+
+kernel void dag_markov_full_score_kernel(
+    device const float* X [[buffer(0)]],
+    device const float* adj [[buffer(1)]],
+    device const float* betas [[buffer(2)]],
+    device const float* sigma2 [[buffer(3)]],
+    device float* log_prob [[buffer(4)]],
+    constant int& T [[buffer(5)]],
+    constant int& N [[buffer(6)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid >= (uint)T) return;
+    float logP = 0.f;
+    const float pi = 3.14159265f;
+
+    for (int nodeIdx = 0; nodeIdx < N; nodeIdx++) {
+        float s2 = sigma2[nodeIdx];
+        float xVal = X[gid * N + nodeIdx];
+        device const float* beta = betas + nodeIdx * (N + 1);
+        float pred = beta[0];
+
+        for (int parent = 0; parent < N; parent++) {
+            if (adj[nodeIdx * N + parent] != 0.f) {
+                pred += beta[1 + parent] * X[gid * N + parent];
+            }
+        }
+
+        float diff = xVal - pred;
+        logP += -0.5f * log(2.f * pi * s2) - 0.5f * diff * diff / s2;
+    }
+
     log_prob[gid] = logP;
 }

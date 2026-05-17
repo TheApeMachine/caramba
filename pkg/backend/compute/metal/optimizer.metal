@@ -188,6 +188,22 @@ kernel void scale(
 	if (index < count) out[index] *= factor;
 }
 
+kernel void scale_by_norm_limit(
+	device float *out [[buffer(0)]],
+	device const float *norm_square [[buffer(1)]],
+	constant uint &count [[buffer(2)]],
+	constant float &max_norm [[buffer(3)]],
+	uint index [[thread_position_in_grid]])
+{
+	if (index >= count || max_norm <= 0.0f) return;
+
+	float norm = sqrt(norm_square[0]);
+
+	if (norm <= max_norm || norm <= 0.0f) return;
+
+	out[index] *= max_norm / norm;
+}
+
 kernel void lars_norms(
 	device const float *params [[buffer(0)]],
 	device const float *grads [[buffer(1)]],

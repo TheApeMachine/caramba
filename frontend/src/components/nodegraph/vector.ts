@@ -71,8 +71,12 @@ edgePathsTexture.minFilter = THREE.NearestFilter;
 edgePathsTexture.magFilter = THREE.NearestFilter;
 edgePathsTexture.needsUpdate = true;
 
-export const NODE_W = 240;
-export const NODE_H = 140;
+/* Node body dimensions in world units. Multiples of 2*GRID_STEP so a
+   centre-snapped node has all four edges on grid lines. 320×320 = 4×4
+   grid cells; internal header/footer dividers (at UV.y 0.75 / 0.25) also
+   sit on grid lines, giving an 80/160/80 (1/2/1 cell) band layout. */
+export const NODE_W = 320;
+export const NODE_H = 320;
 export const PORT_RADIUS = 6;
 
 /* World-unit grid step. Matches the minor grid line spacing painted by
@@ -90,8 +94,8 @@ centre. Ports are distributed evenly along the band with PORT_BAND_PAD at
 top and bottom so a single port lands near vertical centre and adjacent
 ports never crowd the dividers.
 */
-const BODY_TOP_UV = 0.78;
-const BODY_BOT_UV = 0.16;
+const BODY_TOP_UV = 0.75;
+const BODY_BOT_UV = 0.25;
 export const PORT_BAND_Y_MAX = (BODY_TOP_UV - 0.5) * NODE_H;
 export const PORT_BAND_Y_MIN = (BODY_BOT_UV - 0.5) * NODE_H;
 const CARD_HALF_W = NODE_W * 0.495;

@@ -55,20 +55,35 @@ int metal_causal_matvec(float *dst, const float *W, const float *x, int rows, in
 int metal_causal_do_calculus(
     const float *cov, const float *mask, const float *values,
     float *out, int N);
+int metal_causal_do_calculus_tensor(
+    const void *cov, const void *mask, const void *values,
+    void *out, int N);
 
 int metal_causal_backdoor(
     const float *Y, const float *X, const float *Z,
     float *effect,
+    int T, int ny, int nx, int nz);
+int metal_causal_backdoor_tensor(
+    const void *Y, const void *X, const void *Z,
+    void *effect,
     int T, int ny, int nx, int nz);
 
 int metal_causal_iv(
     const float *Z, const float *X, const float *Y,
     float *beta_iv,
     int T, int nz, int nx, int ny);
+int metal_causal_iv_tensor(
+    const void *Z, const void *X, const void *Y,
+    void *beta_iv,
+    int T, int nz, int nx, int ny);
 
 int metal_causal_cate(
     const float *X, const float *treatment, const float *Y,
     float *cate,
+    int T, int nx);
+int metal_causal_cate_tensor(
+    const void *X, const void *treatment, const void *Y,
+    void *cate,
     int T, int nx);
 
 // Counterfactual linear SCM for scalar observations.
@@ -99,6 +114,10 @@ int metal_causal_frontdoor_tensor(
 int metal_causal_dag_markov(
     const float *X, const float *adj,
     float *log_prob,
+    int T, int N);
+int metal_causal_dag_markov_tensor(
+    const void *X, const void *adj,
+    void *log_prob,
     int T, int N);
 
 #ifdef __cplusplus

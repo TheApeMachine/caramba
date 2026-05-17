@@ -22,20 +22,10 @@ system:
         op: shape.reshape
         in: [latents]
         out: [unpack_grid]
-        config: { shape: [1, 64, 64, 2, 2, 32] }
-      - id: vae.unpack.t45
-        op: shape.transpose
-        in: [unpack_grid]
-        out: [unpack_t45]
-        config: { dim0: 4, dim1: 5 }
-      - id: vae.unpack.t34
-        op: shape.transpose
-        in: [unpack_t45]
-        out: [unpack_t34]
-        config: { dim0: 3, dim1: 4 }
+        config: { shape: [1, 64, 64, 32, 2, 2] }
       - id: vae.unpack.t23
         op: shape.transpose
-        in: [unpack_t34]
+        in: [unpack_grid]
         out: [unpack_t23]
         config: { dim0: 2, dim1: 3 }
       - id: vae.unpack.t12
@@ -43,14 +33,14 @@ system:
         in: [unpack_t23]
         out: [unpack_t12]
         config: { dim0: 1, dim1: 2 }
-      - id: vae.unpack.t34.final
+      - id: vae.unpack.t34
         op: shape.transpose
         in: [unpack_t12]
-        out: [unpack_t34_final]
+        out: [unpack_t34]
         config: { dim0: 3, dim1: 4 }
       - id: vae.unpack.latent
         op: shape.reshape
-        in: [unpack_t34_final]
+        in: [unpack_t34]
         out: [latent_image]
         config: { shape: [1, 32, 128, 128] }
 

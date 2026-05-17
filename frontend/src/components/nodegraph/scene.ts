@@ -30,14 +30,15 @@ const PREVIEW_BLEND_RATE = 4.0;
 const UNFOLD_DURATION_MS = 700;
 
 /*
-Body band inside the card shader: header occupies y >= 0.78, footer y < 0.14.
-Body centre maps to NODE_H * (0.46 - 0.5) = -0.04 * NODE_H in world units.
-The body window is the rectangle the compact sub-graph layout has to fit
-into, expressed in world coordinates relative to the card's centre.
+Body band inside the card shader: header at UV.y >= 0.75, footer at UV.y
+< 0.25 — symmetric 1/2/1-cell layout. Body centre sits at the card's
+centre (UV.y 0.5), so BODY_WINDOW_CY is zero. The window is the
+rectangle a compact sub-graph layout has to fit into, expressed in
+world coordinates relative to the card's centre.
 */
 const BODY_WINDOW_W = NODE_W * (1 - 2 * 0.10);
-const BODY_WINDOW_H = NODE_H * (0.78 - 0.14) * 0.85;
-const BODY_WINDOW_CY = (0.46 - 0.5) * NODE_H;
+const BODY_WINDOW_H = NODE_H * (0.75 - 0.25) * 0.85;
+const BODY_WINDOW_CY = 0;
 
 /*
 The portal transition lives in a single shared coordinate frame for both
@@ -113,6 +114,8 @@ export type SceneHandle = {
 	renderer: THREE.WebGLRenderer;
 	canvas: HTMLCanvasElement;
 	worldFromScreen: (sx: number, sy: number) => [number, number];
+	screenFromWorld: (wx: number, wy: number) => [number, number];
+	getCameraZoom: () => number;
 	pickNode: (sx: number, sy: number) => number;
 	pickPort: (sx: number, sy: number) => PortRef | null;
 	setRubber: (
@@ -509,6 +512,8 @@ export function setupScene(container: HTMLElement): SceneHandle {
 
 	const worldFromScreen = (sx: number, sy: number) =>
 		camera.worldFromScreen(sx, sy, renderer.domElement);
+	const screenFromWorld = (wx: number, wy: number) =>
+		camera.screenFromWorld(wx, wy, renderer.domElement);
 
 	const dispose = () => {
 		cancelAnimationFrame(raf);
@@ -533,6 +538,8 @@ export function setupScene(container: HTMLElement): SceneHandle {
 		renderer,
 		canvas: renderer.domElement,
 		worldFromScreen,
+		screenFromWorld,
+		getCameraZoom: () => camera.zoom,
 		pickNode,
 		pickPort,
 		setRubber,

@@ -107,8 +107,68 @@ func TestCompiler_CompileFlux2Klein4BTextEncoder(test *testing.T) {
 	})
 }
 
+func TestCompiler_CompileFlux2Klein4BVAE(test *testing.T) {
+	Convey("Given the embedded FLUX.2 Klein 4B VAE decoder manifest", test, func() {
+		data, err := asset.ReadFile("model/diffusion/flux-2-klein-4b-vae-decoder.yml")
+		So(err, ShouldBeNil)
+
+		compiler := NewCompiler(".")
+
+		Convey("It should unpack packed latent tokens into channel-first VAE latents", func() {
+			graph, err := compiler.CompileBytes(data)
+			So(err, ShouldBeNil)
+
+			gridNode := graph.index["vae.unpack.grid"]
+			So(gridNode, ShouldNotBeNil)
+			So(gridNode.Config["shape"], ShouldResemble, []any{1, 64, 64, 32, 2, 2})
+
+			t23Node := graph.index["vae.unpack.t23"]
+			So(t23Node, ShouldNotBeNil)
+			So(t23Node.In, ShouldResemble, []string{"unpack_grid"})
+			So(t23Node.Out, ShouldResemble, []string{"unpack_t23"})
+			So(t23Node.Config["dim0"], ShouldEqual, 2)
+			So(t23Node.Config["dim1"], ShouldEqual, 3)
+
+			t12Node := graph.index["vae.unpack.t12"]
+			So(t12Node, ShouldNotBeNil)
+			So(t12Node.In, ShouldResemble, []string{"unpack_t23"})
+			So(t12Node.Out, ShouldResemble, []string{"unpack_t12"})
+			So(t12Node.Config["dim0"], ShouldEqual, 1)
+			So(t12Node.Config["dim1"], ShouldEqual, 2)
+
+			t34Node := graph.index["vae.unpack.t34"]
+			So(t34Node, ShouldNotBeNil)
+			So(t34Node.In, ShouldResemble, []string{"unpack_t12"})
+			So(t34Node.Out, ShouldResemble, []string{"unpack_t34"})
+			So(t34Node.Config["dim0"], ShouldEqual, 3)
+			So(t34Node.Config["dim1"], ShouldEqual, 4)
+
+			latentNode := graph.index["vae.unpack.latent"]
+			So(latentNode, ShouldNotBeNil)
+			So(latentNode.In, ShouldResemble, []string{"unpack_t34"})
+			So(latentNode.Config["shape"], ShouldResemble, []any{1, 32, 128, 128})
+		})
+	})
+}
+
 func BenchmarkCompiler_CompileFlux2Klein4B(benchmark *testing.B) {
 	data, err := asset.ReadFile("model/diffusion/flux-2-klein-4b.yml")
+
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	compiler := NewCompiler(".")
+
+	for benchmark.Loop() {
+		if _, err := compiler.CompileBytes(data); err != nil {
+			benchmark.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkCompiler_CompileFlux2Klein4BVAE(benchmark *testing.B) {
+	data, err := asset.ReadFile("model/diffusion/flux-2-klein-4b-vae-decoder.yml")
 
 	if err != nil {
 		benchmark.Fatal(err)

@@ -31,7 +31,7 @@ func NewFlowMatchEulerScheduler(config SchedulerConfig, imageSequenceLength int)
 	}
 
 	scheduler := &FlowMatchEulerScheduler{config: config}
-	mu := scheduler.calculateShift(imageSequenceLength)
+	mu := scheduler.empiricalShift(imageSequenceLength)
 	sigmas := scheduler.linearSigmas()
 
 	if config.UseDynamicShift {
@@ -88,9 +88,11 @@ func (scheduler *FlowMatchEulerScheduler) linearSigmas() []float64 {
 
 	sigmas := make([]float64, scheduler.config.Steps)
 	lastIndex := float64(scheduler.config.Steps - 1)
+	minSigma := 1 / float64(scheduler.config.Steps)
 
 	for index := range sigmas {
-		sigmas[index] = 1 - float64(index)/lastIndex
+		fraction := float64(index) / lastIndex
+		sigmas[index] = 1 - fraction*(1-minSigma)
 	}
 
 	return sigmas
@@ -122,18 +124,23 @@ func (scheduler *FlowMatchEulerScheduler) timeShift(mu float64, sigmas []float64
 	return out
 }
 
-func (scheduler *FlowMatchEulerScheduler) calculateShift(imageSequenceLength int) float64 {
-	baseLength := float64(scheduler.config.BaseImageSeqLen)
-	maxLength := float64(scheduler.config.MaxImageSeqLen)
-	baseShift := scheduler.config.BaseShift
-	maxShift := scheduler.config.MaxShift
+func (scheduler *FlowMatchEulerScheduler) empiricalShift(imageSequenceLength int) float64 {
+	sequenceLength := float64(imageSequenceLength)
+	stepCount := float64(scheduler.config.Steps)
 
-	if maxLength <= baseLength {
-		return baseShift
+	highStepSlope := 0.00016927
+	highStepIntercept := 0.45666666
+
+	if imageSequenceLength > 4300 {
+		return highStepSlope*sequenceLength + highStepIntercept
 	}
 
-	slope := (maxShift - baseShift) / (maxLength - baseLength)
-	intercept := baseShift - slope*baseLength
+	lowStepSlope := 8.73809524e-05
+	lowStepIntercept := 1.89833333
+	highStepMu := highStepSlope*sequenceLength + highStepIntercept
+	lowStepMu := lowStepSlope*sequenceLength + lowStepIntercept
+	slope := (highStepMu - lowStepMu) / 190
+	intercept := highStepMu - 200*slope
 
-	return float64(imageSequenceLength)*slope + intercept
+	return slope*stepCount + intercept
 }

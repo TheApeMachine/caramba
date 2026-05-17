@@ -74,6 +74,59 @@ int metal_optimizer_lbfgs(
 	const double *previous_grads, int has_previous, int count,
 	int history_size, double learning_rate, int line_search, double c1
 );
+int metal_optimizer_adam_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double beta1, double beta2, double learning_rate, double eps
+);
+int metal_optimizer_adamw_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double beta1, double beta2, double learning_rate, double eps,
+	double weight_decay_step
+);
+int metal_optimizer_adamax_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double beta1, double beta2, double learning_rate, double eps
+);
+int metal_optimizer_sgd_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double learning_rate, double weight_decay, double momentum, int nesterov
+);
+int metal_optimizer_lion_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double learning_rate, double beta1, double beta2, double weight_decay
+);
+int metal_optimizer_rmsprop_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double learning_rate, double alpha, double eps,
+	double momentum, double weight_decay, int centered
+);
+int metal_optimizer_hebbian_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double learning_rate, double max_norm
+);
+int metal_optimizer_lars_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double learning_rate, double eta, double momentum,
+	double weight_decay, double eps
+);
+int metal_optimizer_lamb_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double learning_rate, double beta1, double beta2, double eps,
+	double weight_decay, double bias_correction1_inv,
+	double bias_correction2_inv
+);
+int metal_optimizer_adagrad_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double learning_rate, double eps, double weight_decay
+);
+int metal_optimizer_adadelta_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double rho, double eps, double weight_decay
+);
+int metal_optimizer_lbfgs_tensor(
+	const void *params, const void *grads, void *out, int count,
+	double learning_rate, int line_search, double c1
+);
 
 #ifdef __cplusplus
 }

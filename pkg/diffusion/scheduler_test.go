@@ -22,14 +22,19 @@ func TestFlowMatchEulerScheduler_Step(test *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("It should expose sigma-scaled timesteps", func() {
-			So(scheduler.Timesteps(), ShouldResemble, []float64{1000, 500, 0})
+			timesteps := scheduler.Timesteps()
+
+			So(timesteps[0], ShouldAlmostEqual, 1000)
+			So(timesteps[1], ShouldAlmostEqual, 666.6666666666667)
+			So(timesteps[2], ShouldAlmostEqual, 333.33333333333337)
 		})
 
 		Convey("It should apply the Euler delta between adjacent sigmas", func() {
 			next, err := scheduler.Step(0, []float64{0, 1}, []float64{2, 4})
 
 			So(err, ShouldBeNil)
-			So(next, ShouldResemble, []float64{-1, -1})
+			So(next[0], ShouldAlmostEqual, -0.6666666666666666)
+			So(next[1], ShouldAlmostEqual, -0.33333333333333326)
 		})
 	})
 

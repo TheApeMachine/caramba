@@ -69,6 +69,24 @@ export class Camera {
 		return [wx, wy];
 	}
 
+	/* Project a world position to canvas-local pixel coordinates (origin
+	   top-left, +y down). Returns coords inside the canvas element so
+	   callers can apply via CSS transform on an overlay anchored to the
+	   canvas. */
+	screenFromWorld(
+		wx: number,
+		wy: number,
+		canvas: HTMLCanvasElement,
+	): [number, number] {
+		const rect = canvas.getBoundingClientRect();
+		const cam = this.three;
+		const nx = ((wx - this.x) * 2) / (cam.right - cam.left);
+		const ny = ((wy - this.y) * 2) / (cam.top - cam.bottom);
+		const sx = ((nx + 1) * rect.width) / 2;
+		const sy = ((1 - ny) * rect.height) / 2;
+		return [sx, sy];
+	}
+
 	/* Smoothly frame a rect so it occupies `fillFraction` of the smaller dim. */
 	frameRect(
 		x: number,

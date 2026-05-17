@@ -139,6 +139,13 @@ int metal_train_mse_grad(const float* predictions, const float* targets, float* 
 // logits are raw scores and targets are probability/one-hot values matching the
 // logits layout. In-place use with out aliasing inputs is not supported.
 int metal_train_cross_entropy_grad(const float* logits, const float* targets, float* out, int n);
+int metal_train_mse_loss_tensor(const void* predictions, const void* targets, void* out, int n);
+int metal_train_mse_grad_tensor(const void* predictions, const void* targets, void* out, int n);
+int metal_train_cross_entropy_loss_tensor(const void* logits, const void* targets, void* out, int n);
+int metal_train_cross_entropy_grad_tensor(const void* logits, const void* targets, void* out, int n);
+int metal_bench_accuracy_tensor(const void* predictions, const void* targets, void* out, int n);
+int metal_bench_perplexity_tensor(const void* probabilities, const void* targets, void* out, int n);
+int metal_bench_f1_tensor(const void* predictions, const void* targets, void* out, int n);
 
 // metal_bench_accuracy writes one scalar to out[0]: 1 when prediction and target
 // argmax indices match, otherwise 0. predictions and targets are length n score

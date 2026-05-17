@@ -91,6 +91,18 @@ static id<MTLBuffer> rw(const float *values, int count) {
 	return buffer;
 }
 
+static id<MTLBuffer> zero_float_buffer(int count) {
+	id<MTLBuffer> buffer = rw(NULL, count);
+	if (buffer && count > 0) {
+		memset([buffer contents], 0, (size_t)count * sizeof(float));
+	}
+	return buffer;
+}
+
+static id<MTLBuffer> resident_buffer(const void *buffer) {
+	return (__bridge id)((void *)buffer);
+}
+
 static id<MTLBuffer> rw_uint(const uint *values, int count) {
 	id<MTLBuffer> buffer = [gOptimizerDevice newBufferWithLength:(NSUInteger)count * sizeof(uint) options:MTLResourceStorageModeShared];
 	if (values && count > 0) memcpy([buffer contents], values, (size_t)count * sizeof(uint));
@@ -319,6 +331,173 @@ int metal_optimizer_adadelta(double *out, double *grad_average, double *delta_av
 	int rc = run_threads(pipeline, command_buffer, encoder, count);
 	if (rc == 0) { to_double(out, [bo contents], count); to_double(grad_average, [bga contents], count); to_double(delta_average, [bda contents], count); }
 	free(ga); free(da); free(p); free(g); return rc;
+}
+
+int metal_optimizer_adam_tensor(const void *params, const void *grads, void *out, int count, double beta1, double beta2, double learning_rate, double eps) {
+	START_ENCODER("adam");
+	id<MTLBuffer> bo = resident_buffer(out), bm = zero_float_buffer(count), bv = zero_float_buffer(count), bp = resident_buffer(params), bg = resident_buffer(grads);
+	if (!bo || !bm || !bv || !bp || !bg || count <= 0) return optimizer_error(-1, @"invalid resident Adam tensor");
+	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bm offset:0 atIndex:1]; [encoder setBuffer:bv offset:0 atIndex:2]; [encoder setBuffer:bp offset:0 atIndex:3]; [encoder setBuffer:bg offset:0 atIndex:4];
+	SET_SCALAR(count, uint, 5); SET_SCALAR(beta1, float, 6); SET_SCALAR(beta2, float, 7); SET_SCALAR(learning_rate, float, 8); SET_SCALAR(eps, float, 9);
+	return run_threads(pipeline, command_buffer, encoder, count);
+}
+
+int metal_optimizer_adamw_tensor(const void *params, const void *grads, void *out, int count, double beta1, double beta2, double learning_rate, double eps, double weight_decay_step) {
+	START_ENCODER("adamw");
+	id<MTLBuffer> bo = resident_buffer(out), bm = zero_float_buffer(count), bv = zero_float_buffer(count), bp = resident_buffer(params), bg = resident_buffer(grads);
+	if (!bo || !bm || !bv || !bp || !bg || count <= 0) return optimizer_error(-1, @"invalid resident AdamW tensor");
+	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bm offset:0 atIndex:1]; [encoder setBuffer:bv offset:0 atIndex:2]; [encoder setBuffer:bp offset:0 atIndex:3]; [encoder setBuffer:bg offset:0 atIndex:4];
+	SET_SCALAR(count, uint, 5); SET_SCALAR(beta1, float, 6); SET_SCALAR(beta2, float, 7); SET_SCALAR(learning_rate, float, 8); SET_SCALAR(eps, float, 9); SET_SCALAR(weight_decay_step, float, 10);
+	return run_threads(pipeline, command_buffer, encoder, count);
+}
+
+int metal_optimizer_adamax_tensor(const void *params, const void *grads, void *out, int count, double beta1, double beta2, double learning_rate, double eps) {
+	START_ENCODER("adamax");
+	id<MTLBuffer> bo = resident_buffer(out), bm = zero_float_buffer(count), bu = zero_float_buffer(count), bp = resident_buffer(params), bg = resident_buffer(grads);
+	if (!bo || !bm || !bu || !bp || !bg || count <= 0) return optimizer_error(-1, @"invalid resident AdaMax tensor");
+	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bm offset:0 atIndex:1]; [encoder setBuffer:bu offset:0 atIndex:2]; [encoder setBuffer:bp offset:0 atIndex:3]; [encoder setBuffer:bg offset:0 atIndex:4];
+	SET_SCALAR(count, uint, 5); SET_SCALAR(beta1, float, 6); SET_SCALAR(beta2, float, 7); SET_SCALAR(learning_rate, float, 8); SET_SCALAR(eps, float, 9);
+	return run_threads(pipeline, command_buffer, encoder, count);
+}
+
+int metal_optimizer_sgd_tensor(const void *params, const void *grads, void *out, int count, double learning_rate, double weight_decay, double momentum, int nesterov) {
+	START_ENCODER("sgd");
+	id<MTLBuffer> bo = resident_buffer(out), bv = zero_float_buffer(count), bp = resident_buffer(params), bg = resident_buffer(grads);
+	if (!bo || !bv || !bp || !bg || count <= 0) return optimizer_error(-1, @"invalid resident SGD tensor");
+	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bv offset:0 atIndex:1]; [encoder setBuffer:bp offset:0 atIndex:2]; [encoder setBuffer:bg offset:0 atIndex:3];
+	SET_SCALAR(count, uint, 4); SET_SCALAR(learning_rate, float, 5); SET_SCALAR(weight_decay, float, 6); SET_SCALAR(momentum, float, 7); SET_SCALAR(nesterov, uint, 8);
+	return run_threads(pipeline, command_buffer, encoder, count);
+}
+
+int metal_optimizer_lion_tensor(const void *params, const void *grads, void *out, int count, double learning_rate, double beta1, double beta2, double weight_decay) {
+	START_ENCODER("lion");
+	id<MTLBuffer> bo = resident_buffer(out), bm = zero_float_buffer(count), bp = resident_buffer(params), bg = resident_buffer(grads);
+	if (!bo || !bm || !bp || !bg || count <= 0) return optimizer_error(-1, @"invalid resident Lion tensor");
+	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bm offset:0 atIndex:1]; [encoder setBuffer:bp offset:0 atIndex:2]; [encoder setBuffer:bg offset:0 atIndex:3];
+	SET_SCALAR(count, uint, 4); SET_SCALAR(learning_rate, float, 5); SET_SCALAR(beta1, float, 6); SET_SCALAR(beta2, float, 7); SET_SCALAR(weight_decay, float, 8);
+	return run_threads(pipeline, command_buffer, encoder, count);
+}
+
+int metal_optimizer_rmsprop_tensor(const void *params, const void *grads, void *out, int count, double learning_rate, double alpha, double eps, double momentum, double weight_decay, int centered) {
+	START_ENCODER("rmsprop");
+	id<MTLBuffer> bo = resident_buffer(out), bsq = zero_float_buffer(count), bbuf = zero_float_buffer(count), bga = zero_float_buffer(count), bp = resident_buffer(params), bg = resident_buffer(grads);
+	if (!bo || !bsq || !bbuf || !bga || !bp || !bg || count <= 0) return optimizer_error(-1, @"invalid resident RMSProp tensor");
+	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bsq offset:0 atIndex:1]; [encoder setBuffer:bbuf offset:0 atIndex:2]; [encoder setBuffer:bga offset:0 atIndex:3]; [encoder setBuffer:bp offset:0 atIndex:4]; [encoder setBuffer:bg offset:0 atIndex:5];
+	SET_SCALAR(count, uint, 6); SET_SCALAR(learning_rate, float, 7); SET_SCALAR(alpha, float, 8); SET_SCALAR(eps, float, 9); SET_SCALAR(momentum, float, 10); SET_SCALAR(weight_decay, float, 11); SET_SCALAR(centered, uint, 12);
+	return run_threads(pipeline, command_buffer, encoder, count);
+}
+
+int metal_optimizer_hebbian_tensor(const void *params, const void *grads, void *out, int count, double learning_rate, double max_norm) {
+	id<MTLBuffer> bo = resident_buffer(out), bn = zero_float_buffer(1), bp = resident_buffer(params), bg = resident_buffer(grads);
+	if (!bo || !bn || !bp || !bg || count <= 0) return optimizer_error(-1, @"invalid resident Hebbian tensor");
+	int rc = 0;
+	{
+		START_ENCODER("hebbian");
+		[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bn offset:0 atIndex:1]; [encoder setBuffer:bp offset:0 atIndex:2]; [encoder setBuffer:bg offset:0 atIndex:3];
+		SET_SCALAR(count, uint, 4); SET_SCALAR(learning_rate, float, 5);
+		rc = run_threads(pipeline, command_buffer, encoder, count);
+	}
+	if (rc != 0 || max_norm <= 0) return rc;
+	{
+		START_ENCODER("scale_by_norm_limit");
+		[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bn offset:0 atIndex:1];
+		SET_SCALAR(count, uint, 2); SET_SCALAR(max_norm, float, 3);
+		return run_threads(pipeline, command_buffer, encoder, count);
+	}
+}
+
+int metal_optimizer_lars_tensor(const void *params, const void *grads, void *out, int count, double learning_rate, double eta, double momentum, double weight_decay, double eps) {
+	id<MTLBuffer> bo = resident_buffer(out), bv = zero_float_buffer(count), bp = resident_buffer(params), bg = resident_buffer(grads);
+	if (!bo || !bv || !bp || !bg || count <= 0) return optimizer_error(-1, @"invalid resident LARS tensor");
+	int group_count = optimizer_groups(count);
+	id<MTLBuffer> partials = rw(NULL, group_count * 2), norms = nil;
+	int rc = 0;
+	{
+		START_ENCODER("lars_norms");
+		[encoder setBuffer:bp offset:0 atIndex:0]; [encoder setBuffer:bg offset:0 atIndex:1]; [encoder setBuffer:partials offset:0 atIndex:2];
+		SET_SCALAR(count, uint, 3);
+		rc = run_threads(pipeline, command_buffer, encoder, group_count * 256);
+	}
+	if (rc == 0) rc = reduce_pair_partials(partials, group_count, &norms);
+	if (rc != 0) return rc;
+	{
+		START_ENCODER("lars_apply");
+		[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bv offset:0 atIndex:1]; [encoder setBuffer:bp offset:0 atIndex:2]; [encoder setBuffer:bg offset:0 atIndex:3]; [encoder setBuffer:norms offset:0 atIndex:4];
+		SET_SCALAR(count, uint, 5); SET_SCALAR(learning_rate, float, 6); SET_SCALAR(eta, float, 7); SET_SCALAR(momentum, float, 8); SET_SCALAR(weight_decay, float, 9); SET_SCALAR(eps, float, 10);
+		return run_threads(pipeline, command_buffer, encoder, count);
+	}
+}
+
+int metal_optimizer_lamb_tensor(const void *params, const void *grads, void *out, int count, double learning_rate, double beta1, double beta2, double eps, double weight_decay, double bias_correction1_inv, double bias_correction2_inv) {
+	id<MTLBuffer> bo = resident_buffer(out), bm = zero_float_buffer(count), bv = zero_float_buffer(count), bp = resident_buffer(params), bg = resident_buffer(grads);
+	if (!bo || !bm || !bv || !bp || !bg || count <= 0) return optimizer_error(-1, @"invalid resident LAMB tensor");
+	int group_count = optimizer_groups(count);
+	id<MTLBuffer> partials = rw(NULL, group_count * 2), norms = nil;
+	int rc = 0;
+	{
+		START_ENCODER("lamb_prepare");
+		[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bm offset:0 atIndex:1]; [encoder setBuffer:bv offset:0 atIndex:2]; [encoder setBuffer:bp offset:0 atIndex:3]; [encoder setBuffer:bg offset:0 atIndex:4]; [encoder setBuffer:partials offset:0 atIndex:5];
+		SET_SCALAR(count, uint, 6); SET_SCALAR(beta1, float, 7); SET_SCALAR(beta2, float, 8); SET_SCALAR(eps, float, 9); SET_SCALAR(weight_decay, float, 10); SET_SCALAR(bias_correction1_inv, float, 11); SET_SCALAR(bias_correction2_inv, float, 12);
+		rc = run_threads(pipeline, command_buffer, encoder, group_count * 256);
+	}
+	if (rc == 0) rc = reduce_pair_partials(partials, group_count, &norms);
+	if (rc != 0) return rc;
+	{
+		START_ENCODER("lamb_apply");
+		[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bo offset:0 atIndex:1]; [encoder setBuffer:bp offset:0 atIndex:2]; [encoder setBuffer:norms offset:0 atIndex:3];
+		SET_SCALAR(count, uint, 4); SET_SCALAR(learning_rate, float, 5);
+		return run_threads(pipeline, command_buffer, encoder, count);
+	}
+}
+
+int metal_optimizer_adagrad_tensor(const void *params, const void *grads, void *out, int count, double learning_rate, double eps, double weight_decay) {
+	START_ENCODER("adagrad");
+	id<MTLBuffer> bo = resident_buffer(out), ba = zero_float_buffer(count), bp = resident_buffer(params), bg = resident_buffer(grads);
+	if (!bo || !ba || !bp || !bg || count <= 0) return optimizer_error(-1, @"invalid resident AdaGrad tensor");
+	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:ba offset:0 atIndex:1]; [encoder setBuffer:bp offset:0 atIndex:2]; [encoder setBuffer:bg offset:0 atIndex:3];
+	SET_SCALAR(count, uint, 4); SET_SCALAR(learning_rate, float, 5); SET_SCALAR(eps, float, 6); SET_SCALAR(weight_decay, float, 7);
+	return run_threads(pipeline, command_buffer, encoder, count);
+}
+
+int metal_optimizer_adadelta_tensor(const void *params, const void *grads, void *out, int count, double rho, double eps, double weight_decay) {
+	START_ENCODER("adadelta");
+	id<MTLBuffer> bo = resident_buffer(out), bga = zero_float_buffer(count), bda = zero_float_buffer(count), bp = resident_buffer(params), bg = resident_buffer(grads);
+	if (!bo || !bga || !bda || !bp || !bg || count <= 0) return optimizer_error(-1, @"invalid resident AdaDelta tensor");
+	[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bga offset:0 atIndex:1]; [encoder setBuffer:bda offset:0 atIndex:2]; [encoder setBuffer:bp offset:0 atIndex:3]; [encoder setBuffer:bg offset:0 atIndex:4];
+	SET_SCALAR(count, uint, 5); SET_SCALAR(rho, float, 6); SET_SCALAR(eps, float, 7); SET_SCALAR(weight_decay, float, 8);
+	return run_threads(pipeline, command_buffer, encoder, count);
+}
+
+int metal_optimizer_lbfgs_tensor(const void *params, const void *grads, void *out, int count, double learning_rate, int line_search, double c1) {
+	id<MTLBuffer> bo = resident_buffer(out), bp = resident_buffer(params), bg = resident_buffer(grads), direction = zero_float_buffer(count);
+	if (!bo || !bp || !bg || !direction || count <= 0) return optimizer_error(-1, @"invalid resident L-BFGS tensor");
+	int group_count = optimizer_groups(count);
+	id<MTLBuffer> partials = rw(NULL, group_count * 2), line_metrics = partials;
+	int rc = 0;
+	{
+		START_ENCODER("lbfgs_direction_init");
+		[encoder setBuffer:direction offset:0 atIndex:0]; [encoder setBuffer:bg offset:0 atIndex:1];
+		SET_SCALAR(count, uint, 2);
+		rc = run_threads(pipeline, command_buffer, encoder, count);
+	}
+	if (rc != 0) return rc;
+	if (line_search != 0) {
+		{
+			START_ENCODER("lbfgs_line_search");
+			[encoder setBuffer:bg offset:0 atIndex:0]; [encoder setBuffer:direction offset:0 atIndex:1]; [encoder setBuffer:partials offset:0 atIndex:2];
+			SET_SCALAR(count, uint, 3);
+			rc = run_threads(pipeline, command_buffer, encoder, group_count * 256);
+		}
+		if (rc != 0) return rc;
+		rc = reduce_pair_partials(partials, group_count, &line_metrics);
+		if (rc != 0) return rc;
+	}
+	{
+		START_ENCODER("lbfgs_finalize");
+		[encoder setBuffer:bo offset:0 atIndex:0]; [encoder setBuffer:bp offset:0 atIndex:1]; [encoder setBuffer:direction offset:0 atIndex:2]; [encoder setBuffer:line_metrics offset:0 atIndex:3];
+		SET_SCALAR(count, uint, 4); SET_SCALAR(learning_rate, float, 5); SET_SCALAR(line_search, uint, 6); SET_SCALAR(c1, float, 7);
+		return run_threads(pipeline, command_buffer, encoder, count);
+	}
 }
 
 int metal_optimizer_lbfgs(double *out, double *s_history, double *y_history, double *rho_history, int *head, int *history_count, const double *params, const double *grads, const double *previous_params, const double *previous_grads, int has_previous, int count, int history_size, double learning_rate, int line_search, double c1) {

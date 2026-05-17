@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	modelweights "github.com/theapemachine/caramba/pkg/model/weights"
 	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
@@ -141,6 +142,64 @@ func BenchmarkPipeline_Generate(benchmark *testing.B) {
 			benchmark.Fatal(err)
 		}
 	}
+}
+
+func TestDenormalizePackedLatents(test *testing.T) {
+	previousPublish := qpool.Publish
+	qpool.Publish = func(qpool.Event) {}
+	defer func() { qpool.Publish = previousPublish }()
+
+	Convey("Given VAE batch-norm statistics and packed latents", test, func() {
+		path := filepath.Join(test.TempDir(), "vae.safetensors")
+		err := writeTinySafeTensors(path, []tinyTensor{
+			{
+				name:   "bn.running_mean",
+				shape:  []int{3},
+				values: []float64{10, 20, 30},
+			},
+			{
+				name:   "bn.running_var",
+				shape:  []int{3},
+				values: []float64{0, 3, 8},
+			},
+		})
+		So(err, ShouldBeNil)
+
+		store, err := modelweights.Open(path)
+		So(err, ShouldBeNil)
+
+		Convey("It should apply channel-wise BN denormalization before VAE decode", func() {
+			out, err := denormalizePackedLatents(
+				store,
+				[]float64{1, 2, 3, 4, 5, 6},
+				3,
+				1,
+			)
+
+			So(err, ShouldBeNil)
+			So(out, ShouldResemble, []float64{11, 24, 39, 14, 30, 48})
+		})
+	})
+
+	Convey("Given incomplete VAE batch-norm statistics", test, func() {
+		path := filepath.Join(test.TempDir(), "vae.safetensors")
+		err := writeTinySafeTensors(path, []tinyTensor{{
+			name:   "bn.running_mean",
+			shape:  []int{1},
+			values: []float64{1},
+		}})
+		So(err, ShouldBeNil)
+
+		store, err := modelweights.Open(path)
+		So(err, ShouldBeNil)
+
+		Convey("It should report the missing tensor", func() {
+			_, err := denormalizePackedLatents(store, []float64{1}, 1, 1)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "bn.running_var")
+		})
+	})
 }
 
 type tinyTensor struct {

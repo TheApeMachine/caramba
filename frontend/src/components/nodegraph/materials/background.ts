@@ -34,8 +34,11 @@ export class BackgroundLayer {
 				uniform float uZoom;
 				uniform vec2 uViewport;
 				out vec4 outColor;
+				// Lines fall on multiples of step (not half-cells), so a node
+				// centred on a grid intersection with width = 2N*step has
+				// its edges land on grid lines.
 				float grid(vec2 p, float step) {
-					vec2 g = abs(fract(p / step) - 0.5);
+					vec2 g = abs(fract(p / step - 0.5) - 0.5);
 					float d = min(g.x, g.y) * step;
 					return 1.0 - smoothstep(0.0, 1.5 / uZoom, d);
 				}

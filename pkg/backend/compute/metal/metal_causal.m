@@ -9,21 +9,24 @@ id<MTLDevice> gCDevice = nil;
 id<MTLCommandQueue> gCQueue = nil;
 static id<MTLComputePipelineState> gPSO_axpy = nil;
 static id<MTLComputePipelineState> gPSO_sub = nil;
-static id<MTLComputePipelineState> gPSO_matvec = nil;
+id<MTLComputePipelineState> gPSO_matvec = nil;
 static id<MTLComputePipelineState> gPSO_dotatom = nil;
-static id<MTLComputePipelineState> gPSO_ata = nil;
-static id<MTLComputePipelineState> gPSO_atb = nil;
-static id<MTLComputePipelineState> gPSO_matmul = nil;
-static id<MTLComputePipelineState> gPSO_chol_inv = nil;
+id<MTLComputePipelineState> gPSO_ata = nil;
+id<MTLComputePipelineState> gPSO_atb = nil;
+id<MTLComputePipelineState> gPSO_matmul = nil;
+id<MTLComputePipelineState> gPSO_chol_inv = nil;
 
 static id<MTLComputePipelineState> gPSO_docalc_extract = nil;
 static id<MTLComputePipelineState> gPSO_docalc_assemble = nil;
+id<MTLComputePipelineState> gPSO_docalc_full_extract = nil;
+id<MTLComputePipelineState> gPSO_docalc_full_assemble = nil;
 
-static id<MTLComputePipelineState> gPSO_backdoor_design = nil;
-static id<MTLComputePipelineState> gPSO_backdoor_effect = nil;
+id<MTLComputePipelineState> gPSO_backdoor_design = nil;
+id<MTLComputePipelineState> gPSO_backdoor_effect = nil;
 
-static id<MTLComputePipelineState> gPSO_cate_split = nil;
-static id<MTLComputePipelineState> gPSO_cate_effect = nil;
+id<MTLComputePipelineState> gPSO_cate_split = nil;
+id<MTLComputePipelineState> gPSO_cate_effect = nil;
+id<MTLComputePipelineState> gPSO_cate_effect_counted = nil;
 
 id<MTLComputePipelineState> gPSO_counterfactual = nil;
 id<MTLComputePipelineState> gPSO_frontdoor_sort_pad = nil;
@@ -34,9 +37,11 @@ id<MTLComputePipelineState> gPSO_frontdoor_accumulate = nil;
 id<MTLComputePipelineState> gPSO_frontdoor_normalize = nil;
 id<MTLComputePipelineState> gPSO_frontdoor_effect = nil;
 
-static id<MTLComputePipelineState> gPSO_dag_prep = nil;
-static id<MTLComputePipelineState> gPSO_dag_sigma2 = nil;
-static id<MTLComputePipelineState> gPSO_dag_score = nil;
+id<MTLComputePipelineState> gPSO_dag_prep = nil;
+id<MTLComputePipelineState> gPSO_dag_full_prep = nil;
+id<MTLComputePipelineState> gPSO_dag_sigma2 = nil;
+id<MTLComputePipelineState> gPSO_dag_score = nil;
+id<MTLComputePipelineState> gPSO_dag_full_score = nil;
 
 int gCInited = 0;
 dispatch_queue_t gCSerial = NULL;
@@ -136,12 +141,15 @@ int metal_causal_init(const char *metallib_path) {
 
 		gPSO_docalc_extract = c_make_pso(gCDevice, lib, @"docalc_extract_kernel");
 		gPSO_docalc_assemble = c_make_pso(gCDevice, lib, @"docalc_assemble_kernel");
+		gPSO_docalc_full_extract = c_make_pso(gCDevice, lib, @"docalc_full_extract_kernel");
+		gPSO_docalc_full_assemble = c_make_pso(gCDevice, lib, @"docalc_full_assemble_kernel");
 
 		gPSO_backdoor_design = c_make_pso(gCDevice, lib, @"backdoor_design_kernel");
 		gPSO_backdoor_effect = c_make_pso(gCDevice, lib, @"backdoor_effect_kernel");
 
 		gPSO_cate_split = c_make_pso(gCDevice, lib, @"cate_split_kernel");
 		gPSO_cate_effect = c_make_pso(gCDevice, lib, @"cate_effect_kernel");
+		gPSO_cate_effect_counted = c_make_pso(gCDevice, lib, @"cate_effect_counted_kernel");
 
 		gPSO_counterfactual = c_make_pso(gCDevice, lib, @"counterfactual_kernel");
 		gPSO_frontdoor_sort_pad = c_make_pso(gCDevice, lib, @"frontdoor_sort_pad_kernel");
@@ -153,15 +161,20 @@ int metal_causal_init(const char *metallib_path) {
 		gPSO_frontdoor_effect = c_make_pso(gCDevice, lib, @"frontdoor_effect_kernel");
 
 		gPSO_dag_prep = c_make_pso(gCDevice, lib, @"dag_markov_prep_kernel");
+		gPSO_dag_full_prep = c_make_pso(gCDevice, lib, @"dag_markov_full_prep_kernel");
 		gPSO_dag_sigma2 = c_make_pso(gCDevice, lib, @"dag_markov_sigma2_kernel");
 		gPSO_dag_score = c_make_pso(gCDevice, lib, @"dag_markov_score_kernel");
+		gPSO_dag_full_score = c_make_pso(gCDevice, lib, @"dag_markov_full_score_kernel");
 
 		if (!gPSO_axpy || !gPSO_sub || !gPSO_matvec || !gPSO_dotatom || !gPSO_ata || !gPSO_atb || !gPSO_matmul || !gPSO_chol_inv ||
-		    !gPSO_docalc_extract || !gPSO_docalc_assemble || !gPSO_backdoor_design || !gPSO_backdoor_effect ||
-		    !gPSO_cate_split || !gPSO_cate_effect || !gPSO_counterfactual ||
+		    !gPSO_docalc_extract || !gPSO_docalc_assemble ||
+		    !gPSO_docalc_full_extract || !gPSO_docalc_full_assemble ||
+		    !gPSO_backdoor_design || !gPSO_backdoor_effect ||
+		    !gPSO_cate_split || !gPSO_cate_effect || !gPSO_cate_effect_counted || !gPSO_counterfactual ||
 		    !gPSO_frontdoor_sort_pad || !gPSO_frontdoor_sort_step || !gPSO_frontdoor_boundaries ||
 		    !gPSO_frontdoor_assign || !gPSO_frontdoor_accumulate || !gPSO_frontdoor_normalize ||
-		    !gPSO_frontdoor_effect || !gPSO_dag_prep || !gPSO_dag_sigma2 || !gPSO_dag_score) {
+		    !gPSO_frontdoor_effect || !gPSO_dag_prep || !gPSO_dag_full_prep ||
+		    !gPSO_dag_sigma2 || !gPSO_dag_score || !gPSO_dag_full_score) {
 			result = -1;
 			return;
 		}
@@ -176,12 +189,14 @@ int metal_causal_shutdown(void) {
 		gPSO_axpy = nil; gPSO_sub = nil; gPSO_matvec = nil; gPSO_dotatom = nil;
 		gPSO_ata = nil; gPSO_atb = nil; gPSO_matmul = nil; gPSO_chol_inv = nil;
 		gPSO_docalc_extract = nil; gPSO_docalc_assemble = nil;
+		gPSO_docalc_full_extract = nil; gPSO_docalc_full_assemble = nil;
 		gPSO_backdoor_design = nil; gPSO_backdoor_effect = nil;
-		gPSO_cate_split = nil; gPSO_cate_effect = nil;
+		gPSO_cate_split = nil; gPSO_cate_effect = nil; gPSO_cate_effect_counted = nil;
 		gPSO_counterfactual = nil; gPSO_frontdoor_boundaries = nil; gPSO_frontdoor_assign = nil;
 		gPSO_frontdoor_sort_pad = nil; gPSO_frontdoor_sort_step = nil;
 		gPSO_frontdoor_accumulate = nil; gPSO_frontdoor_normalize = nil; gPSO_frontdoor_effect = nil;
-		gPSO_dag_prep = nil; gPSO_dag_sigma2 = nil; gPSO_dag_score = nil;
+		gPSO_dag_prep = nil; gPSO_dag_full_prep = nil; gPSO_dag_sigma2 = nil;
+		gPSO_dag_score = nil; gPSO_dag_full_score = nil;
 		gCQueue = nil; gCDevice = nil; gCInited = 0;
 	});
 	return 0;

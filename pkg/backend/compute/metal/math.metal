@@ -706,3 +706,38 @@ kernel void bench_f1_counts_kernel(
         atomic_fetch_add_explicit(out + 2, 1.0f, memory_order_relaxed);
     }
 }
+
+kernel void bench_perplexity_loss_kernel(
+    device const float* probabilities [[buffer(0)]],
+    device const float* targets       [[buffer(1)]],
+    device atomic_float* out          [[buffer(2)]],
+    constant uint& n                  [[buffer(3)]],
+    uint i                            [[thread_position_in_grid]])
+{
+    if (i >= n) return;
+    atomic_fetch_add_explicit(
+        out, -log(probabilities[i] + 1.0e-9f) * targets[i], memory_order_relaxed);
+}
+
+kernel void bench_exp_scalar_kernel(
+    device float* value [[buffer(0)]],
+    uint gid            [[thread_position_in_grid]])
+{
+    if (gid != 0) return;
+    value[0] = exp(value[0]);
+}
+
+kernel void bench_f1_score_kernel(
+    device const float* counts [[buffer(0)]],
+    device float* out         [[buffer(1)]],
+    uint gid                  [[thread_position_in_grid]])
+{
+    if (gid != 0) return;
+
+    float tp = counts[0];
+    float fp = counts[1];
+    float fn = counts[2];
+    float precision = tp / (tp + fp + 1.0e-9f);
+    float recall = tp / (tp + fn + 1.0e-9f);
+    out[0] = 2.0f * precision * recall / (precision + recall + 1.0e-9f);
+}

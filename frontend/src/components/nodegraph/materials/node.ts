@@ -131,8 +131,8 @@ export class NodeLayer {
 				//   y >= HEADER_TOP  → header band
 				//   FOOTER_TOP <= y < HEADER_TOP → body
 				//   y < FOOTER_TOP  → footer band
-				const float HEADER_TOP = 0.78;
-				const float FOOTER_TOP = 0.16;
+				const float HEADER_TOP = 0.75;
+				const float FOOTER_TOP = 0.25;
 				const vec2  PREVIEW_INSET_LO = vec2(0.060, 0.20);
 				const float PREVIEW_INSET_HI_X = 0.060;
 				const float PREVIEW_INSET_TOP_GAP = 0.04;

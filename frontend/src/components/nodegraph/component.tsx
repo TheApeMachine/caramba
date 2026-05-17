@@ -1,5 +1,6 @@
 import { useSelector } from "@tanstack/react-store";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { NodeLabels } from "./labels";
 import { NodePalette } from "./palette";
 import { type PortRef, type SceneHandle, setupScene } from "./scene";
 import { portsCompatible } from "./types";
@@ -227,9 +228,11 @@ export const NodeGraph = () => {
 			// room for a forward route (output-stub + input-stub fit between
 			// adjacent nodes). NODE_W=240, STUB=24 → 288 minimum; 360 gives
 			// breathing room.
-			actions.addNode(-400, 0, 1); // 0: source (tensor out)
+			// Top-level positions on grid intersections; NODE_W=320 means
+			// neighbouring nodes get a 160-unit (2 cell) gap.
+			actions.addNode(-480, 0, 1); // 0: source (tensor out)
 			actions.addNode(0, 0, 4); // 1: gate (any + bool → any)
-			actions.addNode(400, 0, 2); // 2: sink (tensor in)
+			actions.addNode(480, 0, 2); // 2: sink (tensor in)
 			actions.addEdge(0, 0, 1, 0); // source.value → gate.in
 			actions.addEdge(1, 0, 2, 0); // gate.out → sink.value
 
@@ -237,9 +240,11 @@ export const NodeGraph = () => {
 				actions.enter(parentId);
 				// All three inner nodes are scalars so the chain uses only
 				// number ports — strict typing means same-type-only.
-				actions.addNode(-320, -80, 3); // scalar (2×number in, 2×number out)
-				actions.addNode(0, 80, 3);
-				actions.addNode(320, -80, 3);
+				// NODE_H=320 → inner cards span ±160 vertically. Row layout
+				// at y=0 keeps the sub-graph compact and grid-aligned.
+				actions.addNode(-480, 0, 3); // scalar (2×number in, 2×number out)
+				actions.addNode(0, 0, 3);
+				actions.addNode(480, 0, 3);
 				const inner = currentLevel(vectorStore.state).nodes;
 				actions.addEdge(inner[0].id, 0, inner[1].id, 1); // sum → y
 				actions.addEdge(inner[1].id, 1, inner[2].id, 0); // diff → x
@@ -327,6 +332,7 @@ export const NodeGraph = () => {
 				drag from port → edge · double-click node → enter ·
 				right-click → add node · wheel → zoom · Esc → up
 			</div>
+			<NodeLabels sceneRef={sceneRef} />
 			{palette ? (
 				<NodePalette
 					x={palette.screenX}

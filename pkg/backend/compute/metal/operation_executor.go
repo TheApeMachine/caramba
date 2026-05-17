@@ -402,6 +402,43 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 		return tensorBackend.applyCausalCounterfactual(ctx, node, inputs)
 	case "causal.frontdoor_adjustment":
 		return tensorBackend.applyCausalFrontdoorAdjustment(ctx, node, inputs)
+	case "causal.backdoor_adjustment":
+		return tensorBackend.applyCausalBackdoorAdjustment(ctx, node, inputs)
+	case "causal.cate":
+		return tensorBackend.applyCausalCATE(ctx, node, inputs)
+	case "causal.iv_estimate":
+		return tensorBackend.applyCausalIVEstimate(ctx, node, inputs)
+	case "causal.dag_markov_factorization":
+		return tensorBackend.applyCausalDAGMarkovFactorization(ctx, node, inputs)
+	case "causal.do_calculus":
+		return tensorBackend.applyCausalDoCalculus(ctx, node, inputs)
+	case "train.loss.mse":
+		return tensorBackend.applyMSELoss(ctx, node, inputs)
+	case "train.loss.cross_entropy":
+		return tensorBackend.applyCrossEntropyLoss(ctx, node, inputs)
+	case "train.loss.mse_grad", "train.grad.mse":
+		return tensorBackend.applyMSEGrad(ctx, node, inputs)
+	case "train.loss.cross_entropy_grad", "train.grad.cross_entropy":
+		return tensorBackend.applyCrossEntropyGrad(ctx, node, inputs)
+	case "bench.accuracy", "bench.metric.accuracy":
+		return tensorBackend.applyAccuracy(ctx, node, inputs)
+	case "bench.perplexity", "bench.metric.perplexity":
+		return tensorBackend.applyPerplexity(ctx, node, inputs)
+	case "bench.f1", "bench.metric.f1":
+		return tensorBackend.applyF1(ctx, node, inputs)
+	case "train.optimizer.adam", "optimizer.adam",
+		"train.optimizer.adamw", "optimizer.adamw",
+		"train.optimizer.adamax", "optimizer.adamax",
+		"train.optimizer.sgd", "optimizer.sgd",
+		"train.optimizer.lion", "optimizer.lion",
+		"train.optimizer.rmsprop", "optimizer.rmsprop",
+		"train.optimizer.hebbian", "optimizer.hebbian",
+		"train.optimizer.lars", "optimizer.lars",
+		"train.optimizer.lamb", "optimizer.lamb",
+		"train.optimizer.adagrad", "optimizer.adagrad",
+		"train.optimizer.adadelta", "optimizer.adadelta",
+		"train.optimizer.lbfgs", "optimizer.lbfgs":
+		return tensorBackend.applyOptimizerStep(ctx, node, inputs)
 	default:
 		return nil, fmt.Errorf(
 			"metal tensor: operation %q node %q has no resident Metal implementation",
