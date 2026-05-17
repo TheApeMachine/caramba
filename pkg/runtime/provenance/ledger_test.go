@@ -70,7 +70,9 @@ func TestLedgerSigningAndVerify(t *testing.T) {
 			signature, err := ledger.Sign(privateKey)
 			So(err, ShouldBeNil)
 
-			otherPub, _, _ := ed25519.GenerateKey(rand.Reader)
+			otherPub, _, genErr := ed25519.GenerateKey(rand.Reader)
+			So(genErr, ShouldBeNil)
+
 			valid, err := ledger.Verify(otherPub, signature)
 			So(err, ShouldBeNil)
 			So(valid, ShouldBeFalse)

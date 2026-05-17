@@ -243,6 +243,16 @@ func validatePrecision(capabilities Capabilities, node *ir.Node) error {
 		return nil
 	}
 
+	// OpInput is a data source, not a compute step. Storage precision
+	// (DType) drives upload conversions; compute precision is only
+	// meaningful for actual math kernels. Validating Input here would
+	// reject any manifest that authors values as float64 even though
+	// the backend's UploadFloat64 path converts to its native dtype
+	// faithfully before any kernel runs.
+	if node.OpType() == ir.OpInput {
+		return nil
+	}
+
 	required := node.ValueType().Precision
 
 	if required == "" {
@@ -264,6 +274,20 @@ func validatePrecision(capabilities Capabilities, node *ir.Node) error {
 		capabilities.Location(), node.OpType(), actual, node.ID(), required,
 	)
 }
+
+/*
+ShapeConstraint identifiers used by backends through the
+shapeConstraintProvider interface. Centralizing these strings here
+avoids typos between the provider implementations and the dispatch
+switch in validateShapeConstraint.
+*/
+const (
+	ShapeConstraintInputsSameShape          = "inputs.same_shape"
+	ShapeConstraintMatMulRank2              = "matmul.rank2"
+	ShapeConstraintInputRank3               = "input.rank3"
+	ShapeConstraintInputRank4               = "input.rank4"
+	ShapeConstraintOutputSameElementsInput0 = "output.same_elements_as_input0"
+)
 
 type shapeConstraintProvider interface {
 	ShapeConstraints(operationID ir.OpType) []string
@@ -287,15 +311,15 @@ func validateShapeConstraints(capabilities Capabilities, node *ir.Node) error {
 
 func validateShapeConstraint(capabilities Capabilities, node *ir.Node, constraint string) error {
 	switch constraint {
-	case "inputs.same_shape":
+	case ShapeConstraintInputsSameShape:
 		return validateSameInputShapes(capabilities, node)
-	case "matmul.rank2":
+	case ShapeConstraintMatMulRank2:
 		return validateRank2Matmul(capabilities, node)
-	case "input.rank3":
+	case ShapeConstraintInputRank3:
 		return validateFirstInputRank(capabilities, node, 3)
-	case "input.rank4":
+	case ShapeConstraintInputRank4:
 		return validateFirstInputRank(capabilities, node, 4)
-	case "output.same_elements_as_input0":
+	case ShapeConstraintOutputSameElementsInput0:
 		return validateSameElementCount(capabilities, node)
 	}
 

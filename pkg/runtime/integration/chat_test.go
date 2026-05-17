@@ -248,8 +248,8 @@ func TestChatRuntimeEndToEnd(t *testing.T) {
 			})
 
 			Convey("History state should hold the same five tokens", func() {
-				historyState, err := exec.States()["history"].(*state.TokenBuffer), error(nil)
-				So(err, ShouldBeNil)
+				historyState, ok := exec.States()["history"].(*state.TokenBuffer)
+				So(ok, ShouldBeTrue)
 				So(historyState.Tokens(), ShouldResemble, []int{0, 1, 2, 3, 4})
 			})
 

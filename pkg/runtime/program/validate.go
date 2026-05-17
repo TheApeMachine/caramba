@@ -41,6 +41,7 @@ func (program *Program) Validate() error {
 	for graphID, graphModule := range program.Graphs {
 		if graphModule.ID == "" {
 			graphModule.ID = graphID
+			program.Graphs[graphID] = graphModule
 		}
 
 		if err := graphModule.Validate(); err != nil {

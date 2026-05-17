@@ -112,6 +112,12 @@ func (recorder *InMemory) RecordTensor(name string, values []float64, shape []in
 	})
 }
 
+// Event records an arbitrary key/value event. The fields map is
+// shallow-copied: top-level keys cannot be mutated by the caller after
+// the call returns, but any nested mutable values (maps, slices, or
+// pointer-bearing structs) remain shared with the caller. Callers
+// passing mutable nested values must treat them as immutable after
+// the call, or pass their own deep copy.
 func (recorder *InMemory) Event(name string, fields map[string]any) {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()

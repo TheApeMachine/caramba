@@ -57,6 +57,10 @@ func newTensorFromConfig(id string, config map[string]any) (State, error) {
 		return nil, err
 	}
 
+	if seed < 0 {
+		return nil, fmt.Errorf("tensor: %q seed must be non-negative, got %d", id, seed)
+	}
+
 	if err := tensor.applyInitializer(initial, uint64(seed)); err != nil {
 		return nil, err
 	}
@@ -138,7 +142,7 @@ func (tensor *Tensor) Snapshot(ctx context.Context) (Snapshot, error) {
 	binary.LittleEndian.PutUint32(header[0:4], uint32(len(tensor.shape)))
 
 	for index, dim := range tensor.shape {
-		binary.LittleEndian.PutUint64(header[4+index*8:], uint64(int64(dim)))
+		binary.LittleEndian.PutUint64(header[4+index*8:], uint64(dim))
 	}
 
 	body := make([]byte, 8*len(tensor.values))
@@ -174,7 +178,13 @@ func (tensor *Tensor) Restore(ctx context.Context, snapshot Snapshot) error {
 	shape := make([]int, rank)
 
 	for index := range shape {
-		shape[index] = int(int64(binary.LittleEndian.Uint64(snapshot.Payload[4+index*8:])))
+		raw := binary.LittleEndian.Uint64(snapshot.Payload[4+index*8:])
+
+		if raw > uint64(math.MaxInt) {
+			return fmt.Errorf("tensor: snapshot dimension %d (%d) exceeds int range", index, raw)
+		}
+
+		shape[index] = int(raw)
 	}
 
 	expected := tensorCapacity(shape)

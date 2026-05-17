@@ -273,10 +273,27 @@ func sortedMap(source map[string]any) map[string]any {
 	out := map[string]any{}
 
 	for _, key := range keys {
-		out[key] = source[key]
+		out[key] = sortedValue(source[key])
 	}
 
 	return out
+}
+
+func sortedValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return sortedMap(typed)
+	case []any:
+		next := make([]any, len(typed))
+
+		for index, element := range typed {
+			next[index] = sortedValue(element)
+		}
+
+		return next
+	}
+
+	return value
 }
 
 /*

@@ -58,6 +58,22 @@ const (
 )
 
 /*
+backendComputePrecision returns the compute precision the diffusion
+runtime adapter declares on every IR node before execution. GPU
+backends (Metal/CUDA/XLA) execute at Float32; CPU at Float64.
+UploadFloat64 paths convert host values into the device's storage
+dtype before kernels run.
+*/
+func backendComputePrecision(location tensor.Location) tensor.DType {
+	switch location {
+	case tensor.Metal, tensor.CUDA, tensor.XLA:
+		return tensor.Float32
+	}
+
+	return ""
+}
+
+/*
 NewRuntimeDiffusionPipeline constructs the runtime-backed diffusion
 adapter. config.Manifest names the umbrella diffusion manifest that
 declares each component's source; config.Runtime, when set, points at
@@ -102,11 +118,16 @@ func NewRuntimeDiffusionPipeline(
 
 	applyRuntimeOverrides(runtimeProgram, resolved)
 
+	// DefaultPrecision lines up the manifest's nodes with the
+	// per-backend compute precision: Float32 on GPU backends where
+	// UploadFloat64 already converts host values into device storage,
+	// empty (Float64) on CPU. See chat.runtime_model_generator for
+	// the same contract.
 	graphRunner, err := backend.New(backend.Options{
 		ComputeBackend:   computeBackend,
 		WeightBinder:     newWeightDispatch(weightStores),
 		Preloaded:        topologies,
-		DefaultPrecision: defaultPrecisionFor(computeBackend.Location()),
+		DefaultPrecision: backendComputePrecision(computeBackend.Location()),
 	})
 
 	if err != nil {
@@ -371,15 +392,3 @@ func newDiffusionLedger(
 	return ledger
 }
 
-/*
-defaultPrecisionFor selects compute precision for the bridge. GPU
-backends downcast to float32; CPU keeps float64.
-*/
-func defaultPrecisionFor(location tensor.Location) tensor.DType {
-	switch location {
-	case tensor.Metal, tensor.CUDA, tensor.XLA:
-		return tensor.Float32
-	}
-
-	return ""
-}

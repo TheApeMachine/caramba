@@ -2,6 +2,7 @@ package backend
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/runtime/program"
@@ -102,13 +103,7 @@ func orderedKeys(mapping map[string]string) []string {
 		keys = append(keys, key)
 	}
 
-	for first := 0; first < len(keys); first++ {
-		for second := first + 1; second < len(keys); second++ {
-			if keys[second] < keys[first] {
-				keys[first], keys[second] = keys[second], keys[first]
-			}
-		}
-	}
+	sort.Strings(keys)
 
 	return keys
 }

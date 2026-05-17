@@ -58,7 +58,7 @@ func TestFlowMatchEulerStep(t *testing.T) {
 			}
 		})
 
-		Convey("Step at the final index should error", func() {
+		Convey("Step beyond the final index should error", func() {
 			_, err := runner.Step(context.Background(), declaration, 5, latents, velocity)
 			So(err, ShouldNotBeNil)
 		})

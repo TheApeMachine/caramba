@@ -147,6 +147,11 @@ func asFloat64(value any) (float64, error) {
 	return 0, fmt.Errorf("expected float, got %T", value)
 }
 
+// asInt coerces a runtime value into an int. float64 inputs are
+// truncated toward zero (no rounding): callers passing a fractional
+// number do not get an error, the fractional part is silently
+// discarded. YAML-sourced integer-valued numbers (e.g. "top_k: 50")
+// decode as float64 and round-trip correctly through this path.
 func asInt(value any) (int, error) {
 	switch typed := value.(type) {
 	case int:

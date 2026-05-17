@@ -135,6 +135,22 @@ int metal_optimizer_adadelta_tensor(
 	void *delta_average, void *out, int count,
 	double rho, double eps, double weight_decay
 );
+/*
+ * metal_optimizer_lbfgs_tensor -- L-BFGS update step over Metal-resident buffers.
+ *
+ * Buffer size requirements (the caller must allocate exactly these counts):
+ *   state_history -- history_size * count floats (ring buffer of s-vectors).
+ *   grad_history  -- history_size * count floats (ring buffer of y-vectors).
+ *   rho_history   -- history_size floats (1 / (y . s) per history slot).
+ *   head          -- 1 element; current ring-buffer insert index.
+ *   history_count -- 1 element; number of populated slots (clipped to history_size).
+ *   previous_params, previous_grads -- count elements each; last accepted params/grads.
+ *
+ * Semantics: `head` advances modulo history_size on each accepted curvature pair;
+ * `history_count` grows toward history_size and saturates. `rho_history[head]` is
+ * written alongside slot `head` of state_history / grad_history. Callers must hold
+ * these buffers stable across calls so the two-loop recursion sees a valid history.
+ */
 int metal_optimizer_lbfgs_tensor(
 	const void *params, const void *grads, void *state_history,
 	void *grad_history, void *rho_history, void *head,

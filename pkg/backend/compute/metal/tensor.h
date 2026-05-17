@@ -96,6 +96,24 @@ int metal_tensor_download_float32(const void* handle, float* dst, size_t n);
  * Returns METAL_TENSOR_OK on success; future implementations may return non-zero on failure.
  */
 int metal_tensor_free(void* handle);
+
+/*
+ * metal_tensor_retain -- adds one strong reference to an existing tensor buffer.
+ *
+ * Parameters:
+ *   handle -- a non-NULL pointer previously returned by an empty/upload entry point.
+ *
+ * Returns:
+ *   A new owned pointer aliasing the same MTLBuffer (reference count incremented),
+ *   or NULL if handle is NULL or the runtime is not initialized.
+ *
+ * Ownership: every successful retain must be paired with exactly one metal_tensor_free
+ * call on the returned pointer. Retaining does not duplicate the buffer's contents —
+ * the new and old handles share storage.
+ *
+ * Thread-safety: safe to call concurrently with other tensor APIs, but callers must
+ * not race retain/free against destruction of the underlying handle.
+ */
 void* metal_tensor_retain(const void* handle);
 
 /*

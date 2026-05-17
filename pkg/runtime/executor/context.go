@@ -41,6 +41,10 @@ scheduler/graph references return their declarations so the op can
 hand them to the appropriate runner.
 */
 func (rc *runtimeContext) Resolve(ref program.ValueRef) (any, error) {
+	if ref.Namespace != program.NamespaceLiteral && ref.Name == "" {
+		return nil, fmt.Errorf("runtime/executor: empty ref.Name for namespace %q", ref.Namespace)
+	}
+
 	switch ref.Namespace {
 	case program.NamespaceLocal:
 		return rc.scope.Get(ref.Name)

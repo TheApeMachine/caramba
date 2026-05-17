@@ -3,10 +3,12 @@ package io
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 
 	"github.com/theapemachine/caramba/pkg/runtime/op"
+	"github.com/theapemachine/caramba/pkg/runtime/program"
 )
 
 /*
@@ -15,11 +17,11 @@ Outputs["text"]. A trailing newline is stripped.
 */
 type ReadLine struct {
 	mu      sync.Mutex
-	readers map[any]*bufio.Reader
+	readers map[io.Reader]*bufio.Reader
 }
 
 func newReadLine() *ReadLine {
-	return &ReadLine{readers: map[any]*bufio.Reader{}}
+	return &ReadLine{readers: map[io.Reader]*bufio.Reader{}}
 }
 
 func (readLine *ReadLine) Execute(execContext op.Context) error {
@@ -38,9 +40,12 @@ func (readLine *ReadLine) Execute(execContext op.Context) error {
 		readLine.readers[stdin] = reader
 	}
 
-	readLine.mu.Unlock()
-
+	// Hold readLine.mu through the blocking read so two concurrent
+	// callers sharing the same stdin cannot read interleaved bytes
+	// from the same bufio.Reader. The runtime is single-threaded
+	// today; this is defence for future concurrent executors.
 	line, err := reader.ReadString('\n')
+	readLine.mu.Unlock()
 
 	if err != nil && line == "" {
 		return fmt.Errorf("io.read_line: %w", err)
@@ -102,8 +107,8 @@ func (EmitToken) Execute(execContext op.Context) error {
 
 	tokenizerRef, ok := step.Inputs["tokenizer"]
 
-	if !ok {
-		return fmt.Errorf("io.emit_token: missing input 'tokenizer'")
+	if !ok || tokenizerRef.Namespace != program.NamespaceTokenizer {
+		return fmt.Errorf("io.emit_token: tokenizer must be a tokenizer asset reference")
 	}
 
 	rawToken, err := execContext.Resolve(tokenRef)

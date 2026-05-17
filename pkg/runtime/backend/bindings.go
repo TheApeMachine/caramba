@@ -179,6 +179,12 @@ func bindAllInputs(index *ir.Index, inputs map[string]any) error {
 }
 
 func bindOne(index *ir.Index, name string, value any) error {
+	node := index.Node(name)
+
+	if node == nil {
+		return nil
+	}
+
 	values, err := coerceValues(value)
 
 	if err != nil {
@@ -186,12 +192,6 @@ func bindOne(index *ir.Index, name string, value any) error {
 	}
 
 	if values == nil {
-		return nil
-	}
-
-	node := index.Node(name)
-
-	if node == nil {
 		return nil
 	}
 
@@ -247,7 +247,7 @@ func coerceValues(value any) ([]float64, error) {
 		return nil, nil
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("unsupported input type %T", value)
 }
 
 func asIntSlice(value any) ([]int, error) {

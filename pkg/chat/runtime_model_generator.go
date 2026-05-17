@@ -95,12 +95,17 @@ func NewRuntimeModelGenerator(
 
 	preload := topologyPreload(runtimeProgram, topologyGraph)
 
+	// DefaultPrecision is the compute-precision the bridge stamps on
+	// every IR node before execution. The Metal backend's kernels
+	// run at Float32 and the UploadFloat64 path converts host values
+	// to that storage faithfully; CPU runs at Float64. Setting this
+	// per-backend lines up the manifest's nodes with the kernels.
 	graphRunner, err := backend.New(backend.Options{
 		ComputeBackend:   computeBackend,
 		WeightBinder:     NewWeightBinder(weightStore),
 		PreExecute:       NewPreExecuteHook(),
 		Preloaded:        preload,
-		DefaultPrecision: defaultPrecisionFor(computeBackend.Location()),
+		DefaultPrecision: backendComputePrecision(computeBackend.Location()),
 	})
 
 	if err != nil {
@@ -264,11 +269,14 @@ func weightSourceKey(store *modelweights.Store) string {
 }
 
 /*
-defaultPrecisionFor picks the compute precision the runtime bridge
-forces on every IR node before execution. CPU keeps float64; GPU
-backends (Metal/CUDA/XLA) downcast to float32.
+backendComputePrecision returns the compute precision the chat
+runtime adapter declares on every IR node before execution. The
+Metal/CUDA/XLA backends execute at Float32; CPU executes at
+Float64. UploadFloat64 paths on every backend convert host values
+into the device's storage dtype before kernels run, so this only
+selects the compute-precision contract — not the storage dtype.
 */
-func defaultPrecisionFor(location tensor.Location) tensor.DType {
+func backendComputePrecision(location tensor.Location) tensor.DType {
 	switch location {
 	case tensor.Metal, tensor.CUDA, tensor.XLA:
 		return tensor.Float32

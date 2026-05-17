@@ -1,6 +1,10 @@
 package state
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+	"strconv"
+)
 
 /*
 intFromConfig reads a typed integer from a state-config map, treating
@@ -98,17 +102,51 @@ func intFromAny(value any) (int, error) {
 	switch typed := value.(type) {
 	case int:
 		return typed, nil
-	case int64:
+	case int8:
+		return int(typed), nil
+	case int16:
 		return int(typed), nil
 	case int32:
 		return int(typed), nil
+	case int64:
+		if typed > int64(maxInt) || typed < int64(minInt) {
+			return 0, fmt.Errorf("expected integer, got int64 %d out of int range", typed)
+		}
+
+		return int(typed), nil
+	case uint:
+		if uint64(typed) > uint64(maxInt) {
+			return 0, fmt.Errorf("expected integer, got uint %d out of int range", typed)
+		}
+
+		return int(typed), nil
+	case uint8:
+		return int(typed), nil
+	case uint16:
+		return int(typed), nil
+	case uint32:
+		return int(typed), nil
+	case uint64:
+		if typed > uint64(maxInt) {
+			return 0, fmt.Errorf("expected integer, got uint64 %d out of int range", typed)
+		}
+
+		return int(typed), nil
 	case float64:
+		if math.Mod(typed, 1.0) != 0 {
+			return 0, fmt.Errorf("expected integer, got fractional float %g", typed)
+		}
+
+		if typed > float64(maxInt) || typed < float64(minInt) {
+			return 0, fmt.Errorf("expected integer, got float64 %g out of int range", typed)
+		}
+
 		return int(typed), nil
 	case string:
 		parsed, err := parseIntString(typed)
 
 		if err != nil {
-			return 0, fmt.Errorf("expected integer, got string %q", typed)
+			return 0, fmt.Errorf("expected integer, got string %q: %w", typed, err)
 		}
 
 		return parsed, nil
@@ -117,33 +155,14 @@ func intFromAny(value any) (int, error) {
 	return 0, fmt.Errorf("expected integer, got %T", value)
 }
 
+const (
+	maxInt = int(^uint(0) >> 1)
+	minInt = -maxInt - 1
+)
+
+// parseIntString delegates to strconv.Atoi so overflow and malformed
+// input surface as the standard library's *strconv.NumError, including
+// values that exceed int range on the running platform.
 func parseIntString(text string) (int, error) {
-	value := 0
-	sign := 1
-	start := 0
-
-	if len(text) == 0 {
-		return 0, fmt.Errorf("empty string")
-	}
-
-	if text[0] == '-' {
-		sign = -1
-		start = 1
-	}
-
-	if start == len(text) {
-		return 0, fmt.Errorf("only a sign")
-	}
-
-	for index := start; index < len(text); index++ {
-		character := text[index]
-
-		if character < '0' || character > '9' {
-			return 0, fmt.Errorf("non-digit %q", character)
-		}
-
-		value = value*10 + int(character-'0')
-	}
-
-	return sign * value, nil
+	return strconv.Atoi(text)
 }

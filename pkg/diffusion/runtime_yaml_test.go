@@ -207,6 +207,11 @@ func TestDiffusionRuntimeYAML(t *testing.T) {
 		// the manifest leaves it variable so tests can redirect into TempDir.
 		writeStep := runtimeProgram.FindStep("write_image")
 		So(writeStep, ShouldNotBeNil)
+
+		if writeStep == nil {
+			t.Fatalf("write_image step missing from compiled runtime program")
+		}
+
 		writeStep.Config["path"] = outputPath
 
 		runner := stubDiffusionRunner{

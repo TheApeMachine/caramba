@@ -126,6 +126,10 @@ func (LoopUntil) Execute(execContext op.Context) error {
 	iteration := 0
 
 	for {
+		// maxIterations counts body executions, not condition checks. A
+		// value of N permits exactly N body runs before erroring; the
+		// guard runs at the top of the loop so an unsatisfied condition
+		// after the Nth body invocation surfaces the error here.
 		if maxIterations > 0 && iteration >= maxIterations {
 			return fmt.Errorf(
 				"control.loop_until: exceeded max iterations %d without satisfying condition",

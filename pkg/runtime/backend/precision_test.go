@@ -33,9 +33,11 @@ func TestApplyDefaultPrecision(t *testing.T) {
 		})
 
 		Convey("Empty default should be a no-op", func() {
+			initialPrecision := input.ValueType().Precision
+
 			applyDefaultPrecision(graph, "")
 
-			So(input.ValueType().Precision, ShouldNotEqual, tensor.Float32)
+			So(input.ValueType().Precision, ShouldEqual, initialPrecision)
 		})
 	})
 }

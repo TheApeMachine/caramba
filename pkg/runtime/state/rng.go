@@ -19,11 +19,13 @@ type RNG struct {
 	seed   uint64
 	stream uint64
 	source *rand.ChaCha8
+	random *rand.Rand
 }
 
 func newRNG(id string, seed uint64) *RNG {
 	rng := &RNG{id: id, seed: seed}
 	rng.source = rand.NewChaCha8(rng.seedArray())
+	rng.random = rand.New(rng.source)
 
 	return rng
 }
@@ -52,6 +54,7 @@ func (rng *RNG) Reset(ctx context.Context) error {
 
 	rng.stream = 0
 	rng.source = rand.NewChaCha8(rng.seedArray())
+	rng.random = rand.New(rng.source)
 
 	return nil
 }
@@ -65,7 +68,7 @@ func (rng *RNG) Float64() float64 {
 
 	rng.stream++
 
-	return rand.New(rng.source).Float64()
+	return rng.random.Float64()
 }
 
 /*
@@ -81,7 +84,7 @@ func (rng *RNG) Intn(upperBound int) int {
 
 	rng.stream++
 
-	return rand.New(rng.source).IntN(upperBound)
+	return rng.random.IntN(upperBound)
 }
 
 /*
@@ -94,7 +97,7 @@ func (rng *RNG) NormFloat64() float64 {
 
 	rng.stream++
 
-	return rand.New(rng.source).NormFloat64()
+	return rng.random.NormFloat64()
 }
 
 func (rng *RNG) Snapshot(ctx context.Context) (Snapshot, error) {
@@ -123,14 +126,21 @@ func (rng *RNG) Restore(ctx context.Context, snapshot Snapshot) error {
 	}
 
 	rng.mu.Lock()
+	defer rng.mu.Unlock()
+
 	rng.seed = binary.LittleEndian.Uint64(snapshot.Payload[0:8])
 	stream := binary.LittleEndian.Uint64(snapshot.Payload[8:16])
 	rng.source = rand.NewChaCha8(rng.seedArray())
+	rng.random = rand.New(rng.source)
 	rng.stream = 0
-	rng.mu.Unlock()
 
+	// Advance the keystream under a single lock acquisition rather
+	// than re-taking rng.mu inside each Float64 call. rand.ChaCha8
+	// does not expose a seek primitive, so the loop is the only way
+	// to reach the recorded stream offset.
 	for index := uint64(0); index < stream; index++ {
-		rng.Float64()
+		rng.random.Float64()
+		rng.stream++
 	}
 
 	return nil

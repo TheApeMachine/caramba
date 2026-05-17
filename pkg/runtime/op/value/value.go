@@ -93,7 +93,7 @@ func (Clear) Execute(execContext op.Context) error {
 	currentValue, err := execContext.Resolve(targetRef)
 
 	if err != nil {
-		return execContext.Bind(targetRef, []any{})
+		return err
 	}
 
 	switch currentValue.(type) {

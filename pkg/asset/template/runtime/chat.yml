@@ -43,7 +43,7 @@ system:
 
       - id: generate
         op: control.loop_count
-        count: 128
+        count: 32
         body:
           - id: forward
             op: graph.call

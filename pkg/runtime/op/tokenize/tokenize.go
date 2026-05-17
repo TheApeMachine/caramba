@@ -299,13 +299,26 @@ func asInt(value any) (int, error) {
 	case int32:
 		return int(typed), nil
 	case int64:
+		if typed > int64(maxPlatformInt) || typed < int64(minPlatformInt) {
+			return 0, fmt.Errorf("expected integer, got int64 %d out of int range", typed)
+		}
+
 		return int(typed), nil
 	case float64:
+		if typed > float64(maxPlatformInt) || typed < float64(minPlatformInt) {
+			return 0, fmt.Errorf("expected integer, got float64 %g out of int range", typed)
+		}
+
 		return int(typed), nil
 	}
 
 	return 0, fmt.Errorf("expected integer, got %T", value)
 }
+
+const (
+	maxPlatformInt = int(^uint(0) >> 1)
+	minPlatformInt = -maxPlatformInt - 1
+)
 
 func init() {
 	op.Default.MustRegister("tokenizer.encode", Encode{})
