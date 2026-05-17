@@ -4,6 +4,7 @@ package metal
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -40,6 +41,60 @@ func TestTensorBackend_applyOptimizerGraph(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}
 			}
+		})
+
+		Convey("It should preserve optimizer state across repeated graph steps", func() {
+			params, grads := optimizerTensorValues(64)
+			tensorBackend := newMetalTensorBackendForTest(test)
+			paramTensor := uploadMetalTensor(tensorBackend, causalShape(test, len(params)), params)
+			gradTensor := uploadMetalTensor(tensorBackend, causalShape(test, len(grads)), grads)
+			defer closeBenchmarkTensors(paramTensor, gradTensor)
+
+			node := executor.NodeSpec{
+				ID:    "stateful_adam",
+				Op:    "train.optimizer.adam",
+				Shape: []int{len(params)},
+			}
+
+			referenceStep := cputrain.NewAdamStep(1e-3, 0.9, 0.999, 1e-8, 0)
+			firstReference, err := referenceStep.Forward(
+				state.NewDict().WithParams(params).WithGrads(grads),
+			)
+			So(err, ShouldBeNil)
+			firstExpected := slices.Clone(firstReference.Out)
+			secondReference, err := referenceStep.Forward(
+				state.NewDict().WithParams(firstExpected).WithGrads(grads),
+			)
+			So(err, ShouldBeNil)
+			secondExpected := slices.Clone(secondReference.Out)
+
+			firstOutput, err := tensorBackend.Apply(
+				context.Background(),
+				node,
+				[]computetensor.Float64Tensor{paramTensor, gradTensor},
+			)
+			So(err, ShouldBeNil)
+			defer func() {
+				So(firstOutput.Close(), ShouldBeNil)
+			}()
+
+			firstValues, err := firstOutput.CloneFloat64()
+			So(err, ShouldBeNil)
+			assertMetalMaxDiff(firstValues, firstExpected, 8e-4)
+
+			secondOutput, err := tensorBackend.Apply(
+				context.Background(),
+				node,
+				[]computetensor.Float64Tensor{firstOutput, gradTensor},
+			)
+			So(err, ShouldBeNil)
+			defer func() {
+				So(secondOutput.Close(), ShouldBeNil)
+			}()
+
+			secondValues, err := secondOutput.CloneFloat64()
+			So(err, ShouldBeNil)
+			assertMetalMaxDiff(secondValues, secondExpected, 8e-4)
 		})
 	})
 }

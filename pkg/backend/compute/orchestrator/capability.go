@@ -1,6 +1,8 @@
 package orchestrator
 
 import (
+	"slices"
+
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
@@ -24,10 +26,11 @@ type CapabilityProvider interface {
 }
 
 type StaticCapabilities struct {
-	location tensor.Location
-	ops      map[ir.OpType]bool
+	location  tensor.Location
+	ops       map[ir.OpType]bool
 	precision map[ir.OpType]tensor.DType
-	fusions  map[string]map[ir.OpType]bool
+	fusions   map[string]map[ir.OpType]bool
+	shapes    map[ir.OpType][]string
 }
 
 func NewStaticCapabilities(location tensor.Location) *StaticCapabilities {
@@ -36,6 +39,7 @@ func NewStaticCapabilities(location tensor.Location) *StaticCapabilities {
 		ops:       make(map[ir.OpType]bool),
 		precision: make(map[ir.OpType]tensor.DType),
 		fusions:   make(map[string]map[ir.OpType]bool),
+		shapes:    make(map[ir.OpType][]string),
 	}
 }
 
@@ -107,6 +111,17 @@ func (capabilities *StaticCapabilities) RegisterFusion(pattern string, fused ir.
 
 func (capabilities *StaticCapabilities) CanFuse(pattern string, fused ir.OpType) bool {
 	return capabilities.fusions[pattern][fused]
+}
+
+func (capabilities *StaticCapabilities) SetShapeConstraints(
+	operationID ir.OpType,
+	constraints ...string,
+) {
+	capabilities.shapes[operationID] = slices.Clone(constraints)
+}
+
+func (capabilities *StaticCapabilities) ShapeConstraints(operationID ir.OpType) []string {
+	return slices.Clone(capabilities.shapes[operationID])
 }
 
 func (capabilities *StaticCapabilities) Cost(node *ir.Node) Cost {

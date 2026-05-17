@@ -27,27 +27,30 @@ func init() {
 		&chatOptions.Manifest,
 		"manifest",
 		chatOptions.Manifest,
-		"embedded or local model manifest",
+		"embedded or local model manifest (provides system.topology + weights)",
+	)
+	chatCmd.Flags().StringVar(
+		&chatOptions.RuntimeManifest,
+		"runtime",
+		chatOptions.RuntimeManifest,
+		"embedded or local runtime manifest (defaults to runtime/chat.yml)",
+	)
+	chatCmd.Flags().StringVar(
+		&chatOptions.ProvenanceOutput,
+		"provenance",
+		chatOptions.ProvenanceOutput,
+		"path to write the run's provenance ledger",
 	)
 }
 
 func runChat(command *cobra.Command, _ []string) error {
 	return runWithQPoolProgress(command, func() error {
-		generator, err := chatOptions.Generator(command)
+		generator, err := chatpkg.NewRuntimeModelGenerator(
+			command.Context(), chatOptions.ModelConfig(),
+		)
 
 		if err != nil {
 			return err
-		}
-
-		backendName := ""
-		modelName := ""
-
-		if namedGenerator, ok := generator.(interface{ BackendName() string }); ok {
-			backendName = namedGenerator.BackendName()
-		}
-
-		if namedGenerator, ok := generator.(interface{ ModelName() string }); ok {
-			modelName = namedGenerator.ModelName()
 		}
 
 		session := chatpkg.NewSession(
@@ -57,34 +60,42 @@ func runChat(command *cobra.Command, _ []string) error {
 			generator,
 			chatpkg.SessionConfig{
 				Runtime:    "model",
-				Backend:    backendName,
-				Model:      modelName,
+				Backend:    generator.BackendName(),
+				Model:      generator.ModelName(),
 				ShowBanner: true,
 			},
 		)
 
-		return session.Run()
+		if err := session.Run(); err != nil {
+			return err
+		}
+
+		if chatOptions.ProvenanceOutput != "" {
+			return generator.WriteLedger(chatOptions.ProvenanceOutput)
+		}
+
+		return nil
 	})
 }
 
 type chatCommandOptions struct {
-	Manifest string
-}
-
-func (options chatCommandOptions) Generator(command *cobra.Command) (chatpkg.Generator, error) {
-	return chatpkg.NewModelGenerator(command.Context(), options.ModelConfig())
+	Manifest         string
+	RuntimeManifest  string
+	ProvenanceOutput string
 }
 
 func (options chatCommandOptions) ModelConfig() chatpkg.ModelConfig {
 	return chatpkg.ModelConfig{
-		Manifest: strings.TrimSpace(options.Manifest),
+		Manifest:        strings.TrimSpace(options.Manifest),
+		RuntimeManifest: strings.TrimSpace(options.RuntimeManifest),
 	}
 }
 
 const chatLong = `
 Start a terminal chat session.
 
-The chat command is manifest-backed. The manifest declares the runtime, compute
-backend, model source, tokenizer source, and generation policy. The CLI only
-selects which manifest to run.
+The chat command runs a runtime program over a model manifest. The model
+manifest provides system.topology and weights; the runtime manifest
+(default: runtime/chat.yml) declares the decode loop, sampler, and state
+objects.
 `

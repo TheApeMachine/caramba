@@ -17,27 +17,28 @@ var _ computetensor.Backend = (*TensorBackend)(nil)
 TensorBackend owns Metal MTLBuffer tensors.
 */
 type TensorBackend struct {
-	closed         atomic.Uint32
-	cacheMu        sync.Mutex
-	runtime        *MetalRuntime
-	activationOps  *MetalActivation
-	mathOps        *MathOps
-	shapeOps       *MetalShapeOps
-	attentionOps   *MetalAttention
-	positionalOps  *MetalPositional
-	convolutionOps *ConvolutionOps
-	poolingOps     *PoolingOps
-	maskingOps     *MetalMasking
-	projectionOps  *ProjectionOps
-	vsaOps         *MetalVSAOps
-	hawkesOps      *MetalHawkes
-	activeOps      *ActiveInferenceOps
-	predictiveOps  *MetalPredictiveCodingOps
-	markovOps      *MetalMarkovBlanket
-	causalOps      *MetalCausalOps
-	embeddingOps   map[string]*EmbeddingOps
-	kvEntries      map[string]*residentKVEntry
-	resident       map[string]computetensor.Float64Tensor
+	closed          atomic.Uint32
+	cacheMu         sync.Mutex
+	runtime         *MetalRuntime
+	activationOps   *MetalActivation
+	mathOps         *MathOps
+	shapeOps        *MetalShapeOps
+	attentionOps    *MetalAttention
+	positionalOps   *MetalPositional
+	convolutionOps  *ConvolutionOps
+	poolingOps      *PoolingOps
+	maskingOps      *MetalMasking
+	projectionOps   *ProjectionOps
+	vsaOps          *MetalVSAOps
+	hawkesOps       *MetalHawkes
+	activeOps       *ActiveInferenceOps
+	predictiveOps   *MetalPredictiveCodingOps
+	markovOps       *MetalMarkovBlanket
+	causalOps       *MetalCausalOps
+	embeddingOps    map[string]*EmbeddingOps
+	kvEntries       map[string]*residentKVEntry
+	resident        map[string]residentTensorEntry
+	optimizerStates map[string]*residentOptimizerState
 }
 
 type residentKVEntry struct {
@@ -46,6 +47,12 @@ type residentKVEntry struct {
 	shape    []int
 	key      computetensor.Float64Tensor
 	value    computetensor.Float64Tensor
+}
+
+type residentTensorEntry struct {
+	shape       []int
+	fingerprint uint64
+	value       computetensor.Float64Tensor
 }
 
 /*
@@ -59,10 +66,11 @@ func NewTensorBackend() (*TensorBackend, error) {
 	}
 
 	return &TensorBackend{
-		runtime:      runtime,
-		embeddingOps: make(map[string]*EmbeddingOps),
-		kvEntries:    make(map[string]*residentKVEntry),
-		resident:     make(map[string]computetensor.Float64Tensor),
+		runtime:         runtime,
+		embeddingOps:    make(map[string]*EmbeddingOps),
+		kvEntries:       make(map[string]*residentKVEntry),
+		resident:        make(map[string]residentTensorEntry),
+		optimizerStates: make(map[string]*residentOptimizerState),
 	}, nil
 }
 
@@ -136,16 +144,24 @@ func (tensorBackend *TensorBackend) Close() error {
 		delete(tensorBackend.kvEntries, key)
 	}
 
-	for key, value := range tensorBackend.resident {
-		if value == nil {
+	for key, entry := range tensorBackend.resident {
+		if entry.value == nil {
 			continue
 		}
 
-		if err := value.Close(); err != nil && closeErr == nil {
+		if err := entry.value.Close(); err != nil && closeErr == nil {
 			closeErr = err
 		}
 
 		delete(tensorBackend.resident, key)
+	}
+
+	for key, state := range tensorBackend.optimizerStates {
+		if err := state.close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
+
+		delete(tensorBackend.optimizerStates, key)
 	}
 
 	if tensorBackend.runtime != nil {
@@ -155,6 +171,20 @@ func (tensorBackend *TensorBackend) Close() error {
 	}
 
 	return closeErr
+}
+
+func (tensorBackend *TensorBackend) sharedRuntime(
+	previous *MetalRuntime,
+) (*MetalRuntime, error) {
+	if previous == nil || previous == tensorBackend.runtime {
+		return tensorBackend.runtime, nil
+	}
+
+	if err := previous.Close(); err != nil {
+		return nil, err
+	}
+
+	return tensorBackend.runtime, nil
 }
 
 func (entry *residentKVEntry) close() error {

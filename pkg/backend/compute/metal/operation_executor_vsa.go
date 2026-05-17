@@ -205,7 +205,12 @@ func (tensorBackend *TensorBackend) vsa() (*MetalVSAOps, error) {
 		return nil, err
 	}
 
-	vsaOps.runtime = tensorBackend.runtime
+	vsaOps.runtime, err = tensorBackend.sharedRuntime(vsaOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.vsaOps = vsaOps
 
 	return vsaOps, nil

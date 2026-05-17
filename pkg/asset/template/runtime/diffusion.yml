@@ -1,0 +1,137 @@
+# Diffusion runtime program.
+#
+# Three model topologies (text_encoder, denoiser, vae) are provided
+# by separate model manifests the adapter loads alongside this file
+# and preloads under the topology names referenced below. Every
+# loop, state mutation, and IO is declared here in YAML — no chat
+# or diffusion specific Go control flow.
+
+variables:
+  generation:
+    sequence_length: 4096
+    latent_channels: 64
+    prompt_embed_dim: 4096
+    output_width: 1024
+    output_height: 1024
+    output_channels: 3
+    seed: 0
+    steps: 28
+    output: out.png
+
+system:
+  runtime:
+    type: program
+    entry: image
+    state:
+      latents:
+        type: tensor
+        shape:
+          - 1
+          - ${generation.sequence_length}
+          - ${generation.latent_channels}
+        init: gaussian
+        seed: ${generation.seed}
+      step_index:
+        type: counter
+        initial: 0
+    schedulers:
+      scheduler:
+        type: flow_match_euler_discrete
+        steps: ${generation.steps}
+        num_train_timesteps: 1000
+    graphs:
+      text_encoder:
+        topology: text_encoder
+        outputs: { prompt_embeds: prompt_embeds }
+      denoiser:
+        topology: denoiser
+        outputs: { velocity: lm_head }
+        input_shapes:
+          hidden_states:
+            - 1
+            - ${generation.sequence_length}
+            - ${generation.latent_channels}
+          encoder_hidden_states:
+            - 1
+            - ${generation.sequence_length}
+            - ${generation.prompt_embed_dim}
+          timestep:
+            - 1
+        default_shape:
+          - 1
+          - ${generation.sequence_length}
+          - ${generation.latent_channels}
+      vae:
+        topology: vae
+        outputs: { image: vae_output }
+        default_shape:
+          - 1
+          - ${generation.sequence_length}
+          - ${generation.latent_channels}
+    program:
+      - id: read_prompt
+        op: io.read_line
+        outputs: { text: prompt }
+
+      - id: encode_prompt
+        op: tokenizer.encode
+        tokenizer: tokenizer
+        text: prompt
+        outputs: { tokens: input_ids }
+
+      - id: encode_text
+        op: graph.call
+        graph: text_encoder
+        inputs: { input_ids: input_ids }
+        outputs: { prompt_embeds: prompt_embeds }
+
+      - id: compute_timesteps
+        op: scheduler.timesteps
+        scheduler: scheduler
+        outputs: { timesteps: timesteps }
+
+      - id: denoise_loop
+        op: control.loop_each
+        source: timesteps
+        as: timestep
+        body:
+          - id: denoise
+            op: graph.call
+            graph: denoiser
+            inputs:
+              hidden_states: state.latents
+              encoder_hidden_states: prompt_embeds
+              timestep: timestep
+            outputs:
+              velocity: velocity
+
+          - id: scheduler_step
+            op: scheduler.step
+            scheduler: scheduler
+            step_index: state.step_index
+            latents: state.latents
+            velocity: velocity
+            outputs:
+              latents: state.latents
+
+          - id: advance_step
+            op: state.update
+            update: increment
+            target: state.step_index
+
+      - id: vae_decode
+        op: graph.call
+        graph: vae
+        inputs: { latents: state.latents }
+        outputs: { image: image }
+
+      - id: write_image
+        op: io.write_image
+        image: image
+        config:
+          path: ${generation.output}
+          width: ${generation.output_width}
+          height: ${generation.output_height}
+          channels: ${generation.output_channels}
+          layout: channel_interleaved
+          range: neg_one_one

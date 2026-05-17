@@ -65,6 +65,10 @@ func metalCapabilities(location tensor.Location) *StaticCapabilities {
 		for _, fusionGroup := range operation.FusionGroups {
 			capabilities.RegisterFusion(fusionGroup, operation.ID)
 		}
+
+		if len(operation.ShapeConstraints) > 0 {
+			capabilities.SetShapeConstraints(operation.ID, operation.ShapeConstraints...)
+		}
 	}
 
 	return capabilities

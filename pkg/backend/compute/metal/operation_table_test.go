@@ -44,6 +44,16 @@ func TestResidentOperationTable(test *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(second.DTypes, ShouldResemble, []tensor.DType{tensor.Float32})
 		})
+
+		Convey("It should declare shape constraints for narrow resident kernels", func() {
+			operation, ok := ResidentOperationByID("math.matmul")
+			So(ok, ShouldBeTrue)
+			So(operation.ShapeConstraints, ShouldResemble, []string{"matmul.rank2"})
+
+			operation, ok = ResidentOperationByID("shape.reshape")
+			So(ok, ShouldBeTrue)
+			So(operation.ShapeConstraints, ShouldResemble, []string{"output.same_elements_as_input0"})
+		})
 	})
 }
 

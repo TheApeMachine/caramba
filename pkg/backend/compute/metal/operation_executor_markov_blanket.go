@@ -150,7 +150,12 @@ func (tensorBackend *TensorBackend) markovBlanket() (*MetalMarkovBlanket, error)
 		return nil, err
 	}
 
-	markovOps.runtime = tensorBackend.runtime
+	markovOps.runtime, err = tensorBackend.sharedRuntime(markovOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.markovOps = markovOps
 
 	return markovOps, nil

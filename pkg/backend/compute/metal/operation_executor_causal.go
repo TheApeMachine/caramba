@@ -250,7 +250,12 @@ func (tensorBackend *TensorBackend) causal() (*MetalCausalOps, error) {
 		return nil, err
 	}
 
-	causalOps.runtime = tensorBackend.runtime
+	causalOps.runtime, err = tensorBackend.sharedRuntime(causalOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.causalOps = causalOps
 
 	return causalOps, nil

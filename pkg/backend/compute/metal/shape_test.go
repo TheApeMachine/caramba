@@ -62,6 +62,44 @@ func TestMetalShapeOps_CopyTensor(test *testing.T) {
 	})
 }
 
+func TestMetalShapeOps_ReshapeTensor(test *testing.T) {
+	lib := metallibPathOrSkip(test, "shape.metallib")
+
+	Convey("Given a resident Metal tensor reshape", test, func() {
+		tensorBackend := newMetalTensorBackendForTest(test)
+		shapeOps, err := NewShapeOps(lib)
+		So(err, ShouldBeNil)
+		shapeOps.runtime = tensorBackend.runtime
+
+		inputShape, err := computetensor.NewShape([]int{2, 3})
+		So(err, ShouldBeNil)
+		outputShape, err := computetensor.NewShape([]int{3, 2})
+		So(err, ShouldBeNil)
+		input := uploadMetalTensorForTest(
+			test,
+			tensorBackend,
+			inputShape,
+			[]float64{1, 2, 3, 4, 5, 6},
+		)
+
+		Convey("It should change metadata without allocating output storage", func() {
+			before := tensorBackend.runtime.Metrics()
+			output, err := shapeOps.ReshapeTensor(input, outputShape)
+			after := tensorBackend.runtime.Metrics()
+			So(err, ShouldBeNil)
+			defer func() {
+				So(output.Close(), ShouldBeNil)
+			}()
+
+			values, err := output.CloneFloat64()
+			So(err, ShouldBeNil)
+			So(output.Shape().Dims(), ShouldResemble, []int{3, 2})
+			So(values, ShouldResemble, []float64{1, 2, 3, 4, 5, 6})
+			So(after.AllocatedBytes, ShouldEqual, before.AllocatedBytes)
+		})
+	})
+}
+
 func TestMetalShapeOps_TransposeTensor(test *testing.T) {
 	lib := metallibPathOrSkip(test, "shape.metallib")
 
@@ -94,6 +132,44 @@ func TestMetalShapeOps_TransposeTensor(test *testing.T) {
 			So(values, ShouldResemble, []float64{1, 4, 2, 5, 3, 6})
 		})
 	})
+}
+
+func BenchmarkMetalShapeOps_ReshapeTensor(benchmark *testing.B) {
+	lib := metallibPathOrSkip(benchmark, "shape.metallib")
+	tensorBackend, err := NewTensorBackend()
+	if err != nil {
+		benchmark.Skipf("Metal tensor backend unavailable: %v", err)
+	}
+
+	defer func() {
+		_ = tensorBackend.Close()
+	}()
+
+	shapeOps, err := NewShapeOps(lib)
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	shapeOps.runtime = tensorBackend.runtime
+	inputShape, err := computetensor.NewShape([]int{64, 128})
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	outputShape, err := computetensor.NewShape([]int{128, 64})
+	if err != nil {
+		benchmark.Fatal(err)
+	}
+
+	input := uploadMetalTensor(tensorBackend, inputShape, make([]float64, inputShape.Len()))
+	defer closeBenchmarkTensors(input)
+
+	benchmark.ResetTimer()
+
+	for benchmark.Loop() {
+		output, err := shapeOps.ReshapeTensor(input, outputShape)
+		closeBenchmarkOutput(benchmark, output, err)
+	}
 }
 
 func TestMetalShapeOps_ConcatTensor(test *testing.T) {

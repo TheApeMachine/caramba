@@ -4,8 +4,11 @@ package metal
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"hash/fnv"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
@@ -473,7 +476,7 @@ func (tensorBackend *TensorBackend) applyReshape(
 		return nil, err
 	}
 
-	return shapeOps.CopyTensor(inputs[0], outputShape)
+	return shapeOps.ReshapeTensor(inputs[0], outputShape)
 }
 
 func (tensorBackend *TensorBackend) applyTranspose(
@@ -1849,7 +1852,12 @@ func (tensorBackend *TensorBackend) activation() (*MetalActivation, error) {
 		return nil, err
 	}
 
-	activationOps.runtime = tensorBackend.runtime
+	activationOps.runtime, err = tensorBackend.sharedRuntime(activationOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.activationOps = activationOps
 
 	return activationOps, nil
@@ -1869,7 +1877,12 @@ func (tensorBackend *TensorBackend) math() (*MathOps, error) {
 		return nil, err
 	}
 
-	mathOps.runtime = tensorBackend.runtime
+	mathOps.runtime, err = tensorBackend.sharedRuntime(mathOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.mathOps = mathOps
 
 	return mathOps, nil
@@ -1889,7 +1902,12 @@ func (tensorBackend *TensorBackend) shape() (*MetalShapeOps, error) {
 		return nil, err
 	}
 
-	shapeOps.runtime = tensorBackend.runtime
+	shapeOps.runtime, err = tensorBackend.sharedRuntime(shapeOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.shapeOps = shapeOps
 
 	return shapeOps, nil
@@ -1909,7 +1927,12 @@ func (tensorBackend *TensorBackend) convolution() (*ConvolutionOps, error) {
 		return nil, err
 	}
 
-	convolutionOps.runtime = tensorBackend.runtime
+	convolutionOps.runtime, err = tensorBackend.sharedRuntime(convolutionOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.convolutionOps = convolutionOps
 
 	return convolutionOps, nil
@@ -1929,7 +1952,12 @@ func (tensorBackend *TensorBackend) pooling() (*PoolingOps, error) {
 		return nil, err
 	}
 
-	poolingOps.runtime = tensorBackend.runtime
+	poolingOps.runtime, err = tensorBackend.sharedRuntime(poolingOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.poolingOps = poolingOps
 
 	return poolingOps, nil
@@ -1949,7 +1977,12 @@ func (tensorBackend *TensorBackend) masking() (*MetalMasking, error) {
 		return nil, err
 	}
 
-	maskingOps.runtime = tensorBackend.runtime
+	maskingOps.runtime, err = tensorBackend.sharedRuntime(maskingOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.maskingOps = maskingOps
 
 	return maskingOps, nil
@@ -1969,7 +2002,12 @@ func (tensorBackend *TensorBackend) projection() (*ProjectionOps, error) {
 		return nil, err
 	}
 
-	projectionOps.runtime = tensorBackend.runtime
+	projectionOps.runtime, err = tensorBackend.sharedRuntime(projectionOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.projectionOps = projectionOps
 
 	return projectionOps, nil
@@ -1989,7 +2027,12 @@ func (tensorBackend *TensorBackend) attention() (*MetalAttention, error) {
 		return nil, err
 	}
 
-	attentionOps.runtime = tensorBackend.runtime
+	attentionOps.runtime, err = tensorBackend.sharedRuntime(attentionOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.attentionOps = attentionOps
 
 	return attentionOps, nil
@@ -2009,7 +2052,12 @@ func (tensorBackend *TensorBackend) positional() (*MetalPositional, error) {
 		return nil, err
 	}
 
-	positionalOps.runtime = tensorBackend.runtime
+	positionalOps.runtime, err = tensorBackend.sharedRuntime(positionalOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.positionalOps = positionalOps
 
 	return positionalOps, nil
@@ -2031,7 +2079,12 @@ func (tensorBackend *TensorBackend) embedding(vocabSize, dModel int) (*Embedding
 		return nil, err
 	}
 
-	embeddingOps.runtime = tensorBackend.runtime
+	embeddingOps.runtime, err = tensorBackend.sharedRuntime(embeddingOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.embeddingOps[key] = embeddingOps
 
 	return embeddingOps, nil
@@ -2046,11 +2099,21 @@ func (tensorBackend *TensorBackend) cachedTensor(
 		return nil, fmt.Errorf("metal tensor: cached tensor %q has no values", key)
 	}
 
+	fingerprint := residentTensorFingerprint(shapeData, values)
+
 	tensorBackend.cacheMu.Lock()
 	defer tensorBackend.cacheMu.Unlock()
 
-	if value := tensorBackend.resident[key]; value != nil {
-		return value, nil
+	if entry, ok := tensorBackend.resident[key]; ok && entry.value != nil {
+		if entry.fingerprint == fingerprint && slices.Equal(entry.shape, shapeData) {
+			return entry.value, nil
+		}
+
+		if err := entry.value.Close(); err != nil {
+			return nil, err
+		}
+
+		delete(tensorBackend.resident, key)
 	}
 
 	shape, err := tensor.NewShape(shapeData)
@@ -2065,9 +2128,30 @@ func (tensorBackend *TensorBackend) cachedTensor(
 		return nil, err
 	}
 
-	tensorBackend.resident[key] = value
+	tensorBackend.resident[key] = residentTensorEntry{
+		shape:       slices.Clone(shapeData),
+		fingerprint: fingerprint,
+		value:       value,
+	}
 
 	return value, nil
+}
+
+func residentTensorFingerprint(shapeData []int, values []float64) uint64 {
+	hasher := fnv.New64a()
+	var buffer [8]byte
+
+	for _, dimension := range shapeData {
+		binary.LittleEndian.PutUint64(buffer[:], uint64(dimension))
+		_, _ = hasher.Write(buffer[:])
+	}
+
+	for _, value := range values {
+		binary.LittleEndian.PutUint64(buffer[:], math.Float64bits(value))
+		_, _ = hasher.Write(buffer[:])
+	}
+
+	return hasher.Sum64()
 }
 
 func (tensorBackend *TensorBackend) convolutionTensors(

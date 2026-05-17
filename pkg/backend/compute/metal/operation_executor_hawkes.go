@@ -134,7 +134,12 @@ func (tensorBackend *TensorBackend) hawkes() (*MetalHawkes, error) {
 		return nil, err
 	}
 
-	hawkesOps.runtime = tensorBackend.runtime
+	hawkesOps.runtime, err = tensorBackend.sharedRuntime(hawkesOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.hawkesOps = hawkesOps
 
 	return hawkesOps, nil

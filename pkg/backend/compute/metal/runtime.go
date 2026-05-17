@@ -217,10 +217,11 @@ func (runtime *MetalRuntime) wrapTensor(
 	allocation MetalAllocationKind,
 ) *Tensor {
 	return &Tensor{
-		bytes:   bytes,
-		shape:   shape,
-		buffer:  buffer,
-		runtime: runtime,
+		bytes:     bytes,
+		shape:     shape,
+		buffer:    buffer,
+		runtime:   runtime,
+		accounted: true,
 		metadata: MetalTensorMetadata{
 			DType:       dtype,
 			Shape:       shape,
@@ -244,7 +245,9 @@ func (runtime *MetalRuntime) release(tensor *Tensor) error {
 	tensor.buffer = nil
 	tensor.bytes = 0
 
-	runtime.recordRelease(bytes)
+	if tensor.accounted {
+		runtime.recordRelease(bytes)
+	}
 
 	if runtime.closed.Load() != 0 || !runtime.config.PoolBuffers {
 		if rc := C.metal_tensor_free(buffer); rc != 0 {

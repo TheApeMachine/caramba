@@ -33,7 +33,7 @@ func TestCompileManifest(test *testing.T) {
 	Convey("Given the embedded FLUX.2 Klein 4B VAE decoder manifest", test, func() {
 		graph, compiledManifest, err := CompileManifest("model/diffusion/flux-2-klein-4b-vae-decoder.yml")
 
-		Convey("It should compile and lower to an RGB decoder target", func() {
+		Convey("It should compile and lower to a [1, 3, 1024, 1024] output sink", func() {
 			So(err, ShouldBeNil)
 			So(compiledManifest, ShouldEqual, "model/diffusion/flux-2-klein-4b-vae-decoder.yml")
 
@@ -43,8 +43,10 @@ func TestCompileManifest(test *testing.T) {
 			irGraph, err := manifest.LowerGraphToIR(graph, shape)
 			So(err, ShouldBeNil)
 
-			target := outputTarget(irGraph)
-			So(target, ShouldNotBeNil)
+			sinks := irGraph.Sinks()
+			So(len(sinks), ShouldBeGreaterThan, 0)
+
+			target := sinks[0]
 			So(target.ID(), ShouldEqual, "decoder.conv_out")
 			So(target.Shape().Dims(), ShouldResemble, []int{1, 3, 1024, 1024})
 		})

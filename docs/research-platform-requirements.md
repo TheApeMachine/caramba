@@ -89,19 +89,19 @@ type ValueRef struct {
 
 Required runtime operation families:
 
-| Family | Required operations |
-| --- | --- |
-| IO | `io.read_line`, `io.read_record`, `io.emit_text`, `io.emit_token`, `io.write_image`, `io.write_tensor`, `io.write_checkpoint` |
-| Tokenizer | `tokenizer.encode`, `tokenizer.decode`, `tokenizer.stream_decode` |
-| Control | `control.loop_count`, `control.loop_each`, `control.loop_until`, `control.break_if`, `control.continue_if` |
-| Value | `value.assign`, `value.slice`, `value.append`, `value.clear` |
-| Graph | `graph.call`, `graph.call_sequence`, `graph.bind_weights` |
-| Sampler | `sampler.next_token`, `sampler.stop_matched`, `sampler.logprobs` |
-| Scheduler | `scheduler.timesteps`, `scheduler.step`, `scheduler.scale_input` |
-| State | `state.create`, `state.reset`, `state.append`, `state.update`, `state.branch`, `state.commit`, `state.inspect` |
-| Training | `train.forward`, `train.loss`, `train.backward`, `train.optimizer_step`, `train.zero_grad`, `train.clip_grad` |
-| Evaluation | `eval.metric`, `eval.compare`, `eval.record`, `eval.assert` |
-| Telemetry | `telemetry.scope`, `telemetry.counter`, `telemetry.histogram`, `telemetry.trace_tensor` |
+| Family     | Required operations                                                                                                           |
+|------------|-------------------------------------------------------------------------------------------------------------------------------|
+| IO         | `io.read_line`, `io.read_record`, `io.emit_text`, `io.emit_token`, `io.write_image`, `io.write_tensor`, `io.write_checkpoint` |
+| Tokenizer  | `tokenizer.encode`, `tokenizer.decode`, `tokenizer.stream_decode`                                                             |
+| Control    | `control.loop_count`, `control.loop_each`, `control.loop_until`, `control.break_if`, `control.continue_if`                    |
+| Value      | `value.assign`, `value.slice`, `value.append`, `value.clear`                                                                  |
+| Graph      | `graph.call`, `graph.call_sequence`, `graph.bind_weights`                                                                     |
+| Sampler    | `sampler.next_token`, `sampler.stop_matched`, `sampler.logprobs`                                                              |
+| Scheduler  | `scheduler.timesteps`, `scheduler.step`, `scheduler.scale_input`                                                              |
+| State      | `state.create`, `state.reset`, `state.append`, `state.update`, `state.branch`, `state.commit`, `state.inspect`                |
+| Training   | `train.forward`, `train.loss`, `train.backward`, `train.optimizer_step`, `train.zero_grad`, `train.clip_grad`                 |
+| Evaluation | `eval.metric`, `eval.compare`, `eval.record`, `eval.assert`                                                                   |
+| Telemetry  | `telemetry.scope`, `telemetry.counter`, `telemetry.histogram`, `telemetry.trace_tensor`                                       |
 
 Create `pkg/runtime/executor`.
 
@@ -354,19 +354,19 @@ Required modification features: layer insertion, layer deletion, layer replaceme
 
 Required test suites:
 
-| Suite | Required proof |
-| --- | --- |
-| Manifest runtime compiler | YAML program compiles into typed runtime IR with exact references |
-| Runtime executor | Chat, diffusion, and training programs execute from runtime IR |
-| KV strategies | Every strategy passes append, view, branch, commit, reset, checkpoint, and restore tests |
-| RoPE | Every scaling variant matches scalar reference for prefill and decode |
-| Chat | Terminal streaming runs from manifest program only |
-| Diffusion | Scheduler loop runs from manifest program only |
-| Training | A tiny model trains from manifest program only |
-| Backend legality | Illegal backend contracts fail during lowering |
-| Device residency | Backend integration tests detect host movement inside graph execution |
-| Performance | Benchmarks exist for every operation, state strategy, graph call, and runtime loop |
-| Provenance | Runs produce signed ledgers with all manifests and artifact hashes |
+| Suite                     | Required proof                                                                           |
+|---------------------------|------------------------------------------------------------------------------------------|
+| Manifest runtime compiler | YAML program compiles into typed runtime IR with exact references                        |
+| Runtime executor          | Chat, diffusion, and training programs execute from runtime IR                           |
+| KV strategies             | Every strategy passes append, view, branch, commit, reset, checkpoint, and restore tests |
+| RoPE                      | Every scaling variant matches scalar reference for prefill and decode                    |
+| Chat                      | Terminal streaming runs from manifest program only                                       |
+| Diffusion                 | Scheduler loop runs from manifest program only                                           |
+| Training                  | A tiny model trains from manifest program only                                           |
+| Backend legality          | Illegal backend contracts fail during lowering                                           |
+| Device residency          | Backend integration tests detect host movement inside graph execution                    |
+| Performance               | Benchmarks exist for every operation, state strategy, graph call, and runtime loop       |
+| Provenance                | Runs produce signed ledgers with all manifests and artifact hashes                       |
 
 Backend kernel tests must run parity at `N = 1, 7, 64, 1024, 8192` plus operation-specific tensor shapes.
 

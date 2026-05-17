@@ -20,7 +20,7 @@ No backend falls back silently. If a kernel isn't implemented for a target backe
 |------------------------|--------------------------------------|
 | `activation.relu`      | Rectified linear unit                |
 | `activation.leaky_relu`| Leaky ReLU with configurable slope   |
-| `activation.gelu`      | Gaussian error linear unit           |
+| `activation.gelu`      | Tanh-form Gaussian error linear unit |
 | `activation.selu`      | Scaled exponential linear unit       |
 | `activation.sigmoid`   | Logistic sigmoid                     |
 | `activation.swiglu`    | Swish-gated linear unit              |

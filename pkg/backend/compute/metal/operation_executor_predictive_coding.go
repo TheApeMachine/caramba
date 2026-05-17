@@ -128,7 +128,12 @@ func (tensorBackend *TensorBackend) predictiveCoding() (*MetalPredictiveCodingOp
 		return nil, err
 	}
 
-	predictiveOps.runtime = tensorBackend.runtime
+	predictiveOps.runtime, err = tensorBackend.sharedRuntime(predictiveOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.predictiveOps = predictiveOps
 
 	return predictiveOps, nil

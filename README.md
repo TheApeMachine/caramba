@@ -171,16 +171,14 @@ You did not write a model class. You did not write a forward pass. You described
 Diffusion models use the same manifest path. The FLUX.2 Klein 4B denoiser
 template lives at `model/diffusion/flux-2-klein-4b.yml`; its Qwen3 prompt
 encoder lives at `model/diffusion/flux-2-klein-4b-text-encoder.yml`; its VAE
-decoder lives at `model/diffusion/flux-2-klein-4b-vae-decoder.yml`. The image
-command resolves those assets from the manifest, encodes the prompt, runs the
-FlowMatch Euler denoising loop, decodes the latents through the manifest-backed
-VAE when configured, and writes an RGB PNG:
+decoder lives at `model/diffusion/flux-2-klein-4b-vae-decoder.yml`.
 
-The FLUX.2 binding path follows the checkpoint structure directly: affine-free
-RMSNorm nodes are declared in the manifest, Diffusers Linear tensors are bound
-with PyTorch row-major orientation, and the single-stream packed QKV/MLP plus
-split `to_out` weights are sliced into the manifest graph without introducing a
-model-specific runtime.
+The FLUX.2 runtime validates checkpoint wiring before generation. The manifest
+must consume timestep conditioning and bind the double-stream modulation,
+text-side feed-forward, added attention projections, Q/K norms, single-stream
+modulation, and final norm projection tensors from the checkpoint. When those
+required paths are absent, `caramba image` stops during setup instead of
+decoding unconditioned noise into a PNG.
 
 ```bash
 caramba image --manifest model/diffusion/flux-2-klein-4b.yml "a brass observatory on a storm cliff"
@@ -197,7 +195,7 @@ caramba image --manifest model/diffusion/flux-2-klein-4b.yml "a brass observator
 - **Metal** native `.metal` shaders with resident KV caches, shape transforms, and on-device tensor lifecycle.
 - **XLA** via PJRT — shape and math graph nodes become StableHLO modules and run through whichever plugin you point caramba at.
 
-**A real operation library.** Standard primitives — attention (SDPA, GQA, flash, causal), activations (GeLU exact, SwiGLU, Mish, …), normalization, convolution, pooling, projection, embedding (token, RoPE, ALiBi, sinusoidal), shape transforms and nearest-neighbor upsample — plus a set of operations you will not find in PyTorch: active inference, Hawkes processes, Markov blanket detection, predictive coding, vector symbolic architectures. Optimizers include SGD, Adam(W), Lion, LARS, LAMB, L-BFGS, each with native kernels on every backend. Diffusion decoder support now binds VAE convolution and GroupNorm tensors through the same SafeTensors-to-IR path.
+**A real operation library.** Standard primitives — attention (SDPA, GQA, flash, causal), activations (GeLU tanh-form, SwiGLU, Mish, …), normalization, convolution, pooling, projection, embedding (token, RoPE, ALiBi, sinusoidal), shape transforms and nearest-neighbor upsample — plus a set of operations you will not find in PyTorch: active inference, Hawkes processes, Markov blanket detection, predictive coding, vector symbolic architectures. Optimizers include SGD, Adam(W), Lion, LARS, LAMB, L-BFGS, each with native kernels on every backend. Diffusion decoder support now binds VAE convolution and GroupNorm tensors through the same SafeTensors-to-IR path.
 
 **A compiler, not an interpreter.** Manifests pass through `pkg/manifest`'s pipeline: verification, canonicalization, semantic CSE, algebraic simplification, legality-aware fusion, side-effect-aware DCE, memory planning, and cost scheduling — before lowering. Fusions are declared and validated against per-backend capability contracts, not invented at runtime.
 

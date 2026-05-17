@@ -143,6 +143,46 @@ func TestLoweringPass_Precision(t *testing.T) {
 
 			So(err, ShouldBeNil)
 		})
+
+		Convey("It should reject Metal shapes outside the resident kernel contract", func() {
+			leftShape, err := tensor.NewShape([]int{1, 2, 3})
+			So(err, ShouldBeNil)
+			rightShape, err := tensor.NewShape([]int{3, 2})
+			So(err, ShouldBeNil)
+			outputShape, err := tensor.NewShape([]int{1, 2})
+			So(err, ShouldBeNil)
+
+			valueType := ir.ValueType{
+				DType:     tensor.Float64,
+				Precision: tensor.Float32,
+			}
+
+			graph := ir.NewGraph()
+			left := ir.NewNode("left", ir.OpInput, leftShape)
+			left.SetValueType(ir.ValueType{Shape: leftShape, DType: tensor.Float64, Precision: tensor.Float32})
+			right := ir.NewNode("right", ir.OpInput, rightShape)
+			right.SetValueType(ir.ValueType{Shape: rightShape, DType: tensor.Float64, Precision: tensor.Float32})
+			output := ir.NewNode("output", "math.matmul", outputShape)
+			valueType.Shape = outputShape
+			output.SetValueType(valueType)
+			output.AddInput(left)
+			output.AddInput(right)
+			graph.AddNode(left)
+			graph.AddNode(right)
+			graph.AddNode(output)
+
+			shapeInput := PassInput{
+				Graph:       graph,
+				Targets:     []*ir.Node{output},
+				TargetMap:   targetMap([]*ir.Node{output}),
+				Diagnostics: &Diagnostics{},
+			}
+
+			_, err = NewLoweringPass(CapabilitiesForLocation(tensor.Metal)).Run(context.Background(), shapeInput)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "requires rank-2 matmul shapes")
+		})
 	})
 }
 

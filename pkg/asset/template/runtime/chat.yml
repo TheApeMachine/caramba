@@ -1,0 +1,107 @@
+# Chat runtime program.
+#
+# The compute graph (transformer topology) is provided by the model
+# manifest the adapter loads alongside this file; this manifest only
+# declares the runtime: assets, state, sampler, and the decode loop.
+# Edit values under system.runtime to change generation behavior
+# without touching Go code.
+
+system:
+  runtime:
+    type: program
+    entry: chat
+    state:
+      history: { type: token_buffer }
+      kv: { type: kv_cache, capacity: 4096 }
+      stream: { type: token_stream }
+    samplers:
+      main:
+        type: categorical
+        temperature: 0.8
+        top_k: 50
+        top_p: 0.95
+        repetition_penalty: 1.1
+    graphs:
+      forward:
+        topology: model
+        outputs: { logits: lm_head }
+    program:
+      - id: read_user
+        op: io.read_line
+        outputs: { text: user_text }
+
+      - id: encode_user
+        op: tokenizer.encode
+        tokenizer: tokenizer
+        text: user_text
+        outputs: { tokens: input_ids }
+
+      - id: seed_history
+        op: state.append
+        value: input_ids
+        target: state.history
+
+      - id: generate
+        op: control.loop_count
+        count: 128
+        body:
+          - id: forward
+            op: graph.call
+            graph: forward
+            inputs:
+              input_ids: input_ids
+              history: state.history
+              kv_cache: state.kv
+            outputs:
+              logits: logits
+
+          - id: sample
+            op: sampler.next_token
+            sampler: main
+            logits: logits
+            history: state.history
+            outputs:
+              token: next_token
+              stopped: stopped
+
+          - id: append_history
+            op: state.append
+            value: next_token
+            target: state.history
+
+          - id: stream_decode
+            op: tokenizer.stream_decode
+            tokenizer: tokenizer
+            stream: state.stream
+            token: next_token
+            outputs: { text: decoded }
+            config: { skip_special_tokens: true }
+
+          - id: emit
+            op: io.emit_text
+            text: decoded
+
+          - id: count_token
+            op: telemetry.counter
+            name: chat.tokens_generated
+            delta: 1
+
+          - id: stop
+            op: control.break_if
+            condition: stopped
+
+          - id: carry_token
+            op: value.assign
+            value: next_token
+            outputs: { target: input_ids }
+
+      - id: flush_stream
+        op: tokenizer.stream_flush
+        tokenizer: tokenizer
+        stream: state.stream
+        outputs: { text: tail }
+        config: { skip_special_tokens: true }
+
+      - id: emit_tail
+        op: io.emit_text
+        text: tail

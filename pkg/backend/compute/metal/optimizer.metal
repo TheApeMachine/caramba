@@ -435,7 +435,7 @@ kernel void lbfgs_history_delta(
 	device const float *grads [[buffer(4)]],
 	device const float *previous_params [[buffer(5)]],
 	device const float *previous_grads [[buffer(6)]],
-	device const uint *head [[buffer(7)]],
+	device const float *head [[buffer(7)]],
 	constant uint &count [[buffer(8)]],
 	constant uint &history_size [[buffer(9)]],
 	uint grid_index [[thread_position_in_grid]],
@@ -444,7 +444,7 @@ kernel void lbfgs_history_delta(
 {
 	threadgroup float curvature_sums[256];
 
-	uint slot = head[0] % history_size;
+	uint slot = uint(head[0]) % history_size;
 	float curvature = 0.0f;
 
 	if (grid_index < count) {
@@ -473,8 +473,8 @@ kernel void lbfgs_history_delta(
 
 kernel void lbfgs_accept_history(
 	device float *rho_history [[buffer(0)]],
-	device uint *head [[buffer(1)]],
-	device uint *history_count [[buffer(2)]],
+	device float *head [[buffer(1)]],
+	device float *history_count [[buffer(2)]],
 	device const float2 *curvature [[buffer(3)]],
 	constant uint &history_size [[buffer(4)]],
 	uint index [[thread_position_in_grid]])
@@ -485,12 +485,14 @@ kernel void lbfgs_accept_history(
 
 	if (value <= 1e-10f) return;
 
-	uint slot = head[0] % history_size;
+	uint current_head = uint(head[0]);
+	uint current_count = uint(history_count[0]);
+	uint slot = current_head % history_size;
 	rho_history[slot] = 1.0f / value;
-	head[0]++;
+	head[0] = float(current_head + 1);
 
-	if (history_count[0] < history_size) {
-		history_count[0]++;
+	if (current_count < history_size) {
+		history_count[0] = float(current_count + 1);
 	}
 }
 

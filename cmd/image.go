@@ -29,7 +29,13 @@ func init() {
 		&imageOptions.Manifest,
 		"manifest",
 		imageOptions.Manifest,
-		"embedded or local diffusion manifest",
+		"embedded or local diffusion manifest (provides component sources + topologies)",
+	)
+	imageCmd.Flags().StringVar(
+		&imageOptions.RuntimeManifest,
+		"runtime",
+		imageOptions.RuntimeManifest,
+		"embedded or local runtime manifest (defaults to runtime/diffusion.yml)",
 	)
 	imageCmd.Flags().StringVar(
 		&imageOptions.Prompt,
@@ -42,6 +48,12 @@ func init() {
 		"output",
 		"",
 		"output PNG path; default comes from the manifest",
+	)
+	imageCmd.Flags().StringVar(
+		&imageOptions.ProvenanceOutput,
+		"provenance",
+		"",
+		"path to write the run's provenance ledger",
 	)
 }
 
@@ -59,7 +71,7 @@ func runImage(command *cobra.Command, args []string) error {
 	var result diffusion.Result
 
 	err := runWithQPoolProgress(command, func() error {
-		pipeline, err := diffusion.NewPipeline(command.Context(), options.Config())
+		pipeline, err := diffusion.NewRuntimeDiffusionPipeline(command.Context(), options.Config())
 
 		if err != nil {
 			return err
@@ -69,7 +81,15 @@ func runImage(command *cobra.Command, args []string) error {
 
 		result, err = pipeline.Generate(command.Context(), options.Prompt)
 
-		return err
+		if err != nil {
+			return err
+		}
+
+		if options.ProvenanceOutput != "" {
+			return pipeline.WriteLedger(options.ProvenanceOutput)
+		}
+
+		return nil
 	})
 
 	if err != nil {
@@ -88,24 +108,28 @@ func runImage(command *cobra.Command, args []string) error {
 }
 
 type imageCommandOptions struct {
-	Manifest string
-	Prompt   string
-	Output   string
+	Manifest         string
+	RuntimeManifest  string
+	Prompt           string
+	Output           string
+	ProvenanceOutput string
 }
 
 func (options imageCommandOptions) Config() diffusion.Config {
 	return diffusion.Config{
-		Manifest: strings.TrimSpace(options.Manifest),
-		Prompt:   strings.TrimSpace(options.Prompt),
-		Output:   strings.TrimSpace(options.Output),
+		Manifest:        strings.TrimSpace(options.Manifest),
+		RuntimeManifest: strings.TrimSpace(options.RuntimeManifest),
+		Prompt:          strings.TrimSpace(options.Prompt),
+		Output:          strings.TrimSpace(options.Output),
 	}
 }
 
 const imageLong = `
 Generate an image from a diffusion manifest.
 
-The image command is manifest-backed. The manifest declares the runtime,
-backend, Hub assets, tokenizer, text encoder, transformer denoiser, scheduler,
-and generation defaults. The CLI supplies the prompt and can override only the
-output path.
+The model manifest declares the runtime, backend, and Hub asset sources for
+each component (tokenizer, text encoder, transformer denoiser, VAE). The
+runtime manifest (default: runtime/diffusion.yml) declares the prompt-encode →
+denoise-loop → VAE-decode program. The CLI supplies the prompt and can
+override the output path.
 `

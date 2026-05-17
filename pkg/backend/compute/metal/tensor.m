@@ -228,3 +228,16 @@ int metal_tensor_free(void* handle) {
         return METAL_TENSOR_OK;
     }
 }
+
+void* metal_tensor_retain(const void* handle) {
+    @autoreleasepool {
+        if (!handle) {
+            return NULL;
+        }
+
+        id<MTLBuffer> buffer = (id<MTLBuffer>)handle;
+        [buffer retain];
+
+        return (void*)buffer;
+    }
+}

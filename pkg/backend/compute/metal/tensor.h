@@ -96,6 +96,7 @@ int metal_tensor_download_float32(const void* handle, float* dst, size_t n);
  * Returns METAL_TENSOR_OK on success; future implementations may return non-zero on failure.
  */
 int metal_tensor_free(void* handle);
+void* metal_tensor_retain(const void* handle);
 
 /*
  * metal_tensor_get_size -- byte length of the buffer backing handle.

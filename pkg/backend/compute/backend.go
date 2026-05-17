@@ -11,6 +11,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/cuda"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/metal"
+	"github.com/theapemachine/caramba/pkg/backend/compute/orchestrator"
 	"github.com/theapemachine/caramba/pkg/backend/compute/runner"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/xla"
@@ -101,7 +102,10 @@ func (backend *Backend) Execute(
 		return nil, ErrBackendRunnerRequired
 	}
 
-	return backend.Runner.Execute(ctx, graph, targets)
+	scheduler := orchestrator.NewScheduler()
+	scheduler.RegisterRunner(backend.Runner)
+
+	return scheduler.Execute(ctx, graph, targets, backend.Runner.Location())
 }
 
 func (backend *Backend) Location() tensor.Location {

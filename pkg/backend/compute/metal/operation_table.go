@@ -23,9 +23,9 @@ type OperationCoverage struct {
 
 var residentOperationTable = []OperationCoverage{
 	residentOperation(ir.OpInput, "metal_tensor_upload_float32_mode", "BenchmarkTensorBackend_UploadFloat64", "TestTensorBackend_UploadFloat64"),
-	residentOperation(ir.OpAdd, "metal_add_tensor", "BenchmarkMathOps_AddTensor", "TestMathOps_AddTensor"),
-	residentOperation(ir.OpMul, "metal_mul_tensor", "BenchmarkMathOps_MulTensor", "TestMathOps_MulTensor"),
-	residentOperation(ir.OpMatmul, "metal_matmul_tensor", "BenchmarkMathOps_MatmulTensor", "TestMathOps_MatmulTensor"),
+	residentOperationConstraints(ir.OpAdd, "metal_add_tensor", "BenchmarkMathOps_AddTensor", "TestMathOps_AddTensor", "inputs.same_shape"),
+	residentOperationConstraints(ir.OpMul, "metal_mul_tensor", "BenchmarkMathOps_MulTensor", "TestMathOps_MulTensor", "inputs.same_shape"),
+	residentOperationConstraints(ir.OpMatmul, "metal_matmul_tensor", "BenchmarkMathOps_MatmulTensor", "TestMathOps_MatmulTensor", "matmul.rank2"),
 	residentOperation(ir.OpReLU, "metal_relu_tensor", "BenchmarkMetalActivation_ReLUTensor", "TestMetalActivation_ReLUTensor"),
 	residentOperation(ir.OpLeakyReLU, "metal_leaky_relu_tensor", "BenchmarkMetalActivation_LeakyReLUTensor", "TestMetalActivation_LeakyReLUTensor"),
 	residentOperation(ir.OpGELU, "metal_gelu_tensor", "BenchmarkMetalActivation_GELUTensor", "TestMetalActivation_GELUTensor"),
@@ -35,9 +35,9 @@ var residentOperationTable = []OperationCoverage{
 	residentOperation(ir.OpSwish, "metal_swish_tensor", "BenchmarkMetalActivation_SwishTensor", "TestMetalActivation_SwishTensor"),
 	residentOperation(ir.OpSELU, "metal_selu_tensor", "BenchmarkMetalActivation_SELUTensor", "TestMetalActivation_SELUTensor"),
 	residentFusion(ir.OpFused, "metal_matmul_add_tensor", "matmul.activation", "BenchmarkMathOps_MatmulAddGELUTensor", "TestMathOps_MatmulAddGELUTensor"),
-	residentOperation("math.add", "metal_add_tensor", "BenchmarkMathOps_AddTensor", "TestMathOps_AddTensor"),
-	residentOperation("math.mul", "metal_mul_tensor", "BenchmarkMathOps_MulTensor", "TestMathOps_MulTensor"),
-	residentOperation("math.matmul", "metal_matmul_tensor", "BenchmarkMathOps_MatmulTensor", "TestMathOps_MatmulTensor"),
+	residentOperationConstraints("math.add", "metal_add_tensor", "BenchmarkMathOps_AddTensor", "TestMathOps_AddTensor", "inputs.same_shape"),
+	residentOperationConstraints("math.mul", "metal_mul_tensor", "BenchmarkMathOps_MulTensor", "TestMathOps_MulTensor", "inputs.same_shape"),
+	residentOperationConstraints("math.matmul", "metal_matmul_tensor", "BenchmarkMathOps_MatmulTensor", "TestMathOps_MatmulTensor", "matmul.rank2"),
 	residentOperation("math.exp", "metal_exp_tensor", "BenchmarkMathOps_ExpTensor", "TestMathOps_ExpTensor"),
 	residentOperation("math.log", "metal_log_tensor", "BenchmarkMathOps_LogTensor", "TestMathOps_LogTensor"),
 	residentOperation("math.logsumexp", "metal_logsumexp_tensor", "BenchmarkMathOps_LogSumExpTensor", "TestMathOps_LogSumExpTensor"),
@@ -48,7 +48,7 @@ var residentOperationTable = []OperationCoverage{
 	residentOperation("math.dropout", "metal_dropout_tensor", "BenchmarkMathOps_DropoutTensor", "TestMathOps_DropoutTensor"),
 	residentOperation("math.rmsnorm", "metal_rmsnorm_tensor", "BenchmarkMathOps_RMSNormTensor", "TestMathOps_RMSNormTensor"),
 	residentOperation("math.layernorm", "metal_layernorm_tensor", "BenchmarkMathOps_LayerNormTensor", "TestMathOps_LayerNormTensor"),
-	residentOperation("math.groupnorm", "metal_groupnorm_tensor", "BenchmarkMathOps_GroupNormTensor", "TestMathOps_GroupNormTensor"),
+	residentOperationConstraints("math.groupnorm", "metal_groupnorm_tensor", "BenchmarkMathOps_GroupNormTensor", "TestMathOps_GroupNormTensor", "input.rank4"),
 	residentOperation("activation.relu", "metal_relu_tensor", "BenchmarkMetalActivation_ReLUTensor", "TestMetalActivation_ReLUTensor"),
 	residentOperation("activation.leaky_relu", "metal_leaky_relu_tensor", "BenchmarkMetalActivation_LeakyReLUTensor", "TestMetalActivation_LeakyReLUTensor"),
 	residentOperation("activation.gelu", "metal_gelu_tensor", "BenchmarkMetalActivation_GELUTensor", "TestMetalActivation_GELUTensor"),
@@ -58,13 +58,13 @@ var residentOperationTable = []OperationCoverage{
 	residentOperation("activation.swish", "metal_swish_tensor", "BenchmarkMetalActivation_SwishTensor", "TestMetalActivation_SwishTensor"),
 	residentOperation("activation.selu", "metal_selu_tensor", "BenchmarkMetalActivation_SELUTensor", "TestMetalActivation_SELUTensor"),
 	residentOperation("embedding.token", "metal_token_embedding_tensor", "BenchmarkEmbeddingOps_ForwardTensor", "TestEmbeddingOps_ForwardTensor"),
-	residentOperation("shape.reshape", "metal_copy_tensor", "BenchmarkMetalShapeOps_CopyTensor", "TestMetalShapeOps_CopyTensor"),
+	residentOperationConstraints("shape.reshape", "metal_tensor_retain", "BenchmarkMetalShapeOps_ReshapeTensor", "TestMetalShapeOps_ReshapeTensor", "output.same_elements_as_input0"),
 	residentOperation("shape.transpose", "metal_transpose_tensor", "BenchmarkMetalShapeOps_TransposeTensor", "TestMetalShapeOps_TransposeTensor"),
 	residentOperation("shape.concat", "metal_concat_tensor", "BenchmarkMetalShapeOps_ConcatTensor", "TestMetalShapeOps_ConcatTensor"),
 	residentOperation("shape.split", "metal_split_tensor", "BenchmarkMetalShapeOps_SplitTensor", "TestMetalShapeOps_SplitTensor"),
 	residentOperation("shape.upsample_nearest2d", "metal_upsample_nearest2d_tensor", "BenchmarkMetalShapeOps_UpsampleNearest2DTensor", "TestMetalShapeOps_UpsampleNearest2DTensor"),
-	residentOperation("shape.view_as_heads", "metal_view_as_heads_tensor", "BenchmarkMetalShapeOps_ViewAsHeadsTensor", "TestMetalShapeOps_ViewAsHeadsTensor"),
-	residentOperation("shape.merge_heads", "metal_merge_heads_tensor", "BenchmarkMetalShapeOps_MergeHeadsTensor", "TestMetalShapeOps_MergeHeadsTensor"),
+	residentOperationConstraints("shape.view_as_heads", "metal_view_as_heads_tensor", "BenchmarkMetalShapeOps_ViewAsHeadsTensor", "TestMetalShapeOps_ViewAsHeadsTensor", "input.rank3", "output.same_elements_as_input0"),
+	residentOperationConstraints("shape.merge_heads", "metal_merge_heads_tensor", "BenchmarkMetalShapeOps_MergeHeadsTensor", "TestMetalShapeOps_MergeHeadsTensor", "input.rank4", "output.same_elements_as_input0"),
 	residentOperation("shape.last_token", "metal_last_token_tensor", "BenchmarkMetalShapeOps_LastTokenTensor", "TestMetalShapeOps_LastTokenTensor"),
 	residentOperation("projection.linear", "metal_matmul_add_tensor", "BenchmarkMathOps_MatmulAddFlatTensor", "TestMathOps_MatmulAddFlatTensor"),
 	residentOperation("projection.fused_qkv", "metal_fused_qkv_tensor", "BenchmarkProjectionOps_FusedQKVTensor", "TestProjectionOps_FusedQKVTensor"),
@@ -192,6 +192,19 @@ func residentOperation(
 		BenchmarkName:  benchmarkName,
 		ParityTestName: parityTestName,
 	}
+}
+
+func residentOperationConstraints(
+	operationID ir.OpType,
+	symbol string,
+	benchmarkName string,
+	parityTestName string,
+	constraints ...string,
+) OperationCoverage {
+	coverage := residentOperation(operationID, symbol, benchmarkName, parityTestName)
+	coverage.ShapeConstraints = slices.Clone(constraints)
+
+	return coverage
 }
 
 func residentFusion(

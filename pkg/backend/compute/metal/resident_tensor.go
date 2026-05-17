@@ -40,12 +40,13 @@ func requireMetalTensor(input computetensor.Float64Tensor) (*Tensor, error) {
 Tensor is persistent Metal MTLBuffer storage.
 */
 type Tensor struct {
-	bytes    int
-	shape    computetensor.Shape
-	buffer   unsafe.Pointer
-	runtime  *MetalRuntime
-	metadata MetalTensorMetadata
-	closed   atomic.Uint32
+	bytes     int
+	shape     computetensor.Shape
+	buffer    unsafe.Pointer
+	runtime   *MetalRuntime
+	metadata  MetalTensorMetadata
+	accounted bool
+	closed    atomic.Uint32
 }
 
 /*

@@ -134,7 +134,12 @@ func (tensorBackend *TensorBackend) activeInference() (*ActiveInferenceOps, erro
 		return nil, err
 	}
 
-	activeOps.runtime = tensorBackend.runtime
+	activeOps.runtime, err = tensorBackend.sharedRuntime(activeOps.runtime)
+
+	if err != nil {
+		return nil, err
+	}
+
 	tensorBackend.activeOps = activeOps
 
 	return activeOps, nil

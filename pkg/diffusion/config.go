@@ -46,18 +46,19 @@ type SchedulerConfig struct {
 }
 
 type Config struct {
-	Manifest    string
-	Prompt      string
-	Output      string
-	Runtime     string
-	Backend     string
-	Model       Source
-	Tokenizer   Source
-	TextEncoder Source
-	Transformer Source
-	VAE         Source
-	Generation  GenerationConfig
-	Scheduler   SchedulerConfig
+	Manifest        string
+	RuntimeManifest string
+	Prompt          string
+	Output          string
+	Runtime         string
+	Backend         string
+	Model           Source
+	Tokenizer       Source
+	TextEncoder     Source
+	Transformer     Source
+	VAE             Source
+	Generation      GenerationConfig
+	Scheduler       SchedulerConfig
 }
 
 func (config Config) ValidateRuntime() error {

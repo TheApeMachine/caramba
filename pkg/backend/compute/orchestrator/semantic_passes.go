@@ -222,6 +222,10 @@ func (pass *LoweringPass) Run(
 		if err := validatePrecision(pass.capabilities, node); err != nil {
 			return PassResult{}, err
 		}
+
+		if err := validateShapeConstraints(pass.capabilities, node); err != nil {
+			return PassResult{}, err
+		}
 	}
 
 	input.Diagnostics.Add(pass.Name(), DiagnosticInfo, "validated backend lowering legality")
@@ -258,5 +262,145 @@ func validatePrecision(capabilities Capabilities, node *ir.Node) error {
 	return fmt.Errorf(
 		"lowering: backend %s executes %q at %s precision, but node %q requires %s precision",
 		capabilities.Location(), node.OpType(), actual, node.ID(), required,
+	)
+}
+
+type shapeConstraintProvider interface {
+	ShapeConstraints(operationID ir.OpType) []string
+}
+
+func validateShapeConstraints(capabilities Capabilities, node *ir.Node) error {
+	provider, ok := capabilities.(shapeConstraintProvider)
+
+	if !ok {
+		return nil
+	}
+
+	for _, constraint := range provider.ShapeConstraints(node.OpType()) {
+		if err := validateShapeConstraint(capabilities, node, constraint); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateShapeConstraint(capabilities Capabilities, node *ir.Node, constraint string) error {
+	switch constraint {
+	case "inputs.same_shape":
+		return validateSameInputShapes(capabilities, node)
+	case "matmul.rank2":
+		return validateRank2Matmul(capabilities, node)
+	case "input.rank3":
+		return validateFirstInputRank(capabilities, node, 3)
+	case "input.rank4":
+		return validateFirstInputRank(capabilities, node, 4)
+	case "output.same_elements_as_input0":
+		return validateSameElementCount(capabilities, node)
+	}
+
+	return fmt.Errorf(
+		"lowering: backend %s has unknown shape constraint %q for node %q",
+		capabilities.Location(), constraint, node.ID(),
+	)
+}
+
+func validateSameInputShapes(capabilities Capabilities, node *ir.Node) error {
+	inputs := node.Inputs()
+
+	if len(inputs) == 0 {
+		return fmt.Errorf(
+			"lowering: backend %s requires inputs for shape-constrained node %q",
+			capabilities.Location(), node.ID(),
+		)
+	}
+
+	expectedShape := inputs[0].Shape()
+
+	for _, input := range inputs[1:] {
+		if input.Shape().Equal(expectedShape) {
+			continue
+		}
+
+		return fmt.Errorf(
+			"lowering: backend %s requires same-shape inputs for node %q",
+			capabilities.Location(), node.ID(),
+		)
+	}
+
+	if node.Shape().Equal(expectedShape) {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"lowering: backend %s requires node %q output shape to match its inputs",
+		capabilities.Location(), node.ID(),
+	)
+}
+
+func validateRank2Matmul(capabilities Capabilities, node *ir.Node) error {
+	inputs := node.Inputs()
+
+	if len(inputs) != 2 {
+		return fmt.Errorf(
+			"lowering: backend %s requires rank-2 matmul node %q to have 2 inputs",
+			capabilities.Location(), node.ID(),
+		)
+	}
+
+	leftShape := inputs[0].Shape().Dims()
+	rightShape := inputs[1].Shape().Dims()
+	outputShape := node.Shape().Dims()
+
+	if len(leftShape) == 2 && len(rightShape) == 2 && len(outputShape) == 2 &&
+		leftShape[1] == rightShape[0] &&
+		outputShape[0] == leftShape[0] &&
+		outputShape[1] == rightShape[1] {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"lowering: backend %s requires rank-2 matmul shapes for node %q",
+		capabilities.Location(), node.ID(),
+	)
+}
+
+func validateFirstInputRank(capabilities Capabilities, node *ir.Node, rank int) error {
+	inputs := node.Inputs()
+
+	if len(inputs) == 0 {
+		return fmt.Errorf(
+			"lowering: backend %s requires input rank %d for node %q",
+			capabilities.Location(), rank, node.ID(),
+		)
+	}
+
+	if len(inputs[0].Shape().Dims()) == rank {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"lowering: backend %s requires input rank %d for node %q",
+		capabilities.Location(), rank, node.ID(),
+	)
+}
+
+func validateSameElementCount(capabilities Capabilities, node *ir.Node) error {
+	inputs := node.Inputs()
+
+	if len(inputs) == 0 {
+		return fmt.Errorf(
+			"lowering: backend %s requires an input for node %q element-count validation",
+			capabilities.Location(), node.ID(),
+		)
+	}
+
+	if inputs[0].Shape().Len() == node.Shape().Len() {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"lowering: backend %s requires node %q to preserve element count",
+		capabilities.Location(), node.ID(),
 	)
 }

@@ -4,6 +4,7 @@ package metal
 
 // #include <stdlib.h>
 // #include "shape.h"
+// #include "tensor.h"
 import "C"
 
 import (
@@ -524,6 +525,51 @@ func (m *MetalShapeOps) CopyTensor(
 	}
 
 	return output, nil
+}
+
+func (m *MetalShapeOps) ReshapeTensor(
+	input computetensor.Float64Tensor,
+	outputShape computetensor.Shape,
+) (computetensor.Float64Tensor, error) {
+	metalInput, err := requireMetalTensor(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if metalInput.Len() != outputShape.Len() {
+		return nil, fmt.Errorf("metal shape: reshape changes element count")
+	}
+
+	retained := C.metal_tensor_retain(metalInput.buffer)
+
+	if retained == nil && outputShape.Len() > 0 {
+		return nil, fmt.Errorf("metal shape: reshape retain failed")
+	}
+
+	bytes, err := outputShape.Bytes(metalInput.DType())
+
+	if err != nil {
+		if retained != nil {
+			_ = C.metal_tensor_free(retained)
+		}
+
+		return nil, err
+	}
+
+	metadata := metalInput.Metadata()
+	metadata.Shape = outputShape
+	metadata.Strides = contiguousStrides(outputShape.Dims())
+	metadata.ByteSize = bytes
+	metadata.AliasOf = "reshape"
+
+	return &Tensor{
+		bytes:    bytes,
+		shape:    outputShape,
+		buffer:   retained,
+		runtime:  m.runtime,
+		metadata: metadata,
+	}, nil
 }
 
 func (m *MetalShapeOps) TransposeTensor(
