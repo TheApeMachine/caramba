@@ -26,6 +26,7 @@ func BenchmarkKernel_RunTransformerDTypes(benchmark *testing.B) {
 			benchmarkApplyMaskDType(benchmark, backend, storageDType)
 			benchmarkCausalMaskDType(benchmark, backend, storageDType)
 			benchmarkALiBiBiasDType(benchmark, backend, storageDType)
+			benchmarkRoPEDType(benchmark, backend, storageDType)
 		})
 	}
 }

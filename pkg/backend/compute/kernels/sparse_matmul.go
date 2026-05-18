@@ -114,6 +114,20 @@ func SparseCSRMatMulFloat32(
 		return err
 	}
 
+	sparseCSRMatMulFloat32Native(
+		outView, valuesView, rightView,
+		rowPtr, colIdx,
+		rows, cols,
+	)
+
+	return nil
+}
+
+func sparseCSRMatMulFloat32Scalar(
+	outView, valuesView, rightView []float32,
+	rowPtr, colIdx []int32,
+	rows, cols int,
+) {
 	for index := range outView {
 		outView[index] = 0
 	}
@@ -132,8 +146,6 @@ func SparseCSRMatMulFloat32(
 			}
 		}
 	}
-
-	return nil
 }
 
 func extractCSRIndices(indices []tensor.SparseIndex) ([]int32, []int32, error) {

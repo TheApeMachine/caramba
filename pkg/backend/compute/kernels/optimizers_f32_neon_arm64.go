@@ -64,3 +64,10 @@ func larsStepFloat32NEONAsm(
 	n int,
 	lr, momentumFactor, weightDecay, effectiveLr float32,
 )
+
+//go:noescape
+func hebbianStepRowFloat32NEONAsm(
+	weights, pre, output *float32,
+	n int,
+	decayFactor, lrPost float32,
+)

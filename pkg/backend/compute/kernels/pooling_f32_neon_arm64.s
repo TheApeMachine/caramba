@@ -147,3 +147,81 @@ ap_kh_done:
 
 ap_done:
     RET
+
+// func maxPool2x2Stride2RowNEONAsm(
+//     outRow *float32, input *float32,
+//     outCols, inWidth, ihStart int,
+// )
+// 2×2 max pool, stride 2, no padding — four output columns per call.
+TEXT ·maxPool2x2Stride2RowNEONAsm(SB), NOSPLIT, $0-40
+    MOVD outRow+0(FP), R0
+    MOVD input+8(FP), R1
+    MOVD outCols+16(FP), R2
+    MOVD inWidth+24(FP), R3
+    MOVD ihStart+32(FP), R4
+
+    LSL  $2, R3, R5                // row byte stride
+    MUL  R5, R4, R6
+    ADD  R6, R1, R1                // row0 anchor
+    ADD  R5, R1, R7                // row1 anchor
+
+    MOVD $0xFF800000, R8
+    VMOV R8, V31.S[0]
+    VDUP V31.S[0], V31.S4
+
+mp22_col_loop:
+    CMP  $4, R2
+    BLT  mp22_done
+    VLD2 (R1), [V0.S4, V1.S4]
+    VMAXP V2.S4, V0.S4, V1.S4
+    VLD2 (R7), [V0.S4, V1.S4]
+    VMAXP V3.S4, V0.S4, V1.S4
+    VMAX V4.S4, V2.S4, V3.S4
+    VST1 [V4.S4], (R0)
+    ADD  $32, R1
+    ADD  $32, R7
+    ADD  $16, R0
+    SUB  $4, R2
+    B    mp22_col_loop
+
+mp22_done:
+    RET
+
+// func avgPool2x2Stride2RowNEONAsm(
+//     outRow *float32, input *float32,
+//     outCols, inWidth, ihStart int,
+// )
+TEXT ·avgPool2x2Stride2RowNEONAsm(SB), NOSPLIT, $0-40
+    MOVD outRow+0(FP), R0
+    MOVD input+8(FP), R1
+    MOVD outCols+16(FP), R2
+    MOVD inWidth+24(FP), R3
+    MOVD ihStart+32(FP), R4
+
+    LSL  $2, R3, R5
+    MUL  R5, R4, R6
+    ADD  R6, R1, R1
+    ADD  R5, R1, R7
+
+    MOVD $0x3E800000, R8            // 0.25f
+    VMOV R8, V31.S[0]
+    VDUP V31.S[0], V31.S4
+
+ap22_col_loop:
+    CMP  $4, R2
+    BLT  ap22_done
+    VLD2 (R1), [V0.S4, V1.S4]
+    VADD V2.S4, V0.S4, V1.S4
+    VLD2 (R7), [V0.S4, V1.S4]
+    VADD V3.S4, V0.S4, V1.S4
+    VADD V4.S4, V2.S4, V3.S4
+    VFMUL_S4(31, 4, 4)
+    VST1 [V4.S4], (R0)
+    ADD  $32, R1
+    ADD  $32, R7
+    ADD  $16, R0
+    SUB  $4, R2
+    B    ap22_col_loop
+
+ap22_done:
+    RET

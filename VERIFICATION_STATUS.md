@@ -24,6 +24,78 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal RoPE registry completion
+
+This wires the existing Metal RoPE shader and Obj-C bridge into the
+public kernel registry for `float32`, `float16`, and `bfloat16` storage.
+The registered kernel name is `rope`, with dense signature
+`[storageDType] -> [storageDType]`.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}` as the head-dimension
+axis. Each case uses a three-dimensional `[seqLen, numHeads, headDim]`
+tensor with an even head dimension, verifies the identity row at
+position zero, and verifies non-trivial rotary pairs at position one.
+Expected values are computed from dtype-stored inputs and then narrowed
+to the same output dtype before ULP checks.
+
+The Metal dense registry now has 363 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 33 transformer attention/embedding/masking/positional,
+24 vision, 30 optimizer, 3 quantization, 18 loss, 33 reduction, 9 math
+utility, 24 research VSA/predictive-coding signatures, 12 active
+inference signatures, and 21 Hawkes/Markov signatures.
+
+Focused parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalRoPEDTypes' -count=1 -v
+=== RUN   TestKernelRegistry_MetalRoPEDTypes
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f32
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f32/N=1
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f32/N=7
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f32/N=64
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f32/N=1024
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f32/N=8192
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f16
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f16/N=1
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f16/N=7
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f16/N=64
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f16/N=1024
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/f16/N=8192
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/bf16
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/bf16/N=1
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/bf16/N=7
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/bf16/N=64
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/bf16/N=1024
+=== RUN   TestKernelRegistry_MetalRoPEDTypes/bf16/N=8192
+--- PASS: TestKernelRegistry_MetalRoPEDTypes (0.06s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.441s
+```
+
+Metal RoPE benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunTransformerDTypes/.*/rope$' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunTransformerDTypes/f32/rope-16    	    3703	    306313 ns/op	109543.12 MB/s	    1333 B/op	       6 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f16/rope-16    	    4166	    281978 ns/op	59498.29 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunTransformerDTypes/bf16/rope-16   	    3844	    273446 ns/op	61354.73 MB/s	    1328 B/op	       6 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	3.887s
+```
+
+Full Metal package sweep:
+
+```
+go test ./pkg/backend/device/metal/... -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	8.463s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.566s
+```
+
 ### 2026-05-18 Metal Hawkes / Markov-blanket expansion
 
 This adds real Metal device kernels across `float32`, `float16`, and
@@ -2453,7 +2525,9 @@ invalidation works.
 | `pkg/backend/device/metal/transformer_validate_darwin.go` | verified |
 | `pkg/backend/device/metal/transformer_embedding_test.go` | verified |
 | `pkg/backend/device/metal/transformer_masking_test.go` | verified |
+| `pkg/backend/device/metal/transformer_rope_test.go` | verified |
 | `pkg/backend/device/metal/transformer_bench_test.go` | verified     |
+| `pkg/backend/device/metal/transformer_rope_bench_test.go` | verified |
 | `pkg/backend/device/metal/transformer_attention_variants_bench_test.go` | verified |
 | `pkg/backend/device/metal/vision.go`          | verified              |
 | `pkg/backend/device/metal/vision_convolution_darwin.go` | verified |
@@ -2527,9 +2601,9 @@ transformer math stack.
 | `pkg/backend/compute/kernels/kernels_test.go`     | verified  |
 | `pkg/backend/compute/kernels/matmul_test.go`      | verified  |
 
-Still pending: rope, optimizer states (Adam/AdamW/Lion/Sophia),
-quantized inference kernels (GPTQ, AWQ, SmoothQuant), FP8 paths, and
-SIMD `.s` bodies for every kernel shipped today.
+Still pending: optimizer states (Adam/AdamW/Lion/Sophia), quantized
+inference kernels (GPTQ, AWQ, SmoothQuant), FP8 paths, and SIMD `.s`
+bodies for every kernel shipped today.
 
 ## Phase 9: sparse
 

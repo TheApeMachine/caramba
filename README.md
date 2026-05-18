@@ -135,12 +135,13 @@ two GPU stages in one command buffer. Metal transformer support covers
 `attention`, `flash_attention`, `multi_head_attention`,
 `grouped_query_attention`, `sliding_window_attention`,
 `embedding_lookup`, `embedding_bag`, `apply_mask`, `causal_mask`, and
-`alibi_bias` for the same storage dtypes; attention uses tiled GPU
+`alibi_bias`, and `rope` for the same storage dtypes; attention uses tiled GPU
 stages for score construction and weighted output with a
 device-resident float32 score buffer, flash attention uses a
 row/value-tile online softmax kernel with threadgroup dot-product
 reduction, and the multi-head variants use row/head/value-tile kernels
-with GQA KV-head sharing and causal sliding-window masks. Embedding
+with GQA KV-head sharing and causal sliding-window masks. RoPE rotates
+consecutive head-dimension pairs directly on the device. Embedding
 kernels report invalid index data through the asynchronous command
 completion path.
 Metal vision kernels cover `conv1d`, `conv2d`, `conv3d`,

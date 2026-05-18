@@ -29,6 +29,7 @@ func registerMetalTransformerKernels(storageDType dtype.DType) {
 	registerMetalApplyMaskKernel(storageDType)
 	registerMetalCausalMaskKernel(storageDType)
 	registerMetalALiBiBiasKernel(storageDType)
+	registerMetalRoPEKernel(storageDType)
 }
 
 func registerMetalAttentionKernel(storageDType dtype.DType) {
@@ -181,6 +182,19 @@ func registerMetalALiBiBiasKernel(storageDType dtype.DType) {
 	})
 }
 
+func registerMetalRoPEKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "rope",
+		Signature: kernels.Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{storageDType},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runMetalRoPEKernel,
+	})
+}
+
 func runMetalAttentionKernel(args ...tensor.Tensor) error {
 	if len(args) != 4 {
 		return tensor.ErrShapeMismatch
@@ -259,4 +273,12 @@ func runMetalALiBiBiasKernel(args ...tensor.Tensor) error {
 	}
 
 	return runMetalALiBiBias(args[0], args[1], args[2])
+}
+
+func runMetalRoPEKernel(args ...tensor.Tensor) error {
+	if len(args) != 2 {
+		return tensor.ErrShapeMismatch
+	}
+
+	return runMetalRoPE(args[0], args[1])
 }

@@ -409,6 +409,89 @@ int metal_dispatch_alibi_bias(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_backdoor_adjustment(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef conditionalRef,
+    MetalBufferRef marginalRef,
+    MetalBufferRef outRef,
+    uint32_t xCount,
+    uint32_t zCount,
+    uint32_t yCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_frontdoor_adjustment(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef mediatorRef,
+    MetalBufferRef outcomeRef,
+    MetalBufferRef marginalRef,
+    MetalBufferRef outRef,
+    uint32_t xCount,
+    uint32_t mCount,
+    uint32_t yCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_do_intervene(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef adjacencyRef,
+    MetalBufferRef intervenedRef,
+    MetalBufferRef outRef,
+    uint32_t nodeCount,
+    uint32_t intervenedCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_cate(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef treatedRef,
+    MetalBufferRef controlRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_counterfactual(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef observedYRef,
+    MetalBufferRef observedXRef,
+    MetalBufferRef counterfactualXRef,
+    MetalBufferRef slopeRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_iv_estimate(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef instrumentRef,
+    MetalBufferRef treatmentRef,
+    MetalBufferRef outcomeRef,
+    MetalBufferRef scratchRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint32_t partialCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_dag_markov_factorization(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef conditionalsRef,
+    MetalBufferRef parentsRef,
+    MetalBufferRef scratchRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint32_t partialCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 int metal_dispatch_conv1d(
     MetalDeviceRef contextRef,
     int elementDType,

@@ -131,41 +131,78 @@ func Conv2DFloat32(
 		return err
 	}
 
+	conv2DFloat32Native(
+		config,
+		inputView, weightView, biasView, outputView,
+		batch, inChannels, inHeight, inWidth,
+		outChannels, kernelHeight, kernelWidth,
+		outHeight, outWidth,
+	)
+
+	return nil
+}
+
+func conv2DFloat32Scalar(
+	config Conv2DConfig,
+	inputView, weightView, biasView, outputView []float32,
+	batch, inChannels, inHeight, inWidth,
+	outChannels, kernelHeight, kernelWidth,
+	outHeight, outWidth int,
+) {
 	for batchIndex := range batch {
 		for outChIndex := range outChannels {
 			for outRow := range outHeight {
 				for outCol := range outWidth {
-					sum := biasView[outChIndex]
-
-					for inChIndex := range inChannels {
-						for kRow := range kernelHeight {
-							inRow := outRow*config.StrideH + kRow*config.DilationH - config.PaddingH
-
-							if inRow < 0 || inRow >= inHeight {
-								continue
-							}
-
-							for kCol := range kernelWidth {
-								inCol := outCol*config.StrideW + kCol*config.DilationW - config.PaddingW
-
-								if inCol < 0 || inCol >= inWidth {
-									continue
-								}
-
-								inputIdx := ((batchIndex*inChannels+inChIndex)*inHeight+inRow)*inWidth + inCol
-								weightIdx := ((outChIndex*inChannels+inChIndex)*kernelHeight+kRow)*kernelWidth + kCol
-
-								sum += inputView[inputIdx] * weightView[weightIdx]
-							}
-						}
-					}
-
 					outIdx := ((batchIndex*outChannels+outChIndex)*outHeight+outRow)*outWidth + outCol
-					outputView[outIdx] = sum
+					outputView[outIdx] = conv2DPixelScalar(
+						config,
+						inputView, weightView,
+						batchIndex*inChannels*inHeight*inWidth,
+						outChIndex*inChannels*kernelHeight*kernelWidth,
+						inChannels, inHeight, inWidth,
+						kernelHeight, kernelWidth,
+						outRow, outCol,
+						biasView[outChIndex],
+					)
 				}
 			}
 		}
 	}
+}
 
-	return nil
+func conv2DPixelScalar(
+	config Conv2DConfig,
+	inputView, weightView []float32,
+	inputBatchOffset, weightChannelOffset int,
+	inChannels, inHeight, inWidth,
+	kernelHeight, kernelWidth,
+	outRow, outCol int,
+	biasValue float32,
+) float32 {
+	sum := biasValue
+
+	for inChIndex := range inChannels {
+		for kRow := range kernelHeight {
+			inRow := outRow*config.StrideH + kRow*config.DilationH - config.PaddingH
+
+			if inRow < 0 || inRow >= inHeight {
+				continue
+			}
+
+			for kCol := range kernelWidth {
+				inCol := outCol*config.StrideW + kCol*config.DilationW - config.PaddingW
+
+				if inCol < 0 || inCol >= inWidth {
+					continue
+				}
+
+				inputIdx := inputBatchOffset + (inChIndex*inHeight+inRow)*inWidth + inCol
+				weightIdx := weightChannelOffset + (inChIndex*kernelHeight+kRow)*kernelWidth + kCol
+
+				sum += inputView[inputIdx] * weightView[weightIdx]
+			}
+		}
+	}
+
+	return sum
 }

@@ -100,6 +100,21 @@ func pool2DFloat32(
 	inputView, _ := input.Float32Native()
 	outputView, _ := out.Float32Native()
 
+	pool2DFloat32Native(
+		config, inputView, outputView,
+		batch, channels, inHeight, inWidth, outHeight, outWidth,
+		useMax,
+	)
+
+	return nil
+}
+
+func pool2DFloat32Scalar(
+	config PoolConfig,
+	inputView, outputView []float32,
+	batch, channels, inHeight, inWidth, outHeight, outWidth int,
+	useMax bool,
+) {
 	for batchIndex := 0; batchIndex < batch; batchIndex++ {
 		for channelIndex := 0; channelIndex < channels; channelIndex++ {
 			channelOffsetIn := (batchIndex*channels + channelIndex) * inHeight * inWidth
@@ -119,8 +134,6 @@ func pool2DFloat32(
 			}
 		}
 	}
-
-	return nil
 }
 
 func poolWindow(

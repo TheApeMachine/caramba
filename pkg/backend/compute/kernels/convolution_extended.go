@@ -136,28 +136,11 @@ func Conv1DFloat32(config Conv1DConfig, input, weight, bias, output tensor.Tenso
 	kernelLength := wDims[2]
 	outLength := outDims[2]
 
-	for batchIndex := 0; batchIndex < batch; batchIndex++ {
-		for outChIndex := 0; outChIndex < outChannels; outChIndex++ {
-			for outIndex := 0; outIndex < outLength; outIndex++ {
-				sum := biasView[outChIndex]
-
-				for inChIndex := 0; inChIndex < inChannels; inChIndex++ {
-					for kIndex := 0; kIndex < kernelLength; kIndex++ {
-						inPos := outIndex*config.Stride + kIndex*config.Dilation - config.Padding
-
-						if inPos < 0 || inPos >= inLength {
-							continue
-						}
-
-						sum += inputView[(batchIndex*inChannels+inChIndex)*inLength+inPos] *
-							weightView[(outChIndex*inChannels+inChIndex)*kernelLength+kIndex]
-					}
-				}
-
-				outputView[(batchIndex*outChannels+outChIndex)*outLength+outIndex] = sum
-			}
-		}
-	}
+	conv1DFloat32Native(
+		config,
+		inputView, weightView, biasView, outputView,
+		batch, inChannels, inLength, outChannels, kernelLength, outLength,
+	)
 
 	return nil
 }
@@ -193,43 +176,12 @@ func Conv3DFloat32(config Conv3DConfig, input, weight, bias, output tensor.Tenso
 	outH := outDims[3]
 	outW := outDims[4]
 
-	for batchIndex := 0; batchIndex < batch; batchIndex++ {
-		for outChIndex := 0; outChIndex < outChannels; outChIndex++ {
-			for outDIndex := 0; outDIndex < outD; outDIndex++ {
-				for outHIndex := 0; outHIndex < outH; outHIndex++ {
-					for outWIndex := 0; outWIndex < outW; outWIndex++ {
-						sum := biasView[outChIndex]
-
-						for inChIndex := 0; inChIndex < inChannels; inChIndex++ {
-							for kDIndex := 0; kDIndex < kD; kDIndex++ {
-								for kHIndex := 0; kHIndex < kH; kHIndex++ {
-									for kWIndex := 0; kWIndex < kW; kWIndex++ {
-										inDPos := outDIndex*config.StrideD + kDIndex*config.DilationD - config.PaddingD
-										inHPos := outHIndex*config.StrideH + kHIndex*config.DilationH - config.PaddingH
-										inWPos := outWIndex*config.StrideW + kWIndex*config.DilationW - config.PaddingW
-
-										if inDPos < 0 || inDPos >= inD ||
-											inHPos < 0 || inHPos >= inH ||
-											inWPos < 0 || inWPos >= inW {
-											continue
-										}
-
-										inputIdx := (((batchIndex*inChannels+inChIndex)*inD+inDPos)*inH+inHPos)*inW + inWPos
-										weightIdx := (((outChIndex*inChannels+inChIndex)*kD+kDIndex)*kH+kHIndex)*kW + kWIndex
-
-										sum += inputView[inputIdx] * weightView[weightIdx]
-									}
-								}
-							}
-						}
-
-						outIdx := (((batchIndex*outChannels+outChIndex)*outD+outDIndex)*outH+outHIndex)*outW + outWIndex
-						outputView[outIdx] = sum
-					}
-				}
-			}
-		}
-	}
+	conv3DFloat32Native(
+		config,
+		inputView, weightView, biasView, outputView,
+		batch, inChannels, inD, inH, inW,
+		outChannels, kD, kH, kW, outD, outH, outW,
+	)
 
 	return nil
 }

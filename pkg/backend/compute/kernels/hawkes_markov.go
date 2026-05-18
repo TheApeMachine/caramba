@@ -104,6 +104,15 @@ func runHawkesIntensity(args ...tensor.Tensor) error {
 	a := alpha[0]
 	b := beta[0]
 
+	hawkesIntensityNative(eventTimes, queryTimes, out, mu, a, b)
+
+	return nil
+}
+
+func hawkesIntensityScalar(
+	eventTimes, queryTimes, out []float32,
+	mu, alpha, beta float32,
+) {
 	for queryIndex, queryTime := range queryTimes {
 		intensity := mu
 
@@ -112,13 +121,11 @@ func runHawkesIntensity(args ...tensor.Tensor) error {
 				continue
 			}
 
-			intensity += a * float32(math.Exp(float64(-b*(queryTime-eventTime))))
+			intensity += alpha * float32(math.Exp(float64(-beta*(queryTime-eventTime))))
 		}
 
 		out[queryIndex] = intensity
 	}
-
-	return nil
 }
 
 /*
@@ -145,19 +152,28 @@ func runHawkesKernelMatrix(args ...tensor.Tensor) error {
 	a := alpha[0]
 	b := beta[0]
 
-	for rowIndex := 0; rowIndex < n; rowIndex++ {
-		for colIndex := 0; colIndex < n; colIndex++ {
+	hawkesKernelMatrixNative(eventTimes, out, a, b)
+
+	return nil
+}
+
+func hawkesKernelMatrixScalar(
+	eventTimes, out []float32,
+	alpha, beta float32,
+) {
+	eventCount := len(eventTimes)
+
+	for rowIndex := 0; rowIndex < eventCount; rowIndex++ {
+		for colIndex := 0; colIndex < eventCount; colIndex++ {
 			if colIndex >= rowIndex {
-				out[rowIndex*n+colIndex] = 0
+				out[rowIndex*eventCount+colIndex] = 0
 				continue
 			}
 
 			delta := eventTimes[rowIndex] - eventTimes[colIndex]
-			out[rowIndex*n+colIndex] = a * float32(math.Exp(float64(-b*delta)))
+			out[rowIndex*eventCount+colIndex] = alpha * float32(math.Exp(float64(-beta*delta)))
 		}
 	}
-
-	return nil
 }
 
 /*
@@ -187,6 +203,16 @@ func runHawkesLogLikelihood(args ...tensor.Tensor) error {
 	b := beta[0]
 	t := totalT[0]
 
+	hawkesLogLikelihoodNative(eventTimes, t, mu, a, b, out)
+
+	return nil
+}
+
+func hawkesLogLikelihoodScalar(
+	eventTimes []float32,
+	totalT, mu, alpha, beta float32,
+	out []float32,
+) {
 	var sumLog float64
 
 	for eventIndex, eventTime := range eventTimes {
@@ -194,21 +220,19 @@ func runHawkesLogLikelihood(args ...tensor.Tensor) error {
 
 		for previousIndex := 0; previousIndex < eventIndex; previousIndex++ {
 			delta := eventTime - eventTimes[previousIndex]
-			intensity += a * float32(math.Exp(float64(-b*delta)))
+			intensity += alpha * float32(math.Exp(float64(-beta*delta)))
 		}
 
 		sumLog += math.Log(math.Max(1e-12, float64(intensity)))
 	}
 
-	// Compensator: ∫λ(t)dt = μT + Σ (α/β)(1 - e^{-β(T - t_i)}).
-	compensator := float64(mu * t)
+	compensator := float64(mu * totalT)
 
 	for _, eventTime := range eventTimes {
-		compensator += float64(a/b) * (1 - math.Exp(float64(-b*(t-eventTime))))
+		compensator += float64(alpha/beta) * (1 - math.Exp(float64(-beta*(totalT-eventTime))))
 	}
 
 	out[0] = float32(sumLog - compensator)
-	return nil
 }
 
 /*
@@ -232,6 +256,12 @@ func runMarkovMutualInformation(args ...tensor.Tensor) error {
 	xCount := dims[0]
 	yCount := dims[1]
 
+	markovMutualInformationNative(joint, xCount, yCount, out)
+
+	return nil
+}
+
+func markovMutualInformationScalar(joint []float32, xCount, yCount int, out []float32) {
 	marginalX := make([]float64, xCount)
 	marginalY := make([]float64, yCount)
 
@@ -259,7 +289,6 @@ func runMarkovMutualInformation(args ...tensor.Tensor) error {
 	}
 
 	out[0] = float32(mi)
-	return nil
 }
 
 /*

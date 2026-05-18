@@ -803,3 +803,83 @@ func runMetalMarkovFlow(
 
 	return tensor.ErrNeedsPlatformSetup
 }
+
+func runMetalBackdoorAdjustment(conditional tensor.Tensor, marginal tensor.Tensor, out tensor.Tensor) error {
+	_ = conditional
+	_ = marginal
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalFrontdoorAdjustment(
+	mediator tensor.Tensor,
+	outcome tensor.Tensor,
+	marginal tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = mediator
+	_ = outcome
+	_ = marginal
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalDoIntervene(adjacency tensor.Tensor, intervened tensor.Tensor, out tensor.Tensor) error {
+	_ = adjacency
+	_ = intervened
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalCATE(treated tensor.Tensor, control tensor.Tensor, out tensor.Tensor) error {
+	_ = treated
+	_ = control
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalCounterfactual(
+	observedY tensor.Tensor,
+	observedX tensor.Tensor,
+	counterfactualX tensor.Tensor,
+	slope tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = observedY
+	_ = observedX
+	_ = counterfactualX
+	_ = slope
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalIVEstimate(
+	instrument tensor.Tensor,
+	treatment tensor.Tensor,
+	outcome tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = instrument
+	_ = treatment
+	_ = outcome
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalDAGMarkovFactorization(
+	conditionals tensor.Tensor,
+	parents tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = conditionals
+	_ = parents
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}

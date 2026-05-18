@@ -1,8 +1,6 @@
 package kernels
 
 import (
-	"math/rand/v2"
-
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
@@ -68,23 +66,18 @@ func DropoutFloat32(config DropoutConfig, input, output tensor.Tensor) error {
 		return nil
 	}
 
-	source := rand.NewChaCha8([32]byte{
-		byte(config.Seed), byte(config.Seed >> 8),
-		byte(config.Seed >> 16), byte(config.Seed >> 24),
-		byte(config.Seed >> 32), byte(config.Seed >> 40),
-		byte(config.Seed >> 48), byte(config.Seed >> 56),
-	})
-	rng := rand.New(source)
-	scale := 1.0 / (1.0 - config.Rate)
-
-	for index, value := range inView {
-		if rng.Float32() < config.Rate {
-			outView[index] = 0
-			continue
-		}
-
-		outView[index] = value * scale
-	}
+	keepProb := float32(1.0 - config.Rate)
+	seedState := dropoutSeedState(config.Seed)
+	dropoutFloat32Native(outView, inView, &seedState, keepProb)
 
 	return nil
+}
+
+func dropoutSeedState(seed uint64) [4]uint32 {
+	return [4]uint32{
+		uint32(seed),
+		uint32(seed >> 32),
+		uint32(seed ^ 0x9e3779b9),
+		uint32((seed >> 32) ^ 0x6c078965),
+	}
 }

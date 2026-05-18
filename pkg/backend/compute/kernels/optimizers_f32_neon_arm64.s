@@ -615,3 +615,37 @@ lars_loop4:
 
 lars_done:
     RET
+
+// func hebbianStepRowFloat32NEONAsm(
+//     weights, pre, output *float32,
+//     n int,
+//     decayFactor, lrPost float32,
+// )
+//
+// output = weights * decayFactor + lrPost * pre
+TEXT ·hebbianStepRowFloat32NEONAsm(SB), NOSPLIT, $0-40
+    MOVD weights+0(FP), R0
+    MOVD pre+8(FP), R1
+    MOVD output+16(FP), R2
+    MOVD n+24(FP), R4
+    FMOVS decayFactor+32(FP), F16
+    VDUP V16.S[0], V16.S4
+    FMOVS lrPost+36(FP), F17
+    VDUP V17.S[0], V17.S4
+
+hebbian_loop4:
+    CMP  $4, R4
+    BLT  hebbian_done
+    VLD1 (R0), [V0.S4]
+    VLD1 (R1), [V1.S4]
+    VFMUL_S4(16, 0, 2)
+    VFMLA_S4(1, 17, 2)
+    VST1 [V2.S4], (R2)
+    ADD  $16, R0
+    ADD  $16, R1
+    ADD  $16, R2
+    SUB  $4, R4
+    B    hebbian_loop4
+
+hebbian_done:
+    RET

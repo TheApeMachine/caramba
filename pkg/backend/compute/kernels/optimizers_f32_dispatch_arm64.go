@@ -63,21 +63,25 @@ func hebbianStepSlicesNEON(
 	weights, post, pre, output []float32,
 	preDim int,
 ) {
-	decayFactor := 1 - config.Decay
+	decayFactor := float32(1 - config.Decay)
 
 	for postIndex, postValue := range post {
 		rowStart := postIndex * preDim
 		weightsRow := weights[rowStart : rowStart+preDim]
 		outRow := output[rowStart : rowStart+preDim]
+		lrPost := config.LearningRate * postValue
+		blockCount := preDim &^ 3
 
-		scratch := borrowFloat32Buffer(preDim)
-		for index := range scratch {
-			scratch[index] = decayFactor
+		if blockCount > 0 {
+			hebbianStepRowFloat32NEONAsm(
+				&weightsRow[0], &pre[0], &outRow[0],
+				blockCount, decayFactor, lrPost,
+			)
 		}
 
-		mulFloat32Native(outRow, weightsRow, scratch)
-		axpyFloat32Native(outRow, pre, config.LearningRate*postValue)
-		releaseFloat32Buffer(scratch)
+		for index := blockCount; index < preDim; index++ {
+			outRow[index] = weightsRow[index]*decayFactor + lrPost*pre[index]
+		}
 	}
 }
 

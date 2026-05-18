@@ -109,7 +109,7 @@ func runFlashAttentionBFloat16(args ...tensor.Tensor) error {
 	scale := float32(1.0 / math.Sqrt(float64(depth)))
 
 	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
-		runFlashAttentionRow(qF32, kF32, vF32, oF32, rowIndex, seqK, depth, valueDim, scale, config.Causal)
+		runFlashAttentionRowNative(qF32, kF32, vF32, oF32, rowIndex, seqK, depth, valueDim, scale, config.Causal)
 	}
 
 	float32BulkToBFloat16(oBF, oF32)
@@ -151,7 +151,7 @@ func runFlashAttentionFloat16(args ...tensor.Tensor) error {
 	scale := float32(1.0 / math.Sqrt(float64(depth)))
 
 	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
-		runFlashAttentionRow(qF32, kF32, vF32, oF32, rowIndex, seqK, depth, valueDim, scale, config.Causal)
+		runFlashAttentionRowNative(qF32, kF32, vF32, oF32, rowIndex, seqK, depth, valueDim, scale, config.Causal)
 	}
 
 	float32BulkToFloat16(oF16, oF32)
@@ -188,7 +188,7 @@ func RunFlashAttentionFloat32(
 	scale := float32(1.0 / math.Sqrt(float64(depth)))
 
 	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
-		runFlashAttentionRow(
+		runFlashAttentionRowNative(
 			queryView, keyView, valueView, outView,
 			rowIndex, seqK, depth, valueDim, scale, config.Causal,
 		)
@@ -203,33 +203,40 @@ func runFlashAttentionRow(
 	scale float32,
 	causal bool,
 ) {
-	// Online softmax with running max and running normalizer.
 	maxScore := float32(math.Inf(-1))
 	normalizer := float32(0)
 	accumulator := make([]float32, valueDim)
+	scaleScratch := borrowFloat32Buffer(valueDim)
+	valueScratch := borrowFloat32Buffer(valueDim)
+
+	defer releaseFloat32Buffer(scaleScratch)
+	defer releaseFloat32Buffer(valueScratch)
 
 	for keyIndex := 0; keyIndex < seqK; keyIndex++ {
 		if causal && keyIndex > rowIndex {
 			continue
 		}
 
-		dot := computeDot(queryView, keyView, rowIndex, keyIndex, depth)
-		score := dot * scale
-
+		queryRow := queryView[rowIndex*depth : (rowIndex+1)*depth]
+		keyRow := keyView[keyIndex*depth : (keyIndex+1)*depth]
+		score := dotFloat32Native(queryRow, keyRow) * scale
 		oldMax := maxScore
 
 		if score > maxScore {
 			maxScore = score
 		}
 
-		alpha := float32(math.Exp(float64(oldMax - maxScore)))
-		shifted := float32(math.Exp(float64(score - maxScore)))
+		alpha := flashExpFloat32(oldMax - maxScore)
+		shifted := flashExpFloat32(score - maxScore)
 		normalizer = normalizer*alpha + shifted
 
-		for dimIndex := 0; dimIndex < valueDim; dimIndex++ {
-			accumulator[dimIndex] = accumulator[dimIndex]*alpha +
-				shifted*valueView[keyIndex*valueDim+dimIndex]
-		}
+		fillScaleScratch(scaleScratch, alpha, valueDim)
+		mulFloat32Native(accumulator, accumulator, scaleScratch)
+
+		valueRow := valueView[keyIndex*valueDim : (keyIndex+1)*valueDim]
+		fillScaleScratch(valueScratch, shifted, valueDim)
+		mulFloat32Native(valueScratch, valueScratch, valueRow)
+		addFloat32Native(accumulator, accumulator, valueScratch)
 	}
 
 	if normalizer == 0 {
@@ -240,18 +247,39 @@ func runFlashAttentionRow(
 		return
 	}
 
-	for dimIndex := 0; dimIndex < valueDim; dimIndex++ {
-		outView[rowIndex*valueDim+dimIndex] = accumulator[dimIndex] / normalizer
+	invNormalizer := float32(1) / normalizer
+	fillScaleScratch(scaleScratch, invNormalizer, valueDim)
+	mulFloat32Native(
+		outView[rowIndex*valueDim:(rowIndex+1)*valueDim],
+		accumulator,
+		scaleScratch,
+	)
+}
+
+func flashExpFloat32(value float32) float32 {
+	if math.IsInf(float64(value), -1) || value < -88 {
+		return 0
+	}
+
+	if math.IsInf(float64(value), 1) {
+		return float32(math.Inf(1))
+	}
+
+	scratch := [1]float32{value}
+	expFloat32Native(scratch[:], scratch[:])
+
+	return scratch[0]
+}
+
+func fillScaleScratch(scratch []float32, value float32, count int) {
+	for index := 0; index < count; index++ {
+		scratch[index] = value
 	}
 }
 
 func computeDot(queryView, keyView []float32, rowIndex, keyIndex, depth int) float32 {
-	var dot float32
+	queryRow := queryView[rowIndex*depth : (rowIndex+1)*depth]
+	keyRow := keyView[keyIndex*depth : (keyIndex+1)*depth]
 
-	for depthIndex := 0; depthIndex < depth; depthIndex++ {
-		dot += queryView[rowIndex*depth+depthIndex] *
-			keyView[keyIndex*depth+depthIndex]
-	}
-
-	return dot
+	return dotFloat32Native(queryRow, keyRow)
 }
