@@ -720,3 +720,86 @@ func runMetalPrecisionWeight(
 
 	return tensor.ErrNeedsPlatformSetup
 }
+
+func runMetalHawkesIntensity(
+	events tensor.Tensor,
+	queryTimes tensor.Tensor,
+	baseline tensor.Tensor,
+	alpha tensor.Tensor,
+	beta tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = events
+	_ = queryTimes
+	_ = baseline
+	_ = alpha
+	_ = beta
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalHawkesKernelMatrix(
+	events tensor.Tensor,
+	alpha tensor.Tensor,
+	beta tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = events
+	_ = alpha
+	_ = beta
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalHawkesLogLikelihood(
+	events tensor.Tensor,
+	totalTime tensor.Tensor,
+	baseline tensor.Tensor,
+	alpha tensor.Tensor,
+	beta tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = events
+	_ = totalTime
+	_ = baseline
+	_ = alpha
+	_ = beta
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalMarkovMutualInformation(joint tensor.Tensor, out tensor.Tensor) error {
+	_ = joint
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalMarkovBlanketPartition(
+	adjacency tensor.Tensor,
+	internal tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = adjacency
+	_ = internal
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalMarkovFlow(
+	mi tensor.Tensor,
+	partition tensor.Tensor,
+	out tensor.Tensor,
+	targetLabel int32,
+) error {
+	_ = mi
+	_ = partition
+	_ = out
+	_ = targetLabel
+
+	return tensor.ErrNeedsPlatformSetup
+}

@@ -167,9 +167,7 @@ func runAddFloat64(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for index := range out {
-		out[index] = left[index] + right[index]
-	}
+	addFloat64Native(out, left, right)
 
 	return nil
 }

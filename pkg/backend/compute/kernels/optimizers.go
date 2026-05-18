@@ -96,11 +96,12 @@ func AdamStepFloat32(
 }
 
 /*
-adamStepSlices is the per-element Adam math operating on f32 slices.
-Mixed-precision wrappers widen bf16/fp16 inputs into scratch f32
-buffers, call this, then narrow output back.
+adamStepSlicesScalar is the portable scalar reference. The production
+adamStepSlices dispatches to a NEON-backed variant on arm64
+(adamStepSlicesNEON in optimizers_f32_dispatch_arm64.go). On other
+architectures, adamStepSlices = adamStepSlicesScalar.
 */
-func adamStepSlices(
+func adamStepSlicesScalar(
 	config AdamConfig,
 	params, gradients, firstMoment, secondMoment, output []float32,
 ) {

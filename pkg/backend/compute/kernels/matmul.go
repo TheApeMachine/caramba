@@ -155,16 +155,7 @@ func runMatMulFloat64(args ...tensor.Tensor) error {
 		outView[index] = 0
 	}
 
-	for rowIndex := 0; rowIndex < rows; rowIndex++ {
-		for innerIndex := 0; innerIndex < inner; innerIndex++ {
-			leftValue := leftView[rowIndex*inner+innerIndex]
-
-			for colIndex := 0; colIndex < cols; colIndex++ {
-				outView[rowIndex*cols+colIndex] +=
-					leftValue * rightView[innerIndex*cols+colIndex]
-			}
-		}
-	}
+	matmulFloat64Native(outView, leftView, rightView, rows, inner, cols)
 
 	return nil
 }

@@ -138,7 +138,7 @@ func AdamWStepFloat32(
 	return nil
 }
 
-func adamWStepSlices(
+func adamWStepSlicesScalar(
 	config AdamWConfig,
 	params, gradients, firstMoment, secondMoment, output []float32,
 ) {
@@ -253,7 +253,7 @@ func LionStepFloat32(
 	return nil
 }
 
-func lionStepSlices(config LionConfig, params, gradients, momentum, output []float32) {
+func lionStepSlicesScalar(config LionConfig, params, gradients, momentum, output []float32) {
 	for index, gradValue := range gradients {
 		update := config.Beta1*momentum[index] + (1-config.Beta1)*gradValue
 
@@ -320,7 +320,7 @@ func SGDStepFloat32(
 	return nil
 }
 
-func sgdStepSlices(config SGDConfig, params, gradients, momentum, output []float32) {
+func sgdStepSlicesScalar(config SGDConfig, params, gradients, momentum, output []float32) {
 	for index, gradValue := range gradients {
 		effective := gradValue + config.WeightDecay*params[index]
 

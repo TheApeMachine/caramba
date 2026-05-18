@@ -126,7 +126,7 @@ func LARSStepFloat32(
 	return nil
 }
 
-func larsStepSlices(config LARSConfig, params, gradients, momentum, output []float32) {
+func larsStepSlicesScalar(config LARSConfig, params, gradients, momentum, output []float32) {
 	var paramsNorm, gradsNorm float64
 
 	for index, value := range params {
@@ -209,7 +209,7 @@ func HebbianStepFloat32(
 	return nil
 }
 
-func hebbianStepSlices(
+func hebbianStepSlicesScalar(
 	config HebbianConfig,
 	weights, post, pre, output []float32,
 	preDim int,
@@ -269,7 +269,7 @@ func LBFGSStepFloat32(
 	return nil
 }
 
-func lbfgsStepSlices(config LBFGSConfig, params, gradients, output []float32) {
+func lbfgsStepSlicesScalar(config LBFGSConfig, params, gradients, output []float32) {
 	for index, gradValue := range gradients {
 		output[index] = params[index] - config.LearningRate*gradValue
 	}

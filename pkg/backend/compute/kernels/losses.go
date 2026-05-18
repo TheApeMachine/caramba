@@ -117,14 +117,8 @@ func runMSELoss(args ...tensor.Tensor) error {
 		return err
 	}
 
-	var sum float64
-
-	for index, value := range predictions {
-		delta := float64(value - targets[index])
-		sum += delta * delta
-	}
-
-	out[0] = float32(sum / float64(len(predictions)))
+	sum := mseSumFloat32Native(predictions, targets)
+	out[0] = sum / float32(len(predictions))
 	return nil
 }
 
@@ -135,13 +129,8 @@ func runMAELoss(args ...tensor.Tensor) error {
 		return err
 	}
 
-	var sum float64
-
-	for index, value := range predictions {
-		sum += math.Abs(float64(value - targets[index]))
-	}
-
-	out[0] = float32(sum / float64(len(predictions)))
+	sum := maeSumFloat32Native(predictions, targets)
+	out[0] = sum / float32(len(predictions))
 	return nil
 }
 

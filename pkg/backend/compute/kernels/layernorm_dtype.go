@@ -50,12 +50,31 @@ func runLayerNormFloat16(args ...tensor.Tensor) error {
 
 	rows := len(input) / lastDim
 
+	inputF32 := borrowFloat32Buffer(len(input))
+	scaleF32 := borrowFloat32Buffer(lastDim)
+	biasF32 := borrowFloat32Buffer(lastDim)
+	outF32 := borrowFloat32Buffer(len(input))
+
+	defer releaseFloat32Buffer(inputF32)
+	defer releaseFloat32Buffer(scaleF32)
+	defer releaseFloat32Buffer(biasF32)
+	defer releaseFloat32Buffer(outF32)
+
+	float16BulkToFloat32(inputF32, input)
+	float16BulkToFloat32(scaleF32, scale)
+	float16BulkToFloat32(biasF32, bias)
+
 	for rowIndex := range rows {
-		row := input[rowIndex*lastDim : (rowIndex+1)*lastDim]
-		outRow := out[rowIndex*lastDim : (rowIndex+1)*lastDim]
-		applyLayerNormFloat16Row(row, outRow, scale, bias)
+		row := inputF32[rowIndex*lastDim : (rowIndex+1)*lastDim]
+		outRow := outF32[rowIndex*lastDim : (rowIndex+1)*lastDim]
+
+		mean := computeRowMean(row)
+		variance := computeRowVariance(row, mean)
+		invStdDev := 1.0 / math.Sqrt(variance+layerNormEpsilon)
+		applyRowNormalization(row, outRow, scaleF32, biasF32, mean, invStdDev)
 	}
 
+	float32BulkToFloat16(out, outF32)
 	return nil
 }
 
@@ -67,12 +86,31 @@ func runLayerNormBFloat16(args ...tensor.Tensor) error {
 
 	rows := len(input) / lastDim
 
+	inputF32 := borrowFloat32Buffer(len(input))
+	scaleF32 := borrowFloat32Buffer(lastDim)
+	biasF32 := borrowFloat32Buffer(lastDim)
+	outF32 := borrowFloat32Buffer(len(input))
+
+	defer releaseFloat32Buffer(inputF32)
+	defer releaseFloat32Buffer(scaleF32)
+	defer releaseFloat32Buffer(biasF32)
+	defer releaseFloat32Buffer(outF32)
+
+	bfloat16BulkToFloat32(inputF32, input)
+	bfloat16BulkToFloat32(scaleF32, scale)
+	bfloat16BulkToFloat32(biasF32, bias)
+
 	for rowIndex := range rows {
-		row := input[rowIndex*lastDim : (rowIndex+1)*lastDim]
-		outRow := out[rowIndex*lastDim : (rowIndex+1)*lastDim]
-		applyLayerNormBFloat16Row(row, outRow, scale, bias)
+		row := inputF32[rowIndex*lastDim : (rowIndex+1)*lastDim]
+		outRow := outF32[rowIndex*lastDim : (rowIndex+1)*lastDim]
+
+		mean := computeRowMean(row)
+		variance := computeRowVariance(row, mean)
+		invStdDev := 1.0 / math.Sqrt(variance+layerNormEpsilon)
+		applyRowNormalization(row, outRow, scaleF32, biasF32, mean, invStdDev)
 	}
 
+	float32BulkToBFloat16(out, outF32)
 	return nil
 }
 

@@ -287,15 +287,11 @@ func computeAttentionScores(
 	scores := make([]float32, seqQ*seqK)
 
 	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
+		queryRow := queryView[rowIndex*depth : (rowIndex+1)*depth]
+
 		for keyIndex := 0; keyIndex < seqK; keyIndex++ {
-			var dot float32
-
-			for depthIndex := 0; depthIndex < depth; depthIndex++ {
-				dot += queryView[rowIndex*depth+depthIndex] *
-					keyView[keyIndex*depth+depthIndex]
-			}
-
-			scores[rowIndex*seqK+keyIndex] = dot * scale
+			keyRow := keyView[keyIndex*depth : (keyIndex+1)*depth]
+			scores[rowIndex*seqK+keyIndex] = dotFloat32Native(queryRow, keyRow) * scale
 		}
 	}
 
@@ -309,37 +305,9 @@ applySoftmax performs row-wise stable softmax in place on a
 func applySoftmax(scores []float32, seqQ, seqK int) {
 	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
 		row := scores[rowIndex*seqK : (rowIndex+1)*seqK]
-		maximum := row[0]
-
-		for _, candidate := range row[1:] {
-			if candidate > maximum {
-				maximum = candidate
-			}
-		}
-
-		var sum float32
-
-		for index, candidate := range row {
-			shifted := float32(math.Exp(float64(candidate - maximum)))
-			row[index] = shifted
-			sum += shifted
-		}
-
-		// Degenerate but expected case: every score in this row was
-		// extremely negative (effectively -Inf), so every shifted
-		// exp underflowed to zero. The row stays all-zeros, which
-		// produces a zero attention output for this query position.
-		// Callers (causal masking with all preceding positions
-		// masked, padded-batch slots, fully dropped heads)
-		// intentionally produce this state, so we continue rather
-		// than raise an error.
-		if sum == 0 {
-			continue
-		}
-
-		for index := range row {
-			row[index] /= sum
-		}
+		maximum := findRowMax(row)
+		sum := fillShiftedExps(row, row, maximum)
+		normalizeRow(row, sum)
 	}
 }
 
@@ -351,15 +319,13 @@ func computeWeightedOutput(
 	seqQ, seqK, valueDim int,
 ) {
 	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
-		for dimIndex := 0; dimIndex < valueDim; dimIndex++ {
-			var weighted float32
+		scoresRow := scores[rowIndex*seqK : (rowIndex+1)*seqK]
+		outRow := outView[rowIndex*valueDim : (rowIndex+1)*valueDim]
 
-			for keyIndex := 0; keyIndex < seqK; keyIndex++ {
-				weighted += scores[rowIndex*seqK+keyIndex] *
-					valueView[keyIndex*valueDim+dimIndex]
-			}
-
-			outView[rowIndex*valueDim+dimIndex] = weighted
+		for index := range outRow {
+			outRow[index] = 0
 		}
+
+		matmulFloat32Native(outRow, scoresRow, valueView, 1, seqK, valueDim)
 	}
 }

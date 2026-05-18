@@ -228,48 +228,14 @@ func init() {
 	registerReduceFloat16("sum", runSumFloat16)
 
 	registerReduce("mean", func(values []float32) float32 {
-		var sum float64
-
-		for _, value := range values {
-			sum += float64(value)
-		}
-
-		return float32(sum / float64(len(values)))
+		return sumFloat32Native(values) / float32(len(values))
 	})
 
-	registerReduce("prod", func(values []float32) float32 {
-		product := float64(1)
+	registerReduce("prod", reduceProdFloat32Native)
 
-		for _, value := range values {
-			product *= float64(value)
-		}
+	registerReduce("reduce_min", reduceMinFloat32Native)
 
-		return float32(product)
-	})
-
-	registerReduce("reduce_min", func(values []float32) float32 {
-		minimum := values[0]
-
-		for _, value := range values[1:] {
-			if value < minimum {
-				minimum = value
-			}
-		}
-
-		return minimum
-	})
-
-	registerReduce("reduce_max", func(values []float32) float32 {
-		maximum := values[0]
-
-		for _, value := range values[1:] {
-			if value > maximum {
-				maximum = value
-			}
-		}
-
-		return maximum
-	})
+	registerReduce("reduce_max", reduceMaxFloat32Native)
 
 	registerReduce("argmin", func(values []float32) float32 {
 		index := 0
@@ -299,24 +265,10 @@ func init() {
 		return float32(index)
 	})
 
-	registerReduce("l1_norm", func(values []float32) float32 {
-		var sum float64
-
-		for _, value := range values {
-			sum += math.Abs(float64(value))
-		}
-
-		return float32(sum)
-	})
+	registerReduce("l1_norm", l1NormFloat32Native)
 
 	registerReduce("l2_norm", func(values []float32) float32 {
-		var sum float64
-
-		for _, value := range values {
-			sum += float64(value) * float64(value)
-		}
-
-		return float32(math.Sqrt(sum))
+		return float32(math.Sqrt(float64(dotFloat32Native(values, values))))
 	})
 
 	registerReduce("variance", func(values []float32) float32 {

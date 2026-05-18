@@ -177,9 +177,15 @@ accumulation for predictive-coding matrix/vector contractions. Metal
 active-inference kernels cover `free_energy`, `expected_free_energy`,
 `belief_update`, and `precision_weight` for the same storage dtypes,
 using fp32 scratch reductions for scalar free-energy objectives and
-belief normalization. These families run through the device command
-queue with async completion, pooled `MTLBuffer` storage, and
-per-kernel pipeline caching.
+belief normalization. Metal Hawkes and Markov-blanket kernels cover
+`hawkes_intensity`, `hawkes_kernel_matrix`,
+`hawkes_log_likelihood`, `markov_mutual_information`,
+`markov_blanket_partition`, `markov_flow_active`, and
+`markov_flow_internal` for the same storage dtypes, with fp32 scratch
+reductions for scalar objectives and dtype-native writes for vector
+outputs. These families run through the device command queue with
+async completion, pooled `MTLBuffer` storage, and per-kernel pipeline
+caching.
 
 Every backend implements the same interface, and the optimizer does the same math everywhere:
 

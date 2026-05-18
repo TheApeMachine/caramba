@@ -15,6 +15,8 @@
 #define VFMUL_S4(m, n, d)  WORD $(0x6E20DC00 | ((m) << 16) | ((n) << 5) | (d))
 #define VFMLA_S4(m, n, d)  WORD $(0x4E20CC00 | ((m) << 16) | ((n) << 5) | (d))
 #define VFDIV_S4(m, n, d)  WORD $(0x6E20FC00 | ((m) << 16) | ((n) << 5) | (d))
+// FNEG .4S
+#define VFNEG_S4(n, d)     WORD $(0x6EA0F800 | ((n) << 5) | (d))
 // FSQRT vector .4S
 #define VFSQRT_S4(n, d)    WORD $(0x6EA1F800 | ((n) << 5) | (d))
 
@@ -39,13 +41,25 @@ TEXT ·adamStepFloat32NEONAsm(SB), NOSPLIT, $0-72
     MOVD output+32(FP), R4
     MOVD n+40(FP), R5
 
-    // Broadcast scalar hyperparameters into V16..V22.
-    FMOVS lr+48(FP), F16        ; VDUP V16.S[0], V16.S4
-    FMOVS beta1+52(FP), F17     ; VDUP V17.S[0], V17.S4
-    FMOVS beta2+56(FP), F18     ; VDUP V18.S[0], V18.S4
-    FMOVS eps+60(FP), F19       ; VDUP V19.S[0], V19.S4
-    FMOVS beta1Corr+64(FP), F20 ; VDUP V20.S[0], V20.S4
-    FMOVS beta2Corr+68(FP), F21 ; VDUP V21.S[0], V21.S4
+    // Broadcast scalar hyperparameters into V16..V21 via GPR → VMOV → VDUP.
+    MOVD lr+48(FP), R6
+    VMOV R6, V16.S[0]
+    VDUP V16.S[0], V16.S4
+    MOVD beta1+52(FP), R6
+    VMOV R6, V17.S[0]
+    VDUP V17.S[0], V17.S4
+    MOVD beta2+56(FP), R6
+    VMOV R6, V18.S[0]
+    VDUP V18.S[0], V18.S4
+    MOVD eps+60(FP), R6
+    VMOV R6, V19.S[0]
+    VDUP V19.S[0], V19.S4
+    MOVD beta1Corr+64(FP), R6
+    VMOV R6, V20.S[0]
+    VDUP V20.S[0], V20.S4
+    MOVD beta2Corr+68(FP), R6
+    VMOV R6, V21.S[0]
+    VDUP V21.S[0], V21.S4
 
     // V22 = 1.0 broadcast (bit pattern 0x3F800000) for (1-betaX).
     MOVD $0x3F800000, R6
@@ -114,9 +128,15 @@ TEXT ·sgdStepFloat32NEONAsm(SB), NOSPLIT, $0-52
     MOVD output+24(FP), R3
     MOVD n+32(FP), R4
 
-    FMOVS lr+40(FP), F16            ; VDUP V16.S[0], V16.S4
-    FMOVS momentumFactor+44(FP), F17 ; VDUP V17.S[0], V17.S4
-    FMOVS weightDecay+48(FP), F18    ; VDUP V18.S[0], V18.S4
+    MOVD lr+40(FP), R6
+    VMOV R6, V16.S[0]
+    VDUP V16.S[0], V16.S4
+    MOVD momentumFactor+44(FP), R6
+    VMOV R6, V17.S[0]
+    VDUP V17.S[0], V17.S4
+    MOVD weightDecay+48(FP), R6
+    VMOV R6, V18.S[0]
+    VDUP V18.S[0], V18.S4
 
 sgd_loop4:
     CMP  $4, R4
@@ -124,15 +144,14 @@ sgd_loop4:
     VLD1 (R0), [V0.S4]               // params
     VLD1 (R1), [V1.S4]               // grad
     VLD1 (R2), [V2.S4]               // momentum
-    // effective = grad + weightDecay * params (FMLA V1, V18, V0)
+    // effective = grad + weightDecay * params
     VFMLA_S4(0, 18, 1)
-    // momentumNew = momentumFactor * momentum + effective
-    VFMUL_S4(17, 2, 2)
-    VFADD_S4(1, 2, 2)
-    // output = params - lr * momentumNew
-    VFMUL_S4(16, 2, 3)
-    VFSUB_S4(3, 0, 0)
-    VST1 [V2.S4], (R2)
+    // momentumNew = momentumFactor * momentum + effective (single FMA)
+    VFMLA_S4(2, 17, 1)
+    // output = params - lr * momentumNew (FMA with -lr to match Go scalar)
+    VFNEG_S4(16, 26)
+    VFMLA_S4(1, 26, 0)
+    VST1 [V1.S4], (R2)
     VST1 [V0.S4], (R3)
     ADD  $16, R0
     ADD  $16, R1
@@ -165,13 +184,27 @@ TEXT ·adamwStepFloat32NEONAsm(SB), NOSPLIT, $0-76
     MOVD output+32(FP), R4
     MOVD n+40(FP), R5
 
-    FMOVS lr+48(FP), F16        ; VDUP V16.S[0], V16.S4
-    FMOVS beta1+52(FP), F17     ; VDUP V17.S[0], V17.S4
-    FMOVS beta2+56(FP), F18     ; VDUP V18.S[0], V18.S4
-    FMOVS eps+60(FP), F19       ; VDUP V19.S[0], V19.S4
-    FMOVS beta1Corr+64(FP), F20 ; VDUP V20.S[0], V20.S4
-    FMOVS beta2Corr+68(FP), F21 ; VDUP V21.S[0], V21.S4
-    FMOVS weightDecay+72(FP), F25 ; VDUP V25.S[0], V25.S4
+    MOVD lr+48(FP), R6
+    VMOV R6, V16.S[0]
+    VDUP V16.S[0], V16.S4
+    MOVD beta1+52(FP), R6
+    VMOV R6, V17.S[0]
+    VDUP V17.S[0], V17.S4
+    MOVD beta2+56(FP), R6
+    VMOV R6, V18.S[0]
+    VDUP V18.S[0], V18.S4
+    MOVD eps+60(FP), R6
+    VMOV R6, V19.S[0]
+    VDUP V19.S[0], V19.S4
+    MOVD beta1Corr+64(FP), R6
+    VMOV R6, V20.S[0]
+    VDUP V20.S[0], V20.S4
+    MOVD beta2Corr+68(FP), R6
+    VMOV R6, V21.S[0]
+    VDUP V21.S[0], V21.S4
+    MOVD weightDecay+72(FP), R6
+    VMOV R6, V25.S[0]
+    VDUP V25.S[0], V25.S4
 
     MOVD $0x3F800000, R6
     VMOV R6, V22.S[0]
@@ -243,11 +276,21 @@ TEXT ·adamaxStepFloat32NEONAsm(SB), NOSPLIT, $0-68
     MOVD output+32(FP), R4
     MOVD n+40(FP), R5
 
-    FMOVS lr+48(FP), F16        ; VDUP V16.S[0], V16.S4
-    FMOVS beta1+52(FP), F17     ; VDUP V17.S[0], V17.S4
-    FMOVS beta2+56(FP), F18     ; VDUP V18.S[0], V18.S4
-    FMOVS eps+60(FP), F19       ; VDUP V19.S[0], V19.S4
-    FMOVS beta1Corr+64(FP), F20 ; VDUP V20.S[0], V20.S4
+    MOVD lr+48(FP), R6
+    VMOV R6, V16.S[0]
+    VDUP V16.S[0], V16.S4
+    MOVD beta1+52(FP), R6
+    VMOV R6, V17.S[0]
+    VDUP V17.S[0], V17.S4
+    MOVD beta2+56(FP), R6
+    VMOV R6, V18.S[0]
+    VDUP V18.S[0], V18.S4
+    MOVD eps+60(FP), R6
+    VMOV R6, V19.S[0]
+    VDUP V19.S[0], V19.S4
+    MOVD beta1Corr+64(FP), R6
+    VMOV R6, V20.S[0]
+    VDUP V20.S[0], V20.S4
 
     MOVD $0x3F800000, R6
     VMOV R6, V22.S[0]
@@ -306,8 +349,12 @@ TEXT ·adagradStepFloat32NEONAsm(SB), NOSPLIT, $0-48
     MOVD output+24(FP), R3
     MOVD n+32(FP), R4
 
-    FMOVS lr+40(FP), F16  ; VDUP V16.S[0], V16.S4
-    FMOVS eps+44(FP), F17 ; VDUP V17.S[0], V17.S4
+    MOVD lr+40(FP), R6
+    VMOV R6, V16.S[0]
+    VDUP V16.S[0], V16.S4
+    MOVD eps+44(FP), R6
+    VMOV R6, V17.S[0]
+    VDUP V17.S[0], V17.S4
 
 ag_loop4:
     CMP  $4, R4
@@ -351,9 +398,15 @@ TEXT ·rmspropStepFloat32NEONAsm(SB), NOSPLIT, $0-52
     MOVD output+24(FP), R3
     MOVD n+32(FP), R4
 
-    FMOVS lr+40(FP), F16    ; VDUP V16.S[0], V16.S4
-    FMOVS decay+44(FP), F17 ; VDUP V17.S[0], V17.S4
-    FMOVS eps+48(FP), F18   ; VDUP V18.S[0], V18.S4
+    MOVD lr+40(FP), R6
+    VMOV R6, V16.S[0]
+    VDUP V16.S[0], V16.S4
+    MOVD decay+44(FP), R6
+    VMOV R6, V17.S[0]
+    VDUP V17.S[0], V17.S4
+    MOVD eps+48(FP), R6
+    VMOV R6, V18.S[0]
+    VDUP V18.S[0], V18.S4
 
     MOVD $0x3F800000, R6
     VMOV R6, V22.S[0]
@@ -366,18 +419,18 @@ rms_loop4:
     VLD1 (R0), [V0.S4]
     VLD1 (R1), [V1.S4]
     VLD1 (R2), [V2.S4]
-    // secondNew = decay*second + (1-decay)*grad²
-    VFMUL_S4(17, 2, 2)
+    // secondNew = (1-decay)*grad² + decay*second (FMA to match Go scalar)
     VFMUL_S4(1, 1, 4)
-    VFMLA_S4(4, 23, 2)
-    // denom = sqrt(V2) + eps
-    VFSQRT_S4(2, 5)
+    VFMUL_S4(23, 4, 4)
+    VFMLA_S4(2, 17, 4)
+    // denom = sqrt(secondNew) + eps
+    VFSQRT_S4(4, 5)
     VFADD_S4(18, 5, 5)
     // step = lr * grad / denom
-    VFMUL_S4(16, 1, 4)
-    VFDIV_S4(5, 4, 4)
-    VFSUB_S4(4, 0, 0)
-    VST1 [V2.S4], (R2)
+    VFMUL_S4(16, 1, 6)
+    VFDIV_S4(5, 6, 6)
+    VFSUB_S4(6, 0, 0)
+    VST1 [V4.S4], (R2)
     VST1 [V0.S4], (R3)
     ADD  $16, R0
     ADD  $16, R1
@@ -397,8 +450,6 @@ rms_done:
 #define VAND_B16(m, n, d)   WORD $(0x4E201C00 | ((m) << 16) | ((n) << 5) | (d))
 // BIC .B16 (Vd = Vn AND NOT Vm)
 #define VBIC_B16(m, n, d)   WORD $(0x4E601C00 | ((m) << 16) | ((n) << 5) | (d))
-// FNEG .4S
-#define VFNEG_S4(n, d)      WORD $(0x6EA0F800 | ((n) << 5) | (d))
 
 // func lionStepFloat32NEONAsm(
 //     params, grad, momentum, output *float32,
@@ -417,10 +468,18 @@ TEXT ·lionStepFloat32NEONAsm(SB), NOSPLIT, $0-56
     MOVD output+24(FP), R3
     MOVD n+32(FP), R4
 
-    FMOVS lr+40(FP), F16        ; VDUP V16.S[0], V16.S4
-    FMOVS beta1+44(FP), F17     ; VDUP V17.S[0], V17.S4
-    FMOVS beta2+48(FP), F18     ; VDUP V18.S[0], V18.S4
-    FMOVS weightDecay+52(FP), F19 ; VDUP V19.S[0], V19.S4
+    MOVD lr+40(FP), R6
+    VMOV R6, V16.S[0]
+    VDUP V16.S[0], V16.S4
+    MOVD beta1+44(FP), R6
+    VMOV R6, V17.S[0]
+    VDUP V17.S[0], V17.S4
+    MOVD beta2+48(FP), R6
+    VMOV R6, V18.S[0]
+    VDUP V18.S[0], V18.S4
+    MOVD weightDecay+52(FP), R6
+    VMOV R6, V19.S[0]
+    VDUP V19.S[0], V19.S4
 
     MOVD $0x3F800000, R6
     VMOV R6, V22.S[0]
@@ -439,9 +498,9 @@ lion_loop4:
     VLD1 (R0), [V0.S4]
     VLD1 (R1), [V1.S4]
     VLD1 (R2), [V2.S4]
-    // V3 = beta1*momentum + (1-beta1)*grad
-    VFMUL_S4(17, 2, 3)
-    VFMLA_S4(1, 23, 3)
+    // update = (1-beta1)*grad + beta1*momentum (FMA to match Go scalar)
+    VFMUL_S4(23, 1, 3)
+    VFMLA_S4(2, 17, 3)
     // sign(V3): build mask_pos = (V3 > 0), mask_neg = (V3 < 0)
     // sign = (1.0 AND mask_pos) OR (-1.0 AND mask_neg)
     VFCMGTZ_S4(3, 4)              // V4 = pos mask
@@ -455,10 +514,10 @@ lion_loop4:
     VFMLA_S4(0, 19, 8)            // V8 = sign + wd*params (FMLA Vd += Vn*Vm)
     VFMUL_S4(16, 8, 8)            // V8 *= lr
     VFSUB_S4(8, 0, 0)             // params -= step
-    // momentum := beta2*momentum + (1-beta2)*grad
-    VFMUL_S4(18, 2, 2)
-    VFMLA_S4(1, 24, 2)
-    VST1 [V2.S4], (R2)
+    // momentum := (1-beta2)*grad + beta2*momentum (FMA to match Go scalar)
+    VFMUL_S4(24, 1, 5)
+    VFMLA_S4(2, 18, 5)
+    VST1 [V5.S4], (R2)
     VST1 [V0.S4], (R3)
     ADD  $16, R0
     ADD  $16, R1
@@ -482,7 +541,9 @@ TEXT ·lbfgsStepFloat32NEONAsm(SB), NOSPLIT, $0-36
     MOVD grad+8(FP), R1
     MOVD output+16(FP), R2
     MOVD n+24(FP), R3
-    FMOVS lr+32(FP), F16 ; VDUP V16.S[0], V16.S4
+    MOVD lr+32(FP), R6
+    VMOV R6, V16.S[0]
+    VDUP V16.S[0], V16.S4
 
 lbfgs_loop4:
     CMP  $4, R3
@@ -520,9 +581,15 @@ TEXT ·larsStepFloat32NEONAsm(SB), NOSPLIT, $0-56
     MOVD output+24(FP), R3
     MOVD n+32(FP), R4
 
-    FMOVS momentumFactor+44(FP), F17 ; VDUP V17.S[0], V17.S4
-    FMOVS weightDecay+48(FP), F18    ; VDUP V18.S[0], V18.S4
-    FMOVS effectiveLr+52(FP), F16    ; VDUP V16.S[0], V16.S4
+    MOVD momentumFactor+44(FP), R6
+    VMOV R6, V17.S[0]
+    VDUP V17.S[0], V17.S4
+    MOVD weightDecay+48(FP), R6
+    VMOV R6, V18.S[0]
+    VDUP V18.S[0], V18.S4
+    MOVD effectiveLr+52(FP), R6
+    VMOV R6, V16.S[0]
+    VDUP V16.S[0], V16.S4
 
 lars_loop4:
     CMP  $4, R4
@@ -530,15 +597,14 @@ lars_loop4:
     VLD1 (R0), [V0.S4]
     VLD1 (R1), [V1.S4]
     VLD1 (R2), [V2.S4]
-    // effective = grad + weightDecay*params (FMLA into V1)
+    // effective = grad + weightDecay*params
     VFMLA_S4(0, 18, 1)
-    // momentum = momentumFactor*momentum + effective
-    VFMUL_S4(17, 2, 2)
-    VFADD_S4(1, 2, 2)
-    // out = params - effectiveLr*momentum
-    VFMUL_S4(16, 2, 3)
-    VFSUB_S4(3, 0, 0)
-    VST1 [V2.S4], (R2)
+    // momentum = momentumFactor*momentum + effective (FMA to match Go scalar)
+    VFMLA_S4(2, 17, 1)
+    // out = params - effectiveLr*momentum (FMA with -lr)
+    VFNEG_S4(16, 26)
+    VFMLA_S4(1, 26, 0)
+    VST1 [V1.S4], (R2)
     VST1 [V0.S4], (R3)
     ADD  $16, R0
     ADD  $16, R1

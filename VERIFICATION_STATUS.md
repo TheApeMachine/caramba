@@ -24,6 +24,110 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal Hawkes / Markov-blanket expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `hawkes_intensity`
+- `hawkes_kernel_matrix`
+- `hawkes_log_likelihood`
+- `markov_mutual_information`
+- `markov_blanket_partition`
+- `markov_flow_active`
+- `markov_flow_internal`
+
+`hawkes_intensity` assigns one query time to each threadgroup and
+reduces event excitation in fp32 across 256 lanes. `hawkes_kernel_matrix`
+maps one GPU thread to each pairwise excitation cell.
+`hawkes_log_likelihood` computes per-event log-intensity minus event
+compensator chunks into fp32 scratch, then performs a device finalize
+stage that subtracts the baseline integral. `markov_mutual_information`
+uses a chunked fp32 partial-reduction stage over joint-distribution
+cells and a device finalize stage. `markov_blanket_partition` and the
+two Markov-flow kernels are node-wise GPU kernels with `Int32`
+partition labels.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}` for every Hawkes
+and Markov dtype case. Expected values are computed from dtype-stored
+inputs and mirror the Metal reduction order for scalar reductions.
+
+The Metal dense registry now has 360 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 30 transformer attention/embedding/masking, 24
+vision, 30 optimizer, 3 quantization, 18 loss, 33 reduction, 9 math
+utility, 24 research VSA/predictive-coding signatures, 12 active
+inference signatures, and 21 Hawkes/Markov signatures.
+
+Focused parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalHawkesMarkovDTypes' -count=1 -v
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f32
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f32/N=1
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f32/N=7
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f32/N=64
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f32/N=1024
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f32/N=8192
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f16
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f16/N=1
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f16/N=7
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f16/N=64
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f16/N=1024
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/f16/N=8192
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/bf16
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/bf16/N=1
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/bf16/N=7
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/bf16/N=64
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/bf16/N=1024
+=== RUN   TestKernelRegistry_MetalHawkesMarkovDTypes/bf16/N=8192
+--- PASS: TestKernelRegistry_MetalHawkesMarkovDTypes (1.51s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	2.572s
+```
+
+Metal Hawkes/Markov benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunHawkesMarkovDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunHawkesMarkovDTypes/f32/hawkes_intensity-16         	    8295	    136134 ns/op	 120.47 MB/s	    1370 B/op	       5 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f32/hawkes_kernel_matrix-16     	   10000	    111542 ns/op	2359.44 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f32/hawkes_log_likelihood-16    	    5060	    272968 ns/op	  30.08 MB/s	    1752 B/op	       9 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f32/markov_mutual_information-16         	    9463	    126771 ns/op	 129.27 MB/s	    1696 B/op	      10 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f32/markov_blanket_partition-16          	   10000	    108969 ns/op	2415.14 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f32/markov_flow_active-16                	    9141	    133153 ns/op	1984.13 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f32/markov_flow_internal-16              	    9296	    133074 ns/op	1985.31 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f16/hawkes_intensity-16                  	    9574	    129308 ns/op	  63.41 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f16/hawkes_kernel_matrix-16              	    9943	    108331 ns/op	1214.69 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f16/hawkes_log_likelihood-16             	    5032	    238212 ns/op	  17.24 MB/s	    1752 B/op	       9 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f16/markov_mutual_information-16         	    9622	    124207 ns/op	  65.97 MB/s	    1696 B/op	      10 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f16/markov_blanket_partition-16          	   10000	    107111 ns/op	1233.33 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f16/markov_flow_active-16                	    9429	    131841 ns/op	1005.82 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/f16/markov_flow_internal-16              	    9250	    136078 ns/op	 974.50 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/bf16/hawkes_intensity-16                 	    7844	    131045 ns/op	  62.57 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/bf16/hawkes_kernel_matrix-16             	   10000	    110487 ns/op	1190.98 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/bf16/hawkes_log_likelihood-16            	    5001	    237949 ns/op	  17.26 MB/s	    1752 B/op	       9 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/bf16/markov_mutual_information-16        	    9651	    124725 ns/op	  65.70 MB/s	    1696 B/op	      10 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/bf16/markov_blanket_partition-16         	   10000	    106655 ns/op	1238.61 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/bf16/markov_flow_active-16               	    8709	    136833 ns/op	 969.12 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunHawkesMarkovDTypes/bf16/markov_flow_internal-16             	    9073	    134482 ns/op	 986.06 MB/s	    1336 B/op	       6 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	25.128s
+```
+
+Full Metal package sweep:
+
+```
+go test ./pkg/backend/device/metal/... -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	9.286s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.384s
+```
+
 ### 2026-05-18 Metal active-inference expansion
 
 This adds real Metal device kernels across `float32`, `float16`, and
@@ -2143,7 +2247,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 339 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer attention/embedding/masking + vision + optimizer + quantization + loss + reduction + math utility + research VSA/predictive-coding + active-inference signatures |
+| 4     | Metal device backend          | 360 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer attention/embedding/masking + vision + optimizer + quantization + loss + reduction + math utility + research VSA/predictive-coding + active-inference + Hawkes/Markov signatures |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |

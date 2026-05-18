@@ -108,7 +108,7 @@ func AdamaxStepFloat32(
 	return nil
 }
 
-func adamaxStepSlices(
+func adamaxStepSlicesScalar(
 	config AdamaxConfig,
 	params, gradients, firstMoment, infinityMoment, output []float32,
 ) {
@@ -184,7 +184,7 @@ func AdagradStepFloat32(
 	return nil
 }
 
-func adagradStepSlices(
+func adagradStepSlicesScalar(
 	config AdagradConfig,
 	params, gradients, accumulator, output []float32,
 ) {
@@ -248,16 +248,24 @@ func RMSpropStepFloat32(
 	return nil
 }
 
-func rmspropStepSlices(
+func rmspropStepSlicesScalar(
 	config RMSpropConfig,
 	params, gradients, secondMoment, output []float32,
 ) {
 	for index, gradValue := range gradients {
-		secondMoment[index] = config.Decay*secondMoment[index] +
-			(1-config.Decay)*gradValue*gradValue
-		denominator := float32(math.Sqrt(float64(secondMoment[index]))) + config.Epsilon
+		gradSquared := gradValue * gradValue
+		scaledGrad := (1 - config.Decay) * gradSquared
+		secondMoment[index] = scaledGrad + config.Decay*secondMoment[index]
+		denominator := optimizerSqrtFloat32(secondMoment[index]) + config.Epsilon
 		output[index] = params[index] - config.LearningRate*gradValue/denominator
 	}
+}
+
+func optimizerSqrtFloat32(value float32) float32 {
+	dst := [1]float32{}
+	sqrtFloat32Native(dst[:], []float32{value})
+
+	return dst[0]
 }
 
 func runRMSpropDefault(args ...tensor.Tensor) error {

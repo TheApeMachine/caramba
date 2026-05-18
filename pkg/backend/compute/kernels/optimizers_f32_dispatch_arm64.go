@@ -4,6 +4,83 @@ package kernels
 
 import "math"
 
+// adamStepSlices on arm64 dispatches to the NEON inner loop.
+func adamStepSlices(
+	config AdamConfig,
+	params, gradients, firstMoment, secondMoment, output []float32,
+) {
+	adamStepSlicesNEON(config, params, gradients, firstMoment, secondMoment, output)
+}
+
+func adamWStepSlices(
+	config AdamWConfig,
+	params, gradients, firstMoment, secondMoment, output []float32,
+) {
+	adamwStepSlicesNEON(config, params, gradients, firstMoment, secondMoment, output)
+}
+
+func sgdStepSlices(config SGDConfig, params, gradients, momentum, output []float32) {
+	sgdStepSlicesNEON(config, params, gradients, momentum, output)
+}
+
+func adamaxStepSlices(
+	config AdamaxConfig,
+	params, gradients, firstMoment, infinityMoment, output []float32,
+) {
+	adamaxStepSlicesNEON(config, params, gradients, firstMoment, infinityMoment, output)
+}
+
+func adagradStepSlices(config AdagradConfig, params, gradients, accumulator, output []float32) {
+	adagradStepSlicesNEON(config, params, gradients, accumulator, output)
+}
+
+func rmspropStepSlices(config RMSpropConfig, params, gradients, secondMoment, output []float32) {
+	rmspropStepSlicesNEON(config, params, gradients, secondMoment, output)
+}
+
+func lionStepSlices(config LionConfig, params, gradients, momentum, output []float32) {
+	lionStepSlicesNEON(config, params, gradients, momentum, output)
+}
+
+func larsStepSlices(config LARSConfig, params, gradients, momentum, output []float32) {
+	larsStepSlicesNEON(config, params, gradients, momentum, output)
+}
+
+func lbfgsStepSlices(config LBFGSConfig, params, gradients, output []float32) {
+	lbfgsStepSlicesNEON(config, params, gradients, output)
+}
+
+func hebbianStepSlices(
+	config HebbianConfig,
+	weights, post, pre, output []float32,
+	preDim int,
+) {
+	hebbianStepSlicesNEON(config, weights, post, pre, output, preDim)
+}
+
+func hebbianStepSlicesNEON(
+	config HebbianConfig,
+	weights, post, pre, output []float32,
+	preDim int,
+) {
+	decayFactor := 1 - config.Decay
+
+	for postIndex, postValue := range post {
+		rowStart := postIndex * preDim
+		weightsRow := weights[rowStart : rowStart+preDim]
+		outRow := output[rowStart : rowStart+preDim]
+
+		scratch := borrowFloat32Buffer(preDim)
+		for index := range scratch {
+			scratch[index] = decayFactor
+		}
+
+		mulFloat32Native(outRow, weightsRow, scratch)
+		axpyFloat32Native(outRow, pre, config.LearningRate*postValue)
+		releaseFloat32Buffer(scratch)
+	}
+}
+
 // adamStepSlicesNEON is a thin wrapper around the NEON asm with a
 // scalar tail for the remainder when len is not a multiple of 4. The
 // original adamStepSlices in optimizers.go now delegates to this on
@@ -144,8 +221,10 @@ func rmspropStepSlicesNEON(
 
 	for index := tailStart; index < n; index++ {
 		gradValue := gradients[index]
-		secondMoment[index] = config.Decay*secondMoment[index] + (1-config.Decay)*gradValue*gradValue
-		denom := float32(math.Sqrt(float64(secondMoment[index]))) + config.Epsilon
+		gradSquared := gradValue * gradValue
+		scaledGrad := (1 - config.Decay) * gradSquared
+		secondMoment[index] = scaledGrad + config.Decay*secondMoment[index]
+		denom := optimizerSqrtFloat32(secondMoment[index]) + config.Epsilon
 		output[index] = params[index] - config.LearningRate*gradValue/denom
 	}
 }
@@ -175,4 +254,93 @@ func sgdStepSlicesNEON(
 		}
 		output[index] = params[index] - config.LearningRate*update
 	}
+}
+
+func lionStepSlicesNEON(
+	config LionConfig,
+	params, gradients, momentum, output []float32,
+) {
+	n := len(params)
+	blockN := n & ^3
+
+	if blockN > 0 {
+		lionStepFloat32NEONAsm(
+			&params[0], &gradients[0], &momentum[0], &output[0],
+			blockN, config.LearningRate, config.Beta1, config.Beta2, config.WeightDecay,
+		)
+	}
+
+	for index := blockN; index < n; index++ {
+		gradValue := gradients[index]
+		update := config.Beta1*momentum[index] + (1-config.Beta1)*gradValue
+		sign := float32(0)
+
+		if update > 0 {
+			sign = 1
+		}
+
+		if update < 0 {
+			sign = -1
+		}
+
+		decayStep := config.WeightDecay * params[index]
+		output[index] = params[index] - config.LearningRate*(sign+decayStep)
+		momentum[index] = config.Beta2*momentum[index] + (1-config.Beta2)*gradValue
+	}
+}
+
+func lbfgsStepSlicesNEON(config LBFGSConfig, params, gradients, output []float32) {
+	n := len(params)
+	blockN := n & ^3
+
+	if blockN > 0 {
+		lbfgsStepFloat32NEONAsm(&params[0], &gradients[0], &output[0], blockN, config.LearningRate)
+	}
+
+	for index := blockN; index < n; index++ {
+		output[index] = params[index] - config.LearningRate*gradients[index]
+	}
+}
+
+func larsStepSlicesNEON(
+	config LARSConfig,
+	params, gradients, momentum, output []float32,
+) {
+	effectiveLr := larsEffectiveLearningRate(config, params, gradients)
+	n := len(params)
+	blockN := n & ^3
+
+	if blockN > 0 {
+		larsStepFloat32NEONAsm(
+			&params[0], &gradients[0], &momentum[0], &output[0],
+			blockN, config.LearningRate, config.Momentum, config.WeightDecay, effectiveLr,
+		)
+	}
+
+	for index := blockN; index < n; index++ {
+		effective := gradients[index] + config.WeightDecay*params[index]
+		momentum[index] = config.Momentum*momentum[index] + effective
+		output[index] = params[index] - effectiveLr*momentum[index]
+	}
+}
+
+func larsEffectiveLearningRate(config LARSConfig, params []float32, gradients []float32) float32 {
+	var paramsNorm, gradsNorm float64
+
+	for index, value := range params {
+		paramsNorm += float64(value) * float64(value)
+		gradsNorm += float64(gradients[index]) * float64(gradients[index])
+	}
+
+	paramsNorm = math.Sqrt(paramsNorm)
+	gradsNorm = math.Sqrt(gradsNorm)
+
+	if paramsNorm == 0 || gradsNorm == 0 {
+		return config.LearningRate
+	}
+
+	trust := config.TrustCoeff *
+		float32(paramsNorm) /
+		(float32(gradsNorm) + config.WeightDecay*float32(paramsNorm) + config.Epsilon)
+	return config.LearningRate * trust
 }
