@@ -1,10 +1,20 @@
 export type HeadingLevel = 1 | 2 | 3;
 
+/*
+PaperHeadingPresentation tweaks editor layout and LaTeX export so sections
+read like their printed form (abstract block, unnumbered back matter, etc.).
+*/
+export type PaperHeadingPresentation =
+	| "abstract"
+	| "references"
+	| "acknowledgments";
+
 export type PaperHeadingBlock = {
 	id: string;
 	type: "heading";
 	level: HeadingLevel;
 	text: string;
+	presentation?: PaperHeadingPresentation;
 };
 
 export type PaperParagraphBlock = {

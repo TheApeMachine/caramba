@@ -2,6 +2,7 @@
 
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import "#/components/latex/math-subselection/equation-structure-stage.css";
 import type React from "react";
 import {
 	type FocusEventHandler,
@@ -33,8 +34,9 @@ export function EquationBlock({
 	} = usePaperEditor();
 	const [chromeOpen, setChromeOpen] = useState(block.latex === "");
 	const [editing, setEditing] = useState(false);
+	const [structureDetached, setStructureDetached] = useState(false);
 	const editableRef = useRef<HTMLDivElement>(null);
-	const previewRef = useRef<HTMLButtonElement>(null);
+	const equationSurfaceRef = useRef<HTMLDivElement>(null);
 	const equationShellRef = useRef<HTMLDivElement>(null);
 	const editingReference = useRef(editing);
 	const chromeOpenReference = useRef(chromeOpen);
@@ -48,29 +50,37 @@ export function EquationBlock({
 		}
 	}, [editing]);
 
-	useEffect(() => {
-		const el = previewRef.current;
+	const editorOwnsEquationSurface =
+		chromeOpen && !editing && !structureDetached;
 
-		if (!el) {
+	useEffect(() => {
+		const element = equationSurfaceRef.current;
+
+		if (!element) {
+			return;
+		}
+
+		if (editorOwnsEquationSurface) {
 			return;
 		}
 
 		if (!block.latex.trim()) {
-			el.innerHTML =
+			element.innerHTML =
 				'<span class="text-muted-foreground text-sm italic">Click to enter equation…</span>';
+
 			return;
 		}
 
 		try {
-			katex.render(block.latex, el, {
+			katex.render(block.latex, element, {
 				displayMode: block.display,
 				throwOnError: false,
 				errorColor: "hsl(var(--destructive))",
 			});
 		} catch {
-			el.textContent = block.latex;
+			element.textContent = block.latex;
 		}
-	}, [block.latex, block.display]);
+	}, [block.display, block.latex, editorOwnsEquationSurface]);
 
 	const closeEquationChrome = useCallback(() => {
 		setChromeOpen(false);
@@ -110,7 +120,7 @@ export function EquationBlock({
 		return () => {
 			document.removeEventListener("pointerdown", onPointerDownCapture, true);
 		};
-	}, [chromeOpen]);
+	}, [chromeOpen, closeEquationChrome]);
 
 	useEffect(() => {
 		if (!chromeOpen) {
@@ -193,13 +203,20 @@ export function EquationBlock({
 
 	return (
 		<div className="flex flex-col gap-3" ref={equationShellRef}>
-			<button
-				className="min-h-10 w-full cursor-text rounded-md px-2 py-2 text-center hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-				onClick={openEquationChrome}
+			<article
+				aria-label={chromeOpen ? "Equation" : "Edit equation"}
+				className={cn(
+					"min-h-10 w-full rounded-md px-2 py-2 text-center",
+					editorOwnsEquationSurface && "math-subselection-stage",
+					!chromeOpen &&
+						"cursor-text hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+				)}
+				onClick={chromeOpen ? undefined : openEquationChrome}
 				onFocus={onFocus}
-				onKeyDown={onPreviewKeyDown}
-				ref={previewRef}
-				type="button"
+				onKeyDown={chromeOpen ? undefined : onPreviewKeyDown}
+				ref={equationSurfaceRef}
+				role={chromeOpen ? undefined : "button"}
+				tabIndex={chromeOpen ? -1 : 0}
 			/>
 
 			{chromeOpen ? (
@@ -245,8 +262,11 @@ export function EquationBlock({
 			>
 				<EquationStructureEditor
 					displayMode={block.display}
+					equationSurfaceRef={equationSurfaceRef}
 					latex={block.latex}
 					onLatexChange={(value) => updateLatex(block.id, value)}
+					onStructureDetachedChange={setStructureDetached}
+					surfaceInteractive={editorOwnsEquationSurface}
 				/>
 			</div>
 		</div>

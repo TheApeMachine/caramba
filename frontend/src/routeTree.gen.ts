@@ -35,6 +35,7 @@ import { Route as ResearchEditModelScopeRouteImport } from './routes/research/ed
 import { Route as KanbanProjectProjectIdRouteImport } from './routes/kanban/project.$projectId'
 import { Route as KanbanOrgOrganizationSlugRouteImport } from './routes/kanban/org.$organizationSlug'
 import { Route as ApiShapeResearchProjectsRouteImport } from './routes/api/shape/research-projects'
+import { Route as ApiShapeResearchPapersRouteImport } from './routes/api/shape/research-papers'
 import { Route as ApiShapeAssistantSessionsRouteImport } from './routes/api/shape/assistant-sessions'
 import { Route as ApiShapeAssistantSessionPersonasRouteImport } from './routes/api/shape/assistant-session-personas'
 import { Route as ApiShapeAssistantPersonasRouteImport } from './routes/api/shape/assistant-personas'
@@ -174,6 +175,11 @@ const ApiShapeResearchProjectsRoute =
     path: '/api/shape/research-projects',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiShapeResearchPapersRoute = ApiShapeResearchPapersRouteImport.update({
+  id: '/api/shape/research-papers',
+  path: '/api/shape/research-papers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiShapeAssistantSessionsRoute =
   ApiShapeAssistantSessionsRouteImport.update({
     id: '/api/shape/assistant-sessions',
@@ -230,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
   '/api/shape/assistant-session-personas': typeof ApiShapeAssistantSessionPersonasRoute
   '/api/shape/assistant-sessions': typeof ApiShapeAssistantSessionsRoute
+  '/api/shape/research-papers': typeof ApiShapeResearchPapersRoute
   '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
   '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
@@ -262,6 +269,7 @@ export interface FileRoutesByTo {
   '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
   '/api/shape/assistant-session-personas': typeof ApiShapeAssistantSessionPersonasRoute
   '/api/shape/assistant-sessions': typeof ApiShapeAssistantSessionsRoute
+  '/api/shape/research-papers': typeof ApiShapeResearchPapersRoute
   '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
   '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
@@ -296,6 +304,7 @@ export interface FileRoutesById {
   '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
   '/api/shape/assistant-session-personas': typeof ApiShapeAssistantSessionPersonasRoute
   '/api/shape/assistant-sessions': typeof ApiShapeAssistantSessionsRoute
+  '/api/shape/research-papers': typeof ApiShapeResearchPapersRoute
   '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/kanban/org/$organizationSlug': typeof KanbanOrgOrganizationSlugRoute
   '/kanban/project/$projectId': typeof KanbanProjectProjectIdRoute
@@ -331,6 +340,7 @@ export interface FileRouteTypes {
     | '/api/shape/assistant-personas'
     | '/api/shape/assistant-session-personas'
     | '/api/shape/assistant-sessions'
+    | '/api/shape/research-papers'
     | '/api/shape/research-projects'
     | '/kanban/org/$organizationSlug'
     | '/kanban/project/$projectId'
@@ -363,6 +373,7 @@ export interface FileRouteTypes {
     | '/api/shape/assistant-personas'
     | '/api/shape/assistant-session-personas'
     | '/api/shape/assistant-sessions'
+    | '/api/shape/research-papers'
     | '/api/shape/research-projects'
     | '/kanban/org/$organizationSlug'
     | '/kanban/project/$projectId'
@@ -396,6 +407,7 @@ export interface FileRouteTypes {
     | '/api/shape/assistant-personas'
     | '/api/shape/assistant-session-personas'
     | '/api/shape/assistant-sessions'
+    | '/api/shape/research-papers'
     | '/api/shape/research-projects'
     | '/kanban/org/$organizationSlug'
     | '/kanban/project/$projectId'
@@ -430,6 +442,7 @@ export interface RootRouteChildren {
   ApiShapeAssistantPersonasRoute: typeof ApiShapeAssistantPersonasRoute
   ApiShapeAssistantSessionPersonasRoute: typeof ApiShapeAssistantSessionPersonasRoute
   ApiShapeAssistantSessionsRoute: typeof ApiShapeAssistantSessionsRoute
+  ApiShapeResearchPapersRoute: typeof ApiShapeResearchPapersRoute
   ApiShapeResearchProjectsRoute: typeof ApiShapeResearchProjectsRoute
   KanbanOrgOrganizationSlugRoute: typeof KanbanOrgOrganizationSlugRoute
   KanbanProjectProjectIdRoute: typeof KanbanProjectProjectIdRoute
@@ -619,6 +632,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiShapeResearchProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/shape/research-papers': {
+      id: '/api/shape/research-papers'
+      path: '/api/shape/research-papers'
+      fullPath: '/api/shape/research-papers'
+      preLoaderRoute: typeof ApiShapeResearchPapersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/shape/assistant-sessions': {
       id: '/api/shape/assistant-sessions'
       path: '/api/shape/assistant-sessions'
@@ -698,6 +718,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiShapeAssistantPersonasRoute: ApiShapeAssistantPersonasRoute,
   ApiShapeAssistantSessionPersonasRoute: ApiShapeAssistantSessionPersonasRoute,
   ApiShapeAssistantSessionsRoute: ApiShapeAssistantSessionsRoute,
+  ApiShapeResearchPapersRoute: ApiShapeResearchPapersRoute,
   ApiShapeResearchProjectsRoute: ApiShapeResearchProjectsRoute,
   KanbanOrgOrganizationSlugRoute: KanbanOrgOrganizationSlugRoute,
   KanbanProjectProjectIdRoute: KanbanProjectProjectIdRoute,

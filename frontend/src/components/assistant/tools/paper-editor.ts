@@ -25,7 +25,13 @@ export const paperListBlocks = toolDefinition({
 
 			switch (blockKind) {
 				case "heading":
-					return { id: b.id, type: "heading", level: b.level, text: b.text };
+					return {
+						id: b.id,
+						type: "heading",
+						level: b.level,
+						text: b.text,
+						...(b.presentation ? { presentation: b.presentation } : {}),
+					};
 				case "paragraph":
 					return { id: b.id, type: "paragraph", text: b.text };
 				case "list":

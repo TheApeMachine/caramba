@@ -13,19 +13,19 @@ export const AssistantSessionPersona = z.object({
 
 export type AssistantSessionPersonaRow = z.infer<typeof AssistantSessionPersona>;
 
-function shapeUrl() {
+const shapeUrl = () => {
 	if (typeof window === "undefined") return "http://localhost/api/shape/assistant-session-personas";
 	return `${window.location.origin}/api/shape/assistant-session-personas`;
 }
 
-function compositeKey(item: AssistantSessionPersonaRow): string {
+const compositeKey = (item: AssistantSessionPersonaRow): string => {
 	return `${item.session_id}:${item.persona_id}`;
 }
 
 let cloud: ReturnType<typeof buildCloud> | null = null;
 let local: ReturnType<typeof buildLocal> | null = null;
 
-function buildCloud() {
+const buildCloud = () => {
 	return createCollection(
 		electricCollectionOptions({
 			id: "assistant_session_personas",
@@ -36,7 +36,7 @@ function buildCloud() {
 	);
 }
 
-function buildLocal() {
+const buildLocal = () => {
 	return createCollection(
 		localStorageCollectionOptions({
 			id: "assistant_session_personas_local",
@@ -45,9 +45,9 @@ function buildLocal() {
 			getKey: compositeKey,
 		}),
 	);
-}
+};
 
-export function getSessionPersonasCollection(mode: "cloud" | "local") {
+export const getSessionPersonasCollection = (mode: "cloud" | "local") => {
 	if (mode === "local") {
 		local ??= buildLocal();
 		return local;

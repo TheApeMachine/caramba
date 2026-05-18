@@ -23,18 +23,18 @@ export const AssistantSession = z.object({
 
 export type AssistantSessionRow = z.infer<typeof AssistantSession>;
 
-function shapeUrl() {
-	if (typeof window === "undefined") return "http://localhost/api/shape/assistant-sessions";
+const shapeUrl = () => {
+	if (typeof window === "undefined")
+		return "http://localhost/api/shape/assistant-sessions";
 	return `${window.location.origin}/api/shape/assistant-sessions`;
-}
+};
 
-const skipTxidAwait =
-	import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true";
+const skipTxidAwait = import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true";
 
-function awaitOptions(txid: number | undefined) {
+const awaitOptions = (txid: number | undefined) => {
 	if (skipTxidAwait || typeof txid !== "number") return undefined;
 	return { timeout: 60_000, txid };
-}
+};
 
 type SessionMutationContext = {
 	personaIds?: string[];
@@ -43,7 +43,7 @@ type SessionMutationContext = {
 let cloud: ReturnType<typeof buildCloud> | null = null;
 let local: ReturnType<typeof buildLocal> | null = null;
 
-function buildCloud() {
+const buildCloud = () => {
 	return createCollection(
 		electricCollectionOptions({
 			id: "assistant_sessions",
@@ -91,9 +91,9 @@ function buildCloud() {
 			},
 		}),
 	);
-}
+};
 
-function buildLocal() {
+const buildLocal = () => {
 	return createCollection(
 		localStorageCollectionOptions({
 			id: "assistant_sessions_local",
@@ -102,9 +102,9 @@ function buildLocal() {
 			getKey: (item) => item.id,
 		}),
 	);
-}
+};
 
-export function getSessionsCollection(mode: "cloud" | "local") {
+export const getSessionsCollection = (mode: "cloud" | "local") => {
 	if (mode === "local") {
 		local ??= buildLocal();
 		return local;
@@ -112,4 +112,4 @@ export function getSessionsCollection(mode: "cloud" | "local") {
 
 	cloud ??= buildCloud();
 	return cloud;
-}
+};

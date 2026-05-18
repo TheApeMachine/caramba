@@ -8,8 +8,8 @@ import {
 	type BlockKindDescriptor,
 	matchMarkdownShortcut,
 } from "#/components/latex/model/block-catalog";
+import type { SetBlockKindOptions } from "#/components/latex/model/paper-reducer";
 import type {
-	HeadingLevel,
 	PaperBlock,
 	PaperBlockKind,
 } from "#/components/latex/model/types";
@@ -20,6 +20,11 @@ import {
 } from "#/components/latex/panels/editable-block";
 import { EquationBlock } from "#/components/latex/panels/equation-block";
 import { FormattingToolbar } from "#/components/latex/panels/formatting-toolbar";
+import {
+	abstractContinuationLayoutClass,
+	followsHeadingPresentation,
+	headingPresentationLayoutClass,
+} from "#/components/latex/panels/heading-presentation-layout";
 import { Button } from "#/components/ui/button";
 import { useDragDrop } from "#/components/ui/drag-drop";
 import { Flex } from "#/components/ui/flex";
@@ -27,16 +32,14 @@ import { cn } from "#/lib/utils";
 
 type BlockDragPayload = { kind: "paper-block"; blockId: string };
 
-const headingClass: Record<HeadingLevel, string> = {
-	1: "text-2xl font-semibold tracking-tight sm:text-3xl",
-	2: "text-xl font-semibold tracking-tight sm:text-2xl",
-	3: "text-lg font-semibold sm:text-xl",
-};
-
 type TextualBlock = Exclude<PaperBlock, { type: "equation" }>;
 
 const placeholderFor = (block: TextualBlock): string => {
 	if (block.type === "heading") {
+		if (block.presentation === "abstract") {
+			return "Abstract title…";
+		}
+
 		return "Section title…";
 	}
 
@@ -47,25 +50,42 @@ const placeholderFor = (block: TextualBlock): string => {
 	return "Write here. Press / for blocks, # for headings, $$ for math.";
 };
 
-const editableClass = (block: TextualBlock): string => {
+const textualEditableClass = (
+	block: TextualBlock,
+	blocks: PaperBlock[],
+	blockIndex: number,
+): string => {
 	if (block.type === "heading") {
-		return `${headingClass[block.level]} min-h-10 py-1.5`;
+		return headingPresentationLayoutClass(block);
 	}
 
 	if (block.type === "list") {
-		return "min-h-10 py-2 font-mono text-sm leading-relaxed";
+		const base = "min-h-10 py-2 font-mono text-sm leading-relaxed";
+
+		if (followsHeadingPresentation(blocks, blockIndex, "abstract")) {
+			return cn(base, abstractContinuationLayoutClass());
+		}
+
+		return base;
 	}
 
-	return "min-h-10 py-2 text-base leading-relaxed sm:text-[17px]";
+	const base = "min-h-10 py-2 text-base leading-relaxed sm:text-[17px]";
+
+	if (followsHeadingPresentation(blocks, blockIndex, "abstract")) {
+		return cn(base, abstractContinuationLayoutClass());
+	}
+
+	return base;
 };
 
 const applyDescriptorToBlock = (
 	descriptor: BlockKindDescriptor,
 	resetText: () => void,
+	updateText: (id: string, text: string) => void,
 	setBlockKind: (
 		id: string,
 		kind: PaperBlockKind,
-		options?: { level?: HeadingLevel; ordered?: boolean },
+		options?: SetBlockKindOptions,
 	) => void,
 	blockId: string,
 ): void => {
@@ -73,12 +93,26 @@ const applyDescriptorToBlock = (
 	resetText();
 
 	if (sample.type === "heading") {
-		setBlockKind(blockId, "heading", { level: sample.level });
+		setBlockKind(blockId, "heading", {
+			level: sample.level,
+			presentation: sample.presentation ?? null,
+		});
+		updateText(blockId, sample.text);
+
 		return;
 	}
 
 	if (sample.type === "list") {
 		setBlockKind(blockId, "list", { ordered: sample.ordered });
+		updateText(blockId, sample.text);
+
+		return;
+	}
+
+	if (sample.type === "paragraph") {
+		setBlockKind(blockId, "paragraph");
+		updateText(blockId, sample.text);
+
 		return;
 	}
 
@@ -93,7 +127,13 @@ const readDropPosition = (
 	return event.clientY < midpoint ? "above" : "below";
 };
 
-export const BlockRow = ({ block }: { block: PaperBlock }) => {
+export const BlockRow = ({
+	block,
+	blockIndex,
+}: {
+	block: PaperBlock;
+	blockIndex: number;
+}) => {
 	const {
 		blocks,
 		updateText,
@@ -168,6 +208,7 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 		applyDescriptorToBlock(
 			descriptor,
 			() => updateText(block.id, ""),
+			updateText,
 			setBlockKind,
 			block.id,
 		);
@@ -338,7 +379,13 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 				onMouseLeave={shellPointerHandlers.onMouseLeave}
 				ref={shellRef}
 			>
-				<div className="relative min-w-0 w-full">
+				<div
+					className={cn(
+						"relative min-w-0 w-full",
+						followsHeadingPresentation(blocks, blockIndex, "abstract") &&
+							"sm:px-9",
+					)}
+				>
 					{blockToolbar}
 					<EquationBlock
 						block={block}
@@ -359,6 +406,7 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 			applyDescriptorToBlock(
 				promoted,
 				() => updateText(block.id, ""),
+				updateText,
 				setBlockKind,
 				block.id,
 			);
@@ -445,7 +493,7 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 					) : null}
 
 					<EditableBlock
-						className={editableClass(textual)}
+						className={textualEditableClass(textual, blocks, blockIndex)}
 						onBlur={handleBlur}
 						onChange={onTextChange}
 						onFocus={handleFocus}

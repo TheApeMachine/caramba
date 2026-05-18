@@ -24,6 +24,7 @@ Float32) and on the mixed-precision dtype tuple for the bf16 path
 
 func init() {
 	registerMatMulFloat32()
+	registerMatMulFloat16()
 	registerMatMulFloat64()
 	registerMatMulBFloat16()
 }
@@ -51,6 +52,19 @@ func registerMatMulFloat64() {
 		},
 		Locations: []tensor.Location{tensor.Host},
 		Run:       runMatMulFloat64,
+	})
+}
+
+func registerMatMulFloat16() {
+	Default.Register(Kernel{
+		Name: "matmul",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16, dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runMatMulFloat16,
 	})
 }
 
@@ -160,6 +174,53 @@ func runMatMulFloat64(args ...tensor.Tensor) error {
 					leftValue * rightView[innerIndex*cols+colIndex]
 			}
 		}
+	}
+
+	return nil
+}
+
+func runMatMulFloat16(args ...tensor.Tensor) error {
+	if len(args) != 3 {
+		return tensor.ErrShapeMismatch
+	}
+
+	lhs, rhs, out := args[0], args[1], args[2]
+
+	rows, inner, cols, err := matmulDims(lhs, rhs, out)
+	if err != nil {
+		return err
+	}
+
+	leftView, err := lhs.Float16Native()
+	if err != nil {
+		return err
+	}
+
+	rightView, err := rhs.Float16Native()
+	if err != nil {
+		return err
+	}
+
+	outView, err := out.Float16Native()
+	if err != nil {
+		return err
+	}
+
+	accumulator := make([]float32, rows*cols)
+
+	for rowIndex := 0; rowIndex < rows; rowIndex++ {
+		for innerIndex := 0; innerIndex < inner; innerIndex++ {
+			leftValue := leftView[rowIndex*inner+innerIndex].Float32()
+
+			for colIndex := 0; colIndex < cols; colIndex++ {
+				rightValue := rightView[innerIndex*cols+colIndex].Float32()
+				accumulator[rowIndex*cols+colIndex] += leftValue * rightValue
+			}
+		}
+	}
+
+	for index, value := range accumulator {
+		outView[index] = dtype.Fromfloat32(value)
 	}
 
 	return nil

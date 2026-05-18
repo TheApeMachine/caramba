@@ -18,23 +18,23 @@ export const AssistantMessage = z.object({
 
 export type AssistantMessageRow = z.infer<typeof AssistantMessage>;
 
-function shapeUrl() {
-	if (typeof window === "undefined") return "http://localhost/api/shape/assistant-messages";
+const shapeUrl = () => {
+	if (typeof window === "undefined")
+		return "http://localhost/api/shape/assistant-messages";
 	return `${window.location.origin}/api/shape/assistant-messages`;
-}
+};
 
-const skipTxidAwait =
-	import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true";
+const skipTxidAwait = import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true";
 
-function awaitOptions(txid: number | undefined) {
+const awaitOptions = (txid: number | undefined) => {
 	if (skipTxidAwait || typeof txid !== "number") return undefined;
 	return { timeout: 60_000, txid };
-}
+};
 
 let cloud: ReturnType<typeof buildCloud> | null = null;
 let local: ReturnType<typeof buildLocal> | null = null;
 
-function buildCloud() {
+const buildCloud = () => {
 	return createCollection(
 		electricCollectionOptions({
 			id: "assistant_messages",
@@ -61,9 +61,9 @@ function buildCloud() {
 			},
 		}),
 	);
-}
+};
 
-function buildLocal() {
+const buildLocal = () => {
 	return createCollection(
 		localStorageCollectionOptions({
 			id: "assistant_messages_local",
@@ -72,9 +72,9 @@ function buildLocal() {
 			getKey: (item) => item.id,
 		}),
 	);
-}
+};
 
-export function getMessagesCollection(mode: "cloud" | "local") {
+export const getMessagesCollection = (mode: "cloud" | "local") => {
 	if (mode === "local") {
 		local ??= buildLocal();
 		return local;
@@ -82,4 +82,4 @@ export function getMessagesCollection(mode: "cloud" | "local") {
 
 	cloud ??= buildCloud();
 	return cloud;
-}
+};

@@ -8,4 +8,10 @@ cd "$(dirname "$0")/.."
 docker compose exec postgres psql -U postgres -d electric -v ON_ERROR_STOP=1 \
 	-f /docker-entrypoint-initdb.d/01-research-projects.sql
 
-echo "Schema applied on database 'electric' (table research_projects)."
+docker compose exec postgres psql -U postgres -d electric -v ON_ERROR_STOP=1 \
+	-f /docker-entrypoint-initdb.d/02-kanban-boards.sql
+
+docker compose exec postgres psql -U postgres -d electric -v ON_ERROR_STOP=1 \
+	-f /docker-entrypoint-initdb.d/03-research-papers.sql
+
+echo "Schema applied on database 'electric' (research_projects, kanban, research_papers)."

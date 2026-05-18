@@ -1,4 +1,8 @@
-import type { PaperBlock } from "#/components/latex/model/types";
+import type {
+	HeadingLevel,
+	PaperBlock,
+	PaperHeadingPresentation,
+} from "#/components/latex/model/types";
 
 export type BlockKindDescriptor = {
 	id: string;
@@ -14,7 +18,124 @@ function makeId(): string {
 	return crypto.randomUUID();
 }
 
+function paperSectionHeading(
+	id: string,
+	label: string,
+	hint: string,
+	keywords: string[],
+	config?: {
+		level?: HeadingLevel;
+		presentation?: PaperHeadingPresentation;
+	},
+): BlockKindDescriptor {
+	const level = config?.level ?? 2;
+	const presentation = config?.presentation;
+
+	return {
+		id,
+		label,
+		category: "Paper sections",
+		hint,
+		keywords: [label.toLowerCase(), ...keywords],
+		build: () => ({
+			id: makeId(),
+			type: "heading",
+			level,
+			text: label,
+			...(presentation ? { presentation } : {}),
+		}),
+	};
+}
+
+const paperSectionDescriptors: BlockKindDescriptor[] = [
+	paperSectionHeading(
+		"sec-abstract",
+		"Abstract",
+		"Standalone summary",
+		["abstract", "summary"],
+		{ presentation: "abstract" },
+	),
+	paperSectionHeading("sec-intro", "Introduction", "Problem and motivation", [
+		"introduction",
+		"intro",
+		"motivation",
+	]),
+	paperSectionHeading(
+		"sec-related",
+		"Related work",
+		"Positioning against prior art",
+		["related", "literature", "review", "prior", "art", "background"],
+	),
+	paperSectionHeading(
+		"sec-background",
+		"Background",
+		"Preliminaries and setup",
+		["background", "preliminaries"],
+	),
+	paperSectionHeading("sec-methods", "Methods", "Approach and setup", [
+		"methods",
+		"methodology",
+		"approach",
+	]),
+	paperSectionHeading(
+		"sec-experiments",
+		"Experiments",
+		"Protocol and baselines",
+		["experiments", "evaluation", "setup"],
+	),
+	paperSectionHeading("sec-results", "Results", "Empirical findings", [
+		"results",
+		"findings",
+	]),
+	paperSectionHeading(
+		"sec-analysis",
+		"Analysis",
+		"Interpretation and ablations",
+		["analysis", "ablation"],
+	),
+	paperSectionHeading("sec-discussion", "Discussion", "Interpretation", [
+		"discussion",
+	]),
+	paperSectionHeading("sec-limitations", "Limitations", "Scope and caveats", [
+		"limitations",
+		"caveats",
+	]),
+	paperSectionHeading("sec-conclusion", "Conclusion", "Wrap-up", [
+		"conclusion",
+	]),
+	paperSectionHeading("sec-future", "Future work", "Open problems", [
+		"future",
+		"outlook",
+		"next",
+	]),
+	paperSectionHeading(
+		"sec-ack",
+		"Acknowledgments",
+		"Contributors and support",
+		["acknowledgments", "thanks", "funding"],
+		{ presentation: "acknowledgments" },
+	),
+	paperSectionHeading(
+		"sec-refs",
+		"References",
+		"Heading before bibliography",
+		["references", "bibliography", "citations"],
+		{ presentation: "references" },
+	),
+	paperSectionHeading("sec-appendix", "Appendix", "Deferred material", [
+		"appendix",
+		"supplementary",
+	]),
+	paperSectionHeading(
+		"sec-contributions",
+		"Contributions",
+		"Summary of novelty (often early)",
+		["contributions", "novelty", "claims"],
+	),
+];
+
 export const blockCatalog: BlockKindDescriptor[] = [
+	...paperSectionDescriptors,
 	{
 		id: "h1",
 		label: "Heading 1",
@@ -84,7 +205,7 @@ export type BlockCatalogGroup = {
 	items: readonly BlockKindDescriptor[];
 };
 
-const categoryOrder = ["Headings", "Text", "Lists", "Math"];
+const categoryOrder = ["Paper sections", "Headings", "Text", "Lists", "Math"];
 
 export const blockCatalogGroups: BlockCatalogGroup[] = categoryOrder
 	.map((label) => ({

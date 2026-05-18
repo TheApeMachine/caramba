@@ -2,11 +2,13 @@ import type {
 	HeadingLevel,
 	PaperBlock,
 	PaperBlockKind,
+	PaperHeadingPresentation,
 } from "#/components/latex/model/types";
 
 export type SetBlockKindOptions = {
 	level?: HeadingLevel;
 	ordered?: boolean;
+	presentation?: PaperHeadingPresentation | null;
 };
 
 export type PaperAction =
@@ -52,11 +54,24 @@ function convertBlock(
 	const carriedText = readText(block);
 
 	if (kind === "heading") {
+		let presentation: PaperHeadingPresentation | undefined;
+
+		if (options.presentation === null) {
+			presentation = undefined;
+		} else if (options.presentation !== undefined) {
+			presentation = options.presentation;
+		} else if (block.type === "heading") {
+			presentation = block.presentation;
+		}
+
+		const level = options.level ?? (block.type === "heading" ? block.level : 2);
+
 		return {
 			id: block.id,
 			type: "heading",
-			level: options.level ?? 2,
+			level,
 			text: carriedText,
+			...(presentation ? { presentation } : {}),
 		};
 	}
 

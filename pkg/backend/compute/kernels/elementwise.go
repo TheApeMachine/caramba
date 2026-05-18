@@ -103,9 +103,7 @@ func runMulFloat32(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for index := range out {
-		out[index] = left[index] * right[index]
-	}
+	mulFloat32Native(out, left, right)
 
 	return nil
 }
@@ -137,9 +135,7 @@ func runSubFloat32(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for index := range out {
-		out[index] = left[index] - right[index]
-	}
+	subFloat32Native(out, left, right)
 
 	return nil
 }

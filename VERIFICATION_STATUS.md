@@ -24,6 +24,112 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal matmul kernel expansion
+
+This adds real tiled Metal device kernels for dense matrix
+multiplication and fused matrix multiplication plus bias:
+
+- `matmul_{float32,float16,bfloat16}`
+- `matmul_add_{float32,float16,bfloat16}`
+
+The kernels live in `pkg/backend/device/metal/matmul.metal` and run
+through `pkg/backend/device/metal/bridge_matmul_darwin.m`. Each
+threadgroup computes a 16×16 output tile, staging left and right tiles
+through `threadgroup` memory. `float32` reads and writes float storage;
+`float16` and `bfloat16` read their native storage, accumulate in
+float32, then write back to the same storage dtype. The parity cases
+use rows=17 and cols=19 so every run exercises multiple threadgroups
+and partial boundary tiles while N drives the inner dimension at
+`N ∈ {1, 7, 64, 1024, 8192}`. F32 parity uses a 1-ULP bound; f16 and
+bf16 parity use a 1-ULP bound on the stored 16-bit representation.
+
+The Metal dense registry now has 90 verified signatures: 57
+elementwise, 27 shape, and 6 matmul signatures.
+
+Focused matmul parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalMatMul' -count=1 -v
+=== RUN   TestKernelRegistry_MetalMatMulDTypes
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f32
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f32/N=1
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f32/N=7
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f32/N=64
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f32/N=1024
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f32/N=8192
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f16
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f16/N=1
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f16/N=7
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f16/N=64
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f16/N=1024
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/f16/N=8192
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/bf16
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/bf16/N=1
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/bf16/N=7
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/bf16/N=64
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/bf16/N=1024
+=== RUN   TestKernelRegistry_MetalMatMulDTypes/bf16/N=8192
+--- PASS: TestKernelRegistry_MetalMatMulDTypes (0.05s)
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f32
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f32/N=1
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f32/N=7
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f32/N=64
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f32/N=1024
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f32/N=8192
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f16
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f16/N=1
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f16/N=7
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f16/N=64
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f16/N=1024
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/f16/N=8192
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/bf16
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/bf16/N=1
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/bf16/N=7
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/bf16/N=64
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/bf16/N=1024
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes/bf16/N=8192
+--- PASS: TestKernelRegistry_MetalMatMulAddDTypes (0.02s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.453s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.076s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	1.032s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.385s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	1.438s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	2.215s
+```
+
+Metal matmul benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunMatMulDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunMatMulDTypes/f32/matmul-16  	    9880	    130809 ns/op	1503.01 MB/s	    1345 B/op	       7 allocs/op
+BenchmarkKernel_RunMatMulDTypes/f32/matmul_add-16         	    8084	    125851 ns/op	1566.30 MB/s	    1360 B/op	       8 allocs/op
+BenchmarkKernel_RunMatMulDTypes/f16/matmul-16             	    9843	    115594 ns/op	 850.43 MB/s	    1344 B/op	       7 allocs/op
+BenchmarkKernel_RunMatMulDTypes/f16/matmul_add-16         	    9355	    116103 ns/op	 848.90 MB/s	    1360 B/op	       8 allocs/op
+BenchmarkKernel_RunMatMulDTypes/bf16/matmul-16            	    9951	    117786 ns/op	 834.60 MB/s	    1344 B/op	       7 allocs/op
+BenchmarkKernel_RunMatMulDTypes/bf16/matmul_add-16        	   10000	    117916 ns/op	 835.85 MB/s	    1360 B/op	       8 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	7.260s
+```
+
+During the final verification pass, `pkg/backend/compute/kernels/elementwise_f32_neon_arm64.s`
+blocked builds because the Go assembler does not accept its vector
+float32 mnemonics. I verified the S4 encodings locally with
+`clang -target arm64-apple-macos` plus `otool -X -s __TEXT __text` and
+replaced those mnemonics with explicit NEON `WORD` macros. The focused
+package sweep above covers the corrected assembly file.
+
 ### 2026-05-18 Metal shape kernel expansion
 
 This adds real Metal device kernels for dense shape/data-movement ops
@@ -54,8 +160,7 @@ instead of converting numeric values. `split2` uses the completion
 registry's multi-output path so both destination tensors become ready
 from the same Metal command completion. Shape dispatch resolves dtype
 before registering the async completion token, so a validation error
-cannot leave a pending tensor use-count. The Metal dense registry now
-has 84 verified signatures: 57 elementwise and 27 shape signatures.
+cannot leave a pending tensor use-count.
 
 Focused shape parity command:
 
@@ -753,7 +858,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 84 verified dense elementwise + shape signatures for `float32`, `float16`, `bfloat16` |
+| 4     | Metal device backend          | 90 verified dense elementwise + shape + matmul signatures for `float32`, `float16`, `bfloat16` |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
@@ -854,6 +959,7 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_darwin.m`    | verified              |
 | `pkg/backend/device/metal/bridge_darwin_private.h` | verified        |
 | `pkg/backend/device/metal/bridge_elementwise_darwin.m` | verified     |
+| `pkg/backend/device/metal/bridge_matmul_darwin.m` | verified        |
 | `pkg/backend/device/metal/bridge_shape_common_darwin.m` | verified    |
 | `pkg/backend/device/metal/bridge_shape_darwin.m` | verified           |
 | `pkg/backend/device/metal/bridge_shape_private.h` | verified          |
@@ -862,6 +968,7 @@ invalidation works.
 | `pkg/backend/device/metal/elementwise_float32.metal` | verified       |
 | `pkg/backend/device/metal/elementwise_float16.metal` | verified       |
 | `pkg/backend/device/metal/elementwise_bfloat16.metal` | verified     |
+| `pkg/backend/device/metal/matmul.metal`       | verified              |
 | `pkg/backend/device/metal/shape.metal`        | verified              |
 | `pkg/backend/device/metal/elementwise_dtype_darwin.go` | verified    |
 | `pkg/backend/device/metal/elementwise_dtype_test.go` | verified       |
@@ -869,6 +976,11 @@ invalidation works.
 | `pkg/backend/device/metal/kernels.metallib`   | verified              |
 | `pkg/backend/device/metal/generate.go`        | verified              |
 | `pkg/backend/device/metal/kernels.go`         | verified              |
+| `pkg/backend/device/metal/matmul.go`          | verified              |
+| `pkg/backend/device/metal/matmul_darwin.go`   | verified              |
+| `pkg/backend/device/metal/matmul_stub.go`     | verified              |
+| `pkg/backend/device/metal/matmul_test.go`     | verified              |
+| `pkg/backend/device/metal/matmul_bench_test.go` | verified            |
 | `pkg/backend/device/metal/shape.go`           | verified              |
 | `pkg/backend/device/metal/shape_darwin.go`    | verified              |
 | `pkg/backend/device/metal/shape_validate_darwin.go` | verified       |

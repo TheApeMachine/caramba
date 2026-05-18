@@ -1,0 +1,19 @@
+/*
+Interactive equation surface: nested hover highlights the leaf subexpression under
+the cursor; .selected mirrors docs/math_subselection_developed_demo.html.
+*/
+
+.math-subselection-stage .ast-node {
+	cursor: pointer;
+	border-radius: 0.1875rem;
+	transition: background-color 0.1s ease;
+}
+
+.math-subselection-stage .ast-node:hover:not(:has(.ast-node:hover)) {
+	background-color: color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+
+.math-subselection-stage .ast-node.selected {
+	background-color: color-mix(in oklch, var(--primary) 24%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in oklch, var(--ring) 70%, transparent);
+}

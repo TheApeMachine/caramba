@@ -27,6 +27,7 @@ type Server struct {
 	architecture      *architecture.Service
 	modelscope        *modelscope.Service
 	researchProjects  *ResearchProjectService
+	researchPapers    *ResearchPaperService
 	assistantPersonas *AssistantPersonaService
 	assistantSessions *AssistantSessionService
 }
@@ -46,6 +47,7 @@ func NewServer() *Server {
 		architecture:      architecture.NewService(),
 		modelscope:        modelscope.NewService(),
 		researchProjects:  NewResearchProjectService(config.NewDevTeamConfig().DatabaseURL),
+		researchPapers:    NewResearchPaperService(config.NewDevTeamConfig().DatabaseURL),
 		assistantPersonas: NewAssistantPersonaService(config.NewDevTeamConfig().DatabaseURL),
 		assistantSessions: NewAssistantSessionService(config.NewDevTeamConfig().DatabaseURL),
 	}
@@ -83,6 +85,8 @@ func (server *Server) Up() error {
 	server.app.Get("/backend/architecture/:name", wrap(server.architecture.Load))
 	server.app.Post("/backend/architecture/:name", RequireClerkAdmin(), wrap(server.architecture.Save))
 	server.app.Post("/backend/research-projects", RequireClerkAdmin(), wrap(server.researchProjects.Create))
+	server.app.Post("/backend/research-papers", wrap(server.researchPapers.Create))
+	server.app.Put("/backend/research-papers", wrap(server.researchPapers.Update))
 
 	server.app.Post("/backend/assistant/personas", wrap(server.assistantPersonas.Create))
 	server.app.Put("/backend/assistant/personas", wrap(server.assistantPersonas.Update))

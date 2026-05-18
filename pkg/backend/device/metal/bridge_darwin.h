@@ -163,6 +163,31 @@ int metal_dispatch_upsample_nearest2d_bytes(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_matmul(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef leftRef,
+    MetalBufferRef rightRef,
+    MetalBufferRef outRef,
+    uint32_t rows,
+    uint32_t inner,
+    uint32_t cols,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_matmul_add(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef leftRef,
+    MetalBufferRef rightRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef outRef,
+    uint32_t rows,
+    uint32_t inner,
+    uint32_t cols,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 void metal_device_release(MetalDeviceRef contextRef);
 
 #ifdef __cplusplus

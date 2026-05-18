@@ -164,9 +164,9 @@ export function EquationStructureEditor({
 	}, [root, selectedId]);
 
 	useEffect(() => {
-		const stageElement = stageReference.current;
+		const stageElement = equationSurfaceRef.current;
 
-		if (!stageElement || structureDetached || disabled) {
+		if (!stageElement || !surfaceInteractive || structureDetached || disabled) {
 			return;
 		}
 
@@ -226,7 +226,15 @@ export function EquationStructureEditor({
 				unsub();
 			});
 		};
-	}, [root, selectedId, structureDetached, disabled, displayMode]);
+	}, [
+		root,
+		selectedId,
+		structureDetached,
+		disabled,
+		displayMode,
+		surfaceInteractive,
+		equationSurfaceRef,
+	]);
 
 	const applyTransform = useCallback(
 		(transformId: string) => {
@@ -347,7 +355,6 @@ export function EquationStructureEditor({
 			root={root}
 			selectedId={selectedId}
 			selectedNode={selectedNode}
-			stageReference={stageReference}
 			structureDetached={structureDetached}
 		/>
 	);

@@ -28,23 +28,23 @@ export const AssistantPersona = z.object({
 
 export type AssistantPersonaRow = z.infer<typeof AssistantPersona>;
 
-function shapeUrl() {
-	if (typeof window === "undefined") return "http://localhost/api/shape/assistant-personas";
+const shapeUrl = () => {
+	if (typeof window === "undefined")
+		return "http://localhost/api/shape/assistant-personas";
 	return `${window.location.origin}/api/shape/assistant-personas`;
-}
+};
 
-const skipTxidAwait =
-	import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true";
+const skipTxidAwait = import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true";
 
-function awaitOptions(txid: number | undefined) {
+const awaitOptions = (txid: number | undefined) => {
 	if (skipTxidAwait || typeof txid !== "number") return undefined;
 	return { timeout: 60_000, txid };
-}
+};
 
 let cloud: ReturnType<typeof buildCloud> | null = null;
 let local: ReturnType<typeof buildLocal> | null = null;
 
-function buildCloud() {
+const buildCloud = () => {
 	return createCollection(
 		electricCollectionOptions({
 			id: "assistant_personas",
@@ -100,9 +100,9 @@ function buildCloud() {
 			},
 		}),
 	);
-}
+};
 
-function buildLocal() {
+const buildLocal = () => {
 	return createCollection(
 		localStorageCollectionOptions({
 			id: "assistant_personas_local",
@@ -111,7 +111,7 @@ function buildLocal() {
 			getKey: (item) => item.id,
 		}),
 	);
-}
+};
 
 export function getPersonasCollection(mode: "cloud" | "local") {
 	if (mode === "local") {

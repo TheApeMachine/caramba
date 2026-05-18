@@ -15,8 +15,12 @@ export function WritingCanvas() {
 				fullWidth
 				gap={1}
 			>
-				{blocks.map((block) => (
-					<BlockRow block={block} key={block.id} />
+				{blocks.map((rowBlock, blockIndex) => (
+					<BlockRow
+						block={rowBlock}
+						blockIndex={blockIndex}
+						key={rowBlock.id}
+					/>
 				))}
 			</Flex.Column>
 		</ScrollArea>
