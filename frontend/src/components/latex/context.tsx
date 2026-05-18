@@ -1,5 +1,6 @@
 "use client";
 
+import { useStore } from "@tanstack/react-form";
 import type React from "react";
 import {
 	createContext,
@@ -27,7 +28,17 @@ import {
 	type PaperMetadataFormApi,
 	usePaperMetadataForm,
 } from "#/components/latex/panels/metadata-tab";
+import { useResearchPaperCollectionSync } from "#/components/latex/paper-sync";
 import { editorBridge } from "./editor-bridge";
+
+export type PaperEditorPersistence = {
+	enabled: boolean;
+	ready: boolean;
+	waitingForRemote: boolean;
+	bootstrapError: string | null;
+	saveError: string | null;
+	effectivePaperId: string | null;
+};
 
 type PaperEditorContextValue = {
 	blocks: PaperBlock[];
@@ -35,6 +46,7 @@ type PaperEditorContextValue = {
 	focusedBlockId: string | null;
 	setFocusedBlockId: (id: string | null) => void;
 	metadataForm: PaperMetadataFormApi;
+	paperPersistence: PaperEditorPersistence;
 	updateText: (id: string, text: string) => void;
 	updateLatex: (id: string, latex: string) => void;
 	insertParagraphAfter: (afterId: string, text?: string) => string;
@@ -66,8 +78,14 @@ function newId(): string {
 
 export function PaperEditorProvider({
 	children,
+	paperId: paperIdProp,
+	bootstrapProjectId,
+	onPaperBootstrapped,
 }: {
 	children: React.ReactNode;
+	paperId?: string;
+	bootstrapProjectId?: string;
+	onPaperBootstrapped?: (paperId: string) => void;
 }) {
 	const [blocks, dispatch] = useReducer(
 		paperReducer,
@@ -80,6 +98,48 @@ export function PaperEditorProvider({
 
 	const blocksRef = useRef(blocks);
 	blocksRef.current = blocks;
+
+	const metadata = useStore(
+		metadataForm.store,
+		(state) => state.values as PaperMetadata,
+	);
+
+	const {
+		effectivePaperId,
+		persistEnabled,
+		ready: persistReady,
+		waitingForRemote,
+		bootstrapError,
+		saveError,
+	} = useResearchPaperCollectionSync({
+		paperIdProp,
+		bootstrapProjectId,
+		onPaperBootstrapped,
+		dispatch,
+		blocksRef,
+		blocks,
+		metadata,
+		metadataForm,
+	});
+
+	const paperPersistence = useMemo(
+		(): PaperEditorPersistence => ({
+			enabled: persistEnabled,
+			ready: persistReady,
+			waitingForRemote,
+			bootstrapError,
+			saveError,
+			effectivePaperId,
+		}),
+		[
+			persistEnabled,
+			persistReady,
+			waitingForRemote,
+			bootstrapError,
+			saveError,
+			effectivePaperId,
+		],
+	);
 
 	const registerBlockAnchor = useCallback(
 		(id: string, el: HTMLElement | null) => {
@@ -234,6 +294,7 @@ export function PaperEditorProvider({
 			focusedBlockId,
 			setFocusedBlockId,
 			metadataForm,
+			paperPersistence,
 			updateText,
 			updateLatex,
 			insertParagraphAfter,
@@ -252,6 +313,7 @@ export function PaperEditorProvider({
 			blocks,
 			focusedBlockId,
 			metadataForm,
+			paperPersistence,
 			updateText,
 			updateLatex,
 			insertParagraphAfter,

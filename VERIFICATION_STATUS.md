@@ -24,6 +24,128 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal normalization kernel expansion
+
+This adds real Metal device kernels for last-dimension normalization:
+
+- `layernorm_{float32,float16,bfloat16}`
+- `rmsnorm_{float32,float16,bfloat16}`
+
+The kernels live in `pkg/backend/device/metal/normalization.metal` and
+run through `pkg/backend/device/metal/bridge_normalization_darwin.m`.
+Each row is assigned one 256-thread threadgroup. LayerNorm performs
+parallel mean and variance reductions, then writes
+`(x - mean) / sqrt(variance + eps) * scale + bias` in the target storage
+dtype. RMSNorm performs a parallel mean-square reduction, then writes
+`x / sqrt(mean_square + eps) * scale` in the target storage dtype.
+Float16 and bfloat16 read native storage, compute in float32, and write
+native storage. The parity cases use rows=13 and
+`N ∈ {1, 7, 64, 1024, 8192}` as the normalized width. F32 parity uses
+a 32-ULP bound against the scalar reference because the device path
+uses parallel reduction order; f16 and bf16 parity use a 2-ULP bound on
+the stored 16-bit representation.
+
+The Metal dense registry now has 99 verified signatures: 57
+elementwise, 27 shape, 6 matmul, 3 softmax, and 6 normalization
+signatures.
+
+Focused host normalization and NEON AXPY parity command:
+
+```
+go test ./pkg/backend/compute/kernels -run 'Test(LayerNorm|RMSNorm)(Float32|Float16AndBFloat16)?$|TestAxpyFloat32NEONAsmParity' -count=1 -v
+=== RUN   TestAxpyFloat32NEONAsmParity
+=== RUN   TestAxpyFloat32NEONAsmParity/N=1
+=== RUN   TestAxpyFloat32NEONAsmParity/N=7
+=== RUN   TestAxpyFloat32NEONAsmParity/N=64
+=== RUN   TestAxpyFloat32NEONAsmParity/N=1024
+=== RUN   TestAxpyFloat32NEONAsmParity/N=8192
+--- PASS: TestAxpyFloat32NEONAsmParity (0.00s)
+=== RUN   TestLayerNormFloat16AndBFloat16
+--- PASS: TestLayerNormFloat16AndBFloat16 (0.00s)
+=== RUN   TestRMSNormFloat16AndBFloat16
+--- PASS: TestRMSNormFloat16AndBFloat16 (0.00s)
+=== RUN   TestRMSNormFloat32
+--- PASS: TestRMSNormFloat32 (0.00s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	0.500s
+```
+
+Focused Metal matmul + normalization + softmax parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_Metal(LayerNorm|RMSNorm|Softmax|MatMul)' -count=1 -v
+=== RUN   TestKernelRegistry_MetalMatMulDTypes
+--- PASS: TestKernelRegistry_MetalMatMulDTypes (0.06s)
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes
+--- PASS: TestKernelRegistry_MetalMatMulAddDTypes (0.02s)
+=== RUN   TestKernelRegistry_MetalLayerNormDTypes
+--- PASS: TestKernelRegistry_MetalLayerNormDTypes (0.01s)
+=== RUN   TestKernelRegistry_MetalRMSNormDTypes
+--- PASS: TestKernelRegistry_MetalRMSNormDTypes (0.01s)
+=== RUN   TestKernelRegistry_MetalSoftmaxDTypes
+--- PASS: TestKernelRegistry_MetalSoftmaxDTypes (0.01s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.667s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.916s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.374s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.546s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	0.878s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.237s
+```
+
+Metal matmul + normalization + softmax benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_Run(Normalization|Softmax|MatMul)DTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunMatMulDTypes/f32/matmul-16         	    9292	    127125 ns/op	1546.57 MB/s	    1345 B/op	       7 allocs/op
+BenchmarkKernel_RunMatMulDTypes/f32/matmul_add-16     	    8172	    137358 ns/op	1435.08 MB/s	    1360 B/op	       8 allocs/op
+BenchmarkKernel_RunMatMulDTypes/f16/matmul-16         	    8396	    132214 ns/op	 743.52 MB/s	    1344 B/op	       7 allocs/op
+BenchmarkKernel_RunMatMulDTypes/f16/matmul_add-16     	    7958	    132621 ns/op	 743.17 MB/s	    1360 B/op	       8 allocs/op
+BenchmarkKernel_RunMatMulDTypes/bf16/matmul-16        	    9738	    121018 ns/op	 812.31 MB/s	    1344 B/op	       7 allocs/op
+BenchmarkKernel_RunMatMulDTypes/bf16/matmul_add-16    	    7452	    140799 ns/op	 700.00 MB/s	    1360 B/op	       8 allocs/op
+BenchmarkKernel_RunNormalizationDTypes/f32/layernorm-16         	    9093	    134746 ns/op	7842.66 MB/s	    1336 B/op	       7 allocs/op
+BenchmarkKernel_RunNormalizationDTypes/f32/rmsnorm-16           	    9661	    117165 ns/op	8984.49 MB/s	    1320 B/op	       6 allocs/op
+BenchmarkKernel_RunNormalizationDTypes/f16/layernorm-16         	    9680	    124281 ns/op	4251.53 MB/s	    1336 B/op	       7 allocs/op
+BenchmarkKernel_RunNormalizationDTypes/f16/rmsnorm-16           	   10000	    100555 ns/op	5234.30 MB/s	    1320 B/op	       6 allocs/op
+BenchmarkKernel_RunNormalizationDTypes/bf16/layernorm-16        	   10000	    102621 ns/op	5148.87 MB/s	    1336 B/op	       7 allocs/op
+BenchmarkKernel_RunNormalizationDTypes/bf16/rmsnorm-16          	   10000	    107127 ns/op	4913.18 MB/s	    1320 B/op	       6 allocs/op
+BenchmarkKernel_RunSoftmaxDTypes/f32-16                         	   11516	    103555 ns/op	10125.81 MB/s	    1304 B/op	       5 allocs/op
+BenchmarkKernel_RunSoftmaxDTypes/f16-16                         	   10000	    103044 ns/op	5087.98 MB/s	    1304 B/op	       5 allocs/op
+BenchmarkKernel_RunSoftmaxDTypes/bf16-16                        	   10000	    108715 ns/op	4822.61 MB/s	    1304 B/op	       5 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	17.039s
+```
+
+NEON AXPY benchmark output:
+
+```
+go test ./pkg/backend/compute/kernels -run '^$' -bench 'BenchmarkAxpyFloat32' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/compute/kernels
+cpu: Apple M4 Max
+BenchmarkAxpyFloat32NEONAsm/N=64-16         	189399170	         6.317 ns/op	121573.47 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAxpyFloat32NEONAsm/N=1024-16       	21812976	        57.21 ns/op	214801.24 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAxpyFloat32NEONAsm/N=8192-16       	 2805793	       430.9 ns/op	228158.97 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAxpyFloat32NEONAsm/N=65536-16      	  200014	      6045 ns/op	130093.47 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAxpyFloat32Scalar/N=64-16          	48115878	        23.54 ns/op	32625.66 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAxpyFloat32Scalar/N=1024-16        	 3218389	       373.0 ns/op	32942.39 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAxpyFloat32Scalar/N=8192-16        	  407226	      2924 ns/op	33618.78 MB/s	       0 B/op	       0 allocs/op
+BenchmarkAxpyFloat32Scalar/N=65536-16       	   51741	     23181 ns/op	33925.16 MB/s	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	9.860s
+```
+
 ### 2026-05-18 Metal softmax kernel expansion
 
 This adds real Metal device kernels for last-dimension softmax:
@@ -937,7 +1059,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 93 verified dense elementwise + shape + matmul + softmax signatures for `float32`, `float16`, `bfloat16` |
+| 4     | Metal device backend          | 99 verified dense elementwise + shape + matmul + softmax + normalization signatures for `float32`, `float16`, `bfloat16` |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
@@ -1039,6 +1161,7 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_darwin_private.h` | verified        |
 | `pkg/backend/device/metal/bridge_elementwise_darwin.m` | verified     |
 | `pkg/backend/device/metal/bridge_matmul_darwin.m` | verified        |
+| `pkg/backend/device/metal/bridge_normalization_darwin.m` | verified |
 | `pkg/backend/device/metal/bridge_shape_common_darwin.m` | verified    |
 | `pkg/backend/device/metal/bridge_shape_darwin.m` | verified           |
 | `pkg/backend/device/metal/bridge_shape_private.h` | verified          |
@@ -1049,6 +1172,7 @@ invalidation works.
 | `pkg/backend/device/metal/elementwise_float16.metal` | verified       |
 | `pkg/backend/device/metal/elementwise_bfloat16.metal` | verified     |
 | `pkg/backend/device/metal/matmul.metal`       | verified              |
+| `pkg/backend/device/metal/normalization.metal` | verified             |
 | `pkg/backend/device/metal/shape.metal`        | verified              |
 | `pkg/backend/device/metal/softmax.metal`      | verified              |
 | `pkg/backend/device/metal/elementwise_dtype_darwin.go` | verified    |
@@ -1062,6 +1186,12 @@ invalidation works.
 | `pkg/backend/device/metal/matmul_stub.go`     | verified              |
 | `pkg/backend/device/metal/matmul_test.go`     | verified              |
 | `pkg/backend/device/metal/matmul_bench_test.go` | verified            |
+| `pkg/backend/device/metal/normalization.go`   | verified              |
+| `pkg/backend/device/metal/normalization_darwin.go` | verified          |
+| `pkg/backend/device/metal/normalization_stub.go` | verified            |
+| `pkg/backend/device/metal/normalization_test.go` | verified            |
+| `pkg/backend/device/metal/normalization_test_helpers.go` | verified    |
+| `pkg/backend/device/metal/normalization_bench_test.go` | verified      |
 | `pkg/backend/device/metal/shape.go`           | verified              |
 | `pkg/backend/device/metal/shape_darwin.go`    | verified              |
 | `pkg/backend/device/metal/shape_validate_darwin.go` | verified       |
@@ -1115,6 +1245,11 @@ transformer math stack.
 | `pkg/backend/compute/kernels/softmax.go`          | verified  |
 | `pkg/backend/compute/kernels/softmax_dtype_test.go` | verified |
 | `pkg/backend/compute/kernels/layernorm.go`        | verified  |
+| `pkg/backend/compute/kernels/layernorm_dtype.go`  | verified  |
+| `pkg/backend/compute/kernels/layernorm_dtype_test.go` | verified |
+| `pkg/backend/compute/kernels/axpy_f32_neon_arm64.s` | verified |
+| `pkg/backend/compute/kernels/axpy_f32_neon_arm64.go` | verified |
+| `pkg/backend/compute/kernels/axpy_f32_neon_arm64_test.go` | verified |
 | `pkg/backend/compute/kernels/kernels_test.go`     | verified  |
 | `pkg/backend/compute/kernels/matmul_test.go`      | verified  |
 

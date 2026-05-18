@@ -222,6 +222,10 @@ func metalNormDims(
 	}
 
 	cols := dims[len(dims)-1]
+	if cols == 0 {
+		return 0, 0, nil
+	}
+
 	scaleDims := scale.shape.Dims()
 	if len(scaleDims) != 1 || scaleDims[0] != cols {
 		return 0, 0, tensor.ErrShapeMismatch

@@ -51,12 +51,12 @@ axpy_scalar_tail:
     CBZ  R2, axpy_done
 
     // F31 still holds alpha in lane 0 (DUP preserves it).
-    // For scalar FMA we use FMADD which is alpha*x + y -> y per call.
 
 axpy_scalar_loop:
     FMOVS (R0), F0
     FMOVS (R1), F1
-    FMADDS F31, F1, F0, F0
+    FMULS F31, F1, F1
+    FADDS F1, F0, F0
     FMOVS F0, (R0)
     ADD  $4, R0
     ADD  $4, R1

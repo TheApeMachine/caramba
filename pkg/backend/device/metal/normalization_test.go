@@ -9,7 +9,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
-const normalizationFloat32MaxULP = 256
+const normalizationFloat32MaxULP = 32
 
 func TestKernelRegistry_MetalLayerNormDTypes(testingObject *testing.T) {
 	backend := newBackendForDeviceTest(testingObject)

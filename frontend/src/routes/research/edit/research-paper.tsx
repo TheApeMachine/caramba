@@ -1,9 +1,33 @@
-import { ClientOnly, createFileRoute } from "@tanstack/react-router";
+import {
+	ClientOnly,
+	createFileRoute,
+	getRouteApi,
+	useNavigate,
+} from "@tanstack/react-router";
+import { useCallback } from "react";
 import { PaperEditorApp } from "#/components/latex/component";
 import { Flex } from "#/components/ui/flex";
 import { Typography } from "#/components/ui/typography";
 
+const researchEditRouteApi = getRouteApi("/research/edit");
+
 function ResearchEditPaperPanel() {
+	const navigate = useNavigate();
+	const search = researchEditRouteApi.useSearch();
+
+	const handlePaperBootstrapped = useCallback(
+		(paperId: string) => {
+			void navigate({
+				replace: true,
+				search: (previous) => ({
+					...previous,
+					paperId,
+				}),
+			});
+		},
+		[navigate],
+	);
+
 	return (
 		<ClientOnly
 			fallback={
@@ -15,7 +39,11 @@ function ResearchEditPaperPanel() {
 			}
 		>
 			<Flex.Column gap={3} padding={4} className="box-border" fullHeight>
-				<PaperEditorApp />
+				<PaperEditorApp
+					onPaperBootstrapped={handlePaperBootstrapped}
+					paperId={search.paperId}
+					projectId={search.projectId}
+				/>
 			</Flex.Column>
 		</ClientOnly>
 	);

@@ -76,6 +76,7 @@ export const LatexToolbar = () => {
 		focusedBlockId,
 		insertBlockAfter,
 		metadataForm,
+		paperPersistence,
 	} = usePaperEditor();
 
 	const handleInsert = (descriptor: BlockKindDescriptor) => {
@@ -145,9 +146,21 @@ export const LatexToolbar = () => {
 					/>
 				</ToolbarGroup>
 
-				<Flex.Row align="center" className="min-w-0 flex-1" justify="center">
+				<Flex.Column
+					align="center"
+					className="min-w-0 max-w-full flex-1 justify-center"
+					gap={1}
+				>
 					<DocumentTitle />
-				</Flex.Row>
+					{paperPersistence.saveError ? (
+						<Typography.Small
+							className="max-w-[min(36rem,100%)] truncate text-destructive"
+							variant="muted"
+						>
+							{paperPersistence.saveError}
+						</Typography.Small>
+					) : null}
+				</Flex.Column>
 
 				<ToolbarGroup>
 					<Sheet>

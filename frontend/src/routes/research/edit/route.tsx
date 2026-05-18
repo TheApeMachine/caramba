@@ -6,19 +6,22 @@ import {
 } from "@tanstack/react-router";
 import { BoxIcon, HouseIcon, PanelsTopLeftIcon } from "lucide-react";
 import { z } from "zod";
-import { researchProjectQueryOptions } from "#/queries/research-projects";
 import { Flex } from "#/components/ui/flex";
 import { Tabs } from "#/components/ui/tabs";
+import { researchProjectQueryOptions } from "#/queries/research-projects";
 
 const editSearchSchema = z.object({
 	projectId: z.uuid().optional(),
+	paperId: z.uuid().optional(),
 });
 
 function parseEditSearch(
 	raw: Record<string, unknown>,
 ): z.infer<typeof editSearchSchema> {
 	const parsed = editSearchSchema.safeParse(raw);
-	return parsed.success ? parsed.data : { projectId: undefined };
+	return parsed.success
+		? parsed.data
+		: { projectId: undefined, paperId: undefined };
 }
 
 const researchEditTabPaths = {

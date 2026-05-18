@@ -127,6 +127,8 @@ Metal matmul kernels cover `matmul` and fused `matmul_add` for the
 same storage dtypes with tiled threadgroup execution. Metal softmax
 covers the same storage dtypes with one threadgroup per row, parallel
 max reduction, parallel sum reduction, and normalized dtype-native
+writes. Metal normalization covers `layernorm` and `rmsnorm` for the
+same storage dtypes with row-local parallel reductions and dtype-native
 writes. These families run through the device command queue with async
 completion, pooled `MTLBuffer` storage, and per-kernel pipeline
 caching.

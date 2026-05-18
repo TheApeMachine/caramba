@@ -10,7 +10,14 @@ import { WritingCanvas } from "#/components/latex/panels/writing-canvas";
 
 import { DragDropProvider } from "#/components/ui/drag-drop";
 import { Flex } from "#/components/ui/flex";
+import { Typography } from "#/components/ui/typography";
 import { LatexToolbar } from "./toolbar";
+
+export type PaperEditorAppProps = {
+	paperId?: string;
+	projectId?: string;
+	onPaperBootstrapped?: (paperId: string) => void;
+};
 
 const PaperContextSnapshot = () => {
 	const { blocks, metadataForm } = usePaperEditor();
@@ -63,9 +70,33 @@ const PaperContextSnapshot = () => {
 	);
 };
 
-export const PaperEditorApp = () => {
+const PaperEditorShell = () => {
+	const { paperPersistence } = usePaperEditor();
+
+	if (paperPersistence.enabled && paperPersistence.bootstrapError) {
+		return (
+			<Flex.Center className="min-h-[50dvh] flex-1 p-4">
+				<Typography.Paragraph className="text-destructive text-center">
+					{paperPersistence.bootstrapError}
+				</Typography.Paragraph>
+			</Flex.Center>
+		);
+	}
+
+	if (paperPersistence.enabled && !paperPersistence.ready) {
+		const message = paperPersistence.waitingForRemote
+			? "Loading paper from server…"
+			: "Preparing editor…";
+
+		return (
+			<Flex.Center className="min-h-[50dvh] flex-1 p-4">
+				<Typography.Paragraph variant="muted">{message}</Typography.Paragraph>
+			</Flex.Center>
+		);
+	}
+
 	return (
-		<PaperEditorProvider>
+		<>
 			<PaperContextSnapshot />
 
 			<DragDropProvider>
@@ -77,6 +108,22 @@ export const PaperEditorApp = () => {
 					</Flex.Column>
 				</Flex.Column>
 			</DragDropProvider>
+		</>
+	);
+};
+
+export const PaperEditorApp = ({
+	paperId,
+	projectId,
+	onPaperBootstrapped,
+}: PaperEditorAppProps) => {
+	return (
+		<PaperEditorProvider
+			bootstrapProjectId={projectId}
+			onPaperBootstrapped={onPaperBootstrapped}
+			paperId={paperId}
+		>
+			<PaperEditorShell />
 		</PaperEditorProvider>
 	);
 };

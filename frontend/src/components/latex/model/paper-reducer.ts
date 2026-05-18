@@ -12,6 +12,7 @@ export type SetBlockKindOptions = {
 };
 
 export type PaperAction =
+	| { type: "REPLACE_BLOCKS"; blocks: PaperBlock[] }
 	| { type: "UPDATE_TEXT"; id: string; text: string }
 	| { type: "UPDATE_LATEX"; id: string; latex: string }
 	| { type: "INSERT_AT_START"; block: PaperBlock }
@@ -130,6 +131,13 @@ export function paperReducer(
 	action: PaperAction,
 ): PaperBlock[] {
 	switch (action.type) {
+		case "REPLACE_BLOCKS":
+			if (action.blocks.length === 0) {
+				return blocks;
+			}
+
+			return action.blocks;
+
 		case "UPDATE_TEXT":
 			return blocks.map((block) =>
 				block.id === action.id && block.type !== "equation"
