@@ -38,6 +38,170 @@ func init() {
 		Locations: []tensor.Location{tensor.Host},
 		Run:       runAttentionFloat32,
 	})
+
+	Default.Register(Kernel{
+		Name: "attention",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16, dtype.BFloat16, dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runAttentionBFloat16,
+	})
+
+	Default.Register(Kernel{
+		Name: "attention",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16, dtype.Float16, dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runAttentionFloat16,
+	})
+}
+
+func runAttentionBFloat16(args ...tensor.Tensor) error {
+	if len(args) != 4 {
+		return tensor.ErrShapeMismatch
+	}
+
+	query, key, value, out := args[0], args[1], args[2], args[3]
+	seqQ, seqK, depth, valueDim, err := attentionDims(query, key, value, out)
+
+	if err != nil {
+		return err
+	}
+
+	qBF, err := query.BFloat16Native()
+
+	if err != nil {
+		return err
+	}
+
+	kBF, err := key.BFloat16Native()
+
+	if err != nil {
+		return err
+	}
+
+	vBF, err := value.BFloat16Native()
+
+	if err != nil {
+		return err
+	}
+
+	oBF, err := out.BFloat16Native()
+
+	if err != nil {
+		return err
+	}
+
+	qF32 := borrowFloat32Buffer(len(qBF))
+	kF32 := borrowFloat32Buffer(len(kBF))
+	vF32 := borrowFloat32Buffer(len(vBF))
+	oF32 := borrowFloat32Buffer(len(oBF))
+
+	defer releaseFloat32Buffer(qF32)
+	defer releaseFloat32Buffer(kF32)
+	defer releaseFloat32Buffer(vF32)
+	defer releaseFloat32Buffer(oF32)
+
+	bfloat16BulkToFloat32(qF32, qBF)
+	bfloat16BulkToFloat32(kF32, kBF)
+	bfloat16BulkToFloat32(vF32, vBF)
+
+	scale := float32(1.0 / math.Sqrt(float64(depth)))
+	scores := computeAttentionScores(qF32, kF32, seqQ, seqK, depth, scale)
+	applySoftmax(scores, seqQ, seqK)
+	computeWeightedOutput(scores, vF32, oF32, seqQ, seqK, valueDim)
+
+	float32BulkToBFloat16(oBF, oF32)
+	return nil
+}
+
+func runAttentionFloat16(args ...tensor.Tensor) error {
+	if len(args) != 4 {
+		return tensor.ErrShapeMismatch
+	}
+
+	query, key, value, out := args[0], args[1], args[2], args[3]
+	seqQ, seqK, depth, valueDim, err := attentionDims(query, key, value, out)
+
+	if err != nil {
+		return err
+	}
+
+	qF16, err := query.Float16Native()
+
+	if err != nil {
+		return err
+	}
+
+	kF16, err := key.Float16Native()
+
+	if err != nil {
+		return err
+	}
+
+	vF16, err := value.Float16Native()
+
+	if err != nil {
+		return err
+	}
+
+	oF16, err := out.Float16Native()
+
+	if err != nil {
+		return err
+	}
+
+	qF32 := borrowFloat32Buffer(len(qF16))
+	kF32 := borrowFloat32Buffer(len(kF16))
+	vF32 := borrowFloat32Buffer(len(vF16))
+	oF32 := borrowFloat32Buffer(len(oF16))
+
+	defer releaseFloat32Buffer(qF32)
+	defer releaseFloat32Buffer(kF32)
+	defer releaseFloat32Buffer(vF32)
+	defer releaseFloat32Buffer(oF32)
+
+	float16BulkToFloat32(qF32, qF16)
+	float16BulkToFloat32(kF32, kF16)
+	float16BulkToFloat32(vF32, vF16)
+
+	scale := float32(1.0 / math.Sqrt(float64(depth)))
+	scores := computeAttentionScores(qF32, kF32, seqQ, seqK, depth, scale)
+	applySoftmax(scores, seqQ, seqK)
+	computeWeightedOutput(scores, vF32, oF32, seqQ, seqK, valueDim)
+
+	float32BulkToFloat16(oF16, oF32)
+	return nil
+}
+
+func attentionDims(query, key, value, out tensor.Tensor) (seqQ, seqK, depth, valueDim int, err error) {
+	queryDims := query.Shape().Dims()
+	keyDims := key.Shape().Dims()
+	valueDims := value.Shape().Dims()
+	outDims := out.Shape().Dims()
+
+	if len(queryDims) != 2 || len(keyDims) != 2 ||
+		len(valueDims) != 2 || len(outDims) != 2 {
+		return 0, 0, 0, 0, tensor.ErrShapeMismatch
+	}
+
+	seqQ = queryDims[0]
+	depth = queryDims[1]
+	seqK = keyDims[0]
+	valueDim = valueDims[1]
+
+	if keyDims[1] != depth || valueDims[0] != seqK ||
+		outDims[0] != seqQ || outDims[1] != valueDim {
+		return 0, 0, 0, 0, tensor.ErrShapeMismatch
+	}
+
+	return seqQ, seqK, depth, valueDim, nil
 }
 
 func runAttentionFloat32(args ...tensor.Tensor) error {

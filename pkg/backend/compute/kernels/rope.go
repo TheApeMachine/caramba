@@ -47,6 +47,133 @@ func init() {
 		Locations: []tensor.Location{tensor.Host},
 		Run:       runRoPEFloat32Default,
 	})
+
+	Default.Register(Kernel{
+		Name: "rope",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runRoPEBFloat16,
+	})
+
+	Default.Register(Kernel{
+		Name: "rope",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runRoPEFloat16,
+	})
+}
+
+func ropeApplyF32(
+	config RoPEConfig,
+	input, output []float32,
+	seqLen, numHeads, headDim int,
+) {
+	halfDim := headDim / 2
+
+	for seqIndex := 0; seqIndex < seqLen; seqIndex++ {
+		position := float64(seqIndex + config.StartPosition)
+
+		for headIndex := 0; headIndex < numHeads; headIndex++ {
+			rowOffset := (seqIndex*numHeads + headIndex) * headDim
+
+			for pairIndex := 0; pairIndex < halfDim; pairIndex++ {
+				exponent := -float64(2*pairIndex) / float64(headDim)
+				theta := position * math.Pow(config.BaseFreq, exponent)
+				cos := float32(math.Cos(theta))
+				sin := float32(math.Sin(theta))
+
+				even := input[rowOffset+2*pairIndex]
+				odd := input[rowOffset+2*pairIndex+1]
+
+				output[rowOffset+2*pairIndex] = even*cos - odd*sin
+				output[rowOffset+2*pairIndex+1] = even*sin + odd*cos
+			}
+		}
+	}
+}
+
+func ropeDims(input tensor.Tensor) (seqLen, numHeads, headDim int, err error) {
+	dims := input.Shape().Dims()
+
+	if len(dims) != 3 || dims[2]%2 != 0 {
+		return 0, 0, 0, tensor.ErrShapeMismatch
+	}
+
+	return dims[0], dims[1], dims[2], nil
+}
+
+func runRoPEBFloat16(args ...tensor.Tensor) error {
+	if len(args) != 2 || !args[0].Shape().Equal(args[1].Shape()) {
+		return tensor.ErrShapeMismatch
+	}
+
+	seqLen, numHeads, headDim, err := ropeDims(args[0])
+
+	if err != nil {
+		return err
+	}
+
+	inBF, err := args[0].BFloat16Native()
+	if err != nil {
+		return err
+	}
+
+	outBF, err := args[1].BFloat16Native()
+	if err != nil {
+		return err
+	}
+
+	inF32 := borrowFloat32Buffer(len(inBF))
+	outF32 := borrowFloat32Buffer(len(outBF))
+
+	defer releaseFloat32Buffer(inF32)
+	defer releaseFloat32Buffer(outF32)
+
+	bfloat16BulkToFloat32(inF32, inBF)
+	ropeApplyF32(DefaultRoPEConfig(), inF32, outF32, seqLen, numHeads, headDim)
+	float32BulkToBFloat16(outBF, outF32)
+	return nil
+}
+
+func runRoPEFloat16(args ...tensor.Tensor) error {
+	if len(args) != 2 || !args[0].Shape().Equal(args[1].Shape()) {
+		return tensor.ErrShapeMismatch
+	}
+
+	seqLen, numHeads, headDim, err := ropeDims(args[0])
+
+	if err != nil {
+		return err
+	}
+
+	inF16, err := args[0].Float16Native()
+	if err != nil {
+		return err
+	}
+
+	outF16, err := args[1].Float16Native()
+	if err != nil {
+		return err
+	}
+
+	inF32 := borrowFloat32Buffer(len(inF16))
+	outF32 := borrowFloat32Buffer(len(outF16))
+
+	defer releaseFloat32Buffer(inF32)
+	defer releaseFloat32Buffer(outF32)
+
+	float16BulkToFloat32(inF32, inF16)
+	ropeApplyF32(DefaultRoPEConfig(), inF32, outF32, seqLen, numHeads, headDim)
+	float32BulkToFloat16(outF16, outF32)
+	return nil
 }
 
 func runRoPEFloat32Default(args ...tensor.Tensor) error {

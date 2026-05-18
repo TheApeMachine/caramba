@@ -50,6 +50,112 @@ func init() {
 		Locations: []tensor.Location{tensor.Host},
 		Run:       runFlashAttentionFloat32Default,
 	})
+
+	Default.Register(Kernel{
+		Name: "flash_attention",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16, dtype.BFloat16, dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runFlashAttentionBFloat16,
+	})
+
+	Default.Register(Kernel{
+		Name: "flash_attention",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16, dtype.Float16, dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runFlashAttentionFloat16,
+	})
+}
+
+func runFlashAttentionBFloat16(args ...tensor.Tensor) error {
+	if len(args) != 4 {
+		return tensor.ErrShapeMismatch
+	}
+
+	query, key, value, out := args[0], args[1], args[2], args[3]
+	seqQ, seqK, depth, valueDim, err := attentionDims(query, key, value, out)
+
+	if err != nil {
+		return err
+	}
+
+	qBF, _ := query.BFloat16Native()
+	kBF, _ := key.BFloat16Native()
+	vBF, _ := value.BFloat16Native()
+	oBF, _ := out.BFloat16Native()
+
+	qF32 := borrowFloat32Buffer(len(qBF))
+	kF32 := borrowFloat32Buffer(len(kBF))
+	vF32 := borrowFloat32Buffer(len(vBF))
+	oF32 := borrowFloat32Buffer(len(oBF))
+
+	defer releaseFloat32Buffer(qF32)
+	defer releaseFloat32Buffer(kF32)
+	defer releaseFloat32Buffer(vF32)
+	defer releaseFloat32Buffer(oF32)
+
+	bfloat16BulkToFloat32(qF32, qBF)
+	bfloat16BulkToFloat32(kF32, kBF)
+	bfloat16BulkToFloat32(vF32, vBF)
+
+	config := DefaultFlashAttentionConfig()
+	scale := float32(1.0 / math.Sqrt(float64(depth)))
+
+	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
+		runFlashAttentionRow(qF32, kF32, vF32, oF32, rowIndex, seqK, depth, valueDim, scale, config.Causal)
+	}
+
+	float32BulkToBFloat16(oBF, oF32)
+	return nil
+}
+
+func runFlashAttentionFloat16(args ...tensor.Tensor) error {
+	if len(args) != 4 {
+		return tensor.ErrShapeMismatch
+	}
+
+	query, key, value, out := args[0], args[1], args[2], args[3]
+	seqQ, seqK, depth, valueDim, err := attentionDims(query, key, value, out)
+
+	if err != nil {
+		return err
+	}
+
+	qF16, _ := query.Float16Native()
+	kF16, _ := key.Float16Native()
+	vF16, _ := value.Float16Native()
+	oF16, _ := out.Float16Native()
+
+	qF32 := borrowFloat32Buffer(len(qF16))
+	kF32 := borrowFloat32Buffer(len(kF16))
+	vF32 := borrowFloat32Buffer(len(vF16))
+	oF32 := borrowFloat32Buffer(len(oF16))
+
+	defer releaseFloat32Buffer(qF32)
+	defer releaseFloat32Buffer(kF32)
+	defer releaseFloat32Buffer(vF32)
+	defer releaseFloat32Buffer(oF32)
+
+	float16BulkToFloat32(qF32, qF16)
+	float16BulkToFloat32(kF32, kF16)
+	float16BulkToFloat32(vF32, vF16)
+
+	config := DefaultFlashAttentionConfig()
+	scale := float32(1.0 / math.Sqrt(float64(depth)))
+
+	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
+		runFlashAttentionRow(qF32, kF32, vF32, oF32, rowIndex, seqK, depth, valueDim, scale, config.Causal)
+	}
+
+	float32BulkToFloat16(oF16, oF32)
+	return nil
 }
 
 func runFlashAttentionFloat32Default(args ...tensor.Tensor) error {

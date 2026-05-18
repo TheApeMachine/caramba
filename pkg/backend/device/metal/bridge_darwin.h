@@ -442,6 +442,67 @@ int metal_dispatch_pool2d(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_optimizer4(
+    MetalDeviceRef contextRef,
+    int operation,
+    int elementDType,
+    MetalBufferRef paramsRef,
+    MetalBufferRef gradientsRef,
+    MetalBufferRef firstRef,
+    MetalBufferRef secondRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_optimizer3(
+    MetalDeviceRef contextRef,
+    int operation,
+    int elementDType,
+    MetalBufferRef paramsRef,
+    MetalBufferRef gradientsRef,
+    MetalBufferRef stateRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_optimizer2(
+    MetalDeviceRef contextRef,
+    int operation,
+    int elementDType,
+    MetalBufferRef paramsRef,
+    MetalBufferRef gradientsRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_hebbian_step(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef weightsRef,
+    MetalBufferRef postRef,
+    MetalBufferRef preRef,
+    MetalBufferRef outRef,
+    uint32_t postCount,
+    uint32_t preCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_lars_step(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef paramsRef,
+    MetalBufferRef gradientsRef,
+    MetalBufferRef momentumRef,
+    MetalBufferRef scratchRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint32_t groupCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 void metal_device_release(MetalDeviceRef contextRef);
 
 #ifdef __cplusplus

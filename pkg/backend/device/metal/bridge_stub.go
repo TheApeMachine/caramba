@@ -412,3 +412,52 @@ func runMetalAdaptiveMaxPool2D(input tensor.Tensor, out tensor.Tensor) error {
 
 	return tensor.ErrNeedsPlatformSetup
 }
+
+func runMetalOptimizer4Kernel(operation metalOptimizerOp, args ...tensor.Tensor) error {
+	_ = operation
+	_ = args
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalOptimizer3Kernel(operation metalOptimizerOp, args ...tensor.Tensor) error {
+	_ = operation
+	_ = args
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalOptimizer2Kernel(operation metalOptimizerOp, args ...tensor.Tensor) error {
+	_ = operation
+	_ = args
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalLARSStep(
+	params tensor.Tensor,
+	gradients tensor.Tensor,
+	momentum tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = params
+	_ = gradients
+	_ = momentum
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalHebbianStep(
+	weights tensor.Tensor,
+	post tensor.Tensor,
+	pre tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = weights
+	_ = post
+	_ = pre
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}

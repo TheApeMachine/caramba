@@ -91,21 +91,32 @@ func AdamStepFloat32(
 		return tensor.ErrShapeMismatch
 	}
 
+	adamStepSlices(config, paramsView, gradView, firstView, secondView, outView)
+	return nil
+}
+
+/*
+adamStepSlices is the per-element Adam math operating on f32 slices.
+Mixed-precision wrappers widen bf16/fp16 inputs into scratch f32
+buffers, call this, then narrow output back.
+*/
+func adamStepSlices(
+	config AdamConfig,
+	params, gradients, firstMoment, secondMoment, output []float32,
+) {
 	beta1Correction := 1 - float32(math.Pow(float64(config.Beta1), float64(config.Step)))
 	beta2Correction := 1 - float32(math.Pow(float64(config.Beta2), float64(config.Step)))
 
-	for index, gradValue := range gradView {
-		firstView[index] = config.Beta1*firstView[index] + (1-config.Beta1)*gradValue
-		secondView[index] = config.Beta2*secondView[index] + (1-config.Beta2)*gradValue*gradValue
+	for index, gradValue := range gradients {
+		firstMoment[index] = config.Beta1*firstMoment[index] + (1-config.Beta1)*gradValue
+		secondMoment[index] = config.Beta2*secondMoment[index] + (1-config.Beta2)*gradValue*gradValue
 
-		biasCorrectedFirst := firstView[index] / beta1Correction
-		biasCorrectedSecond := secondView[index] / beta2Correction
+		biasCorrectedFirst := firstMoment[index] / beta1Correction
+		biasCorrectedSecond := secondMoment[index] / beta2Correction
 
 		denominator := float32(math.Sqrt(float64(biasCorrectedSecond))) + config.Epsilon
-		outView[index] = paramsView[index] - config.LearningRate*biasCorrectedFirst/denominator
+		output[index] = params[index] - config.LearningRate*biasCorrectedFirst/denominator
 	}
-
-	return nil
 }
 
 func init() {
@@ -121,6 +132,10 @@ func init() {
 		Locations: []tensor.Location{tensor.Host},
 		Run:       runAdamStepWithDefaults,
 	})
+
+	// Mixed-precision Adam (bf16/fp16 params + f32 state) registered via
+	// the generic mixed-precision optimizer dispatcher in
+	// optimizers_dtype.go to avoid per-optimizer boilerplate.
 }
 
 func runAdamStepWithDefaults(args ...tensor.Tensor) error {
@@ -133,3 +148,4 @@ func runAdamStepWithDefaults(args ...tensor.Tensor) error {
 		args[0], args[1], args[2], args[3], args[4],
 	)
 }
+

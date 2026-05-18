@@ -215,38 +215,37 @@ func runInstanceNormFloat32(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
+	instanceNormSlices(inputView, scaleView, biasView, outView, batch, channels, spatial)
+	return nil
+}
+
+func instanceNormSlices(input, scale, bias, output []float32, batch, channels, spatial int) {
 	for batchIndex := 0; batchIndex < batch; batchIndex++ {
 		for channelIndex := 0; channelIndex < channels; channelIndex++ {
 			start := (batchIndex*channels + channelIndex) * spatial
-			row := inputView[start : start+spatial]
-			outRow := outView[start : start+spatial]
+			row := input[start : start+spatial]
+			outRow := output[start : start+spatial]
 
 			var sum float64
-
 			for _, value := range row {
 				sum += float64(value)
 			}
-
 			mean := sum / float64(spatial)
 
 			var variance float64
-
 			for _, value := range row {
 				delta := float64(value) - mean
 				variance += delta * delta
 			}
-
 			variance /= float64(spatial)
 			invStdDev := 1.0 / math.Sqrt(variance+normEpsilon)
 
 			for spatialIndex, value := range row {
 				normalized := (float64(value) - mean) * invStdDev
-				outRow[spatialIndex] = float32(normalized)*scaleView[channelIndex] + biasView[channelIndex]
+				outRow[spatialIndex] = float32(normalized)*scale[channelIndex] + bias[channelIndex]
 			}
 		}
 	}
-
-	return nil
 }
 
 /*
@@ -282,6 +281,14 @@ func runBatchNormEvalFloat32(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
+	batchNormEvalSlices(input, scale, bias, mean, variance, out, batch, channels, spatial)
+	return nil
+}
+
+func batchNormEvalSlices(
+	input, scale, bias, mean, variance, output []float32,
+	batch, channels, spatial int,
+) {
 	for channelIndex := 0; channelIndex < channels; channelIndex++ {
 		invStdDev := 1.0 / float32(math.Sqrt(float64(variance[channelIndex])+normEpsilon))
 
@@ -291,10 +298,36 @@ func runBatchNormEvalFloat32(args ...tensor.Tensor) error {
 			for spatialIndex := 0; spatialIndex < spatial; spatialIndex++ {
 				value := input[start+spatialIndex]
 				normalized := (value - mean[channelIndex]) * invStdDev
-				out[start+spatialIndex] = normalized*scale[channelIndex] + bias[channelIndex]
+				output[start+spatialIndex] = normalized*scale[channelIndex] + bias[channelIndex]
 			}
 		}
 	}
+}
 
-	return nil
+// groupNormSlices wraps GroupNormFloat32's per-group work so the
+// mixed-precision wrappers can dispatch without rebuilding tensor
+// wrappers around scratch buffers.
+func groupNormSlices(
+	config GroupNormConfig,
+	input, scale, bias, output []float32,
+	batch, channels, spatial int,
+) {
+	channelsPerGroup := channels / config.Groups
+	groupSize := channelsPerGroup * spatial
+
+	for batchIndex := 0; batchIndex < batch; batchIndex++ {
+		for groupIndex := 0; groupIndex < config.Groups; groupIndex++ {
+			channelStart := groupIndex * channelsPerGroup
+			groupStart := batchIndex*channels*spatial + channelStart*spatial
+
+			normalizeGroup(
+				input[groupStart:groupStart+groupSize],
+				output[groupStart:groupStart+groupSize],
+				scale[channelStart:channelStart+channelsPerGroup],
+				bias[channelStart:channelStart+channelsPerGroup],
+				channelsPerGroup,
+				spatial,
+			)
+		}
+	}
 }

@@ -104,25 +104,31 @@ func AdamaxStepFloat32(
 		return err
 	}
 
+	adamaxStepSlices(config, paramsView, gradView, firstView, infView, outView)
+	return nil
+}
+
+func adamaxStepSlices(
+	config AdamaxConfig,
+	params, gradients, firstMoment, infinityMoment, output []float32,
+) {
 	beta1Correction := 1 - float32(math.Pow(float64(config.Beta1), float64(config.Step)))
 
-	for index, gradValue := range gradView {
-		firstView[index] = config.Beta1*firstView[index] + (1-config.Beta1)*gradValue
+	for index, gradValue := range gradients {
+		firstMoment[index] = config.Beta1*firstMoment[index] + (1-config.Beta1)*gradValue
 
-		updated := config.Beta2 * infView[index]
+		updated := config.Beta2 * infinityMoment[index]
 		absGrad := float32(math.Abs(float64(gradValue)))
 
 		if absGrad > updated {
 			updated = absGrad
 		}
 
-		infView[index] = updated
+		infinityMoment[index] = updated
 
-		biasCorrectedFirst := firstView[index] / beta1Correction
-		outView[index] = paramsView[index] - config.LearningRate*biasCorrectedFirst/(infView[index]+config.Epsilon)
+		biasCorrectedFirst := firstMoment[index] / beta1Correction
+		output[index] = params[index] - config.LearningRate*biasCorrectedFirst/(infinityMoment[index]+config.Epsilon)
 	}
-
-	return nil
 }
 
 func runAdamaxDefault(args ...tensor.Tensor) error {
@@ -174,14 +180,19 @@ func AdagradStepFloat32(
 		return tensor.ErrShapeMismatch
 	}
 
-	for index, gradValue := range gradView {
-		accView[index] += gradValue * gradValue
-
-		denominator := float32(math.Sqrt(float64(accView[index]))) + config.Epsilon
-		outView[index] = paramsView[index] - config.LearningRate*gradValue/denominator
-	}
-
+	adagradStepSlices(config, paramsView, gradView, accView, outView)
 	return nil
+}
+
+func adagradStepSlices(
+	config AdagradConfig,
+	params, gradients, accumulator, output []float32,
+) {
+	for index, gradValue := range gradients {
+		accumulator[index] += gradValue * gradValue
+		denominator := float32(math.Sqrt(float64(accumulator[index]))) + config.Epsilon
+		output[index] = params[index] - config.LearningRate*gradValue/denominator
+	}
 }
 
 func runAdagradDefault(args ...tensor.Tensor) error {
@@ -233,15 +244,20 @@ func RMSpropStepFloat32(
 		return tensor.ErrShapeMismatch
 	}
 
-	for index, gradValue := range gradView {
-		secondView[index] = config.Decay*secondView[index] +
-			(1-config.Decay)*gradValue*gradValue
-
-		denominator := float32(math.Sqrt(float64(secondView[index]))) + config.Epsilon
-		outView[index] = paramsView[index] - config.LearningRate*gradValue/denominator
-	}
-
+	rmspropStepSlices(config, paramsView, gradView, secondView, outView)
 	return nil
+}
+
+func rmspropStepSlices(
+	config RMSpropConfig,
+	params, gradients, secondMoment, output []float32,
+) {
+	for index, gradValue := range gradients {
+		secondMoment[index] = config.Decay*secondMoment[index] +
+			(1-config.Decay)*gradValue*gradValue
+		denominator := float32(math.Sqrt(float64(secondMoment[index]))) + config.Epsilon
+		output[index] = params[index] - config.LearningRate*gradValue/denominator
+	}
 }
 
 func runRMSpropDefault(args ...tensor.Tensor) error {

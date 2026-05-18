@@ -226,15 +226,12 @@ func registerSubFloat32() {
 }
 
 func registerGELUFloat32() {
-	Default.Register(Kernel{
-		Name: "gelu",
-		Signature: Signature{
-			Layout:  tensor.LayoutDense,
-			Inputs:  []dtype.DType{dtype.Float32},
-			Outputs: []dtype.DType{dtype.Float32},
-		},
-		Locations: []tensor.Location{tensor.Host},
-		Run:       runGELUFloat32,
+	// Route gelu through registerUnary so the auto-wrapper also
+	// registers bf16 and fp16 paths via widen-compute-narrow.
+	registerUnary("gelu", func(value float32) float32 {
+		const sqrtTwo = 1.41421356237309504880
+		erfArgument := float64(value) / sqrtTwo
+		return 0.5 * value * float32(1+math.Erf(erfArgument))
 	})
 }
 
@@ -328,38 +325,13 @@ func runSubFloat32(args ...tensor.Tensor) error {
 	return nil
 }
 
-func runGELUFloat32(args ...tensor.Tensor) error {
-	if len(args) != 2 {
-		return tensor.ErrShapeMismatch
-	}
-
-	input, err := args[0].Float32Native()
-
-	if err != nil {
-		return err
-	}
-
-	out, err := args[1].Float32Native()
-
-	if err != nil {
-		return err
-	}
-
-	if len(input) != len(out) {
-		return tensor.ErrShapeMismatch
-	}
-
-	// Exact GELU per AGENTS.md: 0.5 * x * (1 + erf(x / sqrt(2))).
-	// The tanh approximation is forbidden unless explicitly requested.
-	const sqrtTwo = 1.41421356237309504880
-
-	for index, value := range input {
-		erfArgument := float64(value) / sqrtTwo
-		out[index] = 0.5 * value * float32(1+math.Erf(erfArgument))
-	}
-
-	return nil
-}
+// runGELUFloat32 was the standalone f32 GELU runner before the
+// registration moved to registerUnary (which also auto-registers
+// bf16 and fp16 paths). Kept as a documentation anchor; the active
+// path is the closure passed to registerUnary in registerGELUFloat32.
+//
+// Exact GELU per AGENTS.md: 0.5 * x * (1 + erf(x / sqrt(2))).
+// The tanh approximation is forbidden unless explicitly requested.
 
 func runReLUFloat32(args ...tensor.Tensor) error {
 	if len(args) != 2 {

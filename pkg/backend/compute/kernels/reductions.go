@@ -54,6 +54,96 @@ func registerReduce(name string, op reducer) {
 		Locations: []tensor.Location{tensor.Host},
 		Run:       reduceFloat32(op),
 	})
+
+	// Auto-register bf16 and fp16 variants via widen→f32-reduce→narrow.
+	// The "sum" reduction is registered separately with a NEON-vectorized
+	// dtype-aware path; this generic auto-register is skipped for it.
+	if name == "sum" {
+		return
+	}
+
+	Default.Register(Kernel{
+		Name: name,
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       reduceBFloat16(op),
+	})
+	Default.Register(Kernel{
+		Name: name,
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       reduceFloat16Generic(op),
+	})
+}
+
+func reduceBFloat16(op reducer) func(args ...tensor.Tensor) error {
+	return func(args ...tensor.Tensor) error {
+		if len(args) != 2 {
+			return tensor.ErrShapeMismatch
+		}
+
+		input, err := args[0].BFloat16Native()
+
+		if err != nil {
+			return err
+		}
+
+		out, err := args[1].BFloat16Native()
+
+		if err != nil {
+			return err
+		}
+
+		if len(out) < 1 || len(input) == 0 {
+			return tensor.ErrShapeMismatch
+		}
+
+		widened := borrowFloat32Buffer(len(input))
+		defer releaseFloat32Buffer(widened)
+		bfloat16BulkToFloat32(widened, input)
+
+		out[0] = dtype.NewBfloat16FromFloat32(op(widened))
+		return nil
+	}
+}
+
+func reduceFloat16Generic(op reducer) func(args ...tensor.Tensor) error {
+	return func(args ...tensor.Tensor) error {
+		if len(args) != 2 {
+			return tensor.ErrShapeMismatch
+		}
+
+		input, err := args[0].Float16Native()
+
+		if err != nil {
+			return err
+		}
+
+		out, err := args[1].Float16Native()
+
+		if err != nil {
+			return err
+		}
+
+		if len(out) < 1 || len(input) == 0 {
+			return tensor.ErrShapeMismatch
+		}
+
+		widened := borrowFloat32Buffer(len(input))
+		defer releaseFloat32Buffer(widened)
+		float16BulkToFloat32(widened, input)
+
+		out[0] = dtype.Fromfloat32(op(widened))
+		return nil
+	}
 }
 
 func registerReduceBFloat16(name string, run func(args ...tensor.Tensor) error) {

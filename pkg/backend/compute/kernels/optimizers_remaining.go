@@ -122,11 +122,16 @@ func LARSStepFloat32(
 		return err
 	}
 
+	larsStepSlices(config, paramsView, gradView, momentumView, outView)
+	return nil
+}
+
+func larsStepSlices(config LARSConfig, params, gradients, momentum, output []float32) {
 	var paramsNorm, gradsNorm float64
 
-	for index, value := range paramsView {
+	for index, value := range params {
 		paramsNorm += float64(value) * float64(value)
-		gradsNorm += float64(gradView[index]) * float64(gradView[index])
+		gradsNorm += float64(gradients[index]) * float64(gradients[index])
 	}
 
 	paramsNorm = math.Sqrt(paramsNorm)
@@ -142,13 +147,11 @@ func LARSStepFloat32(
 
 	effectiveLr := config.LearningRate * trust
 
-	for index, gradValue := range gradView {
-		decayed := gradValue + config.WeightDecay*paramsView[index]
-		momentumView[index] = config.Momentum*momentumView[index] + decayed
-		outView[index] = paramsView[index] - effectiveLr*momentumView[index]
+	for index, gradValue := range gradients {
+		decayed := gradValue + config.WeightDecay*params[index]
+		momentum[index] = config.Momentum*momentum[index] + decayed
+		output[index] = params[index] - effectiveLr*momentum[index]
 	}
-
-	return nil
 }
 
 func runLARSDefault(args ...tensor.Tensor) error {
@@ -202,15 +205,22 @@ func HebbianStepFloat32(
 		return tensor.ErrShapeMismatch
 	}
 
-	for postIndex, postValue := range postView {
-		for preIndex, preValue := range preView {
-			weightIndex := postIndex*weightsDims[1] + preIndex
-			outView[weightIndex] = weightsView[weightIndex]*(1-config.Decay) +
+	hebbianStepSlices(config, weightsView, postView, preView, outView, weightsDims[1])
+	return nil
+}
+
+func hebbianStepSlices(
+	config HebbianConfig,
+	weights, post, pre, output []float32,
+	preDim int,
+) {
+	for postIndex, postValue := range post {
+		for preIndex, preValue := range pre {
+			weightIndex := postIndex*preDim + preIndex
+			output[weightIndex] = weights[weightIndex]*(1-config.Decay) +
 				config.LearningRate*postValue*preValue
 		}
 	}
-
-	return nil
 }
 
 func runHebbianDefault(args ...tensor.Tensor) error {
@@ -255,11 +265,14 @@ func LBFGSStepFloat32(
 		return tensor.ErrShapeMismatch
 	}
 
-	for index, gradValue := range gradView {
-		outView[index] = paramsView[index] - config.LearningRate*gradValue
-	}
-
+	lbfgsStepSlices(config, paramsView, gradView, outView)
 	return nil
+}
+
+func lbfgsStepSlices(config LBFGSConfig, params, gradients, output []float32) {
+	for index, gradValue := range gradients {
+		output[index] = params[index] - config.LearningRate*gradValue
+	}
 }
 
 func runLBFGSDefault(args ...tensor.Tensor) error {

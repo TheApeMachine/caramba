@@ -134,24 +134,30 @@ func AdamWStepFloat32(
 		return err
 	}
 
+	adamWStepSlices(config, paramsView, gradView, firstView, secondView, outView)
+	return nil
+}
+
+func adamWStepSlices(
+	config AdamWConfig,
+	params, gradients, firstMoment, secondMoment, output []float32,
+) {
 	beta1Correction := 1 - float32(math.Pow(float64(config.Beta1), float64(config.Step)))
 	beta2Correction := 1 - float32(math.Pow(float64(config.Beta2), float64(config.Step)))
 
-	for index, gradValue := range gradView {
-		firstView[index] = config.Beta1*firstView[index] + (1-config.Beta1)*gradValue
-		secondView[index] = config.Beta2*secondView[index] + (1-config.Beta2)*gradValue*gradValue
+	for index, gradValue := range gradients {
+		firstMoment[index] = config.Beta1*firstMoment[index] + (1-config.Beta1)*gradValue
+		secondMoment[index] = config.Beta2*secondMoment[index] + (1-config.Beta2)*gradValue*gradValue
 
-		biasCorrectedFirst := firstView[index] / beta1Correction
-		biasCorrectedSecond := secondView[index] / beta2Correction
+		biasCorrectedFirst := firstMoment[index] / beta1Correction
+		biasCorrectedSecond := secondMoment[index] / beta2Correction
 
 		denominator := float32(math.Sqrt(float64(biasCorrectedSecond))) + config.Epsilon
 		gradStep := config.LearningRate * biasCorrectedFirst / denominator
-		decayStep := config.LearningRate * config.WeightDecay * paramsView[index]
+		decayStep := config.LearningRate * config.WeightDecay * params[index]
 
-		outView[index] = paramsView[index] - gradStep - decayStep
+		output[index] = params[index] - gradStep - decayStep
 	}
-
-	return nil
 }
 
 func adamViews(
@@ -243,8 +249,13 @@ func LionStepFloat32(
 		return err
 	}
 
-	for index, gradValue := range gradView {
-		update := config.Beta1*momentumView[index] + (1-config.Beta1)*gradValue
+	lionStepSlices(config, paramsView, gradView, momentumView, outView)
+	return nil
+}
+
+func lionStepSlices(config LionConfig, params, gradients, momentum, output []float32) {
+	for index, gradValue := range gradients {
+		update := config.Beta1*momentum[index] + (1-config.Beta1)*gradValue
 
 		var sign float32
 
@@ -255,14 +266,11 @@ func LionStepFloat32(
 			sign = -1
 		}
 
-		decayStep := config.WeightDecay * paramsView[index]
-		outView[index] = paramsView[index] - config.LearningRate*(sign+decayStep)
+		decayStep := config.WeightDecay * params[index]
+		output[index] = params[index] - config.LearningRate*(sign+decayStep)
 
-		momentumView[index] = config.Beta2*momentumView[index] +
-			(1-config.Beta2)*gradValue
+		momentum[index] = config.Beta2*momentum[index] + (1-config.Beta2)*gradValue
 	}
-
-	return nil
 }
 
 func runLionStepDefault(args ...tensor.Tensor) error {
@@ -308,21 +316,24 @@ func SGDStepFloat32(
 		return err
 	}
 
-	for index, gradValue := range gradView {
-		effective := gradValue + config.WeightDecay*paramsView[index]
+	sgdStepSlices(config, paramsView, gradView, momentumView, outView)
+	return nil
+}
 
-		momentumView[index] = config.Momentum*momentumView[index] + effective
+func sgdStepSlices(config SGDConfig, params, gradients, momentum, output []float32) {
+	for index, gradValue := range gradients {
+		effective := gradValue + config.WeightDecay*params[index]
 
-		update := momentumView[index]
+		momentum[index] = config.Momentum*momentum[index] + effective
+
+		update := momentum[index]
 
 		if config.Nesterov {
-			update = effective + config.Momentum*momentumView[index]
+			update = effective + config.Momentum*momentum[index]
 		}
 
-		outView[index] = paramsView[index] - config.LearningRate*update
+		output[index] = params[index] - config.LearningRate*update
 	}
-
-	return nil
 }
 
 func runSGDStepDefault(args ...tensor.Tensor) error {

@@ -58,6 +58,63 @@ func registerUnary(name string, op unaryOp) {
 		Locations: []tensor.Location{tensor.Host},
 		Run:       unaryFloat32(op),
 	})
+	// Mirror every f32 unary as bf16 and fp16 by widen-compute-narrow.
+	// Mathematical contract per §5.5: f32 evaluation of the op, bf16/fp16
+	// rounding only on the final write-back.
+	Default.Register(Kernel{
+		Name: name,
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       unaryBFloat16(op),
+	})
+	Default.Register(Kernel{
+		Name: name,
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       unaryFloat16Generic(op),
+	})
+}
+
+func unaryBFloat16(op unaryOp) func(args ...tensor.Tensor) error {
+	return func(args ...tensor.Tensor) error {
+		input, out, err := unaryBFloat16Args(args)
+
+		if err != nil {
+			return err
+		}
+
+		for index := range input {
+			value := (&input[index]).Float32()
+			out[index] = dtype.NewBfloat16FromFloat32(op(value))
+		}
+
+		return nil
+	}
+}
+
+func unaryFloat16Generic(op unaryOp) func(args ...tensor.Tensor) error {
+	return func(args ...tensor.Tensor) error {
+		input, out, err := unaryFloat16Args(args)
+
+		if err != nil {
+			return err
+		}
+
+		for index := range input {
+			value := input[index].Float32()
+			out[index] = dtype.Fromfloat32(op(value))
+		}
+
+		return nil
+	}
 }
 
 func registerUnarySIMD(name string, run func(args ...tensor.Tensor) error) {

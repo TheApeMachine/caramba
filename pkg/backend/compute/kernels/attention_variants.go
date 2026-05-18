@@ -156,6 +156,15 @@ func MultiHeadAttentionFloat32(
 	valueView, _ := value.Float32Native()
 	outView, _ := out.Float32Native()
 
+	multiHeadAttentionSlices(config, queryView, keyView, valueView, outView, seqQ, seqK, kvHeads)
+	return nil
+}
+
+func multiHeadAttentionSlices(
+	config MultiHeadAttentionConfig,
+	queryView, keyView, valueView, outView []float32,
+	seqQ, seqK, kvHeads int,
+) {
 	scale := float32(1.0 / math.Sqrt(float64(config.HeadDim)))
 	headsPerKVHead := config.NumHeads / kvHeads
 
@@ -170,8 +179,6 @@ func MultiHeadAttentionFloat32(
 			scale, config,
 		)
 	}
-
-	return nil
 }
 
 func runSingleHead(
