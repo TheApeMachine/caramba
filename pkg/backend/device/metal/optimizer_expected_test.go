@@ -36,6 +36,8 @@ func optimizerStorageInputs(
 ) ([]byte, []byte, []float32, []float32) {
 	paramValues := projectionValues(elementCount, 67, 64)
 	gradientValues := projectionValues(elementCount, 71, 128)
+	conditionOptimizerValues(paramValues, 1.0/32.0)
+	conditionOptimizerValues(gradientValues, 1.0/32.0)
 	paramBytes := encodeProjectionValuesAsDType(paramValues, storageDType)
 	gradientBytes := encodeProjectionValuesAsDType(gradientValues, storageDType)
 
@@ -52,6 +54,31 @@ func optimizerStateValues(elementCount int, seed int) []float32 {
 	}
 
 	return values
+}
+
+func optimizerAdamaxInfinityValues(elementCount int) []float32 {
+	values := optimizerStateValues(elementCount, 5)
+
+	for index := range values {
+		values[index] += 0.125
+	}
+
+	return values
+}
+
+func conditionOptimizerValues(values []float32, minimumMagnitude float32) {
+	for index, value := range values {
+		if float32(math.Abs(float64(value))) >= minimumMagnitude {
+			continue
+		}
+
+		if index%2 == 0 {
+			values[index] = minimumMagnitude
+			continue
+		}
+
+		values[index] = -minimumMagnitude
+	}
 }
 
 func optimizerStateBytes(values []float32) []byte {

@@ -139,6 +139,24 @@ Metal vision kernels cover `conv1d`, `conv2d`, `conv3d`,
 `conv_transpose2d`, `max_pool2d`, `avg_pool2d`,
 `adaptive_avg_pool2d`, and `adaptive_max_pool2d` for the same storage
 dtypes using NCL/NCHW/NCDHW memory layout and GPU-side accumulation.
+Metal optimizer kernels cover `adam_step`, `adamw_step`,
+`adamax_step`, `adagrad_step`, `rmsprop_step`, `lion_step`,
+`sgd_step`, `lars_step`, `lbfgs_step`, and `hebbian_step` with
+reduced-dtype params/gradients/output and float32 optimizer state.
+Metal quantization kernels cover `int8_dequant`, `int4_dequant`, and
+`int8_quant` with default scale/zero-point semantics matching the
+scalar registry. Metal loss kernels cover `mse_loss`, `mae_loss`,
+`huber_loss`, `binary_cross_entropy`, `cross_entropy`, and
+`kl_divergence` for `float32`, `float16`, and `bfloat16`; pair losses
+run chunked partial reductions and cross-entropy runs one row-local
+threadgroup per batch row before a device finalize stage. Metal
+reduction kernels cover `sum`, `mean`, `prod`, `reduce_min`,
+`reduce_max`, `argmin`, `argmax`, `l1_norm`, `l2_norm`, `variance`,
+and `stddev` for the same storage dtypes with chunked partial
+reductions and a device finalize stage. Metal math utility kernels
+cover `inv_sqrt_dim_scale`, `logsumexp`, and `outer` for the same
+storage dtypes; `logsumexp` uses row-local parallel max and sum
+reductions over the trailing dimension.
 Metal softmax covers the same storage dtypes with one threadgroup per
 row, parallel max reduction, parallel sum reduction, and normalized
 dtype-native writes. Metal normalization covers `layernorm` and

@@ -1,5 +1,11 @@
 import * as THREE from "three";
-import { MAX_NODES, NODE_H, NODE_W, nodesTexture } from "../vector";
+import {
+	MAX_NODES,
+	NODE_H,
+	NODE_W,
+	nestedGraphPreviewCompositeInsets,
+	nodesTexture,
+} from "../vector";
 
 /**
  * NodeLayer — the node bodies plus a soft drop-shadow underlay. Shares one
@@ -75,6 +81,8 @@ export class NodeLayer {
 		this.shadowMesh.frustumCulled = false;
 		this.shadowMesh.renderOrder = -10;
 
+		const previewInsets = nestedGraphPreviewCompositeInsets();
+
 		this.bodyMat = new THREE.RawShaderMaterial({
 			glslVersion: THREE.GLSL3,
 			transparent: true,
@@ -89,6 +97,8 @@ export class NodeLayer {
 				uSelected: { value: -1 },
 				uPreviewId: { value: -1 },
 				uPreviewBlend: { value: 0.0 },
+				uPreviewSideInsetUv: { value: previewInsets.horizontalUv },
+				uPreviewBandTrimUv: { value: previewInsets.bandTrimUv },
 				uPreview: { value: previewTexture },
 			},
 			vertexShader: /* glsl */ `
@@ -125,17 +135,17 @@ export class NodeLayer {
 				flat in float vIsPreview;
 				uniform sampler2D uPreview;
 				uniform float uPreviewBlend;
+				uniform float uPreviewSideInsetUv;
+				uniform float uPreviewBandTrimUv;
 				out vec4 outColor;
 
 				// Card layout, in UV space (origin bottom-left, 0..1 on each axis):
 				//   y >= HEADER_TOP  → header band
 				//   FOOTER_TOP <= y < HEADER_TOP → body
 				//   y < FOOTER_TOP  → footer band
+				// Header/footer UVs match vector.ts CARD_HEADER_TOP_UV / CARD_FOOTER_TOP_UV.
 				const float HEADER_TOP = 0.75;
 				const float FOOTER_TOP = 0.25;
-				const vec2  PREVIEW_INSET_LO = vec2(0.060, 0.20);
-				const float PREVIEW_INSET_HI_X = 0.060;
-				const float PREVIEW_INSET_TOP_GAP = 0.04;
 
 				float sdRoundedBox(vec2 p, vec2 b, float r) {
 					vec2 q = abs(p) - b + vec2(r);
@@ -177,14 +187,13 @@ export class NodeLayer {
 					border = mix(border, borderFram, vIsPreview * (0.5 + 0.5 * uPreviewBlend));
 					fill = mix(fill, border, borderMask);
 
-					// Preview window — body band only.
+					// Preview window — spans the flat body rectangle between dividers.
 					if (vIsPreview > 0.5 && uPreviewBlend > 0.001) {
-						vec2 inset = PREVIEW_INSET_LO;
-						vec2 hi = vec2(
-							1.0 - PREVIEW_INSET_HI_X,
-							HEADER_TOP - PREVIEW_INSET_TOP_GAP
-						);
-						vec2 t = (uv - inset) / (hi - inset);
+						float sx = clamp(uPreviewSideInsetUv, 0.001, 0.24);
+						float bandTrim = clamp(uPreviewBandTrimUv, 0.001, 0.12);
+						vec2 insetLo = vec2(sx, FOOTER_TOP + bandTrim);
+						vec2 insetHi = vec2(1.0 - sx, HEADER_TOP - bandTrim);
+						vec2 t = (uv - insetLo) / (insetHi - insetLo);
 						if (t.x > 0.0 && t.x < 1.0 && t.y > 0.0 && t.y < 1.0) {
 							vec3 prev = texture(uPreview, vec2(t.x, 1.0 - t.y)).rgb;
 							fill = mix(fill, prev, uPreviewBlend);
@@ -195,7 +204,7 @@ export class NodeLayer {
 				}
 			`,
 		});
-		
+
 		this.bodyMesh = new THREE.Mesh(this.geom, this.bodyMat);
 		this.bodyMesh.frustumCulled = false;
 	}

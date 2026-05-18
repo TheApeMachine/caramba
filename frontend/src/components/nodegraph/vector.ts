@@ -94,10 +94,112 @@ centre. Ports are distributed evenly along the band with PORT_BAND_PAD at
 top and bottom so a single port lands near vertical centre and adjacent
 ports never crowd the dividers.
 */
-const BODY_TOP_UV = 0.75;
-const BODY_BOT_UV = 0.25;
+/** UV layout matches `materials/node.ts` fragment (header/footer dividers). */
+export const CARD_HEADER_TOP_UV = 0.75;
+export const CARD_FOOTER_TOP_UV = 0.25;
+/** Horizontal UV offset for nesting preview (see nestedGraphPreviewCompositeInsets). */
+export const CARD_BODY_SIDE_INSET_UV = 0;
+
+/**
+ * World-unit inset from the maximal body aperture on each side — hairline stroke,
+ * AA, preview RT edge. Keeps shader sampling, portal scale, and preview camera aligned.
+ */
+export const NESTED_GRAPH_EDGE_TRIM_WORLD = 1;
+
+const BODY_TOP_UV = CARD_HEADER_TOP_UV;
+const BODY_BOT_UV = CARD_FOOTER_TOP_UV;
 export const PORT_BAND_Y_MAX = (BODY_TOP_UV - 0.5) * NODE_H;
 export const PORT_BAND_Y_MIN = (BODY_BOT_UV - 0.5) * NODE_H;
+
+/*
+bodyWindowWorld returns the portal / preview aperture in node-centre space
+(world units): the rectangle nested graphs compact into between header bands,
+after CARD_BODY_SIDE_INSET_UV horizontal padding and {@link NESTED_GRAPH_EDGE_TRIM_WORLD}
+on each edge.
+*/
+export function bodyWindowWorld(): { width: number; height: number } {
+	const rawWidth = NODE_W * (1 - 2 * CARD_BODY_SIDE_INSET_UV);
+	const rawHeight = NODE_H * (CARD_HEADER_TOP_UV - CARD_FOOTER_TOP_UV);
+	const trimmed = NESTED_GRAPH_EDGE_TRIM_WORLD * 2;
+
+	return {
+		width: Math.max(8, rawWidth - trimmed),
+		height: Math.max(8, rawHeight - trimmed),
+	};
+}
+
+/*
+nestedGraphPreviewCompositeInsets — UV deltas for sampling the nested preview
+inside the card: horizontal from full-card left/right (includes side inset UV),
+vertical applied inward from FOOTER_TOP / HEADER_TOP in card UV space.
+*/
+export function nestedGraphPreviewCompositeInsets(): {
+	horizontalUv: number;
+	bandTrimUv: number;
+} {
+	const trimAlongU = NESTED_GRAPH_EDGE_TRIM_WORLD / NODE_W;
+
+	const trimAlongV = NESTED_GRAPH_EDGE_TRIM_WORLD / NODE_H;
+
+	return {
+		horizontalUv: CARD_BODY_SIDE_INSET_UV + trimAlongU,
+		bandTrimUv: trimAlongV,
+	};
+}
+
+export type InnerLayoutBounds = {
+	minX: number;
+	maxX: number;
+	minY: number;
+	maxY: number;
+	centreX: number;
+	centreY: number;
+	width: number;
+	height: number;
+};
+
+/*
+innerNodesLayoutBounds measures the minimal axis-aligned box around inner
+cards (NODE_W × NODE_H) for portal scaling and preview projection.
+*/
+export function innerNodesLayoutBounds(
+	nodes: { x: number; y: number }[],
+): InnerLayoutBounds {
+	let minX = Infinity;
+	let maxX = -Infinity;
+	let minY = Infinity;
+	let maxY = -Infinity;
+
+	for (const node of nodes) {
+		if (node.x - NODE_W / 2 < minX) minX = node.x - NODE_W / 2;
+		if (node.x + NODE_W / 2 > maxX) maxX = node.x + NODE_W / 2;
+		if (node.y - NODE_H / 2 < minY) minY = node.y - NODE_H / 2;
+		if (node.y + NODE_H / 2 > maxY) maxY = node.y + NODE_H / 2;
+	}
+
+	const width = Math.max(maxX - minX, 1);
+	const height = Math.max(maxY - minY, 1);
+
+	return {
+		minX,
+		maxX,
+		minY,
+		maxY,
+		centreX: (minX + maxX) * 0.5,
+		centreY: (minY + maxY) * 0.5,
+		width,
+		height,
+	};
+}
+
+export function portalCompactScale(
+	layout: Pick<InnerLayoutBounds, "width" | "height">,
+	bodyW: number,
+	bodyH: number,
+): number {
+	return Math.min(bodyW / layout.width, bodyH / layout.height);
+}
+
 const CARD_HALF_W = NODE_W * 0.495;
 const PORT_EDGE_SLOP = 0.5;
 export const PORT_IN_X = -CARD_HALF_W - PORT_EDGE_SLOP;

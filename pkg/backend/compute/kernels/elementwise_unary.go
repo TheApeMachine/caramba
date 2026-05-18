@@ -47,7 +47,27 @@ func unaryFloat32(op unaryOp) func(args ...tensor.Tensor) error {
 	}
 }
 
+// neonSliceUnaryOverrides lists op names whose f32 path is registered
+// elsewhere as a NEON slice runner. registerUnary skips the f32
+// registration for these names so the NEON entry isn't duplicated;
+// the bf16/fp16 auto-registrations still fire and widen-route-narrow
+// through the NEON f32 backend.
+var neonSliceUnaryOverrides = map[string]bool{
+	"exp":     true,
+	"sigmoid": true,
+	"silu":    true,
+	"swish":   true,
+	"tanh":    true,
+}
+
 func registerUnary(name string, op unaryOp) {
+	if neonSliceUnaryOverrides[name] {
+		// Skip all three dtype registrations; the dedicated NEON
+		// slice-runner file (activations_neon_register.go) handles
+		// f32 + bf16 + fp16 for these names.
+		return
+	}
+
 	Default.Register(Kernel{
 		Name: name,
 		Signature: Signature{

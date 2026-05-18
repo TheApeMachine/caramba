@@ -204,15 +204,7 @@ returns the sum across the row. The shift-by-max form keeps the
 exponent argument non-positive and prevents overflow.
 */
 func fillShiftedExps(row []float32, outRow []float32, maximum float32) float32 {
-	var sum float32
-
-	for index, candidate := range row {
-		shifted := float32(math.Exp(float64(candidate - maximum)))
-		outRow[index] = shifted
-		sum += shifted
-	}
-
-	return sum
+	return softmaxRowFillExpsNative(row, outRow, maximum)
 }
 
 func fillShiftedExpsFloat16(

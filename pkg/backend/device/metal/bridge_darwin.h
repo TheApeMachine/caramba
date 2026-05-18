@@ -503,6 +503,84 @@ int metal_dispatch_lars_step(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_quantization(
+    MetalDeviceRef contextRef,
+    int operation,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_pair_loss(
+    MetalDeviceRef contextRef,
+    int operation,
+    int elementDType,
+    MetalBufferRef predictionsRef,
+    MetalBufferRef targetsRef,
+    MetalBufferRef scratchRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint32_t partialCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_cross_entropy_loss(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef logitsRef,
+    MetalBufferRef targetsRef,
+    MetalBufferRef scratchRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t classes,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_reduction(
+    MetalDeviceRef contextRef,
+    int operation,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef scratchARef,
+    MetalBufferRef scratchBRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint32_t partialCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_inv_sqrt_dim_scale(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef dimRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_logsumexp(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t rows,
+    uint32_t cols,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_outer(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef leftRef,
+    MetalBufferRef rightRef,
+    MetalBufferRef outRef,
+    uint32_t rows,
+    uint32_t cols,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 void metal_device_release(MetalDeviceRef contextRef);
 
 #ifdef __cplusplus

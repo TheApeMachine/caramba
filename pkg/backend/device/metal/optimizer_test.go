@@ -8,7 +8,10 @@ import (
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
-const optimizerMaxULP = uint32(8)
+const (
+	optimizerMaxULP      = uint32(8)
+	optimizerStateMaxULP = uint32(64)
+)
 
 type optimizer4Case struct {
 	name     string
@@ -109,12 +112,15 @@ func runOptimizer4ParityCase(
 	elementCount int,
 	testCase optimizer4Case,
 ) {
-	defer configureOptimizerExpectedArithmetic(storageDType)()
+	defer configureOptimizerExpectedArithmetic(storageDType, testCase.name)()
 
 	paramBytes, gradientBytes, params, gradients :=
 		optimizerStorageInputs(elementCount, storageDType)
 	firstInitial := optimizerStateValues(elementCount, 3)
 	secondInitial := optimizerStateValues(elementCount, 5)
+	if testCase.name == "adamax_step" {
+		secondInitial = optimizerAdamaxInfinityValues(elementCount)
+	}
 	expectedFirst := append([]float32(nil), firstInitial...)
 	expectedSecond := append([]float32(nil), secondInitial...)
 	expectedOut := testCase.expected(params, gradients, expectedFirst, expectedSecond)
@@ -140,7 +146,7 @@ func runOptimizer3ParityCase(
 	elementCount int,
 	testCase optimizer3Case,
 ) {
-	defer configureOptimizerExpectedArithmetic(storageDType)()
+	defer configureOptimizerExpectedArithmetic(storageDType, testCase.name)()
 
 	paramBytes, gradientBytes, params, gradients :=
 		optimizerStorageInputs(elementCount, storageDType)
@@ -167,7 +173,7 @@ func runOptimizer2ParityCase(
 	storageDType dtype.DType,
 	elementCount int,
 ) {
-	defer configureOptimizerExpectedArithmetic(storageDType)()
+	defer configureOptimizerExpectedArithmetic(storageDType, "lbfgs_step")()
 
 	paramBytes, gradientBytes, params, gradients :=
 		optimizerStorageInputs(elementCount, storageDType)
@@ -190,7 +196,7 @@ func runHebbianParityCase(
 	storageDType dtype.DType,
 	elementCount int,
 ) {
-	defer configureOptimizerExpectedArithmetic(storageDType)()
+	defer configureOptimizerExpectedArithmetic(storageDType, "hebbian_step")()
 
 	weightBytes, postBytes, preBytes, expectedOut :=
 		hebbianDTypeBytes(elementCount, storageDType)

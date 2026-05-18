@@ -24,6 +24,420 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal math utility kernel expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `inv_sqrt_dim_scale`
+- `logsumexp`
+- `outer`
+
+`inv_sqrt_dim_scale` validates the `Int32` scalar on the GPU and
+reports invalid scalar data through asynchronous command completion.
+`logsumexp` runs one row-local threadgroup over the trailing
+dimension, with parallel max and sum reductions. `outer` maps one GPU
+thread to each output element.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}` for every math
+utility and storage dtype. Expected values are computed from
+dtype-stored inputs and checked with ULP bounds against the stored
+output representation.
+
+The Metal dense registry now has 288 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 15 transformer embedding/masking, 24 vision, 30
+optimizer, 3 quantization, 18 loss, 33 reduction, and 9 math utility
+signatures.
+
+Focused math parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalMathDTypes' -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.772s
+```
+
+Full Metal package command:
+
+```
+go test ./pkg/backend/device/metal -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.105s
+```
+
+Focused Metal package sweep:
+
+```
+go test ./pkg/backend/device/metal/... -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.037s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.651s
+```
+
+Metal math benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunMathDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunMathDTypes/f32/inv_sqrt_dim_scale-16         	    4767	    250652 ns/op	 261.48 MB/s	    1370 B/op	       6 allocs/op
+BenchmarkKernel_RunMathDTypes/f32/logsumexp-16                  	    5378	    232476 ns/op	2257.44 MB/s	    1353 B/op	       7 allocs/op
+BenchmarkKernel_RunMathDTypes/f32/outer-16                      	    4657	    262913 ns/op	1006.81 MB/s	    1368 B/op	       6 allocs/op
+BenchmarkKernel_RunMathDTypes/f16/inv_sqrt_dim_scale-16         	    4604	    245442 ns/op	 133.52 MB/s	    1368 B/op	       6 allocs/op
+BenchmarkKernel_RunMathDTypes/f16/logsumexp-16                  	    5287	    233341 ns/op	1124.54 MB/s	    1352 B/op	       7 allocs/op
+BenchmarkKernel_RunMathDTypes/f16/outer-16                      	    4923	    266242 ns/op	 497.11 MB/s	    1368 B/op	       6 allocs/op
+BenchmarkKernel_RunMathDTypes/bf16/inv_sqrt_dim_scale-16        	    8478	    134912 ns/op	 242.91 MB/s	    1368 B/op	       6 allocs/op
+BenchmarkKernel_RunMathDTypes/bf16/logsumexp-16                 	    9960	    117603 ns/op	2231.23 MB/s	    1352 B/op	       7 allocs/op
+BenchmarkKernel_RunMathDTypes/bf16/outer-16                     	    9801	    114679 ns/op	1154.10 MB/s	    1368 B/op	       6 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	11.159s
+```
+
+### 2026-05-18 Metal reduction kernel expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `sum`
+- `mean`
+- `prod`
+- `reduce_min`
+- `reduce_max`
+- `argmin`
+- `argmax`
+- `l1_norm`
+- `l2_norm`
+- `variance`
+- `stddev`
+
+Each operation runs a device partial-reduction kernel over 256-element
+chunks followed by a device finalize kernel. `argmin` and `argmax`
+carry both the winning value and the winning source index through the
+scratch buffers. `variance` and `stddev` carry both squared sum and
+plain sum through the same two-stage path.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}` for every reduction
+and storage dtype. Expected values are computed from dtype-stored
+inputs and checked with ULP bounds against the stored output
+representation.
+
+The Metal dense registry now has 279 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 15 transformer embedding/masking, 24 vision, 30
+optimizer, 3 quantization, 18 loss, and 33 reduction signatures.
+
+Focused reduction parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalReductionDTypes' -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.875s
+```
+
+Full Metal package command:
+
+```
+go test ./pkg/backend/device/metal -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.052s
+```
+
+Focused Metal package sweep:
+
+```
+go test ./pkg/backend/device/metal/... -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.017s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.645s
+```
+
+Metal reduction benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunReductionDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunReductionDTypes/f32/sum-16     	    9517	    121451 ns/op	 269.84 MB/s	    2090 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f32/mean-16    	    9543	    290559 ns/op	 112.79 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f32/prod-16    	    1281	    954180 ns/op	  34.35 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f32/reduce_min-16         	    1688	    771432 ns/op	  42.48 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f32/reduce_max-16         	    2035	    508351 ns/op	  64.47 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f32/argmin-16             	    5571	    228976 ns/op	 143.12 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f32/argmax-16             	    8380	    131922 ns/op	 248.42 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f32/l1_norm-16            	   10000	    113286 ns/op	 289.29 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f32/l2_norm-16            	   10000	    119374 ns/op	 274.53 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f32/variance-16           	    9796	    116578 ns/op	 281.12 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f32/stddev-16             	   10000	    122732 ns/op	 267.02 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f16/sum-16                	    9736	    123675 ns/op	 132.49 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f16/mean-16               	   10000	    119405 ns/op	 137.23 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f16/prod-16               	    9898	    115801 ns/op	 141.50 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f16/reduce_min-16         	   10000	    112159 ns/op	 146.10 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f16/reduce_max-16         	   10000	    114620 ns/op	 142.96 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f16/argmin-16             	    9775	    116739 ns/op	 140.36 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f16/argmax-16             	   10000	    113703 ns/op	 144.11 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f16/l1_norm-16            	   10000	    111586 ns/op	 146.85 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f16/l2_norm-16            	   10000	    115617 ns/op	 141.73 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f16/variance-16           	    9873	    111092 ns/op	 147.50 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/f16/stddev-16             	   10000	    114907 ns/op	 142.60 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/bf16/sum-16               	   10000	    113934 ns/op	 143.82 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/bf16/mean-16              	   10000	    117623 ns/op	 139.31 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/bf16/prod-16              	   10000	    114043 ns/op	 143.68 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/bf16/reduce_min-16        	   10000	    112272 ns/op	 145.95 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/bf16/reduce_max-16        	   10000	    115334 ns/op	 142.07 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/bf16/argmin-16            	   10000	    113008 ns/op	 145.00 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/bf16/argmax-16            	   10000	    112583 ns/op	 145.55 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/bf16/l1_norm-16           	   10000	    113609 ns/op	 144.23 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/bf16/l2_norm-16           	   10000	    114467 ns/op	 143.15 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/bf16/variance-16          	   10000	    110328 ns/op	 148.52 MB/s	    2088 B/op	      14 allocs/op
+BenchmarkKernel_RunReductionDTypes/bf16/stddev-16            	   10000	    112131 ns/op	 146.13 MB/s	    2088 B/op	      14 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	40.053s
+```
+
+### 2026-05-18 Metal loss kernel expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `mse_loss`
+- `mae_loss`
+- `huber_loss`
+- `binary_cross_entropy`
+- `cross_entropy`
+- `kl_divergence`
+
+Pair losses run a device partial-reduction kernel over 256-element
+chunks, then a device finalize kernel. Cross-entropy runs one
+threadgroup per batch row to compute log-sum-exp and target loss, then
+uses the same device finalize stage. Target class IDs are validated in
+the Metal shader and surfaced through the asynchronous completion
+path.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}` for every loss and
+storage dtype. Expected values are computed from dtype-stored inputs
+and checked with ULP bounds against the stored output representation.
+
+The Metal dense registry now has 246 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 15 transformer embedding/masking, 24 vision, 30
+optimizer, 3 quantization, and 18 loss signatures.
+
+Focused loss parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalLossDTypes' -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.623s
+```
+
+Full Metal package command:
+
+```
+go test ./pkg/backend/device/metal -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.897s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.370s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	1.005s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.366s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	1.398s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.693s
+```
+
+Metal loss benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunLossDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunLossDTypes/f32/mse_loss-16         	    9699	    119930 ns/op	 546.49 MB/s	    1721 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/f32/mae_loss-16         	   10000	    111211 ns/op	 589.33 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/f32/huber_loss-16       	   10000	    109174 ns/op	 600.32 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/f32/binary_cross_entropy-16         	   10000	    110689 ns/op	 592.11 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/f32/kl_divergence-16                	   10000	    110080 ns/op	 595.39 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/f32/cross_entropy-16                	   10000	    112644 ns/op	2329.49 MB/s	    1760 B/op	      11 allocs/op
+BenchmarkKernel_RunLossDTypes/f16/mse_loss-16                     	   10000	    108266 ns/op	 302.68 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/f16/mae_loss-16                     	   10000	    113125 ns/op	 289.68 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/f16/huber_loss-16                   	    9720	    114260 ns/op	 286.80 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/f16/binary_cross_entropy-16         	   10000	    108411 ns/op	 302.28 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/f16/kl_divergence-16                	   10000	    107407 ns/op	 305.10 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/f16/cross_entropy-16                	   10000	    117014 ns/op	1122.34 MB/s	    1760 B/op	      11 allocs/op
+BenchmarkKernel_RunLossDTypes/bf16/mse_loss-16                    	   10000	    107420 ns/op	 305.07 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/bf16/mae_loss-16                    	   10000	    107548 ns/op	 304.70 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/bf16/huber_loss-16                  	   10000	    112211 ns/op	 292.04 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/bf16/binary_cross_entropy-16        	   10000	    116225 ns/op	 281.95 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/bf16/kl_divergence-16               	   10000	    112753 ns/op	 290.63 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunLossDTypes/bf16/cross_entropy-16               	    9876	    117177 ns/op	1120.78 MB/s	    1760 B/op	      11 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	20.448s
+```
+
+### 2026-05-18 Metal quantization kernel expansion
+
+This adds real Metal device kernels for:
+
+- `int8_dequant`
+- `int4_dequant`
+- `int8_quant`
+
+The public registry entries match the scalar default scale/zero-point
+contract: int8 and packed int4 dequantize into float32, and float32
+quantizes into saturated int8 with round-to-nearest integral values.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}`. Dequantization
+outputs are checked bitwise as float32 values because the default
+scale is one and zero point is zero. Int8 quantization output is
+checked as exact raw bytes.
+
+The Metal dense registry now has 228 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 15 transformer embedding/masking, 24 vision, 30
+optimizer, and 3 quantization signatures.
+
+Focused quantization parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalQuantization' -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.757s
+```
+
+Full Metal package command:
+
+```
+go test ./pkg/backend/device/metal -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.898s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	2.231s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.728s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.359s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	1.059s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.435s
+```
+
+Metal quantization benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunQuantization' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunQuantization/int8_dequant-16         	    9966	    117835 ns/op	 347.61 MB/s	    1337 B/op	       6 allocs/op
+BenchmarkKernel_RunQuantization/int4_dequant-16         	   10000	    113544 ns/op	 324.67 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunQuantization/int8_quant-16           	    9720	    116207 ns/op	 352.47 MB/s	    1336 B/op	       6 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	3.803s
+```
+
+### 2026-05-18 Metal optimizer kernel expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `adam_step_{float32,float16,bfloat16}`
+- `adamw_step_{float32,float16,bfloat16}`
+- `adamax_step_{float32,float16,bfloat16}`
+- `adagrad_step_{float32,float16,bfloat16}`
+- `rmsprop_step_{float32,float16,bfloat16}`
+- `lion_step_{float32,float16,bfloat16}`
+- `sgd_step_{float32,float16,bfloat16}`
+- `lars_step_{float32,float16,bfloat16}`
+- `lbfgs_step_{float32,float16,bfloat16}`
+- `hebbian_step_{float32,float16,bfloat16}`
+
+The public registry entries use reduced-dtype params, gradients, and
+output, with float32 optimizer state tensors for Adam-family,
+Adagrad, RMSprop, Lion, SGD, and LARS. LARS runs norm reduction and
+the parameter update as two encoders in one command buffer with
+device-resident scratch storage.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}` for all vector
+optimizers. Hebbian uses a `[1, N]` weight matrix so the same N sizes
+exercise its outer-product update. Expected values are computed from
+stored dtype inputs, state tensors are checked as float32, and output
+storage is checked with tight ULP bounds per operation.
+
+The Metal dense registry now has 225 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 15 transformer embedding/masking, 24 vision, and
+30 optimizer signatures.
+
+Focused optimizer parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalOptimizerDTypes' -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.530s
+```
+
+Full Metal package command:
+
+```
+go test ./pkg/backend/device/metal -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.031s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.602s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	1.662s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	1.345s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	0.579s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	2.137s
+```
+
+Metal optimizer benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunOptimizerDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunOptimizerDTypes/f32/adam_step-16         	    8437	    138376 ns/op	1184.02 MB/s	    1370 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f32/adamw_step-16        	    8643	    130331 ns/op	1257.11 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f32/adamax_step-16       	    7792	    132826 ns/op	1233.50 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f32/adagrad_step-16      	    8197	    131902 ns/op	 993.71 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f32/rmsprop_step-16      	    7947	    139665 ns/op	 938.48 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f32/lion_step-16         	   10000	    141054 ns/op	 929.24 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f32/sgd_step-16          	    9946	    135788 ns/op	 965.27 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f32/lars_step-16         	    8948	    144553 ns/op	 906.74 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f32/lbfgs_step-16        	    8448	    138437 ns/op	 710.10 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f32/hebbian_step-16      	    9138	    141523 ns/op	 694.64 MB/s	    1432 B/op	       9 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f16/adam_step-16         	   10000	    136657 ns/op	 839.24 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f16/adamw_step-16        	    9307	    136404 ns/op	 840.80 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f16/adamax_step-16       	    8803	    135704 ns/op	 845.13 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f16/adagrad_step-16      	    7882	    137410 ns/op	 596.17 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f16/rmsprop_step-16      	    8750	    137847 ns/op	 594.28 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f16/lion_step-16         	   10000	    139269 ns/op	 588.21 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f16/sgd_step-16          	    8780	    141131 ns/op	 580.45 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f16/lars_step-16         	    9565	    149309 ns/op	 548.66 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f16/lbfgs_step-16        	    7522	    139555 ns/op	 352.20 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/f16/hebbian_step-16      	   10000	    140117 ns/op	 350.81 MB/s	    1432 B/op	       9 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/bf16/adam_step-16        	    7550	    140376 ns/op	 817.01 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/bf16/adamw_step-16       	    8145	    140198 ns/op	 818.05 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/bf16/adamax_step-16      	   10000	    150128 ns/op	 763.93 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/bf16/adagrad_step-16     	    7538	    144827 ns/op	 565.64 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/bf16/rmsprop_step-16     	    8187	    155688 ns/op	 526.18 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/bf16/lion_step-16        	   10000	    142059 ns/op	 576.66 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/bf16/sgd_step-16         	    8956	    144656 ns/op	 566.31 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/bf16/lars_step-16        	    7468	    152013 ns/op	 538.90 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/bf16/lbfgs_step-16       	    7578	    144214 ns/op	 340.83 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunOptimizerDTypes/bf16/hebbian_step-16     	    9276	    144500 ns/op	 340.17 MB/s	    1432 B/op	       9 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	37.391s
+```
+
 ### 2026-05-18 Metal vision kernel expansion
 
 This adds real Metal device kernels across `float32`, `float16`, and
@@ -1431,7 +1845,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 195 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer embedding/masking + vision signatures for `float32`, `float16`, `bfloat16` |
+| 4     | Metal device backend          | 288 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer embedding/masking + vision + optimizer + quantization + loss + reduction + math utility signatures |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
@@ -1532,6 +1946,8 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_darwin.m`    | verified              |
 | `pkg/backend/device/metal/bridge_darwin_private.h` | verified        |
 | `pkg/backend/device/metal/bridge_elementwise_darwin.m` | verified     |
+| `pkg/backend/device/metal/bridge_loss_darwin.m` | verified           |
+| `pkg/backend/device/metal/bridge_math_darwin.m` | verified           |
 | `pkg/backend/device/metal/bridge_matmul_darwin.m` | verified        |
 | `pkg/backend/device/metal/bridge_normalization_darwin.m` | verified |
 | `pkg/backend/device/metal/bridge_projection_darwin.m` | verified |
@@ -1546,6 +1962,11 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_vision_convolution_darwin.m` | verified |
 | `pkg/backend/device/metal/bridge_vision_darwin.m` | verified       |
 | `pkg/backend/device/metal/bridge_vision_private.h` | verified      |
+| `pkg/backend/device/metal/bridge_optimizer_darwin.m` | verified    |
+| `pkg/backend/device/metal/bridge_optimizer_extra_darwin.m` | verified |
+| `pkg/backend/device/metal/bridge_optimizer_private.h` | verified    |
+| `pkg/backend/device/metal/bridge_quantization_darwin.m` | verified |
+| `pkg/backend/device/metal/bridge_reduction_darwin.m` | verified    |
 | `pkg/backend/device/metal/unary_darwin.go`    | verified              |
 | `pkg/backend/device/metal/elementwise_float32.metal` | verified       |
 | `pkg/backend/device/metal/elementwise_float16.metal` | verified       |
@@ -1553,7 +1974,9 @@ invalidation works.
 | `pkg/backend/device/metal/elementwise_extended.metal` | verified      |
 | `pkg/backend/device/metal/matmul.metal`       | verified              |
 | `pkg/backend/device/metal/normalization.metal` | verified             |
+| `pkg/backend/device/metal/optimizer.metal`    | verified              |
 | `pkg/backend/device/metal/projection.metal`   | verified              |
+| `pkg/backend/device/metal/quantization.metal` | verified              |
 | `pkg/backend/device/metal/shape.metal`        | verified              |
 | `pkg/backend/device/metal/softmax.metal`      | verified              |
 | `pkg/backend/device/metal/transformer.metal`  | verified              |
@@ -1566,6 +1989,19 @@ invalidation works.
 | `pkg/backend/device/metal/kernels.metallib`   | verified              |
 | `pkg/backend/device/metal/generate.go`        | verified              |
 | `pkg/backend/device/metal/kernels.go`         | verified              |
+| `pkg/backend/device/metal/loss.go`            | verified              |
+| `pkg/backend/device/metal/loss_darwin.go`     | verified              |
+| `pkg/backend/device/metal/loss_types.go`      | verified              |
+| `pkg/backend/device/metal/loss.metal`         | verified              |
+| `pkg/backend/device/metal/loss_test.go`       | verified              |
+| `pkg/backend/device/metal/loss_expected_test.go` | verified          |
+| `pkg/backend/device/metal/loss_bench_test.go` | verified              |
+| `pkg/backend/device/metal/math.go`            | verified              |
+| `pkg/backend/device/metal/math_darwin.go`     | verified              |
+| `pkg/backend/device/metal/math.metal`         | verified              |
+| `pkg/backend/device/metal/math_test.go`       | verified              |
+| `pkg/backend/device/metal/math_expected_test.go` | verified          |
+| `pkg/backend/device/metal/math_bench_test.go` | verified              |
 | `pkg/backend/device/metal/matmul.go`          | verified              |
 | `pkg/backend/device/metal/matmul_darwin.go`   | verified              |
 | `pkg/backend/device/metal/matmul_stub.go`     | verified              |
@@ -1577,10 +2013,32 @@ invalidation works.
 | `pkg/backend/device/metal/normalization_test.go` | verified            |
 | `pkg/backend/device/metal/normalization_test_helpers.go` | verified    |
 | `pkg/backend/device/metal/normalization_bench_test.go` | verified      |
+| `pkg/backend/device/metal/optimizer.go`       | verified              |
+| `pkg/backend/device/metal/optimizer_darwin.go` | verified             |
+| `pkg/backend/device/metal/optimizer_extra_darwin.go` | verified       |
+| `pkg/backend/device/metal/optimizer_validate_darwin.go` | verified    |
+| `pkg/backend/device/metal/optimizer_types.go` | verified              |
+| `pkg/backend/device/metal/optimizer_test.go`  | verified              |
+| `pkg/backend/device/metal/optimizer_test_helpers.go` | verified       |
+| `pkg/backend/device/metal/optimizer_expected_test.go` | verified     |
+| `pkg/backend/device/metal/optimizer_expected_more_test.go` | verified |
+| `pkg/backend/device/metal/optimizer_bench_test.go` | verified       |
+| `pkg/backend/device/metal/optimizer_bench_helpers_test.go` | verified |
 | `pkg/backend/device/metal/projection.go`      | verified              |
 | `pkg/backend/device/metal/projection_darwin.go` | verified            |
 | `pkg/backend/device/metal/projection_test.go` | verified              |
 | `pkg/backend/device/metal/projection_bench_test.go` | verified        |
+| `pkg/backend/device/metal/quantization.go`    | verified              |
+| `pkg/backend/device/metal/quantization_darwin.go` | verified          |
+| `pkg/backend/device/metal/quantization_test.go` | verified            |
+| `pkg/backend/device/metal/quantization_bench_test.go` | verified      |
+| `pkg/backend/device/metal/reduction.go`       | verified              |
+| `pkg/backend/device/metal/reduction_darwin.go` | verified             |
+| `pkg/backend/device/metal/reduction_types.go` | verified              |
+| `pkg/backend/device/metal/reduction.metal`    | verified              |
+| `pkg/backend/device/metal/reduction_test.go`  | verified              |
+| `pkg/backend/device/metal/reduction_expected_test.go` | verified     |
+| `pkg/backend/device/metal/reduction_bench_test.go` | verified       |
 | `pkg/backend/device/metal/transformer.go`     | verified              |
 | `pkg/backend/device/metal/transformer_darwin.go` | verified           |
 | `pkg/backend/device/metal/transformer_validate_darwin.go` | verified |

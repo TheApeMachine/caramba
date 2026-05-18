@@ -11,16 +11,19 @@ import { RubberEdgeLayer } from "./materials/rubber";
 import { type FramedParent, PreviewPass } from "./preview";
 import { portsCompatible } from "./types";
 import {
+	bodyWindowWorld,
 	currentLevel,
 	fillInputBuffers,
 	getRevision,
+	innerNodesLayoutBounds,
 	NODE_H,
 	NODE_W,
 	type Node,
 	PORT_RADIUS,
-	portDefs,
 	type PortKind,
 	type PositionTransform,
+	portalCompactScale,
+	portDefs,
 	portWorld,
 	vectorStore,
 } from "./vector";
@@ -30,14 +33,17 @@ const PREVIEW_BLEND_RATE = 4.0;
 const UNFOLD_DURATION_MS = 700;
 
 /*
-Body band inside the card shader: header at UV.y >= 0.75, footer at UV.y
-< 0.25 — symmetric 1/2/1-cell layout. Body centre sits at the card's
-centre (UV.y 0.5), so BODY_WINDOW_CY is zero. The window is the
-rectangle a compact sub-graph layout has to fit into, expressed in
-world coordinates relative to the card's centre.
+Expanded vs compact framing for portal easing. Larger fill hugs the subgraph /
+body rectangles so thumbnails and full views share closer scale — still not a
+perfect projective through-the-card-body warp (camera x/y/zoom ease differs from vertex lerp).
 */
-const BODY_WINDOW_W = NODE_W * (1 - 2 * 0.10);
-const BODY_WINDOW_H = NODE_H * (0.75 - 0.25) * 0.85;
+const PORTAL_EXPANDED_GRAPH_FILL = 0.88;
+const PORTAL_BODY_WINDOW_FILL = 0.92;
+/** Outer camera lead-in: frame entire gate card before subgraph swap (.double-click enters). */
+const GATE_CARD_LEAD_FILL = 0.9;
+const GATE_LEAD_FRAMING_MS = 560;
+
+/** Body band centre aligns with card centre (see `bodyWindowWorld` in vector). */
 const BODY_WINDOW_CY = 0;
 
 /*
@@ -50,6 +56,13 @@ during fold; their unfolded positions are
 We lerp by unfoldT and the camera tweens in the same frame, so no snap.
 At t=1 we shift everything by (-P.x, -P.y) — visually a no-op — and we're
 in inner-world.
+
+Perfect portal continuity would share one homogeneous map between the parent's
+body quad and the framebuffer (camera + nonlinear clip), then drive subgraph
+instances through that composite instead of lerping xyz while easing zoom
+orthogonally; preview also only matches when the gate is framed beforehand.
+Short of that refactor, tightening fit fractions and aligning bodyWindow with
+thumbnail UV trims reduces the visible seam but cannot remove compositional mismatch.
 */
 type PortalFrame = {
 	parentX: number;
@@ -59,31 +72,29 @@ type PortalFrame = {
 	scale: number;
 };
 
-function computePortalFrame(
-	parent: { x: number; y: number; nodes: Node[] },
-): PortalFrame {
+function computePortalFrame(parent: {
+	x: number;
+	y: number;
+	nodes: Node[];
+}): PortalFrame {
 	if (parent.nodes.length === 0) {
 		return {
-			parentX: parent.x, parentY: parent.y,
-			innerCentreX: 0, innerCentreY: 0, scale: 1,
+			parentX: parent.x,
+			parentY: parent.y,
+			innerCentreX: 0,
+			innerCentreY: 0,
+			scale: 1,
 		};
 	}
-	let minX = Infinity, maxX = -Infinity;
-	let minY = Infinity, maxY = -Infinity;
-	for (const n of parent.nodes) {
-		if (n.x - NODE_W / 2 < minX) minX = n.x - NODE_W / 2;
-		if (n.x + NODE_W / 2 > maxX) maxX = n.x + NODE_W / 2;
-		if (n.y - NODE_H / 2 < minY) minY = n.y - NODE_H / 2;
-		if (n.y + NODE_H / 2 > maxY) maxY = n.y + NODE_H / 2;
-	}
-	const aabbW = Math.max(maxX - minX, 1);
-	const aabbH = Math.max(maxY - minY, 1);
-	const scale = Math.min(BODY_WINDOW_W / aabbW, BODY_WINDOW_H / aabbH);
+	const layout = innerNodesLayoutBounds(parent.nodes);
+	const body = bodyWindowWorld();
+	const scale = portalCompactScale(layout, body.width, body.height);
+
 	return {
 		parentX: parent.x,
 		parentY: parent.y,
-		innerCentreX: (minX + maxX) * 0.5,
-		innerCentreY: (minY + maxY) * 0.5,
+		innerCentreX: layout.centreX,
+		innerCentreY: layout.centreY,
 		scale,
 	};
 }
@@ -97,8 +108,8 @@ function transformFor(frame: PortalFrame, unfoldT: number): PositionTransform {
 	const k = 1 - unfoldT;
 	return (n) => {
 		const compactX = frame.parentX + (n.x - frame.innerCentreX) * frame.scale;
-		const compactY = frame.parentY + (n.y - frame.innerCentreY) * frame.scale
-			+ BODY_WINDOW_CY;
+		const compactY =
+			frame.parentY + (n.y - frame.innerCentreY) * frame.scale + BODY_WINDOW_CY;
 		const unfoldedX = frame.parentX + n.x;
 		const unfoldedY = frame.parentY + n.y;
 		return {
@@ -109,6 +120,14 @@ function transformFor(frame: PortalFrame, unfoldT: number): PositionTransform {
 }
 
 export type PortRef = { nodeId: number; kind: PortKind; portIdx: number };
+
+export type BeginEnterOptions = {
+	/**
+	 * When true (zoom-to-enter on a framed gate already zoomed-in), skip leading
+	 * camera move that fills the card — swap into the subgraph immediately.
+	 */
+	skipLeadIntoCard?: boolean;
+};
 
 export type SceneHandle = {
 	renderer: THREE.WebGLRenderer;
@@ -125,7 +144,7 @@ export type SceneHandle = {
 	) => PortRef | null;
 	frameRect: (x: number, y: number, w: number, h: number) => void;
 	getZoom: () => number;
-	beginEnter: (parentId: number) => boolean;
+	beginEnter: (parentId: number, options?: BeginEnterOptions) => boolean;
 	beginExit: () => boolean;
 	isTransitioning: () => boolean;
 	dispose: () => void;
@@ -142,6 +161,36 @@ export function setupScene(container: HTMLElement): SceneHandle {
 	const camera = new Camera(container);
 	camera.resize();
 
+	type PortalTransitionPhase = "idle" | "framing-enter" | "enter" | "exit";
+
+	let phase: PortalTransitionPhase = "idle";
+	let phaseStart = 0;
+	let unfoldT = 1;
+	let portalFrame: PortalFrame = {
+		parentX: 0,
+		parentY: 0,
+		innerCentreX: 0,
+		innerCentreY: 0,
+		scale: 1,
+	};
+	let pendingExit = false;
+	let parentWorldX = 0;
+	let parentWorldY = 0;
+	let stagedEnterLeadInterrupted = false;
+	let stagedEnterLead: Node | null = null;
+
+	const rejectStagingEnterLead = () => {
+		stagedEnterLead = null;
+		stagedEnterLeadInterrupted = false;
+		phase = "idle";
+	};
+
+	const originalCancelTween = camera.cancelTween.bind(camera);
+	camera.cancelTween = () => {
+		if (phase === "framing-enter") stagedEnterLeadInterrupted = true;
+		originalCancelTween();
+	};
+
 	const scene = new THREE.Scene();
 	const pathCompute = createPathCompute(renderer);
 	const preview = new PreviewPass();
@@ -151,7 +200,10 @@ export function setupScene(container: HTMLElement): SceneHandle {
 	// sampled texture in the same draw.
 	const placeholderTex = new THREE.DataTexture(
 		new Uint8Array([0, 0, 0, 255]),
-		1, 1, THREE.RGBAFormat, THREE.UnsignedByteType,
+		1,
+		1,
+		THREE.RGBAFormat,
+		THREE.UnsignedByteType,
 	);
 	placeholderTex.needsUpdate = true;
 	const nodeLayer = new NodeLayer(preview.target.texture);
@@ -290,7 +342,10 @@ export function setupScene(container: HTMLElement): SceneHandle {
 	let lastFrameMs = performance.now();
 	let previewBlend = 0;
 
-	const computeFramedParent = (): { slot: number; parent: FramedParent | null } => {
+	const computeFramedParent = (): {
+		slot: number;
+		parent: FramedParent | null;
+	} => {
 		const state = vectorStore.state;
 		if (state.framedNodeId === null) return { slot: -1, parent: null };
 		const lvl = currentLevel(state);
@@ -298,7 +353,10 @@ export function setupScene(container: HTMLElement): SceneHandle {
 		if (idx < 0) return { slot: -1, parent: null };
 		const node = lvl.nodes[idx];
 		if (node.nodes.length === 0) return { slot: -1, parent: null };
-		return { slot: idx, parent: { id: node.id, nodes: node.nodes, edges: node.edges } };
+		return {
+			slot: idx,
+			parent: { id: node.id, nodes: node.nodes, edges: node.edges },
+		};
 	};
 
 	const renderPreviewPass = (parent: FramedParent, slot: number) => {
@@ -331,36 +389,83 @@ export function setupScene(container: HTMLElement): SceneHandle {
 	};
 
 	/*
-	Unfold state. While transitionPhase is non-idle, the inner level's nodes
-	are rendered at lerp(compact, full, unfoldT). On "enter" the camera tween
-	and unfoldT both run 0 → 1 in parallel. On "exit" we run unfoldT 1 → 0
-	*first*, then pop the level (so the camera ease-out from snapAndEaseTo
-	already has the now-collapsed sub-graph behind it).
+	Unfold state. Outer lead-in framing-enter runs before the level swap +
+	unfold enter phase. Hoisted PortalTransitionPhase + portalFrame live above.
 	*/
-	type Phase = "idle" | "enter" | "exit";
-	let phase: Phase = "idle";
-	let phaseStart = 0;
-	let unfoldT = 1; // 1 = fully expanded (top-level default)
-	// During a transition, both levels share inner-world coordinates: the
-	// parent's centre is at the origin (parentX = parentY = 0). At enter
-	// start, we shift the camera so visually nothing changes despite the
-	// level swap. At exit end, we shift back when popping.
-	let portalFrame: PortalFrame = {
-		parentX: 0, parentY: 0,
-		innerCentreX: 0, innerCentreY: 0, scale: 1,
-	};
-	let pendingExit = false;
-	// Cached parent world position so exit can shift the camera back into
-	// parent-world without re-reading the (now-popped) store level.
-	let parentWorldX = 0;
-	let parentWorldY = 0;
-
 	const activeTransform = (): PositionTransform | undefined => {
-		if (phase === "idle" || unfoldT >= 0.999) return undefined;
+		if (phase === "idle" || phase === "framing-enter" || unfoldT >= 0.999) {
+			return undefined;
+		}
 		return transformFor(portalFrame, unfoldT);
 	};
 
-	const beginEnter = (parentId: number): boolean => {
+	const commitSubgraphInteriorEnter = (parentGate: Node) => {
+		parentWorldX = parentGate.x;
+		parentWorldY = parentGate.y;
+
+		let minX = Infinity;
+		let maxX = -Infinity;
+		let minY = Infinity;
+		let maxY = -Infinity;
+		for (const child of parentGate.nodes) {
+			if (child.x - NODE_W / 2 < minX) minX = child.x - NODE_W / 2;
+			if (child.x + NODE_W / 2 > maxX) maxX = child.x + NODE_W / 2;
+			if (child.y - NODE_H / 2 < minY) minY = child.y - NODE_H / 2;
+			if (child.y + NODE_H / 2 > maxY) maxY = child.y + NODE_H / 2;
+		}
+		const pad = Math.max(NODE_W, NODE_H) * 0.5;
+		minX -= pad;
+		maxX += pad;
+		minY -= pad;
+		maxY += pad;
+
+		vectorStore.actions.enter(parentGate.id);
+		camera.x -= parentGate.x;
+		camera.y -= parentGate.y;
+		camera.resize();
+
+		portalFrame = computePortalFrame({
+			x: 0,
+			y: 0,
+			nodes: parentGate.nodes,
+		});
+
+		const fit = camera.fitTarget(
+			minX,
+			minY,
+			maxX,
+			maxY,
+			PORTAL_EXPANDED_GRAPH_FILL,
+		);
+		const transitionStartMs = performance.now();
+
+		camera.snapAndEaseTo(
+			camera.x,
+			camera.y,
+			camera.zoom,
+			fit.x,
+			fit.y,
+			fit.zoom,
+			UNFOLD_DURATION_MS,
+			transitionStartMs,
+		);
+		unfoldT = 0;
+		phase = "enter";
+		phaseStart = transitionStartMs;
+	};
+
+	const finalizeLeadStagingAndEnterSubgraph = () => {
+		const parentGate = stagedEnterLead;
+		if (!parentGate) return;
+		stagedEnterLead = null;
+		stagedEnterLeadInterrupted = false;
+		commitSubgraphInteriorEnter(parentGate);
+	};
+
+	const beginEnter = (
+		parentId: number,
+		options?: BeginEnterOptions,
+	): boolean => {
 		if (phase !== "idle") return false;
 		const outerLvl = currentLevel(vectorStore.state);
 		const parent = outerLvl.nodes.find((n) => n.id === parentId);
@@ -369,43 +474,37 @@ export function setupScene(container: HTMLElement): SceneHandle {
 			return true;
 		}
 
-		// Capture the parent's world position before swapping levels.
-		parentWorldX = parent.x;
-		parentWorldY = parent.y;
-
-		// Inner AABB in inner-world (where the parent's centre is at origin).
-		let minX = Infinity, maxX = -Infinity;
-		let minY = Infinity, maxY = -Infinity;
-		for (const c of parent.nodes) {
-			if (c.x - NODE_W / 2 < minX) minX = c.x - NODE_W / 2;
-			if (c.x + NODE_W / 2 > maxX) maxX = c.x + NODE_W / 2;
-			if (c.y - NODE_H / 2 < minY) minY = c.y - NODE_H / 2;
-			if (c.y + NODE_H / 2 > maxY) maxY = c.y + NODE_H / 2;
+		if (options?.skipLeadIntoCard) {
+			commitSubgraphInteriorEnter(parent);
+			return true;
 		}
-		const pad = Math.max(NODE_W, NODE_H) * 0.5;
-		minX -= pad; maxX += pad; minY -= pad; maxY += pad;
 
-		// Swap level. Inner-world's origin sits at parent's (Px,Py) in
-		// parent-world. Translate the camera by -(Px,Py) so the same pixels
-		// remain on screen.
-		vectorStore.actions.enter(parentId);
-		camera.x -= parent.x;
-		camera.y -= parent.y;
-		camera.resize();
+		stagedEnterLeadInterrupted = false;
+		stagedEnterLead = parent;
+		phase = "framing-enter";
 
-		portalFrame = computePortalFrame({
-			x: 0, y: 0, nodes: parent.nodes,
-		});
-
-		const fit = camera.fitTarget(minX, minY, maxX, maxY);
-		camera.snapAndEaseTo(
-			camera.x, camera.y, camera.zoom,
-			fit.x, fit.y, fit.zoom,
-			UNFOLD_DURATION_MS,
+		const halfCardW = NODE_W * 0.5;
+		const halfCardH = NODE_H * 0.5;
+		const heroFit = camera.fitTarget(
+			parent.x - halfCardW,
+			parent.y - halfCardH,
+			parent.x + halfCardW,
+			parent.y + halfCardH,
+			GATE_CARD_LEAD_FILL,
 		);
-		unfoldT = 0;
-		phase = "enter";
-		phaseStart = performance.now();
+		const leadStartMs = performance.now();
+
+		camera.snapAndEaseTo(
+			camera.x,
+			camera.y,
+			camera.zoom,
+			heroFit.x,
+			heroFit.y,
+			heroFit.zoom,
+			GATE_LEAD_FRAMING_MS,
+			leadStartMs,
+		);
+
 		return true;
 	};
 
@@ -423,36 +522,50 @@ export function setupScene(container: HTMLElement): SceneHandle {
 			if (!next) break;
 			outerNodes = next.nodes;
 		}
-		const parent = outerNodes.find(
-			(n) => n.id === path[path.length - 1],
-		);
+		const parent = outerNodes.find((n) => n.id === path[path.length - 1]);
 		parentWorldX = parent?.x ?? 0;
 		parentWorldY = parent?.y ?? 0;
 
 		portalFrame = computePortalFrame({
-			x: 0, y: 0, nodes: lvl.nodes,
+			x: 0,
+			y: 0,
+			nodes: lvl.nodes,
 		});
 
 		// Camera target: fit the body window rect around the origin so the
 		// fully-folded sub-graph lands inside it.
-		const halfW = BODY_WINDOW_W * 0.5;
-		const halfH = BODY_WINDOW_H * 0.5;
+		const { width: bodyWinW, height: bodyWinH } = bodyWindowWorld();
+		const halfW = bodyWinW * 0.5;
+		const halfH = bodyWinH * 0.5;
 		const cy = BODY_WINDOW_CY;
-		const fit = camera.fitTarget(-halfW, cy - halfH, halfW, cy + halfH);
+		const fit = camera.fitTarget(
+			-halfW,
+			cy - halfH,
+			halfW,
+			cy + halfH,
+			PORTAL_BODY_WINDOW_FILL,
+		);
+		const transitionStartMs = performance.now();
+
 		camera.snapAndEaseTo(
-			camera.x, camera.y, camera.zoom,
-			fit.x, fit.y, fit.zoom,
+			camera.x,
+			camera.y,
+			camera.zoom,
+			fit.x,
+			fit.y,
+			fit.zoom,
 			UNFOLD_DURATION_MS,
+			transitionStartMs,
 		);
 		unfoldT = 1;
 		phase = "exit";
-		phaseStart = performance.now();
+		phaseStart = transitionStartMs;
 		pendingExit = true;
 		return true;
 	};
 
 	const tickPhase = (now: number) => {
-		if (phase === "idle") return false;
+		if (phase === "idle" || phase === "framing-enter") return false;
 		const t = Math.min(1, (now - phaseStart) / UNFOLD_DURATION_MS);
 		const k = easeInOutCubic(t);
 		unfoldT = phase === "enter" ? k : 1 - k;
@@ -479,13 +592,31 @@ export function setupScene(container: HTMLElement): SceneHandle {
 		const dt = Math.min(0.1, (now - lastFrameMs) / 1000);
 		lastFrameMs = now;
 
-		const cameraMoved = camera.tickTween(now);
+		let cameraMoved = false;
+
+		if (phase === "framing-enter") {
+			if (stagedEnterLeadInterrupted) {
+				rejectStagingEnterLead();
+				cameraMoved = camera.tickTween(now);
+			} else {
+				const hadLeadTween = camera.tween !== null;
+				cameraMoved = camera.tickTween(now);
+				if (hadLeadTween && camera.tween === null) {
+					finalizeLeadStagingAndEnterSubgraph();
+					cameraMoved = camera.tickTween(now) || cameraMoved;
+				}
+			}
+		} else {
+			cameraMoved = camera.tickTween(now);
+		}
+
 		const phaseAdvanced = tickPhase(now);
 		if (cameraMoved || phaseAdvanced) syncView();
 
 		const { slot, parent } = computeFramedParent();
 		const blendTarget = parent ? 1 : 0;
-		previewBlend += (blendTarget - previewBlend) * Math.min(1, dt * PREVIEW_BLEND_RATE);
+		previewBlend +=
+			(blendTarget - previewBlend) * Math.min(1, dt * PREVIEW_BLEND_RATE);
 		nodeLayer.setPreview(slot, previewBlend);
 
 		if (parent) {

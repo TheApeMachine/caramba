@@ -461,3 +461,69 @@ func runMetalHebbianStep(
 
 	return tensor.ErrNeedsPlatformSetup
 }
+
+func runMetalInt8Dequant(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalInt4Dequant(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalInt8Quant(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalPairLossKernel(operation metalLossOp, args ...tensor.Tensor) error {
+	_ = operation
+	_ = args
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalCrossEntropyLoss(input tensor.Tensor, targets tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = targets
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalReductionKernel(operation metalReductionOp, args ...tensor.Tensor) error {
+	_ = operation
+	_ = args
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalInvSqrtDimScale(input tensor.Tensor, dim tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = dim
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalLogSumExp(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalOuter(left tensor.Tensor, right tensor.Tensor, out tensor.Tensor) error {
+	_ = left
+	_ = right
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}

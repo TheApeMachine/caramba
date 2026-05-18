@@ -112,17 +112,21 @@ export class Camera {
 		};
 	}
 
-	/* Comfortable framing of an AABB (~60% of smaller dim). */
+	/* Comfortable framing of an AABB (`fillFraction` of the tighter axis). */
 	fitTarget(
 		minX: number,
 		minY: number,
 		maxX: number,
 		maxY: number,
+		fillFraction = 0.6,
 	): { x: number; y: number; zoom: number } {
 		const { w: cw, h: ch } = this.viewportSize();
 		const w = Math.max(1, maxX - minX);
 		const h = Math.max(1, maxY - minY);
-		const zoom = Math.min(8, Math.max(0.1, 0.6 * Math.min(cw / w, ch / h)));
+		const zoom = Math.min(
+			8,
+			Math.max(0.1, fillFraction * Math.min(cw / w, ch / h)),
+		);
 		return {
 			x: (minX + maxX) * 0.5,
 			y: (minY + maxY) * 0.5,
@@ -143,6 +147,7 @@ export class Camera {
 		toY: number,
 		toZoom: number,
 		duration = 600,
+		startAtMs?: number,
 	): void {
 		this.x = fromX;
 		this.y = fromY;
@@ -155,7 +160,7 @@ export class Camera {
 			toX,
 			toY,
 			toZoom,
-			start: performance.now(),
+			start: startAtMs ?? performance.now(),
 			duration,
 		};
 	}

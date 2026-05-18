@@ -53,9 +53,7 @@ export const NodeGraph = () => {
 	const dragMovedRef = useRef(false);
 	const [palette, setPalette] = useState<PaletteState | null>(null);
 
-	const level = useSelector(vectorStore, (s) =>
-		currentLevel(s),
-	);
+	const level = useSelector(vectorStore, (s) => currentLevel(s));
 	const path = useSelector(vectorStore, (s) => s.path);
 
 	const onMouseDown = useEffectEvent((evt: MouseEvent) => {
@@ -108,7 +106,10 @@ export const NodeGraph = () => {
 		// Ignore sub-pixel jitter so a normal click isn't classified as a drag.
 		const dx = evt.clientX - mode.downX;
 		const dy = evt.clientY - mode.downY;
-		if (!dragMovedRef.current && dx * dx + dy * dy < CLICK_SLOP_PX * CLICK_SLOP_PX) {
+		if (
+			!dragMovedRef.current &&
+			dx * dx + dy * dy < CLICK_SLOP_PX * CLICK_SLOP_PX
+		) {
 			return;
 		}
 		const [wx, wy] = scene.worldFromScreen(evt.clientX, evt.clientY);
@@ -272,15 +273,12 @@ export const NodeGraph = () => {
 			const id = framedNodeRef.current;
 			if (id !== null && zoom >= ENTER_ZOOM_THRESHOLD) {
 				framedNodeRef.current = null;
-				if (scene.beginEnter(id)) {
+				if (scene.beginEnter(id, { skipLeadIntoCard: true })) {
 					cooldownUntil = performance.now() + LEVEL_CHANGE_COOLDOWN_MS;
 				}
 				return;
 			}
-			if (
-				vectorStore.state.path.length > 0 &&
-				zoom <= EXIT_ZOOM_THRESHOLD
-			) {
+			if (vectorStore.state.path.length > 0 && zoom <= EXIT_ZOOM_THRESHOLD) {
 				if (scene.beginExit()) {
 					cooldownUntil = performance.now() + LEVEL_CHANGE_COOLDOWN_MS;
 				}
@@ -328,9 +326,9 @@ export const NodeGraph = () => {
 				<br />
 				nodes: {level.nodes.length} edges: {level.edges.length}
 				<br />
-				drag empty → pan · click node → frame · drag node → move ·
-				drag from port → edge · double-click node → enter ·
-				right-click → add node · wheel → zoom · Esc → up
+				drag empty → pan · click node → frame · drag node → move · drag from
+				port → edge · double-click gates → hero zoom then enter · right-click →
+				add node · wheel → zoom · framed + zoom threshold → enter · Esc → up
 			</div>
 			<NodeLabels sceneRef={sceneRef} />
 			{palette ? (

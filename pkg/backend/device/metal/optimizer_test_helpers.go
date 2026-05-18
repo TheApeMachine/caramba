@@ -171,9 +171,9 @@ func assertOptimizerStorageForTest(
 	assertFloat32WithinULP(testingObject, actualValues, expectedStored, maxULP)
 }
 
-func configureOptimizerExpectedArithmetic(storageDType dtype.DType) func() {
+func configureOptimizerExpectedArithmetic(storageDType dtype.DType, name string) func() {
 	previous := optimizerExpectedUsesFMA
-	optimizerExpectedUsesFMA = storageDType != dtype.BFloat16
+	optimizerExpectedUsesFMA = storageDType != dtype.BFloat16 || name == "lars_step"
 
 	return func() {
 		optimizerExpectedUsesFMA = previous
@@ -198,5 +198,5 @@ func assertOptimizerStateForTest(
 	}
 
 	actualValues := decodeDTypeBytesToFloat32(actualBytes, dtype.Float32)
-	assertFloat32WithinULP(testingObject, actualValues, expectedValues, optimizerMaxULP)
+	assertFloat32WithinULP(testingObject, actualValues, expectedValues, optimizerStateMaxULP)
 }

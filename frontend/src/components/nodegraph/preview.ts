@@ -1,18 +1,36 @@
 import * as THREE from "three";
-import { type Edge, NODE_H, NODE_W, type Node } from "./vector";
+import type { Edge, Node } from "./vector";
+import { bodyWindowWorld, innerNodesLayoutBounds } from "./vector";
+
+export type FramedParent = {
+	id: number;
+	nodes: Node[];
+	edges: Edge[];
+};
 
 /**
  * PreviewPass — owns the off-screen render target the framed node's body
- * samples. The renderer chooses a square fit of the inner graph's AABB and
- * the main scene is rendered into it with the framed-node uniform pinned
- * off so we don't sample our own output.
+ * samples. The orthographic aperture matches {@link bodyWindowWorld} aspect
+ * and minimally contains the nested layout bounds, aligned with portal
+ * compact framing (see `portalCompactScale` / `computePortalFrame` in scene).
  */
 export class PreviewPass {
 	readonly target: THREE.WebGLRenderTarget;
 	readonly camera = new THREE.OrthographicCamera();
 
-	constructor(size = 512) {
-		this.target = new THREE.WebGLRenderTarget(size, size, {
+	constructor(baseLongEdgePx = 640) {
+		const body = bodyWindowWorld();
+		const aspect = Math.max(body.width / body.height, 1 / 4096);
+
+		let widthPx = Math.max(64, Math.round(baseLongEdgePx));
+		let heightPx = Math.max(64, Math.round(widthPx / aspect));
+
+		if (!Number.isFinite(widthPx) || !Number.isFinite(heightPx)) {
+			widthPx = 512;
+			heightPx = Math.round(widthPx / aspect);
+		}
+
+		this.target = new THREE.WebGLRenderTarget(widthPx, heightPx, {
 			minFilter: THREE.LinearFilter,
 			magFilter: THREE.LinearFilter,
 			format: THREE.RGBAFormat,
@@ -24,34 +42,54 @@ export class PreviewPass {
 	}
 
 	fitToNodes(nodes: { x: number; y: number }[]): void {
-		let minX = Infinity,
-			maxX = -Infinity;
+		const layout =
+			nodes.length === 0
+				? {
+						minX: 0,
+						maxX: 1,
+						minY: 0,
+						maxY: 1,
+						centreX: 0,
+						centreY: 0,
+						width: 1,
+						height: 1,
+					}
+				: innerNodesLayoutBounds(nodes);
 
-		let minY = Infinity,
-			maxY = -Infinity;
+		const body = bodyWindowWorld();
 
-		const pad = Math.max(NODE_W, NODE_H);
+		const bodyAspect = body.width / body.height;
 
-		for (const n of nodes) {
-			if (n.x - NODE_W / 2 < minX) minX = n.x - NODE_W / 2;
-			if (n.x + NODE_W / 2 > maxX) maxX = n.x + NODE_W / 2;
-			if (n.y - NODE_H / 2 < minY) minY = n.y - NODE_H / 2;
-			if (n.y + NODE_H / 2 > maxY) maxY = n.y + NODE_H / 2;
+		const halfBBoxW = layout.width * 0.5;
+
+		const halfBBoxH = layout.height * 0.5;
+
+		let paddedHalfW: number;
+		let paddedHalfH: number;
+
+		const bboxAspect = halfBBoxW / Math.max(halfBBoxH, 1 / 8192);
+
+		if (bboxAspect > bodyAspect) {
+			paddedHalfW = halfBBoxW;
+
+			paddedHalfH = halfBBoxW / bodyAspect;
+		} else {
+			paddedHalfH = halfBBoxH;
+
+			paddedHalfW = halfBBoxH * bodyAspect;
 		}
 
-		minX -= pad;
-		maxX += pad;
-		minY -= pad;
-		maxY += pad;
+		const cx = layout.centreX;
 
-		const cx = (minX + maxX) * 0.5;
-		const cy = (minY + maxY) * 0.5;
-		const side = Math.max(maxX - minX, maxY - minY, 1);
+		const cy = layout.centreY;
 
-		this.camera.left = cx - side / 2;
-		this.camera.right = cx + side / 2;
-		this.camera.top = cy + side / 2;
-		this.camera.bottom = cy - side / 2;
+		this.camera.left = cx - paddedHalfW;
+
+		this.camera.right = cx + paddedHalfW;
+
+		this.camera.top = cy + paddedHalfH;
+
+		this.camera.bottom = cy - paddedHalfH;
 
 		this.camera.updateProjectionMatrix();
 	}
@@ -60,9 +98,3 @@ export class PreviewPass {
 		this.target.dispose();
 	}
 }
-
-export type FramedParent = {
-	id: number;
-	nodes: Node[];
-	edges: Edge[];
-};
