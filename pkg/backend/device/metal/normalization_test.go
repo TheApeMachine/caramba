@@ -88,7 +88,7 @@ func runLayerNormParityCase(
 ) {
 	rows := 13
 	inputBytes, scaleBytes, biasBytes := normDTypeBytes(rows, cols, storageDType)
-	expectedBytes := hostLayerNormExpectedBytes(testingObject, rows, cols, storageDType)
+	expectedBytes := expectedLayerNormBytesForTest(rows, cols, storageDType)
 	input, scale, bias, out := layerNormTensorsForTest(
 		testingObject, backend, rows, cols, storageDType, inputBytes, scaleBytes, biasBytes,
 	)
@@ -108,7 +108,7 @@ func runRMSNormParityCase(
 ) {
 	rows := 13
 	inputBytes, scaleBytes, _ := normDTypeBytes(rows, cols, storageDType)
-	expectedBytes := hostRMSNormExpectedBytes(testingObject, rows, cols, storageDType)
+	expectedBytes := expectedRMSNormBytesForTest(rows, cols, storageDType)
 	input, scale, out := rmsNormTensorsForTest(
 		testingObject, backend, rows, cols, storageDType, inputBytes, scaleBytes,
 	)

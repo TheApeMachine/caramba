@@ -168,10 +168,14 @@ reductions over the trailing dimension.
 Metal softmax covers the same storage dtypes with one threadgroup per
 row, parallel max reduction, parallel sum reduction, and normalized
 dtype-native writes. Metal normalization covers `layernorm` and
-`rmsnorm` for the same storage dtypes with row-local parallel
-reductions and dtype-native writes. These families run through the
-device command queue with async completion, pooled `MTLBuffer`
-storage, and per-kernel pipeline caching.
+`rmsnorm` for the same storage dtypes with row-local reductions and
+dtype-native writes. Metal research kernels cover `vsa_bind`,
+`vsa_bundle`, `vsa_permute`, `vsa_inverse_permute`, `pc_prediction`,
+`pc_prediction_error`, `pc_update_representation`, and
+`pc_update_weights` for the same storage dtypes, using fp32
+accumulation for predictive-coding matrix/vector contractions. These
+families run through the device command queue with async completion,
+pooled `MTLBuffer` storage, and per-kernel pipeline caching.
 
 Every backend implements the same interface, and the optimizer does the same math everywhere:
 

@@ -221,3 +221,170 @@ adamw_loop4:
 
 adamw_done:
     RET
+
+// FABS .4S
+#define VFABS_S4(n, d)  WORD $(0x4EA0F800 | ((n) << 5) | (d))
+
+// func adamaxStepFloat32NEONAsm(
+//     params, grad, first, infinity, output *float32,
+//     n int,
+//     lr, beta1, beta2, eps, beta1Corr float32,
+// )
+//
+// firstNew = beta1*first + (1-beta1)*grad
+// infNew   = max(beta2*inf, |grad|)
+// biasFirst = firstNew/beta1Corr
+// out      = params - lr * biasFirst / (infNew + eps)
+TEXT ·adamaxStepFloat32NEONAsm(SB), NOSPLIT, $0-68
+    MOVD params+0(FP), R0
+    MOVD grad+8(FP), R1
+    MOVD first+16(FP), R2
+    MOVD infinity+24(FP), R3
+    MOVD output+32(FP), R4
+    MOVD n+40(FP), R5
+
+    FMOVS lr+48(FP), F16        ; VDUP V16.S[0], V16.S4
+    FMOVS beta1+52(FP), F17     ; VDUP V17.S[0], V17.S4
+    FMOVS beta2+56(FP), F18     ; VDUP V18.S[0], V18.S4
+    FMOVS eps+60(FP), F19       ; VDUP V19.S[0], V19.S4
+    FMOVS beta1Corr+64(FP), F20 ; VDUP V20.S[0], V20.S4
+
+    MOVD $0x3F800000, R6
+    VMOV R6, V22.S[0]
+    VDUP V22.S[0], V22.S4
+    VFSUB_S4(17, 22, 23)         // V23 = 1 - beta1
+
+adamax_loop4:
+    CMP  $4, R5
+    BLT  adamax_done
+    VLD1 (R0), [V0.S4]
+    VLD1 (R1), [V1.S4]
+    VLD1 (R2), [V2.S4]
+    VLD1 (R3), [V3.S4]
+    // firstNew = beta1*first + (1-beta1)*grad
+    VFMUL_S4(17, 2, 2)
+    VFMLA_S4(1, 23, 2)
+    // infNew = max(beta2*inf, |grad|)
+    VFMUL_S4(18, 3, 3)
+    VFABS_S4(1, 4)
+    // FMAX V_d.S4 = max(V_n.S4, V_m.S4) — encoding 0x4E20F400
+    WORD $(0x4E20F400 | (3 << 16) | (4 << 5) | 3)
+    // biasFirst = firstNew / beta1Corr
+    VFDIV_S4(20, 2, 5)
+    // denom = inf + eps
+    VFADD_S4(19, 3, 6)
+    // step = lr * biasFirst / denom
+    VFMUL_S4(16, 5, 5)
+    VFDIV_S4(6, 5, 5)
+    VFSUB_S4(5, 0, 0)
+    VST1 [V2.S4], (R2)
+    VST1 [V3.S4], (R3)
+    VST1 [V0.S4], (R4)
+    ADD  $16, R0
+    ADD  $16, R1
+    ADD  $16, R2
+    ADD  $16, R3
+    ADD  $16, R4
+    SUB  $4, R5
+    B    adamax_loop4
+
+adamax_done:
+    RET
+
+// func adagradStepFloat32NEONAsm(
+//     params, grad, accum, output *float32,
+//     n int,
+//     lr, eps float32,
+// )
+//
+// accumNew = accum + grad²
+// out = params - lr * grad / (sqrt(accumNew) + eps)
+TEXT ·adagradStepFloat32NEONAsm(SB), NOSPLIT, $0-48
+    MOVD params+0(FP), R0
+    MOVD grad+8(FP), R1
+    MOVD accum+16(FP), R2
+    MOVD output+24(FP), R3
+    MOVD n+32(FP), R4
+
+    FMOVS lr+40(FP), F16  ; VDUP V16.S[0], V16.S4
+    FMOVS eps+44(FP), F17 ; VDUP V17.S[0], V17.S4
+
+ag_loop4:
+    CMP  $4, R4
+    BLT  ag_done
+    VLD1 (R0), [V0.S4]
+    VLD1 (R1), [V1.S4]
+    VLD1 (R2), [V2.S4]
+    // accumNew = accum + grad²
+    VFMLA_S4(1, 1, 2)          // V2 += V1*V1
+    // denom = sqrt(accumNew) + eps
+    VFSQRT_S4(2, 3)
+    VFADD_S4(17, 3, 3)
+    // step = lr * grad / denom
+    VFMUL_S4(16, 1, 4)
+    VFDIV_S4(3, 4, 4)
+    VFSUB_S4(4, 0, 0)
+    VST1 [V2.S4], (R2)
+    VST1 [V0.S4], (R3)
+    ADD  $16, R0
+    ADD  $16, R1
+    ADD  $16, R2
+    ADD  $16, R3
+    SUB  $4, R4
+    B    ag_loop4
+
+ag_done:
+    RET
+
+// func rmspropStepFloat32NEONAsm(
+//     params, grad, second, output *float32,
+//     n int,
+//     lr, decay, eps float32,
+// )
+//
+// secondNew = decay*second + (1-decay)*grad²
+// out = params - lr * grad / (sqrt(secondNew) + eps)
+TEXT ·rmspropStepFloat32NEONAsm(SB), NOSPLIT, $0-52
+    MOVD params+0(FP), R0
+    MOVD grad+8(FP), R1
+    MOVD second+16(FP), R2
+    MOVD output+24(FP), R3
+    MOVD n+32(FP), R4
+
+    FMOVS lr+40(FP), F16    ; VDUP V16.S[0], V16.S4
+    FMOVS decay+44(FP), F17 ; VDUP V17.S[0], V17.S4
+    FMOVS eps+48(FP), F18   ; VDUP V18.S[0], V18.S4
+
+    MOVD $0x3F800000, R6
+    VMOV R6, V22.S[0]
+    VDUP V22.S[0], V22.S4
+    VFSUB_S4(17, 22, 23)        // V23 = 1 - decay
+
+rms_loop4:
+    CMP  $4, R4
+    BLT  rms_done
+    VLD1 (R0), [V0.S4]
+    VLD1 (R1), [V1.S4]
+    VLD1 (R2), [V2.S4]
+    // secondNew = decay*second + (1-decay)*grad²
+    VFMUL_S4(17, 2, 2)
+    VFMUL_S4(1, 1, 4)
+    VFMLA_S4(4, 23, 2)
+    // denom = sqrt(V2) + eps
+    VFSQRT_S4(2, 5)
+    VFADD_S4(18, 5, 5)
+    // step = lr * grad / denom
+    VFMUL_S4(16, 1, 4)
+    VFDIV_S4(5, 4, 4)
+    VFSUB_S4(4, 0, 0)
+    VST1 [V2.S4], (R2)
+    VST1 [V0.S4], (R3)
+    ADD  $16, R0
+    ADD  $16, R1
+    ADD  $16, R2
+    ADD  $16, R3
+    SUB  $4, R4
+    B    rms_loop4
+
+rms_done:
+    RET

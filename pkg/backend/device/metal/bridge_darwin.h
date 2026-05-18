@@ -640,6 +640,112 @@ int metal_dispatch_outer(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_research_unary(
+    MetalDeviceRef contextRef,
+    int operation,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_research_binary(
+    MetalDeviceRef contextRef,
+    int operation,
+    int elementDType,
+    MetalBufferRef leftRef,
+    MetalBufferRef rightRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_pc_prediction(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef weightsRef,
+    MetalBufferRef stateRef,
+    MetalBufferRef outRef,
+    uint32_t outCount,
+    uint32_t inCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_pc_update_representation(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef weightsRef,
+    MetalBufferRef stateRef,
+    MetalBufferRef errorRef,
+    MetalBufferRef outRef,
+    uint32_t outCount,
+    uint32_t inCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_pc_update_weights(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef weightsRef,
+    MetalBufferRef stateRef,
+    MetalBufferRef errorRef,
+    MetalBufferRef outRef,
+    uint32_t outCount,
+    uint32_t inCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_active_free_energy(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef likelihoodRef,
+    MetalBufferRef posteriorRef,
+    MetalBufferRef priorRef,
+    MetalBufferRef scratchRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint32_t partialCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_expected_free_energy(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef predictedObsRef,
+    MetalBufferRef preferredObsRef,
+    MetalBufferRef predictedStateRef,
+    MetalBufferRef scratchRef,
+    MetalBufferRef outRef,
+    uint32_t obsCount,
+    uint32_t stateCount,
+    uint32_t obsPartialCount,
+    uint32_t statePartialCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_belief_update(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef likelihoodRef,
+    MetalBufferRef priorRef,
+    MetalBufferRef scratchRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint32_t partialCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_precision_weight(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef errorsRef,
+    MetalBufferRef precisionRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 void metal_device_release(MetalDeviceRef contextRef);
 
 #ifdef __cplusplus

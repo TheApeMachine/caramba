@@ -35,4 +35,30 @@ int metal_transformer_dispatch(
     MetalTransformerEncodeBlock encode
 );
 
+void metal_attention_status_clear(MetalStatus* status);
+
+void metal_attention_complete(
+    uint64_t completionToken,
+    id<MTLCommandBuffer> completedBuffer
+);
+
+int metal_attention_pipeline(
+    MetalContext* context,
+    const char* operationName,
+    int elementDType,
+    MetalStatus* status,
+    id<MTLComputePipelineState>* pipeline
+);
+
+id<MTLCommandBuffer> metal_attention_command_buffer(
+    MetalContext* context,
+    MetalStatus* status
+);
+
+id<MTLComputeCommandEncoder> metal_attention_encoder(
+    id<MTLCommandBuffer> commandBuffer,
+    id<MTLComputePipelineState> pipeline,
+    MetalStatus* status
+);
+
 #endif

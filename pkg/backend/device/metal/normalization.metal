@@ -53,9 +53,13 @@ static inline float reduce_sum(
     uint threadIndex
 ) {
     float localSum = 0.0f;
+    float localCompensation = 0.0f;
 
     for (uint col = threadIndex; col < cols; col += normalizationThreadCount) {
-        localSum += Storage::load(input, rowOffset + col);
+        float value = Storage::load(input, rowOffset + col) - localCompensation;
+        float nextSum = localSum + value;
+        localCompensation = (nextSum - localSum) - value;
+        localSum = nextSum;
     }
 
     reduction[threadIndex] = localSum;
@@ -87,10 +91,14 @@ static inline void layernorm_rows(
     float mean = reduce_sum<Storage, Scalar>(input, reduction, rowOffset, cols, threadIndex) /
         float(cols);
     float localVariance = 0.0f;
+    float localCompensation = 0.0f;
 
     for (uint col = threadIndex; col < cols; col += normalizationThreadCount) {
         float delta = Storage::load(input, rowOffset + col) - mean;
-        localVariance += delta * delta;
+        float value = delta * delta - localCompensation;
+        float nextVariance = localVariance + value;
+        localCompensation = (nextVariance - localVariance) - value;
+        localVariance = nextVariance;
     }
 
     reduction[threadIndex] = localVariance;
@@ -104,7 +112,7 @@ static inline void layernorm_rows(
         threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 
-    float invStdDev = rsqrt(reduction[0] / float(cols) + layerNormEpsilonMetal);
+    float invStdDev = 1.0f / sqrt(reduction[0] / float(cols) + layerNormEpsilonMetal);
 
     for (uint col = threadIndex; col < cols; col += normalizationThreadCount) {
         float normalized = (Storage::load(input, rowOffset + col) - mean) * invStdDev;
@@ -125,10 +133,14 @@ static inline void rmsnorm_rows(
 ) {
     uint rowOffset = row * cols;
     float localSquareSum = 0.0f;
+    float localCompensation = 0.0f;
 
     for (uint col = threadIndex; col < cols; col += normalizationThreadCount) {
         float value = Storage::load(input, rowOffset + col);
-        localSquareSum += value * value;
+        float square = value * value - localCompensation;
+        float nextSum = localSquareSum + square;
+        localCompensation = (nextSum - localSquareSum) - square;
+        localSquareSum = nextSum;
     }
 
     reduction[threadIndex] = localSquareSum;
@@ -142,7 +154,7 @@ static inline void rmsnorm_rows(
         threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 
-    float invRMS = rsqrt(reduction[0] / float(cols) + rmsNormEpsilonMetal);
+    float invRMS = 1.0f / sqrt(reduction[0] / float(cols) + rmsNormEpsilonMetal);
 
     for (uint col = threadIndex; col < cols; col += normalizationThreadCount) {
         float value = Storage::load(input, rowOffset + col) * invRMS * Storage::load(scale, col);
@@ -177,7 +189,48 @@ kernel void name( \
     rmsnorm_rows<storage, scalar>(input, scale, out, reduction, cols, row, threadIndex); \
 }
 
-LAYERNORM_KERNEL(layernorm_float32, Float32NormStorage, float)
+kernel void layernorm_float32(
+    device const float* input [[buffer(0)]],
+    device const float* scale [[buffer(1)]],
+    device const float* bias [[buffer(2)]],
+    device float* out [[buffer(3)]],
+    constant uint& cols [[buffer(4)]],
+    uint row [[threadgroup_position_in_grid]],
+    uint threadIndex [[thread_position_in_threadgroup]]
+) {
+    threadgroup float stats[2];
+    uint rowOffset = row * cols;
+
+    if (threadIndex == 0) {
+        float sum = 0.0f;
+
+        for (uint col = 0; col < cols; col++) {
+            sum += input[rowOffset + col];
+        }
+
+        float mean = sum / float(cols);
+        float variance = 0.0f;
+
+        for (uint col = 0; col < cols; col++) {
+            float delta = input[rowOffset + col] - mean;
+            variance += delta * delta;
+        }
+
+        stats[0] = mean;
+        stats[1] = 1.0f / sqrt(variance / float(cols) + layerNormEpsilonMetal);
+    }
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    float mean = stats[0];
+    float invStdDev = stats[1];
+
+    for (uint col = threadIndex; col < cols; col += normalizationThreadCount) {
+        float normalized = (input[rowOffset + col] - mean) * invStdDev;
+        out[rowOffset + col] = normalized * scale[col] + bias[col];
+    }
+}
+
 LAYERNORM_KERNEL(layernorm_float16, Float16NormStorage, half)
 LAYERNORM_KERNEL(layernorm_bfloat16, BFloat16NormStorage, ushort)
 

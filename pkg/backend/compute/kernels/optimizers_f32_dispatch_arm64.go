@@ -73,6 +73,83 @@ func adamwStepSlicesNEON(
 	}
 }
 
+func adamaxStepSlicesNEON(
+	config AdamaxConfig,
+	params, gradients, firstMoment, infinityMoment, output []float32,
+) {
+	beta1Corr := 1 - float32(math.Pow(float64(config.Beta1), float64(config.Step)))
+	n := len(params)
+	blockN := n & ^3
+	tailStart := blockN
+
+	if blockN > 0 {
+		adamaxStepFloat32NEONAsm(
+			&params[0], &gradients[0], &firstMoment[0], &infinityMoment[0], &output[0],
+			blockN,
+			config.LearningRate, config.Beta1, config.Beta2, config.Epsilon, beta1Corr,
+		)
+	}
+
+	for index := tailStart; index < n; index++ {
+		gradValue := gradients[index]
+		firstMoment[index] = config.Beta1*firstMoment[index] + (1-config.Beta1)*gradValue
+		updated := config.Beta2 * infinityMoment[index]
+		absGrad := float32(math.Abs(float64(gradValue)))
+		if absGrad > updated {
+			updated = absGrad
+		}
+		infinityMoment[index] = updated
+		biasFirst := firstMoment[index] / beta1Corr
+		output[index] = params[index] - config.LearningRate*biasFirst/(infinityMoment[index]+config.Epsilon)
+	}
+}
+
+func adagradStepSlicesNEON(
+	config AdagradConfig,
+	params, gradients, accumulator, output []float32,
+) {
+	n := len(params)
+	blockN := n & ^3
+	tailStart := blockN
+
+	if blockN > 0 {
+		adagradStepFloat32NEONAsm(
+			&params[0], &gradients[0], &accumulator[0], &output[0],
+			blockN, config.LearningRate, config.Epsilon,
+		)
+	}
+
+	for index := tailStart; index < n; index++ {
+		gradValue := gradients[index]
+		accumulator[index] += gradValue * gradValue
+		denom := float32(math.Sqrt(float64(accumulator[index]))) + config.Epsilon
+		output[index] = params[index] - config.LearningRate*gradValue/denom
+	}
+}
+
+func rmspropStepSlicesNEON(
+	config RMSpropConfig,
+	params, gradients, secondMoment, output []float32,
+) {
+	n := len(params)
+	blockN := n & ^3
+	tailStart := blockN
+
+	if blockN > 0 {
+		rmspropStepFloat32NEONAsm(
+			&params[0], &gradients[0], &secondMoment[0], &output[0],
+			blockN, config.LearningRate, config.Decay, config.Epsilon,
+		)
+	}
+
+	for index := tailStart; index < n; index++ {
+		gradValue := gradients[index]
+		secondMoment[index] = config.Decay*secondMoment[index] + (1-config.Decay)*gradValue*gradValue
+		denom := float32(math.Sqrt(float64(secondMoment[index]))) + config.Epsilon
+		output[index] = params[index] - config.LearningRate*gradValue/denom
+	}
+}
+
 func sgdStepSlicesNEON(
 	config SGDConfig,
 	params, gradients, momentum, output []float32,

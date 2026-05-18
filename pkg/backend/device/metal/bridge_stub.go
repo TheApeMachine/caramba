@@ -604,3 +604,119 @@ func runMetalOuter(left tensor.Tensor, right tensor.Tensor, out tensor.Tensor) e
 
 	return tensor.ErrNeedsPlatformSetup
 }
+
+func runMetalResearchUnaryKernel(
+	operation metalResearchOp,
+	input tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = operation
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalResearchBinaryKernel(
+	operation metalResearchOp,
+	left tensor.Tensor,
+	right tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = operation
+	_ = left
+	_ = right
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalPCPrediction(weights tensor.Tensor, state tensor.Tensor, out tensor.Tensor) error {
+	_ = weights
+	_ = state
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalPCUpdateRepresentation(
+	weights tensor.Tensor,
+	state tensor.Tensor,
+	predictionError tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = weights
+	_ = state
+	_ = predictionError
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalPCUpdateWeights(
+	weights tensor.Tensor,
+	state tensor.Tensor,
+	predictionError tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = weights
+	_ = state
+	_ = predictionError
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalFreeEnergy(
+	likelihood tensor.Tensor,
+	posterior tensor.Tensor,
+	prior tensor.Tensor,
+	auxiliary tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = likelihood
+	_ = posterior
+	_ = prior
+	_ = auxiliary
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalExpectedFreeEnergy(
+	predictedObs tensor.Tensor,
+	preferredObs tensor.Tensor,
+	predictedState tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = predictedObs
+	_ = preferredObs
+	_ = predictedState
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalBeliefUpdate(
+	likelihood tensor.Tensor,
+	prior tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = likelihood
+	_ = prior
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalPrecisionWeight(
+	errors tensor.Tensor,
+	precision tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = errors
+	_ = precision
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}

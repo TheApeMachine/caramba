@@ -22,3 +22,24 @@ func adamwStepFloat32NEONAsm(
 	n int,
 	lr, beta1, beta2, eps, beta1Corr, beta2Corr, weightDecay float32,
 )
+
+//go:noescape
+func adamaxStepFloat32NEONAsm(
+	params, grad, first, infinity, output *float32,
+	n int,
+	lr, beta1, beta2, eps, beta1Corr float32,
+)
+
+//go:noescape
+func adagradStepFloat32NEONAsm(
+	params, grad, accum, output *float32,
+	n int,
+	lr, eps float32,
+)
+
+//go:noescape
+func rmspropStepFloat32NEONAsm(
+	params, grad, second, output *float32,
+	n int,
+	lr, decay, eps float32,
+)

@@ -4,7 +4,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/kernels"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/dtype"
 	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
@@ -18,95 +17,129 @@ func encodeNormValuesAsDType(values []float32, storageDType dtype.DType) []byte 
 	return encodeFloat32ValuesAsDType(values, storageDType)
 }
 
-func hostLayerNormExpectedBytes(
-	testingObject testing.TB,
+func expectedLayerNormBytesForTest(
 	rows int,
 	cols int,
 	storageDType dtype.DType,
 ) []byte {
-	testingObject.Helper()
-
 	inputBytes, scaleBytes, biasBytes := normDTypeBytes(rows, cols, storageDType)
-	shape := mustShapeForTest(testingObject, []int{rows, cols})
-	paramShape := mustShapeForTest(testingObject, []int{cols})
-	input, _ := tensor.NewFromBytes(shape, storageDType, inputBytes)
-	scale, _ := tensor.NewFromBytes(paramShape, storageDType, scaleBytes)
-	bias, _ := tensor.NewFromBytes(paramShape, storageDType, biasBytes)
-	out, _ := tensor.NewZeroed(shape, storageDType)
-	defer closeBenchmarkTensors(input, scale, bias, out)
-
-	kernel := lookupHostLayerNormKernel(testingObject, storageDType)
-	if err := kernel.Run(input, scale, bias, out); err != nil {
-		testingObject.Fatal(err)
-	}
-
-	_, bytes, err := out.RawBytes()
-	if err != nil {
-		testingObject.Fatal(err)
-	}
-
-	return bytes
+	inputValues := decodeDTypeBytesToFloat32(inputBytes, storageDType)
+	scaleValues := decodeDTypeBytesToFloat32(scaleBytes, storageDType)
+	biasValues := decodeDTypeBytesToFloat32(biasBytes, storageDType)
+	expectedValues := expectedLayerNormValuesForTest(inputValues, scaleValues, biasValues, rows, cols)
+	return encodeNormValuesAsDType(expectedValues, storageDType)
 }
 
-func hostRMSNormExpectedBytes(
-	testingObject testing.TB,
+func expectedRMSNormBytesForTest(
 	rows int,
 	cols int,
 	storageDType dtype.DType,
 ) []byte {
-	testingObject.Helper()
-
 	inputBytes, scaleBytes, _ := normDTypeBytes(rows, cols, storageDType)
-	shape := mustShapeForTest(testingObject, []int{rows, cols})
-	paramShape := mustShapeForTest(testingObject, []int{cols})
-	input, _ := tensor.NewFromBytes(shape, storageDType, inputBytes)
-	scale, _ := tensor.NewFromBytes(paramShape, storageDType, scaleBytes)
-	out, _ := tensor.NewZeroed(shape, storageDType)
-	defer closeBenchmarkTensors(input, scale, out)
-
-	kernel := lookupHostRMSNormKernel(testingObject, storageDType)
-	if err := kernel.Run(input, scale, out); err != nil {
-		testingObject.Fatal(err)
-	}
-
-	_, bytes, err := out.RawBytes()
-	if err != nil {
-		testingObject.Fatal(err)
-	}
-
-	return bytes
+	inputValues := decodeDTypeBytesToFloat32(inputBytes, storageDType)
+	scaleValues := decodeDTypeBytesToFloat32(scaleBytes, storageDType)
+	expectedValues := expectedRMSNormValuesForTest(inputValues, scaleValues, rows, cols)
+	return encodeNormValuesAsDType(expectedValues, storageDType)
 }
 
-func lookupHostLayerNormKernel(testingObject testing.TB, storageDType dtype.DType) kernels.Kernel {
-	testingObject.Helper()
+func expectedLayerNormValuesForTest(
+	input []float32,
+	scale []float32,
+	bias []float32,
+	rows int,
+	cols int,
+) []float32 {
+	out := make([]float32, len(input))
 
-	kernel, ok := kernels.Default.LookupLocation("layernorm", kernels.Signature{
-		Layout: tensor.LayoutDense,
-		Inputs: []dtype.DType{
-			storageDType, storageDType, storageDType,
-		},
-		Outputs: []dtype.DType{storageDType},
-	}, tensor.Host)
-	if !ok {
-		testingObject.Fatalf("missing Host %s layernorm kernel", storageDType.Name())
+	for rowIndex := range rows {
+		rowOffset := rowIndex * cols
+		row := input[rowOffset : rowOffset+cols]
+		outRow := out[rowOffset : rowOffset+cols]
+		mean := normalizationMeanForTest(row)
+		variance := normalizationVarianceForTest(row, mean)
+		invStdDev := 1 / float32(math.Sqrt(float64(variance+layerNormEpsilonMetalForTest)))
+		applyLayerNormExpectedRowForTest(row, outRow, scale, bias, mean, invStdDev)
 	}
 
-	return kernel
+	return out
 }
 
-func lookupHostRMSNormKernel(testingObject testing.TB, storageDType dtype.DType) kernels.Kernel {
-	testingObject.Helper()
+func expectedRMSNormValuesForTest(
+	input []float32,
+	scale []float32,
+	rows int,
+	cols int,
+) []float32 {
+	out := make([]float32, len(input))
 
-	kernel, ok := kernels.Default.LookupLocation("rmsnorm", kernels.Signature{
-		Layout:  tensor.LayoutDense,
-		Inputs:  []dtype.DType{storageDType, storageDType},
-		Outputs: []dtype.DType{storageDType},
-	}, tensor.Host)
-	if !ok {
-		testingObject.Fatalf("missing Host %s rmsnorm kernel", storageDType.Name())
+	for rowIndex := range rows {
+		rowOffset := rowIndex * cols
+		row := input[rowOffset : rowOffset+cols]
+		outRow := out[rowOffset : rowOffset+cols]
+		meanSquare := normalizationMeanSquareForTest(row)
+		invRMS := 1 / float32(math.Sqrt(float64(meanSquare+rmsNormEpsilonMetalForTest)))
+		applyRMSNormExpectedRowForTest(row, outRow, scale, invRMS)
 	}
 
-	return kernel
+	return out
+}
+
+const layerNormEpsilonMetalForTest = 1.0e-5
+const rmsNormEpsilonMetalForTest = 1.0e-6
+
+func normalizationMeanForTest(row []float32) float32 {
+	var sum float32
+
+	for _, value := range row {
+		sum += value
+	}
+
+	return sum / float32(len(row))
+}
+
+func normalizationVarianceForTest(row []float32, mean float32) float32 {
+	var variance float32
+
+	for _, value := range row {
+		delta := value - mean
+		variance += delta * delta
+	}
+
+	return variance / float32(len(row))
+}
+
+func normalizationMeanSquareForTest(row []float32) float32 {
+	var meanSquare float32
+
+	for _, value := range row {
+		meanSquare += value * value
+	}
+
+	return meanSquare / float32(len(row))
+}
+
+func applyLayerNormExpectedRowForTest(
+	row []float32,
+	outRow []float32,
+	scale []float32,
+	bias []float32,
+	mean float32,
+	invStdDev float32,
+) {
+	for index, value := range row {
+		outRow[index] = (value-mean)*invStdDev*scale[index] + bias[index]
+	}
+}
+
+func applyRMSNormExpectedRowForTest(
+	row []float32,
+	outRow []float32,
+	scale []float32,
+	invRMS float32,
+) {
+	for index, value := range row {
+		outRow[index] = value * invRMS * scale[index]
+	}
 }
 
 func assertNormalizationBytesForTest(
