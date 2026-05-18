@@ -67,11 +67,14 @@ func (backend *HostBackend) SupportedLayouts() []Layout {
 }
 
 /*
-Capabilities returns the host backend's runtime properties.
+Capabilities returns the host backend's runtime properties. MaxBytes
+of zero means "no enforced limit; allocation is bounded only by the
+host's available RAM at runtime" — the tiered allocator does not
+impose a fixed budget on the host backend.
 */
 func (backend *HostBackend) Capabilities() Capabilities {
 	return Capabilities{
-		MaxBytes:         0,
+		MaxBytes:         MaxBytesUnlimited,
 		SupportsAsync:    false,
 		SupportsSparse:   true,
 		SupportsAutograd: false,
@@ -108,7 +111,12 @@ func (backend *HostBackend) Upload(
 		return nil, ErrShapeMismatch
 	}
 
-	buffer := Allocate(expected)
+	buffer, err := Allocate(expected)
+
+	if err != nil {
+		return nil, err
+	}
+
 	copy(buffer, bytesIn)
 
 	return newHostTensor(backend, shape, sourceDType, buffer), nil

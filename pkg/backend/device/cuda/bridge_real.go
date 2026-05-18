@@ -29,6 +29,7 @@ static int cuda_memcpy_async_h2d(CUDABufferRef dst, void* src, long long bytes, 
     (void)dst; (void)src; (void)bytes; (void)stream;
     return 0;
 }
+static void cuda_device_release(CUDADeviceRef device) { (void)device; }
 */
 import "C"
 
@@ -59,7 +60,7 @@ func openCUDABridge() (*cudaBridge, error) {
 	stream := C.cuda_stream_create(device)
 
 	if stream == nil {
-		C.cuda_buffer_release(C.CUDABufferRef(device))
+		C.cuda_device_release(device)
 		return nil, tensor.ErrNeedsPlatformSetup
 	}
 
@@ -122,6 +123,10 @@ func (bridge *cudaBridge) close() error {
 		bridge.uploadStream = nil
 	}
 
-	bridge.device = nil
+	if bridge.device != nil {
+		C.cuda_device_release(bridge.device)
+		bridge.device = nil
+	}
+
 	return nil
 }

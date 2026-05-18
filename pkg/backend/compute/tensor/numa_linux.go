@@ -23,5 +23,11 @@ func numaPreferredNode() int {
 }
 
 func numaAllocateOn(node int, bytesNeeded int) []byte {
-	return Allocate(bytesNeeded)
+	buffer, err := Allocate(bytesNeeded)
+
+	if err != nil {
+		return nil
+	}
+
+	return buffer
 }

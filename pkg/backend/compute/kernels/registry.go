@@ -87,20 +87,22 @@ func (registry *Registry) Register(kernel Kernel) {
 
 /*
 Lookup returns the kernel registered for the given (name, signature)
-or nil if none matches. Phase 8 work refines this to honor Location
-preferences.
+plus an ok flag. The returned Kernel is a copy of the registered
+entry, not a pointer into the registry's internal slice — that would
+dangle if Register later appends and the slice grows. Phase 8 work
+refines this to honor Location preferences.
 */
-func (registry *Registry) Lookup(name string, signature Signature) *Kernel {
+func (registry *Registry) Lookup(name string, signature Signature) (Kernel, bool) {
 	registry.mu.RLock()
 	defer registry.mu.RUnlock()
 
-	for index, kernel := range registry.kernels[name] {
+	for _, kernel := range registry.kernels[name] {
 		if signaturesEqual(kernel.Signature, signature) {
-			return &registry.kernels[name][index]
+			return kernel, true
 		}
 	}
 
-	return nil
+	return Kernel{}, false
 }
 
 /*

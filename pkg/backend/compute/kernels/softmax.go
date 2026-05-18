@@ -10,6 +10,10 @@ import (
 /*
 Softmax kernel. Operates along the last dimension. Uses the
 numerically stable form: subtract max, exponentiate, normalize.
+
+The body decomposes into findRowMax, fillShiftedExps, and
+normalizeRow so the top-level runSoftmaxFloat32 stays under the
+30-line method cap and each phase is independently testable.
 */
 
 func init() {
@@ -59,30 +63,59 @@ func runSoftmaxFloat32(args ...tensor.Tensor) error {
 		row := input[rowIndex*lastDim : (rowIndex+1)*lastDim]
 		outRow := out[rowIndex*lastDim : (rowIndex+1)*lastDim]
 
-		maximum := row[0]
-
-		for _, value := range row[1:] {
-			if value > maximum {
-				maximum = value
-			}
-		}
-
-		sum := float32(0)
-
-		for index, value := range row {
-			shifted := math.Exp(float64(value - maximum))
-			outRow[index] = float32(shifted)
-			sum += float32(shifted)
-		}
-
-		if sum == 0 {
-			continue
-		}
-
-		for index := range outRow {
-			outRow[index] /= sum
-		}
+		maximum := findRowMax(row)
+		sum := fillShiftedExps(row, outRow, maximum)
+		normalizeRow(outRow, sum)
 	}
 
 	return nil
+}
+
+/*
+findRowMax returns the maximum value in the row.
+*/
+func findRowMax(row []float32) float32 {
+	maximum := row[0]
+
+	for _, candidate := range row[1:] {
+		if candidate > maximum {
+			maximum = candidate
+		}
+	}
+
+	return maximum
+}
+
+/*
+fillShiftedExps computes outRow[i] = exp(row[i] - maximum) and
+returns the sum across the row. The shift-by-max form keeps the
+exponent argument non-positive and prevents overflow.
+*/
+func fillShiftedExps(row []float32, outRow []float32, maximum float32) float32 {
+	var sum float32
+
+	for index, candidate := range row {
+		shifted := float32(math.Exp(float64(candidate - maximum)))
+		outRow[index] = shifted
+		sum += shifted
+	}
+
+	return sum
+}
+
+/*
+normalizeRow divides each entry by sum. When sum is zero (every
+shifted exp underflowed — the row is fully masked or padded), the
+row is left as all-zeros which yields a zero attention output for
+this query position. This mirrors the attention kernel's
+zero-denominator behavior; see attention.go for the rationale.
+*/
+func normalizeRow(outRow []float32, sum float32) {
+	if sum == 0 {
+		return
+	}
+
+	for index := range outRow {
+		outRow[index] /= sum
+	}
 }

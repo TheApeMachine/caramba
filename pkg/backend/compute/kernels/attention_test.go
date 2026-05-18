@@ -47,7 +47,7 @@ func TestAttentionFloat32(t *testing.T) {
 			valueView[index] = value
 		}
 
-		kernel := Default.Lookup("attention", Signature{
+		kernel, _ := Default.Lookup("attention", Signature{
 			Layout:  tensor.LayoutDense,
 			Inputs:  []dtype.DType{dtype.Float32, dtype.Float32, dtype.Float32},
 			Outputs: []dtype.DType{dtype.Float32},

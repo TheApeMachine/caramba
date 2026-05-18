@@ -8,8 +8,13 @@ import (
 )
 
 /*
-Elementwise kernels: mul, sub, gelu, relu. Each registers float32 +
-float64 + bf16 paths; SIMD variants land alongside in later sessions.
+Elementwise kernels: mul, sub, gelu, relu. Per AGENTS.md §1 every
+kernel ships full implementations across the required execution
+targets at equal standing — scalar Go reference, AVX-512 / AVX2 /
+SSE2 (amd64), NEON (arm64), Metal, CUDA, and XLA. The registrations
+in this file are the scalar Go entry points; the SIMD and device
+paths register their own Kernel entries with matching signatures
+and dispatch through Default.Lookup.
 */
 
 func init() {
@@ -194,12 +199,11 @@ func runReLUFloat32(args ...tensor.Tensor) error {
 	}
 
 	for index, value := range input {
+		out[index] = 0
+
 		if value > 0 {
 			out[index] = value
-			continue
 		}
-
-		out[index] = 0
 	}
 
 	return nil

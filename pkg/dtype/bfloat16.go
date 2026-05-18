@@ -118,8 +118,9 @@ func (bf16 *BF16) Float32() float32 {
 }
 
 /*
-Bits returns the raw 16-bit representation of the BF16 value.
+Bits returns the raw 16-bit representation of the BF16 value. Pointer
+receiver matches Float32 and the other query methods on BF16.
 */
-func (bf16 BF16) Bits() uint16 {
-	return uint16(bf16)
+func (bf16 *BF16) Bits() uint16 {
+	return uint16(*bf16)
 }

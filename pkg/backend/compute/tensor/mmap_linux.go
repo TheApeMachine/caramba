@@ -3,6 +3,7 @@
 package tensor
 
 import (
+	"fmt"
 	"syscall"
 )
 
@@ -12,12 +13,13 @@ protections. MADV_DONTNEED reclaims physical pages without unmapping;
 MADV_HUGEPAGE asks the kernel to back the mapping with transparent
 huge pages.
 
-Per spray-and-pray: this file compiles and the syscalls are real, but
-the error paths are minimal. Phase 3 verification should add round-
-trip tests on a Linux runner.
+The allocator returns (nil, error) on failure instead of falling back
+to make([]byte, n); mixing heap buffers with mmap-backed buffers
+would cause Munmap to be called on heap memory and corrupt the
+process. Callers must handle the error path.
 */
 
-func mmapAlloc(bytesNeeded int) []byte {
+func mmapAlloc(bytesNeeded int) ([]byte, error) {
 	buffer, err := syscall.Mmap(
 		-1,
 		0,
@@ -27,12 +29,10 @@ func mmapAlloc(bytesNeeded int) []byte {
 	)
 
 	if err != nil {
-		// Fall back to heap allocation; the caller cannot easily
-		// recover from a mmap failure on a fresh allocation.
-		return make([]byte, bytesNeeded)
+		return nil, fmt.Errorf("tensor/mmap: anonymous Mmap(%d) failed: %w", bytesNeeded, err)
 	}
 
-	return buffer
+	return buffer, nil
 }
 
 func mmapFree(buffer []byte) {
@@ -48,8 +48,6 @@ func mmapAdviseDontNeed(buffer []byte) {
 		return
 	}
 
-	// syscall.Madvise is available on Linux through golang.org/x/sys/unix.
-	// Phase 3 follow-up: switch to unix.MadviseDontneed for a cleaner API.
 	_ = madviseRaw(buffer, syscallMadvDontNeed)
 }
 

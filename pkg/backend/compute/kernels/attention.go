@@ -15,10 +15,9 @@ Inputs (in args order): query, key, value, output. Query and key
 share dtype and inner dim; value's outer dims match query, its inner
 dim becomes the output's inner dim.
 
-Per the spray-and-pray contract this is the scalar Go reference. The
-flash-attention block-tiled variants, alibi/rope hooks, and sliding-
-window masking land in Phase 8 expansion sessions with their own
-Kernel registrations.
+Body decomposed into computeAttentionScores, applySoftmax, and
+computeWeightedOutput so runAttentionFloat32 stays small and each
+phase is independently testable.
 
 Tensor shapes (no batch dim — Phase 8 expansion adds batched
 attention by extending the dispatch table):
@@ -48,6 +47,23 @@ func runAttentionFloat32(args ...tensor.Tensor) error {
 
 	query, key, value, out := args[0], args[1], args[2], args[3]
 
+	queryView, keyView, valueView, outView, seqQ, seqK, depth, valueDim, err := attentionViews(query, key, value, out)
+
+	if err != nil {
+		return err
+	}
+
+	scale := float32(1.0 / math.Sqrt(float64(depth)))
+	scores := computeAttentionScores(queryView, keyView, seqQ, seqK, depth, scale)
+	applySoftmax(scores, seqQ, seqK)
+	computeWeightedOutput(scores, valueView, outView, seqQ, seqK, valueDim)
+
+	return nil
+}
+
+func attentionViews(
+	query, key, value, out tensor.Tensor,
+) (qv, kv, vv, ov []float32, seqQ, seqK, depth, valueDim int, err error) {
 	queryDims := query.Shape().Dims()
 	keyDims := key.Shape().Dims()
 	valueDims := value.Shape().Dims()
@@ -55,47 +71,57 @@ func runAttentionFloat32(args ...tensor.Tensor) error {
 
 	if len(queryDims) != 2 || len(keyDims) != 2 ||
 		len(valueDims) != 2 || len(outDims) != 2 {
-		return tensor.ErrShapeMismatch
+		return nil, nil, nil, nil, 0, 0, 0, 0, tensor.ErrShapeMismatch
 	}
 
-	seqQ := queryDims[0]
-	depth := queryDims[1]
-	seqK := keyDims[0]
-	valueDim := valueDims[1]
+	seqQ = queryDims[0]
+	depth = queryDims[1]
+	seqK = keyDims[0]
+	valueDim = valueDims[1]
 
 	if keyDims[1] != depth || valueDims[0] != seqK ||
 		outDims[0] != seqQ || outDims[1] != valueDim {
-		return tensor.ErrShapeMismatch
+		return nil, nil, nil, nil, 0, 0, 0, 0, tensor.ErrShapeMismatch
 	}
 
-	queryView, err := query.Float32Native()
+	qv, err = query.Float32Native()
 
 	if err != nil {
-		return err
+		return nil, nil, nil, nil, 0, 0, 0, 0, err
 	}
 
-	keyView, err := key.Float32Native()
+	kv, err = key.Float32Native()
 
 	if err != nil {
-		return err
+		return nil, nil, nil, nil, 0, 0, 0, 0, err
 	}
 
-	valueView, err := value.Float32Native()
+	vv, err = value.Float32Native()
 
 	if err != nil {
-		return err
+		return nil, nil, nil, nil, 0, 0, 0, 0, err
 	}
 
-	outView, err := out.Float32Native()
+	ov, err = out.Float32Native()
 
 	if err != nil {
-		return err
+		return nil, nil, nil, nil, 0, 0, 0, 0, err
 	}
 
-	scale := float32(1.0 / math.Sqrt(float64(depth)))
+	return qv, kv, vv, ov, seqQ, seqK, depth, valueDim, nil
+}
+
+/*
+computeAttentionScores returns Q @ K^T × scale. The result is a
+[seqQ, seqK] row-major slice.
+*/
+func computeAttentionScores(
+	queryView, keyView []float32,
+	seqQ, seqK, depth int,
+	scale float32,
+) []float32 {
 	scores := make([]float32, seqQ*seqK)
 
-	// scores = Q @ K^T * scale.
 	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
 		for keyIndex := 0; keyIndex < seqK; keyIndex++ {
 			var dot float32
@@ -109,7 +135,14 @@ func runAttentionFloat32(args ...tensor.Tensor) error {
 		}
 	}
 
-	// Stable row-wise softmax.
+	return scores
+}
+
+/*
+applySoftmax performs row-wise stable softmax in place on a
+[seqQ, seqK] score matrix.
+*/
+func applySoftmax(scores []float32, seqQ, seqK int) {
 	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
 		row := scores[rowIndex*seqK : (rowIndex+1)*seqK]
 		maximum := row[0]
@@ -128,6 +161,14 @@ func runAttentionFloat32(args ...tensor.Tensor) error {
 			sum += shifted
 		}
 
+		// Degenerate but expected case: every score in this row was
+		// extremely negative (effectively -Inf), so every shifted
+		// exp underflowed to zero. The row stays all-zeros, which
+		// produces a zero attention output for this query position.
+		// Callers (causal masking with all preceding positions
+		// masked, padded-batch slots, fully dropped heads)
+		// intentionally produce this state, so we continue rather
+		// than raise an error.
 		if sum == 0 {
 			continue
 		}
@@ -136,8 +177,15 @@ func runAttentionFloat32(args ...tensor.Tensor) error {
 			row[index] /= sum
 		}
 	}
+}
 
-	// output = softmax(scores) @ V.
+/*
+computeWeightedOutput computes outView = scores @ valueView.
+*/
+func computeWeightedOutput(
+	scores, valueView, outView []float32,
+	seqQ, seqK, valueDim int,
+) {
 	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
 		for dimIndex := 0; dimIndex < valueDim; dimIndex++ {
 			var weighted float32
@@ -150,6 +198,4 @@ func runAttentionFloat32(args ...tensor.Tensor) error {
 			outView[rowIndex*valueDim+dimIndex] = weighted
 		}
 	}
-
-	return nil
 }

@@ -243,7 +243,8 @@ func TestAllocate_Alignment(t *testing.T) {
 
 		convey.Convey("Every allocation should be 64-byte aligned", func() {
 			for _, size := range sizes {
-				buffer := Allocate(size)
+				buffer, err := Allocate(size)
+				convey.So(err, convey.ShouldBeNil)
 				convey.So(len(buffer), convey.ShouldBeGreaterThanOrEqualTo, size)
 				convey.So(int(uintptr(unsafe.Pointer(&buffer[0]))%64), convey.ShouldEqual, 0)
 				Release(buffer)
@@ -279,7 +280,8 @@ func TestHostTensor_Slice(t *testing.T) {
 
 func TestArena_BumpAndReset(t *testing.T) {
 	convey.Convey("Given a fresh arena", t, func() {
-		arena := NewArena(64 * 1024)
+		arena, err := NewArena(64 * 1024)
+		convey.So(err, convey.ShouldBeNil)
 		defer arena.Close()
 
 		shape, _ := NewShape([]int{16})

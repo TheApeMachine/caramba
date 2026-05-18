@@ -32,10 +32,17 @@ type Arena struct {
 NewArena allocates an Arena of the given total byte capacity. The
 underlying buffer is drawn from the tiered allocator and is therefore
 64-byte-aligned. Indeterminate contents on first acquisition; reset
-recycles without zeroing.
+recycles without zeroing. Returns nil + non-nil error on allocator
+failure so callers can fail fast at construction.
 */
-func NewArena(capacity int) *Arena {
-	return &Arena{storage: Allocate(capacity)}
+func NewArena(capacity int) (*Arena, error) {
+	storage, err := Allocate(capacity)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &Arena{storage: storage}, nil
 }
 
 /*

@@ -51,7 +51,10 @@ func TestAllReduce_Mean(t *testing.T) {
 		shape, _ := tensor.NewShape([]int{1})
 
 		left, _ := tensor.NewZeroed(shape, dtype.Float32)
+		defer left.Close()
+
 		right, _ := tensor.NewZeroed(shape, dtype.Float32)
+		defer right.Close()
 
 		leftView, _ := left.Float32Native()
 		rightView, _ := right.Float32Native()
@@ -67,6 +70,72 @@ func TestAllReduce_Mean(t *testing.T) {
 			convey.So(rightView[0], convey.ShouldEqual, float32(6))
 		})
 	})
+}
+
+func benchmarkAllReduceOp(b *testing.B, op Op, shardCount int) {
+	ctx := context.Background()
+	shape, _ := tensor.NewShape([]int{1024})
+
+	shards := make([]tensor.Tensor, shardCount)
+
+	for index := range shards {
+		shard, _ := tensor.NewZeroed(shape, dtype.Float32)
+		view, _ := shard.Float32Native()
+
+		for valueIndex := range view {
+			view[valueIndex] = float32(valueIndex+1) * 0.25
+		}
+
+		shards[index] = shard
+	}
+
+	defer func() {
+		for _, shard := range shards {
+			shard.Close()
+		}
+	}()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.SetBytes(int64(1024 * 4 * shardCount))
+
+	for b.Loop() {
+		if err := AllReduce(ctx, op, shards); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkAllReduce_Sum(b *testing.B)   { benchmarkAllReduceOp(b, OpSum, 4) }
+func BenchmarkAllReduce_Mean(b *testing.B)  { benchmarkAllReduceOp(b, OpMean, 4) }
+func BenchmarkAllReduce_Max(b *testing.B)   { benchmarkAllReduceOp(b, OpMax, 4) }
+
+func BenchmarkBroadcast_4(b *testing.B) {
+	ctx := context.Background()
+	shape, _ := tensor.NewShape([]int{1024})
+
+	shards := make([]tensor.Tensor, 4)
+
+	for index := range shards {
+		shard, _ := tensor.NewZeroed(shape, dtype.Float32)
+		shards[index] = shard
+	}
+
+	defer func() {
+		for _, shard := range shards {
+			shard.Close()
+		}
+	}()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.SetBytes(int64(1024 * 4))
+
+	for b.Loop() {
+		if err := Broadcast(ctx, 0, shards); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func TestBroadcast(t *testing.T) {
@@ -85,6 +154,12 @@ func TestBroadcast(t *testing.T) {
 
 			shards[index] = shard
 		}
+
+		defer func() {
+			for _, shard := range shards {
+				shard.Close()
+			}
+		}()
 
 		err := Broadcast(ctx, 1, shards)
 

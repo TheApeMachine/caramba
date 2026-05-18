@@ -1469,8 +1469,9 @@ aligned-load throughput on every kernel. The alignment guarantee is
 load-bearing: it implies that every SIMD operation must ship an
 AVX-512 path in addition to AVX2, SSE2, NEON, and the scalar Go
 reference, per AGENTS.md §1. There is no "AVX2 is enough" path —
-if a kernel is implemented in SIMD assembly, all four ISA variants
-exist as separate kernel bodies with their own vector instructions.
+if a kernel is implemented in SIMD assembly, all five ISA variants
+(scalar Go + AVX-512 + AVX2 + SSE2 + NEON) exist as separate kernel
+bodies with their own vector instructions.
 The full five-variant requirement (scalar + AVX-512 + AVX2 + SSE2 +
 NEON) applies to every kernel family in §3.8 and to every conversion
 kernel in §3.2 (§2.20).

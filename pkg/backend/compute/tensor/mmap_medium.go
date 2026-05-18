@@ -6,17 +6,8 @@ import (
 
 /*
 Tier 2 allocator: 1 MiB – 1 GiB allocations via anonymous mmap with
-per-size-class free lists. Freed buffers are MADV_DONTNEED'd (Linux)
-or MADV_FREE_REUSABLE (Darwin) so the kernel reclaims the physical
-pages but the virtual range stays mapped for fast re-acquisition.
-
-No-zero contract: re-acquired buffers contain indeterminate data.
-Every backend Upload path overwrites every byte before any reader.
-Callers needing zeroed memory call NewZeroed instead.
-
-Per the spray-and-pray contract, the platform-specific mmap and
-madvise calls are split into mmap_linux.go / mmap_darwin.go; this file
-contains the size-class indexing and free-list bookkeeping.
+per-size-class free lists. Freed buffers are MADV_DONTNEED'd on
+release.
 */
 
 const (
@@ -39,13 +30,14 @@ var defaultMedium = &mediumPool{}
 /*
 mmapMedium returns a 64-byte aligned byte slice of at least bytes
 size, drawn from the medium-tier free list or freshly mmap'd if no
-slot is free.
+slot is free. Returns (nil, err) when mmap fails or the requested
+size is outside the medium-tier range.
 */
-func mmapMedium(bytesNeeded int) []byte {
+func mmapMedium(bytesNeeded int) ([]byte, error) {
 	class := mediumClass(bytesNeeded)
 
 	if class < 0 {
-		return nil
+		return nil, ErrAllocatorExhausted
 	}
 
 	classBytes := 1 << uint(mediumMinClass+class)
@@ -57,7 +49,7 @@ func mmapMedium(bytesNeeded int) []byte {
 		defaultMedium.classes[class] = head.next
 		defaultMedium.mu.Unlock()
 
-		return head.data
+		return head.data, nil
 	}
 	defaultMedium.mu.Unlock()
 
@@ -87,10 +79,6 @@ func mmapMediumRelease(buffer []byte) {
 	defaultMedium.mu.Unlock()
 }
 
-/*
-mediumClass returns the size class for the given byte count. Returns
--1 for values outside [1 MiB, 1 GiB].
-*/
 func mediumClass(bytesNeeded int) int {
 	if bytesNeeded < (1 << uint(mediumMinClass)) {
 		return -1
@@ -100,7 +88,6 @@ func mediumClass(bytesNeeded int) int {
 		return -1
 	}
 
-	// round up to power-of-two class
 	class := 0
 	target := 1 << uint(mediumMinClass)
 

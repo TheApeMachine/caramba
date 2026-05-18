@@ -231,12 +231,11 @@ func ReLUBackward(input tensor.Tensor) func(context.Context, tensor.Tensor) ([]t
 		gradView, _ := gradient.Float32Native()
 
 		for index, value := range upstreamView {
+			gradView[index] = 0
+
 			if inputView[index] > 0 {
 				gradView[index] = value
-				continue
 			}
-
-			gradView[index] = 0
 		}
 
 		return []tensor.Tensor{gradient}, nil

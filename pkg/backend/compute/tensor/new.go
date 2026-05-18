@@ -21,31 +21,37 @@ func New(shape Shape, asType dtype.DType) (Tensor, error) {
 		return nil, err
 	}
 
-	buffer := Allocate(bytesNeeded)
+	buffer, err := Allocate(bytesNeeded)
+
+	if err != nil {
+		return nil, err
+	}
 
 	return newHostTensor(nil, shape, asType, buffer), nil
 }
 
 /*
 NewZeroed returns a host tensor with explicitly zeroed storage of
-the given shape and dtype.
+the given shape and dtype. Panics if the underlying allocator
+returns a non-HostTensor — that would mean the New contract has
+been silently broken and a caller would otherwise receive
+unzeroed memory.
 */
 func NewZeroed(shape Shape, asType dtype.DType) (Tensor, error) {
-	tensor, err := New(shape, asType)
+	value, err := New(shape, asType)
 
 	if err != nil {
 		return nil, err
 	}
 
-	host, ok := tensor.(*HostTensor)
+	host, ok := value.(*HostTensor)
 
 	if !ok {
-		return tensor, nil
+		_ = value.Close()
+		panic("tensor.NewZeroed: New returned non-HostTensor; allocator contract broken")
 	}
 
-	for index := range host.bytes {
-		host.bytes[index] = 0
-	}
+	clear(host.bytes)
 
 	return host, nil
 }

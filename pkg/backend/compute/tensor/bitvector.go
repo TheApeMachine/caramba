@@ -1,5 +1,7 @@
 package tensor
 
+import "fmt"
+
 /*
 BitVector is the host-side view returned by Tensor.BoolNative for
 Bool-dtype tensors. Storage is one bit per logical element, packed
@@ -37,22 +39,26 @@ func (vector BitVector) Bytes() []byte {
 }
 
 /*
-Get returns the bit at the given logical index.
+Get returns the bit at the given logical index. Panics on out-of-
+range access to match Go's native slice indexing behaviour and
+surface programmer errors loudly rather than masking them with a
+false return.
 */
 func (vector BitVector) Get(index int) bool {
 	if index < 0 || index >= vector.length {
-		return false
+		panic(fmt.Sprintf("BitVector.Get: index %d out of range [0, %d)", index, vector.length))
 	}
 
 	return vector.data[index/8]&(1<<(uint(index)%8)) != 0
 }
 
 /*
-Set writes the bit at the given logical index.
+Set writes the bit at the given logical index. Panics on out-of-
+range access to match Go's native slice indexing behaviour.
 */
 func (vector BitVector) Set(index int, value bool) {
 	if index < 0 || index >= vector.length {
-		return
+		panic(fmt.Sprintf("BitVector.Set: index %d out of range [0, %d)", index, vector.length))
 	}
 
 	mask := byte(1) << (uint(index) % 8)

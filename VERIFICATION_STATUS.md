@@ -27,16 +27,39 @@ the commit message that promotes it.
 ```
 ok  github.com/theapemachine/caramba/pkg/dtype                       0.004s
 ok  github.com/theapemachine/caramba/pkg/dtype/convert               0.002s
-ok  github.com/theapemachine/caramba/pkg/backend/compute/tensor      0.006s
-ok  github.com/theapemachine/caramba/pkg/backend/compute/convert     0.002s
-ok  github.com/theapemachine/caramba/pkg/backend/compute/kernels     0.002s
-ok  github.com/theapemachine/caramba/pkg/backend/compute/distributed 0.001s
-ok  github.com/theapemachine/caramba/pkg/backend/compute/collective  0.001s
-ok  github.com/theapemachine/caramba/pkg/backend/compute/fusion      0.001s
-ok  github.com/theapemachine/caramba/pkg/backend/device/cuda         0.001s
+ok  github.com/theapemachine/caramba/pkg/backend/compute/tensor      0.008s
+ok  github.com/theapemachine/caramba/pkg/backend/compute/convert     0.066s
+ok  github.com/theapemachine/caramba/pkg/backend/compute/kernels     0.045s
+ok  github.com/theapemachine/caramba/pkg/backend/compute/distributed 0.003s
+ok  github.com/theapemachine/caramba/pkg/backend/compute/collective  0.005s
+ok  github.com/theapemachine/caramba/pkg/backend/compute/fusion      0.004s
+ok  github.com/theapemachine/caramba/pkg/backend/device/cuda         0.002s
 ok  github.com/theapemachine/caramba/pkg/backend/device/metal        0.001s
 ok  github.com/theapemachine/caramba/pkg/backend/device/xla          0.001s
 ```
+
+## Selected benchmark output (linux/arm64, Go 1.26)
+
+```
+BenchmarkAllReduce_Sum-4    132193    1639 ns/op   9997.56 MB/s   4192 B/op   2 allocs/op
+BenchmarkAllReduce_Mean-4   128790    1928 ns/op   8498.38 MB/s   4192 B/op   2 allocs/op
+BenchmarkAllReduce_Max-4    139599    1749 ns/op   9368.24 MB/s   4192 B/op   2 allocs/op
+BenchmarkBroadcast_4-4     1352702     177.0 ns/op 23137.47 MB/s    96 B/op   1 allocs/op
+
+BenchmarkBFloat16ToFloat32_1024-4  ~6 µs/op  ~340 MB/s     0 allocs/op
+BenchmarkFloat32ToBFloat16_1024-4  ~6 µs/op  ~680 MB/s     0 allocs/op
+BenchmarkFloat32ToFloat64_1024-4   ~1.5 µs/op ~2.7 GB/s    0 allocs/op
+BenchmarkFloat8E4M3ToFloat32_1024-4  1173 ns/op  873 MB/s   0 allocs/op
+
+BenchmarkBF16_Float32-4              1.676 ns/op
+BenchmarkFloat16_Float32-4           1.662 ns/op
+BenchmarkFloat8E4M3_FromFloat32-4    1.769 ns/op
+BenchmarkFloat8E5M2_FromFloat32-4    1.912 ns/op
+```
+
+These are the scalar reference numbers; the SIMD `.s` paths replace
+them in a hardware-verified session and the benchmarks here become
+the regression bar.
 
 ## Phase coverage at end of session
 

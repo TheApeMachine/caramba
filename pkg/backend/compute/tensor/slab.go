@@ -77,15 +77,15 @@ func slabClass(bytesNeeded int) int {
 
 /*
 slabAlloc returns a 64-byte-aligned byte slice of at least the
-requested size, drawn from the slab pool. Returns nil if the request
-falls outside the slab's size range; caller should fall through to
-mmap-based tiers.
+requested size, drawn from the slab pool. Returns (nil, false) if
+the request falls outside the slab's size range; caller should fall
+through to mmap-based tiers.
 */
-func (allocator *slabAllocator) slabAlloc(bytesNeeded int) []byte {
+func (allocator *slabAllocator) slabAlloc(bytesNeeded int) ([]byte, bool) {
 	class := slabClass(bytesNeeded)
 
 	if class < 0 {
-		return nil
+		return nil, false
 	}
 
 	shardIndex := slabShardIndex()
@@ -99,13 +99,14 @@ func (allocator *slabAllocator) slabAlloc(bytesNeeded int) []byte {
 
 		allocator.allocs.Add(1)
 
-		return block.data
+		return block.data, true
 	}
 	shard.mu.Unlock()
 
+	buffer := allocateAligned(1 << (slabClassMin + class))
 	allocator.allocs.Add(1)
 
-	return allocateAligned(1 << (slabClassMin + class))
+	return buffer, true
 }
 
 /*
@@ -175,20 +176,33 @@ The returned slice's len equals bytesNeeded; its cap reflects the
 underlying tier's allocation unit (size class for slab/medium, exact
 huge-page-rounded size for large). Release routes back to the
 correct tier via cap.
+
+Returns (nil, error) when the underlying allocator fails (mmap
+failure, exhausted address space) or when bytesNeeded is non-positive.
 */
-func Allocate(bytesNeeded int) []byte {
+func Allocate(bytesNeeded int) ([]byte, error) {
 	if bytesNeeded <= 0 {
-		return nil
+		return nil, nil
 	}
 
 	if bytesNeeded < slabMaxBytes {
-		buffer := defaultSlab.slabAlloc(bytesNeeded)
-		return buffer[:bytesNeeded]
+		buffer, ok := defaultSlab.slabAlloc(bytesNeeded)
+
+		if !ok {
+			return nil, ErrAllocatorExhausted
+		}
+
+		return buffer[:bytesNeeded], nil
 	}
 
 	if bytesNeeded < (1 << 30) {
-		buffer := mmapMedium(bytesNeeded)
-		return buffer[:bytesNeeded]
+		buffer, err := mmapMedium(bytesNeeded)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return buffer[:bytesNeeded], nil
 	}
 
 	return mmapLarge(bytesNeeded)

@@ -1,6 +1,7 @@
 package kernels
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -8,39 +9,45 @@ import (
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
+var parityNs = []int{1, 7, 64, 1024, 8192}
+
 func TestAddFloat32(t *testing.T) {
-	convey.Convey("Given two float32 host tensors", t, func() {
-		shape, _ := tensor.NewShape([]int{4})
-		left, _ := tensor.NewZeroed(shape, dtype.Float32)
-		right, _ := tensor.NewZeroed(shape, dtype.Float32)
-		out, _ := tensor.NewZeroed(shape, dtype.Float32)
+	for _, n := range parityNs {
+		n := n
 
-		leftView, _ := left.Float32Native()
-		rightView, _ := right.Float32Native()
+		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
+			convey.Convey("Given two float32 host tensors", t, func() {
+				kernel, ok := Default.Lookup("add", Signature{
+					Layout:  tensor.LayoutDense,
+					Inputs:  []dtype.DType{dtype.Float32, dtype.Float32},
+					Outputs: []dtype.DType{dtype.Float32},
+				})
+				convey.So(ok, convey.ShouldBeTrue)
 
-		for index := range leftView {
-			leftView[index] = float32(index + 1)
-			rightView[index] = float32(10 * (index + 1))
-		}
+				shape, _ := tensor.NewShape([]int{n})
+				left, _ := tensor.NewZeroed(shape, dtype.Float32)
+				right, _ := tensor.NewZeroed(shape, dtype.Float32)
+				out, _ := tensor.NewZeroed(shape, dtype.Float32)
 
-		kernel := Default.Lookup("add", Signature{
-			Layout:  tensor.LayoutDense,
-			Inputs:  []dtype.DType{dtype.Float32, dtype.Float32},
-			Outputs: []dtype.DType{dtype.Float32},
+				leftView, _ := left.Float32Native()
+				rightView, _ := right.Float32Native()
+
+				for index := range leftView {
+					leftView[index] = float32(index + 1)
+					rightView[index] = float32(10 * (index + 1))
+				}
+
+				err := kernel.Run(left, right, out)
+				convey.So(err, convey.ShouldBeNil)
+
+				outView, _ := out.Float32Native()
+
+				for index := range outView {
+					convey.So(outView[index], convey.ShouldEqual, leftView[index]+rightView[index])
+				}
+			})
 		})
-
-		convey.Convey("Lookup should find the kernel", func() {
-			convey.So(kernel, convey.ShouldNotBeNil)
-		})
-
-		convey.Convey("Running it should produce the elementwise sum", func() {
-			err := kernel.Run(left, right, out)
-			convey.So(err, convey.ShouldBeNil)
-
-			outView, _ := out.Float32Native()
-			convey.So(outView, convey.ShouldResemble, []float32{11, 22, 33, 44})
-		})
-	})
+	}
 }
 
 func TestAddBFloat16_MixedAccumulation(t *testing.T) {
@@ -60,12 +67,12 @@ func TestAddBFloat16_MixedAccumulation(t *testing.T) {
 			rightView[index] = dtype.NewBfloat16FromFloat32(value * 2)
 		}
 
-		kernel := Default.Lookup("add", Signature{
+		kernel, ok := Default.Lookup("add", Signature{
 			Layout:  tensor.LayoutDense,
 			Inputs:  []dtype.DType{dtype.BFloat16, dtype.BFloat16},
 			Outputs: []dtype.DType{dtype.BFloat16},
 		})
-		convey.So(kernel, convey.ShouldNotBeNil)
+		convey.So(ok, convey.ShouldBeTrue)
 
 		err := kernel.Run(left, right, out)
 

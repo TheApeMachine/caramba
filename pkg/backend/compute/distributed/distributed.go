@@ -14,11 +14,19 @@ via pkg/network/transport.
 package distributed
 
 import (
+	"errors"
 	"sync/atomic"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
+
+/*
+ErrInvalidRank is returned when a rank index is outside the range
+[0, mesh size). Distinct from tensor.ErrShapeMismatch so callers can
+distinguish topology errors from tensor-shape errors.
+*/
+var ErrInvalidRank = errors.New("distributed: rank out of range")
 
 /*
 HostDistributedTensor is the host-only DistributedTensor. Every shard
@@ -110,7 +118,7 @@ LocalShard returns the shard for the local process's rank.
 */
 func (distributed *HostDistributedTensor) LocalShard() (tensor.Tensor, error) {
 	if distributed.localRank < 0 || distributed.localRank >= len(distributed.shards) {
-		return nil, tensor.ErrShapeMismatch
+		return nil, ErrInvalidRank
 	}
 
 	return distributed.shards[distributed.localRank], nil

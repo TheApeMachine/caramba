@@ -2,16 +2,15 @@
 
 package tensor
 
-import "syscall"
+import (
+	"fmt"
+	"syscall"
+)
 
 /*
-Darwin mmap primitives. Anonymous private mappings. Darwin's superpage
-flag is VM_FLAGS_SUPERPAGE_SIZE_ANY (0x10000) but Go's syscall package
-does not expose it directly; we use plain anon mmap and rely on
-posix_madvise/MADV_FREE_REUSABLE for reclamation.
-
-Per spray-and-pray: this file compiles. Verification on macOS should
-exercise the mmap round trip with realistic sizes.
+Darwin mmap primitives. Anonymous private mappings. The allocator
+returns (nil, error) on failure; mixing heap buffers with mmap-backed
+buffers would corrupt the process when Munmap runs on heap memory.
 */
 
 const (
@@ -19,7 +18,7 @@ const (
 	madvDontNeed     = 4
 )
 
-func mmapAlloc(bytesNeeded int) []byte {
+func mmapAlloc(bytesNeeded int) ([]byte, error) {
 	buffer, err := syscall.Mmap(
 		-1,
 		0,
@@ -29,10 +28,10 @@ func mmapAlloc(bytesNeeded int) []byte {
 	)
 
 	if err != nil {
-		return make([]byte, bytesNeeded)
+		return nil, fmt.Errorf("tensor/mmap: anonymous Mmap(%d) failed: %w", bytesNeeded, err)
 	}
 
-	return buffer
+	return buffer, nil
 }
 
 func mmapFree(buffer []byte) {

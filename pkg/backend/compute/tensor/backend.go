@@ -71,10 +71,19 @@ type Backend interface {
 Capabilities describes a backend's runtime properties. Used by the
 orchestrator's residency planner and by the kernel dispatch tables.
 */
+/*
+MaxBytesUnlimited signals that the backend has no enforced storage
+budget; the available pool is determined at runtime by the host's
+free RAM (host backend) or by the device's driver/runtime (device
+backends that choose not to advertise a static cap).
+*/
+const MaxBytesUnlimited int64 = 0
+
 type Capabilities struct {
 	// MaxBytes is the total resident storage budget in bytes.
-	// Zero means "no enforced limit" (typical for the host backend
-	// once the tiered allocator is in place).
+	// MaxBytesUnlimited (zero) means "no enforced limit" — runtime-
+	// determined — and is typical for the host backend once the
+	// tiered allocator is in place.
 	MaxBytes int64
 
 	// SupportsAsync reports whether UploadAsync is genuinely
