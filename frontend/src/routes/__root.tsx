@@ -34,36 +34,36 @@ const RootDocument = ({ children }: { children: React.ReactNode }) => {
 			<body className="flex h-full min-h-svh flex-col" suppressHydrationWarning>
 				<ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up">
 					<ThemeProvider>
-					<ToastProvider>
-						<Page>
-							<Page.Header>
-								<SessionControls />
-							</Page.Header>
-							<Page.Nav />
-							<Page.Main>
-								<div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
-									<AuthenticatedBoundary>{children}</AuthenticatedBoundary>
-								</div>
-							</Page.Main>
-							<Page.Aside>{/* reserved for layout */}</Page.Aside>
-							<Page.Footer />
-						</Page>
-						<ClientOnly fallback={null}>
-						<Assistant />
-					</ClientOnly>
-					</ToastProvider>
-					<TanStackDevtools
-						config={{
-							position: "bottom-right",
-						}}
-						plugins={[
-							{
-								name: "Tanstack Router",
-								render: <TanStackRouterDevtoolsPanel />,
-							},
-						]}
-					/>
-					<Scripts />
+						<ToastProvider>
+							<Page>
+								<Page.Header>
+									<SessionControls />
+								</Page.Header>
+								<Page.Nav />
+								<Page.Main>
+									<Page.MainBody>
+										<AuthenticatedBoundary>{children}</AuthenticatedBoundary>
+									</Page.MainBody>
+								</Page.Main>
+								<Page.Aside>{/* reserved for layout */}</Page.Aside>
+								<Page.Footer />
+							</Page>
+							<ClientOnly fallback={null}>
+								<Assistant />
+							</ClientOnly>
+						</ToastProvider>
+						<TanStackDevtools
+							config={{
+								position: "bottom-right",
+							}}
+							plugins={[
+								{
+									name: "Tanstack Router",
+									render: <TanStackRouterDevtoolsPanel />,
+								},
+							]}
+						/>
+						<Scripts />
 					</ThemeProvider>
 				</ClerkProvider>
 			</body>

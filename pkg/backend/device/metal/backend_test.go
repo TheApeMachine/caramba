@@ -27,6 +27,14 @@ var binaryFloat32Cases = []binaryFloat32Case{
 	{name: "sub", operation: metalBinaryFloat32Sub, apply: (*Backend).SubFloat32},
 	{name: "mul", operation: metalBinaryFloat32Mul, apply: (*Backend).MulFloat32},
 	{name: "div", operation: metalBinaryFloat32Div, apply: (*Backend).DivFloat32},
+	{name: "max", operation: metalBinaryFloat32Max, apply: (*Backend).MaxFloat32},
+	{name: "min", operation: metalBinaryFloat32Min, apply: (*Backend).MinFloat32},
+	{name: "eq", operation: metalBinaryFloat32Eq, apply: (*Backend).EqFloat32},
+	{name: "ne", operation: metalBinaryFloat32Ne, apply: (*Backend).NeFloat32},
+	{name: "lt", operation: metalBinaryFloat32Lt, apply: (*Backend).LtFloat32},
+	{name: "le", operation: metalBinaryFloat32Le, apply: (*Backend).LeFloat32},
+	{name: "gt", operation: metalBinaryFloat32Gt, apply: (*Backend).GtFloat32},
+	{name: "ge", operation: metalBinaryFloat32Ge, apply: (*Backend).GeFloat32},
 }
 
 func TestNewBackend(t *testing.T) {
@@ -188,6 +196,38 @@ func TestBackend_MulFloat32(t *testing.T) {
 
 func TestBackend_DivFloat32(t *testing.T) {
 	testBackendBinaryFloat32(t, binaryFloat32Cases[3])
+}
+
+func TestBackend_MaxFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[4])
+}
+
+func TestBackend_MinFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[5])
+}
+
+func TestBackend_EqFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[6])
+}
+
+func TestBackend_NeFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[7])
+}
+
+func TestBackend_LtFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[8])
+}
+
+func TestBackend_LeFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[9])
+}
+
+func TestBackend_GtFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[10])
+}
+
+func TestBackend_GeFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[11])
 }
 
 func testBackendBinaryFloat32(t *testing.T, testCase binaryFloat32Case) {
@@ -606,6 +646,11 @@ func binaryFloat32ParityValues(
 	for index := range leftValues {
 		leftValues[index] = float32((index % 511) - 255)
 		rightValues[index] = binaryFloat32RightValue(index)
+
+		if name != "div" && index%13 == 0 && leftValues[index] != 0 {
+			rightValues[index] = leftValues[index]
+		}
+
 		expectedValues[index] = binaryFloat32Expected(
 			name,
 			leftValues[index],
@@ -637,6 +682,54 @@ func binaryFloat32Expected(name string, left float32, right float32) float32 {
 		return left * right
 	case "div":
 		return left / right
+	case "max":
+		if left > right {
+			return left
+		}
+
+		return right
+	case "min":
+		if left < right {
+			return left
+		}
+
+		return right
+	case "eq":
+		if left == right {
+			return 1
+		}
+
+		return 0
+	case "ne":
+		if left != right {
+			return 1
+		}
+
+		return 0
+	case "lt":
+		if left < right {
+			return 1
+		}
+
+		return 0
+	case "le":
+		if left <= right {
+			return 1
+		}
+
+		return 0
+	case "gt":
+		if left > right {
+			return 1
+		}
+
+		return 0
+	case "ge":
+		if left >= right {
+			return 1
+		}
+
+		return 0
 	}
 
 	panic("unknown binary float32 operation: " + name)

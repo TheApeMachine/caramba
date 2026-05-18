@@ -63,6 +63,14 @@ const (
 	metalBinaryFloat32Sub
 	metalBinaryFloat32Mul
 	metalBinaryFloat32Div
+	metalBinaryFloat32Max
+	metalBinaryFloat32Min
+	metalBinaryFloat32Eq
+	metalBinaryFloat32Ne
+	metalBinaryFloat32Lt
+	metalBinaryFloat32Le
+	metalBinaryFloat32Gt
+	metalBinaryFloat32Ge
 )
 
 func runMetalBinaryFloat32(
@@ -74,6 +82,56 @@ func runMetalBinaryFloat32(
 	_ = operation
 	_ = left
 	_ = right
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalBinaryElementwise(
+	operation metalBinaryFloat32Operation,
+	left tensor.Tensor,
+	right tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = operation
+	_ = left
+	_ = right
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+type metalUnaryFloat32Operation int
+
+const (
+	metalUnaryFloat32Relu metalUnaryFloat32Operation = iota
+	metalUnaryFloat32Abs
+	metalUnaryFloat32Neg
+	metalUnaryFloat32Square
+	metalUnaryFloat32Recip
+	metalUnaryFloat32Sqrt
+	metalUnaryFloat32Sign
+)
+
+func runMetalUnaryFloat32(
+	operation metalUnaryFloat32Operation,
+	input tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = operation
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalUnaryElementwise(
+	operation metalUnaryFloat32Operation,
+	input tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = operation
+	_ = input
 	_ = out
 
 	return tensor.ErrNeedsPlatformSetup

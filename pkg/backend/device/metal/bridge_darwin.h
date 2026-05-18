@@ -22,7 +22,31 @@ typedef enum MetalBinaryFloat32Op {
     MetalBinaryFloat32Sub = 1,
     MetalBinaryFloat32Mul = 2,
     MetalBinaryFloat32Div = 3,
+    MetalBinaryFloat32Max = 4,
+    MetalBinaryFloat32Min = 5,
+    MetalBinaryFloat32Eq = 6,
+    MetalBinaryFloat32Ne = 7,
+    MetalBinaryFloat32Lt = 8,
+    MetalBinaryFloat32Le = 9,
+    MetalBinaryFloat32Gt = 10,
+    MetalBinaryFloat32Ge = 11,
 } MetalBinaryFloat32Op;
+
+typedef enum MetalUnaryFloat32Op {
+    MetalUnaryFloat32Relu = 0,
+    MetalUnaryFloat32Abs = 1,
+    MetalUnaryFloat32Neg = 2,
+    MetalUnaryFloat32Square = 3,
+    MetalUnaryFloat32Recip = 4,
+    MetalUnaryFloat32Sqrt = 5,
+    MetalUnaryFloat32Sign = 6,
+} MetalUnaryFloat32Op;
+
+typedef enum MetalElementDType {
+    MetalElementDTypeFloat32 = 0,
+    MetalElementDTypeFloat16 = 1,
+    MetalElementDTypeBFloat16 = 2,
+} MetalElementDType;
 
 MetalDeviceRef metal_open_default_device(
     const uint8_t* libraryBytes,
@@ -38,6 +62,36 @@ int metal_dispatch_binary_float32(
     int operation,
     MetalBufferRef leftRef,
     MetalBufferRef rightRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_unary_float32(
+    MetalDeviceRef contextRef,
+    int operation,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_binary_elementwise(
+    MetalDeviceRef contextRef,
+    int operation,
+    int elementDType,
+    MetalBufferRef leftRef,
+    MetalBufferRef rightRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_unary_elementwise(
+    MetalDeviceRef contextRef,
+    int operation,
+    int elementDType,
+    MetalBufferRef inputRef,
     MetalBufferRef outRef,
     uint32_t count,
     uint64_t completionToken,

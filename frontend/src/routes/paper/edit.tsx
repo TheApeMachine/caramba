@@ -6,5 +6,6 @@ const RouteComponent = () => {
 };
 
 export const Route = createFileRoute("/paper/edit")({
+	staticData: { pageContentWidth: "contained" },
 	component: RouteComponent,
 });

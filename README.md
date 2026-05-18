@@ -117,6 +117,12 @@ CGO_ENABLED=1 go build -tags cgo ./pkg/backend/device/metal/...
 go build -tags "cgo xla" ./pkg/backend/device/xla/...
 ```
 
+The Metal backend embeds `pkg/backend/device/metal/kernels.metallib`
+from `pkg/backend/device/metal/*.metal`. Dense elementwise binary and
+unary kernels currently cover `float32`, `float16`, and `bfloat16`
+through the device command queue with async completion, pooled
+`MTLBuffer` storage, and per-kernel pipeline caching.
+
 Every backend implements the same interface, and the optimizer does the same math everywhere:
 
 ```go

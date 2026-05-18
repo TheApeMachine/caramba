@@ -12,7 +12,7 @@ import { DragDropProvider } from "#/components/ui/drag-drop";
 import { Flex } from "#/components/ui/flex";
 import { LatexToolbar } from "./toolbar";
 
-function PaperContextSnapshot() {
+const PaperContextSnapshot = () => {
 	const { blocks, metadataForm } = usePaperEditor();
 
 	const meta = useStore(metadataForm.store, (s) => s.values as PaperMetadata);
@@ -61,9 +61,9 @@ function PaperContextSnapshot() {
 			{summary}
 		</span>
 	);
-}
+};
 
-export function PaperEditorApp() {
+export const PaperEditorApp = () => {
 	return (
 		<PaperEditorProvider>
 			<PaperContextSnapshot />
@@ -79,4 +79,4 @@ export function PaperEditorApp() {
 			</DragDropProvider>
 		</PaperEditorProvider>
 	);
-}
+};

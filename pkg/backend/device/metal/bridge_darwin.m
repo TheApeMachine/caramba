@@ -1,21 +1,12 @@
-#include "bridge_darwin.h"
+#include "bridge_darwin_private.h"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <Foundation/Foundation.h>
-#include <Metal/Metal.h>
 #include "_cgo_export.h"
 #include <dispatch/dispatch.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-typedef struct MetalContext {
-    void* device;
-    void* queue;
-    void* library;
-    void* pipelineCache;
-    void* pipelineLock;
-} MetalContext;
 
 static void metal_status_clear(MetalStatus* status) {
     if (status == NULL) {
@@ -95,20 +86,24 @@ static void metal_release_context(MetalContext* context) {
 
 static const char* metal_binary_float32_kernel_name(int operation) {
     switch (operation) {
-    case MetalBinaryFloat32Add:
-        return "add_float32";
-    case MetalBinaryFloat32Sub:
-        return "sub_float32";
-    case MetalBinaryFloat32Mul:
-        return "mul_float32";
-    case MetalBinaryFloat32Div:
-        return "div_float32";
+    case MetalBinaryFloat32Add: return "add_float32";
+    case MetalBinaryFloat32Sub: return "sub_float32";
+    case MetalBinaryFloat32Mul: return "mul_float32";
+    case MetalBinaryFloat32Div: return "div_float32";
+    case MetalBinaryFloat32Max: return "max_float32";
+    case MetalBinaryFloat32Min: return "min_float32";
+    case MetalBinaryFloat32Eq: return "eq_float32";
+    case MetalBinaryFloat32Ne: return "ne_float32";
+    case MetalBinaryFloat32Lt: return "lt_float32";
+    case MetalBinaryFloat32Le: return "le_float32";
+    case MetalBinaryFloat32Gt: return "gt_float32";
+    case MetalBinaryFloat32Ge: return "ge_float32";
     default:
         return NULL;
     }
 }
 
-static id<MTLComputePipelineState> metal_get_pipeline(
+id<MTLComputePipelineState> metal_get_pipeline(
     MetalContext* context,
     const char* name,
     MetalStatus* status

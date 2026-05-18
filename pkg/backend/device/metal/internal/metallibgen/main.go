@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 func main() {
@@ -41,34 +43,71 @@ func NewGenerator(packageDir string, tempDir string) *Generator {
 }
 
 func (generator *Generator) Generate() error {
-	if err := generator.Run("xcrun", generator.MetalArgs()...); err != nil {
+	sources, err := generator.SourceFiles()
+	if err != nil {
 		return err
 	}
 
-	return generator.Run("xcrun", generator.MetallibArgs()...)
+	for _, source := range sources {
+		if err := generator.Run("xcrun", generator.MetalArgs(source)...); err != nil {
+			return err
+		}
+	}
+
+	return generator.Run("xcrun", generator.MetallibArgs(sources)...)
 }
 
-func (generator *Generator) MetalArgs() []string {
+func (generator *Generator) SourceFiles() ([]string, error) {
+	pattern := filepath.Join(generator.packageDir, "*.metal")
+	sources, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Strings(sources)
+
+	if len(sources) == 0 {
+		return nil, fmt.Errorf("no Metal source files matched %s", pattern)
+	}
+
+	return sources, nil
+}
+
+func (generator *Generator) MetalArgs(source string) []string {
 	return []string{
 		"-sdk",
 		"macosx",
 		"metal",
 		"-c",
-		filepath.Join(generator.packageDir, "add_float32.metal"),
+		source,
 		"-o",
-		filepath.Join(generator.tempDir, "add_float32.air"),
+		generator.AirPath(source),
 	}
 }
 
-func (generator *Generator) MetallibArgs() []string {
-	return []string{
+func (generator *Generator) MetallibArgs(sources []string) []string {
+	args := []string{
 		"-sdk",
 		"macosx",
 		"metallib",
-		filepath.Join(generator.tempDir, "add_float32.air"),
+	}
+
+	for _, source := range sources {
+		args = append(args, generator.AirPath(source))
+	}
+
+	return append(
+		args,
 		"-o",
 		filepath.Join(generator.packageDir, "kernels.metallib"),
-	}
+	)
+}
+
+func (generator *Generator) AirPath(source string) string {
+	base := filepath.Base(source)
+	name := strings.TrimSuffix(base, filepath.Ext(base))
+
+	return filepath.Join(generator.tempDir, name+".air")
 }
 
 func (generator *Generator) Run(name string, args ...string) error {

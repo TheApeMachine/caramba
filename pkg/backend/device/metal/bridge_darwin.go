@@ -317,6 +317,14 @@ const (
 	metalBinaryFloat32Sub
 	metalBinaryFloat32Mul
 	metalBinaryFloat32Div
+	metalBinaryFloat32Max
+	metalBinaryFloat32Min
+	metalBinaryFloat32Eq
+	metalBinaryFloat32Ne
+	metalBinaryFloat32Lt
+	metalBinaryFloat32Le
+	metalBinaryFloat32Gt
+	metalBinaryFloat32Ge
 )
 
 func runMetalBinaryFloat32(

@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useRouterState } from "@tanstack/react-router";
 import { Menu as MenuIcon } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
@@ -22,12 +22,45 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from "#/components/ui/sheet";
+import { cn } from "#/lib/utils";
 import { Navigation } from "./navigation";
 
 const humanize = (segment: string) =>
 	decodeURIComponent(segment)
 		.replace(/[-_]+/g, " ")
 		.replace(/\b\w/g, (character) => character.toUpperCase());
+
+/*
+PageContentWidth selects how routed main content is sized in the shell.
+full: span the main grid column.
+contained: centered column with a max width (document-style layouts).
+*/
+export type PageContentWidth = "full" | "contained";
+
+type PageContentWidthStatic = {
+	pageContentWidth?: PageContentWidth;
+};
+
+/*
+resolvePageContentWidth walks active matches from leaf to root; the first
+explicit pageContentWidth wins so child routes can override layout parents.
+*/
+export function resolvePageContentWidth(
+	matches: ReadonlyArray<{ staticData?: unknown }>,
+): PageContentWidth {
+	for (let index = matches.length - 1; index >= 0; index--) {
+		const data = matches[index]?.staticData as
+			| PageContentWidthStatic
+			| undefined;
+		const width = data?.pageContentWidth;
+
+		if (width === "contained" || width === "full") {
+			return width;
+		}
+	}
+
+	return "full";
+}
 
 const useRouteCrumbs = () => {
 	const { pathname } = useLocation();
@@ -67,9 +100,7 @@ export const Page = ({ children }: { children?: React.ReactNode }) => {
 };
 
 Page.Header = ({ children }: { children?: React.ReactNode }) => {
-	return (
-		<PageHeaderBody>{children}</PageHeaderBody>
-	);
+	return <PageHeaderBody>{children}</PageHeaderBody>;
 };
 
 const PageHeaderBody = ({ children }: { children?: React.ReactNode }) => {
@@ -131,6 +162,37 @@ Page.Main = ({ children }: { children?: React.ReactNode }) => {
 		<main className="flex h-full min-h-0 flex-1 flex-col">
 			{children ?? null}
 		</main>
+	);
+};
+
+/*
+Page.MainBody wraps routed outlet content and honors each route staticData
+pageContentWidth. Use it once inside Page.Main in the root shell.
+*/
+Page.MainBody = ({ children }: { children?: React.ReactNode }) => {
+	const contentWidth = useRouterState({
+		select: (state) => resolvePageContentWidth(state.matches),
+	});
+
+	if (contentWidth === "contained") {
+		return (
+			<div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
+				<div
+					className={cn(
+						"mx-auto flex h-full min-h-0 w-full max-w-6xl flex-1 flex-col",
+						"px-4 sm:px-6",
+					)}
+				>
+					{children ?? null}
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
+			{children ?? null}
+		</div>
 	);
 };
 

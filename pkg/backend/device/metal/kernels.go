@@ -14,6 +14,16 @@ func init() {
 	registerBinaryFloat32Kernel("sub", metalBinaryFloat32Sub)
 	registerBinaryFloat32Kernel("mul", metalBinaryFloat32Mul)
 	registerBinaryFloat32Kernel("div", metalBinaryFloat32Div)
+	registerBinaryFloat32Kernel("max", metalBinaryFloat32Max)
+	registerBinaryFloat32Kernel("min", metalBinaryFloat32Min)
+	registerBinaryFloat32Kernel("eq", metalBinaryFloat32Eq)
+	registerBinaryFloat32Kernel("ne", metalBinaryFloat32Ne)
+	registerBinaryFloat32Kernel("lt", metalBinaryFloat32Lt)
+	registerBinaryFloat32Kernel("le", metalBinaryFloat32Le)
+	registerBinaryFloat32Kernel("gt", metalBinaryFloat32Gt)
+	registerBinaryFloat32Kernel("ge", metalBinaryFloat32Ge)
+	registerBinaryFloat16Kernels()
+	registerBinaryBFloat16Kernels()
 }
 
 /*
@@ -64,16 +74,111 @@ func (backend *Backend) DivFloat32(
 	return backend.binaryFloat32(ctx, metalBinaryFloat32Div, left, right)
 }
 
+func (backend *Backend) MaxFloat32(
+	ctx context.Context,
+	left tensor.Tensor,
+	right tensor.Tensor,
+) (tensor.Tensor, error) {
+	return backend.binaryFloat32(ctx, metalBinaryFloat32Max, left, right)
+}
+
+func (backend *Backend) MinFloat32(
+	ctx context.Context,
+	left tensor.Tensor,
+	right tensor.Tensor,
+) (tensor.Tensor, error) {
+	return backend.binaryFloat32(ctx, metalBinaryFloat32Min, left, right)
+}
+
+func (backend *Backend) EqFloat32(
+	ctx context.Context,
+	left tensor.Tensor,
+	right tensor.Tensor,
+) (tensor.Tensor, error) {
+	return backend.binaryFloat32(ctx, metalBinaryFloat32Eq, left, right)
+}
+
+func (backend *Backend) NeFloat32(
+	ctx context.Context,
+	left tensor.Tensor,
+	right tensor.Tensor,
+) (tensor.Tensor, error) {
+	return backend.binaryFloat32(ctx, metalBinaryFloat32Ne, left, right)
+}
+
+func (backend *Backend) LtFloat32(
+	ctx context.Context,
+	left tensor.Tensor,
+	right tensor.Tensor,
+) (tensor.Tensor, error) {
+	return backend.binaryFloat32(ctx, metalBinaryFloat32Lt, left, right)
+}
+
+func (backend *Backend) LeFloat32(
+	ctx context.Context,
+	left tensor.Tensor,
+	right tensor.Tensor,
+) (tensor.Tensor, error) {
+	return backend.binaryFloat32(ctx, metalBinaryFloat32Le, left, right)
+}
+
+func (backend *Backend) GtFloat32(
+	ctx context.Context,
+	left tensor.Tensor,
+	right tensor.Tensor,
+) (tensor.Tensor, error) {
+	return backend.binaryFloat32(ctx, metalBinaryFloat32Gt, left, right)
+}
+
+func (backend *Backend) GeFloat32(
+	ctx context.Context,
+	left tensor.Tensor,
+	right tensor.Tensor,
+) (tensor.Tensor, error) {
+	return backend.binaryFloat32(ctx, metalBinaryFloat32Ge, left, right)
+}
+
 func registerBinaryFloat32Kernel(name string, operation metalBinaryFloat32Operation) {
+	registerBinaryKernel(name, dtype.Float32, runBinaryFloat32(operation))
+}
+
+func registerBinaryFloat16Kernels() {
+	registerBinaryDTypeKernels(dtype.Float16)
+}
+
+func registerBinaryBFloat16Kernels() {
+	registerBinaryDTypeKernels(dtype.BFloat16)
+}
+
+func registerBinaryDTypeKernels(storageDType dtype.DType) {
+	registerBinaryKernel("add", storageDType, runBinaryElementwise(metalBinaryFloat32Add))
+	registerBinaryKernel("sub", storageDType, runBinaryElementwise(metalBinaryFloat32Sub))
+	registerBinaryKernel("mul", storageDType, runBinaryElementwise(metalBinaryFloat32Mul))
+	registerBinaryKernel("div", storageDType, runBinaryElementwise(metalBinaryFloat32Div))
+	registerBinaryKernel("max", storageDType, runBinaryElementwise(metalBinaryFloat32Max))
+	registerBinaryKernel("min", storageDType, runBinaryElementwise(metalBinaryFloat32Min))
+	registerBinaryKernel("eq", storageDType, runBinaryElementwise(metalBinaryFloat32Eq))
+	registerBinaryKernel("ne", storageDType, runBinaryElementwise(metalBinaryFloat32Ne))
+	registerBinaryKernel("lt", storageDType, runBinaryElementwise(metalBinaryFloat32Lt))
+	registerBinaryKernel("le", storageDType, runBinaryElementwise(metalBinaryFloat32Le))
+	registerBinaryKernel("gt", storageDType, runBinaryElementwise(metalBinaryFloat32Gt))
+	registerBinaryKernel("ge", storageDType, runBinaryElementwise(metalBinaryFloat32Ge))
+}
+
+func registerBinaryKernel(
+	name string,
+	storageDType dtype.DType,
+	run func(...tensor.Tensor) error,
+) {
 	kernels.Default.Register(kernels.Kernel{
 		Name: name,
 		Signature: kernels.Signature{
 			Layout:  tensor.LayoutDense,
-			Inputs:  []dtype.DType{dtype.Float32, dtype.Float32},
-			Outputs: []dtype.DType{dtype.Float32},
+			Inputs:  []dtype.DType{storageDType, storageDType},
+			Outputs: []dtype.DType{storageDType},
 		},
 		Locations: []tensor.Location{tensor.Metal},
-		Run:       runBinaryFloat32(operation),
+		Run:       run,
 	})
 }
 
@@ -123,5 +228,15 @@ func runBinaryFloat32(operation metalBinaryFloat32Operation) func(...tensor.Tens
 		}
 
 		return runMetalBinaryFloat32(operation, args[0], args[1], args[2])
+	}
+}
+
+func runBinaryElementwise(operation metalBinaryFloat32Operation) func(...tensor.Tensor) error {
+	return func(args ...tensor.Tensor) error {
+		if len(args) != 3 {
+			return tensor.ErrShapeMismatch
+		}
+
+		return runMetalBinaryElementwise(operation, args[0], args[1], args[2])
 	}
 }

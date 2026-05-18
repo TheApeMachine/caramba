@@ -24,83 +24,401 @@ to the commit message that promotes it.
 
 ## Session test output
 
-### 2026-05-18 Metal device kernel slice
+### 2026-05-18 Metal elementwise dtype expansion
+
+This adds real Metal device kernels for dense `float16` and `bfloat16`
+elementwise execution across the same 19-operation surface already
+verified for `float32`:
+
+- Binary: `add`, `sub`, `mul`, `div`, `max`, `min`, `eq`, `ne`, `lt`,
+  `le`, `gt`, `ge`.
+- Unary: `relu`, `abs`, `neg`, `square`, `recip`, `sqrt`, `sign`.
+
+`pkg/backend/device/metal/elementwise_float16.metal` uses native
+`half4` vector kernels. `pkg/backend/device/metal/elementwise_bfloat16.metal`
+stores BF16 values as `ushort4`, decodes on device by shifting into the
+high float32 bits, performs the operation on device, and writes BF16
+bits back through the same high-bit encoding used by `pkg/dtype`.
+`pkg/backend/device/metal/bridge_elementwise_darwin.m` dispatches by
+operation and dtype through the real Metal command queue. The kernel
+registry now has 57 Metal dense elementwise signatures: 19 each for
+`float32`, `float16`, and `bfloat16`.
+
+Focused dtype parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_Metal(Binary|Unary)ElementwiseDTypes' -count=1 -v
+=== RUN   TestKernelRegistry_MetalBinaryElementwiseDTypes
+--- PASS: TestKernelRegistry_MetalBinaryElementwiseDTypes (0.08s)
+=== RUN   TestKernelRegistry_MetalUnaryElementwiseDTypes
+--- PASS: TestKernelRegistry_MetalUnaryElementwiseDTypes (0.02s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.702s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.557s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.499s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.810s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	1.350s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.045s
+```
+
+Metal dtype benchmark output, `N=8192`:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunElementwiseDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunElementwiseDTypes/f16/add-16     	   11607	    102817 ns/op	 478.05 MB/s	    1289 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/sub-16     	   12115	     99106 ns/op	 495.95 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/mul-16     	   12214	     97998 ns/op	 501.56 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/div-16     	   12224	     98268 ns/op	 500.18 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/max-16     	   10000	    100376 ns/op	 489.68 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/min-16     	   12093	     99328 ns/op	 494.85 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/eq-16      	   10000	    100164 ns/op	 490.72 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/ne-16      	   12009	    100146 ns/op	 490.80 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/lt-16      	   12117	     99908 ns/op	 491.97 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/le-16      	   12081	     99230 ns/op	 495.34 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/gt-16      	   10000	    101007 ns/op	 486.62 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/ge-16      	   10000	    101694 ns/op	 483.33 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/relu-16    	   12015	     99743 ns/op	 328.52 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/abs-16     	   10000	    101475 ns/op	 322.92 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/neg-16     	   10000	    101810 ns/op	 321.85 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/square-16  	   12036	     99388 ns/op	 329.70 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/recip-16   	   10000	    102670 ns/op	 319.16 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/sqrt-16    	   10000	    106141 ns/op	 308.72 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/sign-16    	   10000	    103576 ns/op	 316.37 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/add-16    	   10000	    101962 ns/op	 482.06 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/sub-16    	   10000	    101042 ns/op	 486.45 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/mul-16    	   10000	    102275 ns/op	 480.59 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/div-16    	   10000	    104431 ns/op	 470.67 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/max-16    	   10000	    103455 ns/op	 475.11 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/min-16    	   10000	    104943 ns/op	 468.37 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/eq-16     	   10000	    108618 ns/op	 452.52 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/ne-16     	   10000	    110976 ns/op	 442.91 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/lt-16     	   10000	    108646 ns/op	 452.41 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/le-16     	   10000	    107830 ns/op	 455.83 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/gt-16     	   10000	    108167 ns/op	 454.41 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/ge-16     	   10000	    108200 ns/op	 454.27 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/relu-16   	   10000	    107838 ns/op	 303.86 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/abs-16    	   10000	    108723 ns/op	 301.39 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/neg-16    	   10000	    108189 ns/op	 302.88 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/square-16 	   10000	    108050 ns/op	 303.27 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/recip-16  	   10000	    108495 ns/op	 302.02 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/sqrt-16   	   10000	    108725 ns/op	 301.38 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/sign-16   	   10000	    107370 ns/op	 305.19 MB/s	    1280 B/op	       3 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	41.871s
+```
+
+### 2026-05-18 Metal elementwise float32 expansion
+
+This slice renames `pkg/backend/device/metal/add_float32.metal` to
+`pkg/backend/device/metal/elementwise_float32.metal`, changes
+`internal/metallibgen` to compile every `*.metal` source in the Metal
+package, and expands the verified Metal device surface to 19 dense
+float32 elementwise kernels:
+
+- Binary: `add`, `sub`, `mul`, `div`, `max`, `min`, `eq`, `ne`, `lt`,
+  `le`, `gt`, `ge`.
+- Unary: `relu`, `abs`, `neg`, `square`, `recip`, `sqrt`, `sign`.
+
+The focused parity command ran every operation at
+`N ∈ {1, 7, 64, 1024, 8192}` through the real Metal command queue and
+the device kernel registry. Exact arithmetic and comparison operations
+assert bitwise float32 parity. `sqrt` asserts a 1-ULP bound against the
+scalar reference.
 
 Focused Metal device tests:
 
 ```
-=== RUN   TestBackend_Capabilities
+--- PASS: TestBackend_AddFloat32 (0.03s)
+--- PASS: TestBackend_SubFloat32 (0.01s)
+--- PASS: TestBackend_MulFloat32 (0.01s)
+--- PASS: TestBackend_DivFloat32 (0.01s)
+--- PASS: TestBackend_MaxFloat32 (0.01s)
+--- PASS: TestBackend_MinFloat32 (0.01s)
+--- PASS: TestBackend_EqFloat32 (0.01s)
+--- PASS: TestBackend_NeFloat32 (0.01s)
+--- PASS: TestBackend_LtFloat32 (0.01s)
+--- PASS: TestBackend_LeFloat32 (0.01s)
+--- PASS: TestBackend_GtFloat32 (0.01s)
+--- PASS: TestBackend_GeFloat32 (0.01s)
+--- PASS: TestKernelRegistry_MetalBinaryFloat32 (0.01s)
+--- PASS: TestBackend_ReluFloat32 (0.01s)
+--- PASS: TestBackend_AbsFloat32 (0.01s)
+--- PASS: TestBackend_NegFloat32 (0.01s)
+--- PASS: TestBackend_SquareFloat32 (0.01s)
+--- PASS: TestBackend_RecipFloat32 (0.01s)
+--- PASS: TestBackend_SqrtFloat32 (0.01s)
+--- PASS: TestBackend_SignFloat32 (0.01s)
+--- PASS: TestKernelRegistry_MetalUnaryFloat32 (0.01s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.787s
+```
 
-  Capabilities should report Apple-recommended alignment ✔✔
+Focused package sweep:
 
+```
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.550s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	1.406s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	1.696s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	0.663s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.070s
+```
 
-2 total assertions
+Metal benchmark output, `N=8192` rows from the full run:
 
---- PASS: TestBackend_Capabilities (0.00s)
-=== RUN   TestBackend_Capabilities_Device
+```
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkNewBackend-16                          8132    150014 ns/op    1264 B/op   4 allocs/op
+BenchmarkBackend_BinaryFloat32/add/N=8192-16   10000    105359 ns/op   933.04 MB/s  1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/sub/N=8192-16   10000    105312 ns/op   933.45 MB/s  1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/mul/N=8192-16   10000    106746 ns/op   920.91 MB/s  1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/div/N=8192-16    9921    106045 ns/op   927.00 MB/s  1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/max/N=8192-16   10000    106148 ns/op   926.10 MB/s  1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/min/N=8192-16   10000    110796 ns/op   887.25 MB/s  1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/eq/N=8192-16    10000    112528 ns/op   873.60 MB/s  1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/ne/N=8192-16     9360    119004 ns/op   826.06 MB/s  1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/lt/N=8192-16    10000    118599 ns/op   828.88 MB/s  1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/le/N=8192-16     9578    119903 ns/op   819.87 MB/s  1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/gt/N=8192-16     9302    126539 ns/op   776.87 MB/s  1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/ge/N=8192-16     9154    123562 ns/op   795.58 MB/s  1544 B/op   7 allocs/op
+BenchmarkKernel_RunBinaryFloat32/add/N=8192-16 10000   120620 ns/op   814.99 MB/s  1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/sub/N=8192-16 10000   111386 ns/op   882.56 MB/s  1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/mul/N=8192-16 10000   118049 ns/op   832.74 MB/s  1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/div/N=8192-16 10000   109402 ns/op   898.56 MB/s  1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/max/N=8192-16 10000   107769 ns/op   912.17 MB/s  1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/min/N=8192-16 10000   110759 ns/op   887.55 MB/s  1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/eq/N=8192-16   9488   112988 ns/op   870.04 MB/s  1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/ne/N=8192-16  10000   116214 ns/op   845.89 MB/s  1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/lt/N=8192-16  10000   118660 ns/op   828.45 MB/s  1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/le/N=8192-16  10000   114773 ns/op   856.51 MB/s  1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/gt/N=8192-16  10000   114733 ns/op   856.80 MB/s  1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/ge/N=8192-16   9666   118899 ns/op   826.79 MB/s  1288 B/op   3 allocs/op
+BenchmarkBackend_UnaryFloat32/relu/N=8192-16    9728   111825 ns/op   586.06 MB/s  1520 B/op   5 allocs/op
+BenchmarkBackend_UnaryFloat32/abs/N=8192-16    10000   114219 ns/op   573.78 MB/s  1520 B/op   5 allocs/op
+BenchmarkBackend_UnaryFloat32/neg/N=8192-16    10000   111727 ns/op   586.57 MB/s  1520 B/op   5 allocs/op
+BenchmarkBackend_UnaryFloat32/square/N=8192-16 10000   111419 ns/op   588.19 MB/s  1520 B/op   5 allocs/op
+BenchmarkBackend_UnaryFloat32/recip/N=8192-16  10000   108610 ns/op   603.41 MB/s  1520 B/op   5 allocs/op
+BenchmarkBackend_UnaryFloat32/sqrt/N=8192-16   10000   108271 ns/op   605.30 MB/s  1520 B/op   5 allocs/op
+BenchmarkBackend_UnaryFloat32/sign/N=8192-16   10000   114143 ns/op   574.16 MB/s  1520 B/op   5 allocs/op
+BenchmarkKernel_RunUnaryFloat32/relu/N=8192-16 10000   117148 ns/op   559.43 MB/s  1280 B/op   3 allocs/op
+BenchmarkKernel_RunUnaryFloat32/abs/N=8192-16  10000   114711 ns/op   571.31 MB/s  1280 B/op   3 allocs/op
+BenchmarkKernel_RunUnaryFloat32/neg/N=8192-16  10000   116186 ns/op   564.06 MB/s  1280 B/op   3 allocs/op
+BenchmarkKernel_RunUnaryFloat32/square/N=8192-16 10000 118529 ns/op  552.91 MB/s  1280 B/op   3 allocs/op
+BenchmarkKernel_RunUnaryFloat32/recip/N=8192-16 10000  116137 ns/op  564.30 MB/s  1280 B/op   3 allocs/op
+BenchmarkKernel_RunUnaryFloat32/sqrt/N=8192-16 10000   114455 ns/op  572.59 MB/s  1280 B/op   3 allocs/op
+BenchmarkKernel_RunUnaryFloat32/sign/N=8192-16 10000   110328 ns/op  594.01 MB/s  1280 B/op   3 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	216.585s
+```
 
-  Given an opened Metal backend ✔✔
+### 2026-05-18 Metal binary float32 kernel slice
 
+This slice verifies the Metal device kernels for dense float32
+`add`, `sub`, `mul`, and `div`. Each operation runs through the real
+Metal submission path, uses a `float4` vectorized body with scalar tail
+handling, is registered in the device kernel registry, and is tested
+against the scalar arithmetic reference with bitwise float32 parity at
+`N ∈ {1, 7, 64, 1024, 8192}`.
 
-4 total assertions
+The Objective-C pipeline cache now avoids holding its global `NSLock`
+while `newComputePipelineStateWithFunction` compiles a pipeline. The
+cache performs a locked read, compiles outside the cache lock, then
+rechecks and inserts under the lock. This keeps independent Metal
+kernel/dtype pipeline compilation from serializing on one dictionary
+lock as the kernel surface expands.
 
---- PASS: TestBackend_Capabilities_Device (0.05s)
-=== RUN   TestBackend_UploadAsyncFloat32
+`go generate ./pkg/backend/device/metal` completed and rebuilt
+`pkg/backend/device/metal/kernels.metallib`.
 
-  Given an async Metal float32 tensor upload ✔✔✔
+Focused Metal device tests:
 
-
-7 total assertions
-
---- PASS: TestBackend_UploadAsyncFloat32 (0.00s)
+```
 === RUN   TestBackend_AddFloat32
 === RUN   TestBackend_AddFloat32/N=1
 
-  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
+  Given two Metal float32 tensors for add ✔✔✔✔✔✔✔✔
 
 
-15 total assertions
+8 total assertions
 
 === RUN   TestBackend_AddFloat32/N=7
 
-  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
+  Given two Metal float32 tensors for add ✔✔✔✔✔✔✔✔
 
 
-23 total assertions
+16 total assertions
 
 === RUN   TestBackend_AddFloat32/N=64
 
-  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
+  Given two Metal float32 tensors for add ✔✔✔✔✔✔✔✔
 
 
-31 total assertions
+24 total assertions
 
 === RUN   TestBackend_AddFloat32/N=1024
 
-  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
+  Given two Metal float32 tensors for add ✔✔✔✔✔✔✔✔
 
 
-39 total assertions
+32 total assertions
 
 === RUN   TestBackend_AddFloat32/N=8192
 
-  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
+  Given two Metal float32 tensors for add ✔✔✔✔✔✔✔✔
 
 
-47 total assertions
+40 total assertions
 
---- PASS: TestBackend_AddFloat32 (0.01s)
-    --- PASS: TestBackend_AddFloat32/N=1 (0.00s)
+--- PASS: TestBackend_AddFloat32 (0.05s)
+    --- PASS: TestBackend_AddFloat32/N=1 (0.01s)
     --- PASS: TestBackend_AddFloat32/N=7 (0.00s)
     --- PASS: TestBackend_AddFloat32/N=64 (0.00s)
     --- PASS: TestBackend_AddFloat32/N=1024 (0.00s)
     --- PASS: TestBackend_AddFloat32/N=8192 (0.00s)
+=== RUN   TestBackend_SubFloat32
+=== RUN   TestBackend_SubFloat32/N=1
+
+  Given two Metal float32 tensors for sub ✔✔✔✔✔✔✔✔
+
+
+48 total assertions
+
+=== RUN   TestBackend_SubFloat32/N=7
+
+  Given two Metal float32 tensors for sub ✔✔✔✔✔✔✔✔
+
+
+56 total assertions
+
+=== RUN   TestBackend_SubFloat32/N=64
+
+  Given two Metal float32 tensors for sub ✔✔✔✔✔✔✔✔
+
+
+64 total assertions
+
+=== RUN   TestBackend_SubFloat32/N=1024
+
+  Given two Metal float32 tensors for sub ✔✔✔✔✔✔✔✔
+
+
+72 total assertions
+
+=== RUN   TestBackend_SubFloat32/N=8192
+
+  Given two Metal float32 tensors for sub ✔✔✔✔✔✔✔✔
+
+
+80 total assertions
+
+--- PASS: TestBackend_SubFloat32 (0.01s)
+    --- PASS: TestBackend_SubFloat32/N=1 (0.00s)
+    --- PASS: TestBackend_SubFloat32/N=7 (0.00s)
+    --- PASS: TestBackend_SubFloat32/N=64 (0.00s)
+    --- PASS: TestBackend_SubFloat32/N=1024 (0.00s)
+    --- PASS: TestBackend_SubFloat32/N=8192 (0.00s)
+=== RUN   TestBackend_MulFloat32
+=== RUN   TestBackend_MulFloat32/N=1
+
+  Given two Metal float32 tensors for mul ✔✔✔✔✔✔✔✔
+
+
+88 total assertions
+
+=== RUN   TestBackend_MulFloat32/N=7
+
+  Given two Metal float32 tensors for mul ✔✔✔✔✔✔✔✔
+
+
+96 total assertions
+
+=== RUN   TestBackend_MulFloat32/N=64
+
+  Given two Metal float32 tensors for mul ✔✔✔✔✔✔✔✔
+
+
+104 total assertions
+
+=== RUN   TestBackend_MulFloat32/N=1024
+
+  Given two Metal float32 tensors for mul ✔✔✔✔✔✔✔✔
+
+
+112 total assertions
+
+=== RUN   TestBackend_MulFloat32/N=8192
+
+  Given two Metal float32 tensors for mul ✔✔✔✔✔✔✔✔
+
+
+120 total assertions
+
+--- PASS: TestBackend_MulFloat32 (0.01s)
+    --- PASS: TestBackend_MulFloat32/N=1 (0.00s)
+    --- PASS: TestBackend_MulFloat32/N=7 (0.00s)
+    --- PASS: TestBackend_MulFloat32/N=64 (0.00s)
+    --- PASS: TestBackend_MulFloat32/N=1024 (0.00s)
+    --- PASS: TestBackend_MulFloat32/N=8192 (0.00s)
+=== RUN   TestBackend_DivFloat32
+=== RUN   TestBackend_DivFloat32/N=1
+
+  Given two Metal float32 tensors for div ✔✔✔✔✔✔✔✔
+
+
+128 total assertions
+
+=== RUN   TestBackend_DivFloat32/N=7
+
+  Given two Metal float32 tensors for div ✔✔✔✔✔✔✔✔
+
+
+136 total assertions
+
+=== RUN   TestBackend_DivFloat32/N=64
+
+  Given two Metal float32 tensors for div ✔✔✔✔✔✔✔✔
+
+
+144 total assertions
+
+=== RUN   TestBackend_DivFloat32/N=1024
+
+  Given two Metal float32 tensors for div ✔✔✔✔✔✔✔✔
+
+
+152 total assertions
+
+=== RUN   TestBackend_DivFloat32/N=8192
+
+  Given two Metal float32 tensors for div ✔✔✔✔✔✔✔✔
+
+
+160 total assertions
+
+--- PASS: TestBackend_DivFloat32 (0.01s)
+    --- PASS: TestBackend_DivFloat32/N=1 (0.00s)
+    --- PASS: TestBackend_DivFloat32/N=7 (0.00s)
+    --- PASS: TestBackend_DivFloat32/N=64 (0.00s)
+    --- PASS: TestBackend_DivFloat32/N=1024 (0.00s)
+    --- PASS: TestBackend_DivFloat32/N=8192 (0.00s)
 === RUN   TestBackend_AddFloat32_CloseInputsBeforeDownload
 
   Given a queued Metal add whose inputs are closed immediately ✔✔✔✔✔✔✔
 
 
-54 total assertions
+167 total assertions
 
 --- PASS: TestBackend_AddFloat32_CloseInputsBeforeDownload (0.01s)
 === RUN   TestBackend_AddFloat32_CloseOutputBeforeCompletion
@@ -108,68 +426,63 @@ Focused Metal device tests:
   Given a queued Metal add whose output is closed immediately ✔✔✔✔✔✔✔✔
 
 
-62 total assertions
+175 total assertions
 
---- PASS: TestBackend_AddFloat32_CloseOutputBeforeCompletion (0.01s)
+--- PASS: TestBackend_AddFloat32_CloseOutputBeforeCompletion (0.00s)
 === RUN   TestMetalBufferPool_AlignedBuckets
 
   Given closed Metal tensors with nearby byte sizes ✔✔✔✔✔✔✔✔✔
 
 
-71 total assertions
+184 total assertions
 
 --- PASS: TestMetalBufferPool_AlignedBuckets (0.00s)
-=== RUN   TestKernelRegistry_MetalAddFloat32
+=== RUN   TestKernelRegistry_MetalBinaryFloat32
+=== RUN   TestKernelRegistry_MetalBinaryFloat32/add
 
-  Given the device kernel registry ✔✔✔✔✔✔✔✔✔✔
+  Given the device kernel registry for add ✔✔✔✔✔✔✔✔✔
 
 
-81 total assertions
+193 total assertions
 
---- PASS: TestKernelRegistry_MetalAddFloat32 (0.01s)
+=== RUN   TestKernelRegistry_MetalBinaryFloat32/sub
+
+  Given the device kernel registry for sub ✔✔✔✔✔✔✔✔✔
+
+
+202 total assertions
+
+=== RUN   TestKernelRegistry_MetalBinaryFloat32/mul
+
+  Given the device kernel registry for mul ✔✔✔✔✔✔✔✔✔
+
+
+211 total assertions
+
+=== RUN   TestKernelRegistry_MetalBinaryFloat32/div
+
+  Given the device kernel registry for div ✔✔✔✔✔✔✔✔✔
+
+
+220 total assertions
+
+--- PASS: TestKernelRegistry_MetalBinaryFloat32 (0.01s)
+    --- PASS: TestKernelRegistry_MetalBinaryFloat32/add (0.00s)
+    --- PASS: TestKernelRegistry_MetalBinaryFloat32/sub (0.00s)
+    --- PASS: TestKernelRegistry_MetalBinaryFloat32/mul (0.00s)
+    --- PASS: TestKernelRegistry_MetalBinaryFloat32/div (0.00s)
 PASS
 ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.683s
-```
-
-Metal library generator tests:
-
-```
-=== RUN   TestNewGenerator
-
-  Given a Metal library generator ✔✔
-
-
-2 total assertions
-
---- PASS: TestNewGenerator (0.00s)
-=== RUN   TestGenerator_MetalArgs
-
-  Given a Metal library generator ✔
-
-
-3 total assertions
-
---- PASS: TestGenerator_MetalArgs (0.00s)
-=== RUN   TestGenerator_MetallibArgs
-
-  Given a Metal library generator ✔
-
-
-4 total assertions
-
---- PASS: TestGenerator_MetallibArgs (0.00s)
-PASS
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.341s
 ```
 
 Focused package sweep:
 
 ```
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.383s
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.722s
-ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.372s
-ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	1.780s
-ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.066s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.303s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	1.180s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	1.015s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	0.546s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	0.782s
 ```
 
 Metal benchmark output:
@@ -179,33 +492,50 @@ goos: darwin
 goarch: arm64
 pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
 cpu: Apple M4 Max
-BenchmarkNewBackend-16              	    5760	    176067 ns/op	    1264 B/op	       4 allocs/op
-BenchmarkBackend_AddFloat32/N=1-16  	   10053	    117761 ns/op	   0.10 MB/s	    1545 B/op	       7 allocs/op
-BenchmarkBackend_AddFloat32/N=7-16  	   10000	    113283 ns/op	   0.74 MB/s	    1544 B/op	       7 allocs/op
-BenchmarkBackend_AddFloat32/N=64-16 	   10000	    113181 ns/op	   6.79 MB/s	    1544 B/op	       7 allocs/op
-BenchmarkBackend_AddFloat32/N=1024-16         	   10000	    112788 ns/op	 108.95 MB/s	    1544 B/op	       7 allocs/op
-BenchmarkBackend_AddFloat32/N=8192-16         	   10000	    115343 ns/op	 852.28 MB/s	    1544 B/op	       7 allocs/op
-BenchmarkKernel_RunAddFloat32/N=1-16          	    8244	    122634 ns/op	   0.10 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunAddFloat32/N=7-16          	    9357	    123086 ns/op	   0.68 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunAddFloat32/N=64-16         	   10000	    123314 ns/op	   6.23 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunAddFloat32/N=1024-16       	   10000	    126174 ns/op	  97.39 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunAddFloat32/N=8192-16       	   10000	    123755 ns/op	 794.34 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkNewBackend-16                         7341    155629 ns/op     1264 B/op   4 allocs/op
+BenchmarkBackend_BinaryFloat32/add/N=1-16     10140    117895 ns/op     0.10 MB/s   1545 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/add/N=7-16     10000    118611 ns/op     0.71 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/add/N=64-16     9830    118297 ns/op     6.49 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/add/N=1024-16  10000    116692 ns/op   105.30 MB/s   1545 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/add/N=8192-16   9982    120691 ns/op   814.51 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/sub/N=1-16      9492    121018 ns/op     0.10 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/sub/N=7-16      9714    122915 ns/op     0.68 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/sub/N=64-16     9253    121380 ns/op     6.33 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/sub/N=1024-16   9633    120253 ns/op   102.18 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/sub/N=8192-16   9810    122527 ns/op   802.30 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/mul/N=1-16      8665    121331 ns/op     0.10 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/mul/N=7-16      9733    120100 ns/op     0.70 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/mul/N=64-16     9867    119287 ns/op     6.44 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/mul/N=1024-16   9550    120303 ns/op   102.14 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/mul/N=8192-16   9765    120878 ns/op   813.25 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/div/N=1-16     10000    122046 ns/op     0.10 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/div/N=7-16      9562    126236 ns/op     0.67 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/div/N=64-16     9982    126900 ns/op     6.05 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/div/N=1024-16  10000    128496 ns/op    95.63 MB/s   1544 B/op   7 allocs/op
+BenchmarkBackend_BinaryFloat32/div/N=8192-16   9286    128728 ns/op   763.65 MB/s   1544 B/op   7 allocs/op
+BenchmarkKernel_RunBinaryFloat32/add/N=1-16    9736    123384 ns/op     0.10 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/add/N=7-16    9392    121116 ns/op     0.69 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/add/N=64-16  10000    119415 ns/op     6.43 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/add/N=1024-16 9709    120796 ns/op   101.73 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/add/N=8192-16 9867    117727 ns/op   835.02 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/sub/N=1-16   10000    114201 ns/op     0.11 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/sub/N=7-16   10000    120828 ns/op     0.70 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/sub/N=64-16  10000    120860 ns/op     6.35 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/sub/N=1024-16 10000   122830 ns/op   100.04 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/sub/N=8192-16 9744    122989 ns/op   799.29 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/mul/N=1-16    9408    122922 ns/op     0.10 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/mul/N=7-16    9908    122586 ns/op     0.69 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/mul/N=64-16   9520    121190 ns/op     6.34 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/mul/N=1024-16 9978    120994 ns/op   101.56 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/mul/N=8192-16 9164    121081 ns/op   811.89 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/div/N=1-16   10000    118541 ns/op     0.10 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/div/N=7-16   10000    121127 ns/op     0.69 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/div/N=64-16  10000    120437 ns/op     6.38 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/div/N=1024-16 10000   121434 ns/op   101.19 MB/s   1288 B/op   3 allocs/op
+BenchmarkKernel_RunBinaryFloat32/div/N=8192-16 9954    118273 ns/op   831.16 MB/s   1288 B/op   3 allocs/op
 PASS
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	12.888s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	48.748s
 ```
-
-This slice adds `pkg/backend/device/metal/add_float32.metal`,
-`pkg/backend/device/metal/kernels.metallib`, a reproducible
-`go generate ./pkg/backend/device/metal` path, a 256-byte bucketed
-`MTLBuffer` pool, non-blocking tensor `Close`, finalizer-safe cleanup,
-in-flight input/output use tracking, asynchronous upload, asynchronous
-command submission with completion callbacks and tensor readiness
-tracking, `threadExecutionWidth` threadgroups, a `float4` vectorized
-add body with scalar tail handling, `@autoreleasepool` coverage for
-Metal library opening, buffer allocation, dispatch, and completion
-handler error formatting, and a Metal-specific kernel registry entry
-resolved through `LookupLocation`. Metal capabilities report
-`SupportsAsync: true` when the real bridge is open.
 
 ### 2026-05-18 Phase 7 slice
 
@@ -330,7 +660,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | skeleton + stub returning ErrNeedsPlatformSetup |
+| 4     | Metal device backend          | verified dense elementwise kernels for `float32`, `float16`, `bfloat16` |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
@@ -420,7 +750,7 @@ invalidation works.
 | `pkg/backend/compute/tensor/contiguous.go`    | verified             |
 | `pkg/backend/compute/tensor/tensor_test.go`   | verified             |
 
-## Phase 4 / 5 / 6: device backend skeletons
+## Phase 4 / 5 / 6: device backends
 
 | file                                          | status                |
 | --------------------------------------------- | --------------------- |
@@ -429,10 +759,21 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_darwin.go`   | verified              |
 | `pkg/backend/device/metal/bridge_darwin.h`    | verified              |
 | `pkg/backend/device/metal/bridge_darwin.m`    | verified              |
-| `pkg/backend/device/metal/add_float32.metal`  | verified              |
+| `pkg/backend/device/metal/bridge_darwin_private.h` | verified        |
+| `pkg/backend/device/metal/bridge_elementwise_darwin.m` | verified     |
+| `pkg/backend/device/metal/bridge_unary_darwin.m` | verified           |
+| `pkg/backend/device/metal/unary_darwin.go`    | verified              |
+| `pkg/backend/device/metal/elementwise_float32.metal` | verified       |
+| `pkg/backend/device/metal/elementwise_float16.metal` | verified       |
+| `pkg/backend/device/metal/elementwise_bfloat16.metal` | verified     |
+| `pkg/backend/device/metal/elementwise_dtype_darwin.go` | verified    |
+| `pkg/backend/device/metal/elementwise_dtype_test.go` | verified       |
+| `pkg/backend/device/metal/elementwise_dtype_bench_test.go` | verified |
 | `pkg/backend/device/metal/kernels.metallib`   | verified              |
 | `pkg/backend/device/metal/generate.go`        | verified              |
 | `pkg/backend/device/metal/kernels.go`         | verified              |
+| `pkg/backend/device/metal/unary_float32.go`   | verified              |
+| `pkg/backend/device/metal/unary_float32_test.go` | verified           |
 | `pkg/backend/device/metal/backend_test.go`    | verified              |
 | `pkg/backend/device/metal/internal/metallibgen/main.go` | verified  |
 | `pkg/backend/device/metal/internal/metallibgen/main_test.go` | verified |

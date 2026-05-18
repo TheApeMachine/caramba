@@ -14,12 +14,7 @@ function ResearchEditPaperPanel() {
 				</Flex.Center>
 			}
 		>
-			<Flex.Column
-				gap={3}
-				padding={4}
-				className="box-border max-w-50%"
-				fullHeight
-			>
+			<Flex.Column gap={3} padding={4} className="box-border" fullHeight>
 				<PaperEditorApp />
 			</Flex.Column>
 		</ClientOnly>
@@ -27,5 +22,6 @@ function ResearchEditPaperPanel() {
 }
 
 export const Route = createFileRoute("/research/edit/research-paper")({
+	staticData: { pageContentWidth: "contained" },
 	component: ResearchEditPaperPanel,
 });

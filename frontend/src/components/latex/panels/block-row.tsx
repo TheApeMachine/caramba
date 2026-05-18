@@ -23,6 +23,7 @@ import { FormattingToolbar } from "#/components/latex/panels/formatting-toolbar"
 import { Button } from "#/components/ui/button";
 import { useDragDrop } from "#/components/ui/drag-drop";
 import { Flex } from "#/components/ui/flex";
+import { cn } from "#/lib/utils";
 
 type BlockDragPayload = { kind: "paper-block"; blockId: string };
 
@@ -34,7 +35,7 @@ const headingClass: Record<HeadingLevel, string> = {
 
 type TextualBlock = Exclude<PaperBlock, { type: "equation" }>;
 
-function placeholderFor(block: TextualBlock): string {
+const placeholderFor = (block: TextualBlock): string => {
 	if (block.type === "heading") {
 		return "Section title…";
 	}
@@ -44,9 +45,9 @@ function placeholderFor(block: TextualBlock): string {
 	}
 
 	return "Write here. Press / for blocks, # for headings, $$ for math.";
-}
+};
 
-function editableClass(block: TextualBlock): string {
+const editableClass = (block: TextualBlock): string => {
 	if (block.type === "heading") {
 		return `${headingClass[block.level]} min-h-10 py-1.5`;
 	}
@@ -56,9 +57,9 @@ function editableClass(block: TextualBlock): string {
 	}
 
 	return "min-h-10 py-2 text-base leading-relaxed sm:text-[17px]";
-}
+};
 
-function applyDescriptorToBlock(
+const applyDescriptorToBlock = (
 	descriptor: BlockKindDescriptor,
 	resetText: () => void,
 	setBlockKind: (
@@ -67,7 +68,7 @@ function applyDescriptorToBlock(
 		options?: { level?: HeadingLevel; ordered?: boolean },
 	) => void,
 	blockId: string,
-): void {
+): void => {
 	const sample = descriptor.build();
 	resetText();
 
@@ -82,15 +83,15 @@ function applyDescriptorToBlock(
 	}
 
 	setBlockKind(blockId, sample.type);
-}
+};
 
-function readDropPosition(
+const readDropPosition = (
 	event: React.DragEvent<HTMLDivElement>,
-): "above" | "below" {
+): "above" | "below" => {
 	const rect = event.currentTarget.getBoundingClientRect();
 	const midpoint = rect.top + rect.height / 2;
 	return event.clientY < midpoint ? "above" : "below";
-}
+};
 
 export const BlockRow = ({ block }: { block: PaperBlock }) => {
 	const {
@@ -106,12 +107,13 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 	} = usePaperEditor();
 
 	const dnd = useDragDrop<BlockDragPayload>();
-	const shellRef = useRef<HTMLDivElement>(null);
+	const shellRef = useRef<HTMLElement | null>(null);
 	const editableRef = useRef<HTMLDivElement>(null);
 	const [slashOpen, setSlashOpen] = useState(false);
 	const [dragArmed, setDragArmed] = useState(false);
 	const [dropEdge, setDropEdge] = useState<"above" | "below" | null>(null);
 	const [isFocused, setIsFocused] = useState(false);
+	const [blockChromeVisible, setBlockChromeVisible] = useState(false);
 
 	const handleFocus = () => {
 		setIsFocused(true);
@@ -246,19 +248,15 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 		reorderBlock(payload.blockId, block.id, position);
 	};
 
-	const gutter = (
-		<Flex.Column className="w-8 shrink-0 items-end pt-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-			<button
-				aria-label="Drag to reorder"
-				className="flex size-6 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
-				data-paper-drag-handle
-				onMouseDown={() => setDragArmed(true)}
-				onMouseUp={() => setDragArmed(false)}
-				type="button"
-			>
-				<GripVerticalIcon className="size-3.5" />
-			</button>
-
+	const blockToolbar = (
+		<div
+			className={cn(
+				"absolute top-1 right-1 z-10 flex flex-row items-center gap-0.5",
+				"pointer-events-none opacity-0 transition-opacity duration-150",
+				"focus-within:pointer-events-auto focus-within:opacity-100",
+				blockChromeVisible && "pointer-events-auto opacity-100",
+			)}
+		>
 			<BlockKindMenu
 				variant="trigger"
 				onSelect={handleInsertBelow}
@@ -277,7 +275,12 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 
 			<Button
 				aria-label="Delete block"
-				className="size-6 text-muted-foreground hover:text-destructive"
+				className={cn(
+					"size-6",
+					blocks.length <= 1
+						? "text-muted-foreground"
+						: "text-destructive hover:bg-destructive/10 hover:text-destructive",
+				)}
 				disabled={blocks.length <= 1}
 				onClick={() => removeBlockAndFocusPrevious(block.id)}
 				size="icon"
@@ -286,7 +289,18 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 			>
 				<TrashIcon className="size-3.5" />
 			</Button>
-		</Flex.Column>
+
+			<button
+				aria-label="Drag to reorder"
+				className="flex size-6 cursor-grab items-center justify-center rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
+				data-paper-drag-handle
+				onMouseDown={() => setDragArmed(true)}
+				onMouseUp={() => setDragArmed(false)}
+				type="button"
+			>
+				<GripVerticalIcon className="size-3.5" />
+			</button>
+		</div>
 	);
 
 	const dropEdgeClass =
@@ -296,12 +310,21 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 				? "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded after:bg-primary"
 				: "";
 
-	const containerClass = `group relative flex items-start gap-1 rounded-lg py-1 pr-1 pl-1 hover:bg-muted/40 ${dropEdgeClass}`;
+	const containerClass = `relative rounded-lg py-0.5 pr-1 pl-1 hover:bg-muted/40 ${dropEdgeClass}`;
+
+	const shellPointerHandlers = {
+		onMouseEnter: () => {
+			setBlockChromeVisible(true);
+		},
+		onMouseLeave: () => {
+			setBlockChromeVisible(false);
+		},
+	};
 
 	if (block.type === "equation") {
 		return (
-			// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop container, not an interactive control
-			<div
+			<article
+				aria-label="Equation block"
 				className={containerClass}
 				data-block-id={block.id}
 				draggable={dragArmed}
@@ -311,16 +334,18 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 				onDragStart={onDragStart}
 				onDrop={onDrop}
 				onMouseDown={onMouseDown}
+				onMouseEnter={shellPointerHandlers.onMouseEnter}
+				onMouseLeave={shellPointerHandlers.onMouseLeave}
 				ref={shellRef}
 			>
-				{gutter}
-				<div className="flex-1">
+				<div className="relative min-w-0 w-full">
+					{blockToolbar}
 					<EquationBlock
 						block={block}
 						onFocus={() => setFocusedBlockId(block.id)}
 					/>
 				</div>
-			</div>
+			</article>
 		);
 	}
 
@@ -386,9 +411,16 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 		}
 	};
 
+	const textualAriaLabel =
+		textual.type === "heading"
+			? `Heading level ${textual.level}`
+			: textual.type === "list"
+				? `${textual.ordered ? "Numbered" : "Bullet"} list block`
+				: "Paragraph block";
+
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop container, not an interactive control
-		<div
+		<article
+			aria-label={textualAriaLabel}
 			className={containerClass}
 			data-block-id={block.id}
 			draggable={dragArmed}
@@ -398,28 +430,32 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 			onDragStart={onDragStart}
 			onDrop={onDrop}
 			onMouseDown={onMouseDown}
+			onMouseEnter={shellPointerHandlers.onMouseEnter}
+			onMouseLeave={shellPointerHandlers.onMouseLeave}
 			ref={shellRef}
 		>
-			{gutter}
+			<div className="relative min-w-0 w-full">
+				{blockToolbar}
 
-			<Flex.Column className="min-w-0 flex-1" gap={1}>
-				{textual.type === "list" ? (
-					<span className="px-2 text-muted-foreground text-xs uppercase tracking-wide">
-						{textual.ordered ? "Numbered list" : "Bullet list"}
-					</span>
-				) : null}
+				<Flex.Column className="min-w-0" gap={1}>
+					{textual.type === "list" ? (
+						<span className="px-2 text-muted-foreground text-xs uppercase tracking-wide">
+							{textual.ordered ? "Numbered list" : "Bullet list"}
+						</span>
+					) : null}
 
-				<EditableBlock
-					className={editableClass(textual)}
-					onBlur={handleBlur}
-					onChange={onTextChange}
-					onFocus={handleFocus}
-					onKeyDown={onKeyDown}
-					placeholder={placeholderFor(textual)}
-					ref={editableRef}
-					value={textual.text}
-				/>
-			</Flex.Column>
+					<EditableBlock
+						className={editableClass(textual)}
+						onBlur={handleBlur}
+						onChange={onTextChange}
+						onFocus={handleFocus}
+						onKeyDown={onKeyDown}
+						placeholder={placeholderFor(textual)}
+						ref={editableRef}
+						value={textual.text}
+					/>
+				</Flex.Column>
+			</div>
 
 			{isFocused ? <FormattingToolbar /> : null}
 
@@ -429,6 +465,6 @@ export const BlockRow = ({ block }: { block: PaperBlock }) => {
 				open={slashOpen}
 				variant="anchored"
 			/>
-		</div>
+		</article>
 	);
 };

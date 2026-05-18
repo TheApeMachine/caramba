@@ -4,6 +4,7 @@ import { Flex } from "#/components/ui/flex";
 import { Typography } from "#/components/ui/typography";
 
 export const Route = createFileRoute("/research/paper")({
+	staticData: { pageContentWidth: "contained" },
 	component: ResearchPaperRoute,
 });
 

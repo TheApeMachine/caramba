@@ -133,6 +133,54 @@ func (objectName *ObjectName) MethodName() {
 }
 ```
 
+When it comes to TypeScript:
+
+```tsx
+/*
+Incorrect
+*/
+export function PaperEditorApp() {
+	return (
+		<PaperEditorProvider>
+			<PaperContextSnapshot />
+
+			<DragDropProvider>
+				<Flex.Column className="box-border min-h-0 bg-background" fullHeight>
+					<LatexToolbar />
+
+					<Flex.Column className="min-h-0 flex-1" fullHeight>
+						<WritingCanvas />
+					</Flex.Column>
+				</Flex.Column>
+			</DragDropProvider>
+		</PaperEditorProvider>
+	);
+};
+
+/*
+Correct
+*/
+export const PaperEditorApp = () => {
+	return (
+		<PaperEditorProvider>
+			<PaperContextSnapshot />
+
+			<DragDropProvider>
+				<Flex.Column className="box-border min-h-0 bg-background" fullHeight>
+					<LatexToolbar />
+
+					<Flex.Column className="min-h-0 flex-1" fullHeight>
+						<WritingCanvas />
+					</Flex.Column>
+				</Flex.Column>
+			</DragDropProvider>
+		</PaperEditorProvider>
+	);
+};
+```
+
+Use `const` over `function` and always use the `flex`, `grid`, and `typography` components, over the standard HTML versions.
+
 ### Size limits
 
 - **File size:** target 200 lines, hard ceiling 400. At 400+, split before adding more. This does not apply to documentation or custom compute kernels.
