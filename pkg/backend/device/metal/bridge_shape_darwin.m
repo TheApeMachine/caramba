@@ -1,128 +1,11 @@
-#include "bridge_darwin_private.h"
+#include "bridge_shape_private.h"
 
 #include <Foundation/Foundation.h>
 #include <Metal/Metal.h>
-#include "_cgo_export.h"
-#include <stdio.h>
-
-static void metal_shape_status_clear(MetalStatus* status) {
-    if (status == NULL) {
-        return;
-    }
-
-    status->code = 0;
-    status->message[0] = '\0';
-}
-
-static void metal_shape_status_set(MetalStatus* status, int code, const char* message) {
-    if (status == NULL) {
-        return;
-    }
-
-    status->code = code;
-
-    if (message == NULL) {
-        status->message[0] = '\0';
-        return;
-    }
-
-    snprintf(status->message, METAL_STATUS_MESSAGE_BYTES, "%s", message);
-}
-
-static void metal_shape_complete(
-    uint64_t completionToken,
-    id<MTLCommandBuffer> completedBuffer
-) {
-    @autoreleasepool {
-        if ([completedBuffer status] == MTLCommandBufferStatusCompleted) {
-            metalCommandCompleted(completionToken, 0, "");
-            return;
-        }
-
-        NSError* error = [completedBuffer error];
-        NSString* message = @"Metal shape command buffer failed";
-
-        if (error != nil) {
-            message = [NSString
-                stringWithFormat:@"%@: %@",
-                message,
-                [error localizedDescription]
-            ];
-        }
-
-        metalCommandCompleted(completionToken, -5, (char*)[message UTF8String]);
-    }
-}
-
-static int metal_shape_dispatch(
-    MetalDeviceRef contextRef,
-    const char* kernelName,
-    NSUInteger threadCount,
-    uint64_t completionToken,
-    MetalStatus* status,
-    void (^encode)(id<MTLComputeCommandEncoder> encoder)
-) {
-    @autoreleasepool {
-        metal_shape_status_clear(status);
-
-        MetalContext* context = (MetalContext*)contextRef;
-
-        if (context == NULL || context->queue == NULL) {
-            metal_shape_status_set(status, -1, "invalid Metal context");
-            return -1;
-        }
-
-        if (threadCount == 0) {
-            metal_shape_status_set(status, -6, "empty Metal shape dispatch");
-            return -6;
-        }
-
-        id<MTLComputePipelineState> pipeline = metal_get_pipeline(context, kernelName, status);
-
-        if (pipeline == nil) {
-            return status != NULL && status->code != 0 ? status->code : -7;
-        }
-
-        id<MTLCommandQueue> queue = (__bridge id<MTLCommandQueue>)context->queue;
-        id<MTLCommandBuffer> commandBuffer = [queue commandBuffer];
-
-        if (commandBuffer == nil) {
-            metal_shape_status_set(status, -3, "commandBuffer returned nil");
-            return -3;
-        }
-
-        id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
-
-        if (encoder == nil) {
-            metal_shape_status_set(status, -4, "computeCommandEncoder returned nil");
-            return -4;
-        }
-
-        [encoder setComputePipelineState:pipeline];
-        encode(encoder);
-
-        NSUInteger threadWidth = [pipeline threadExecutionWidth];
-
-        if (threadWidth == 0) {
-            threadWidth = 1;
-        }
-
-        [encoder
-            dispatchThreads:MTLSizeMake(threadCount, 1, 1)
-            threadsPerThreadgroup:MTLSizeMake(threadWidth, 1, 1)
-        ];
-        [encoder endEncoding];
-        [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedBuffer) {
-            metal_shape_complete(completionToken, completedBuffer);
-        }];
-        [commandBuffer commit];
-
-        return 0;
-    }
-}
 
 int metal_dispatch_copy_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef inputRef,
     MetalBufferRef outRef,
     uint32_t byteCount,
@@ -134,9 +17,22 @@ int metal_dispatch_copy_bytes(
         return -2;
     }
 
+    char kernelName[128];
+    int nameCode = metal_shape_kernel_name(
+        kernelName,
+        sizeof(kernelName),
+        "copy",
+        elementDType,
+        status
+    );
+
+    if (nameCode != 0) {
+        return nameCode;
+    }
+
     return metal_shape_dispatch(
         contextRef,
-        "copy_bytes",
+        kernelName,
         (NSUInteger)((byteCount + 15) / 16),
         completionToken,
         status,
@@ -150,6 +46,7 @@ int metal_dispatch_copy_bytes(
 
 int metal_dispatch_concat_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef leftRef,
     MetalBufferRef rightRef,
     MetalBufferRef outRef,
@@ -164,10 +61,22 @@ int metal_dispatch_concat_bytes(
     }
 
     uint32_t totalBytes = leftBytes + rightBytes;
+    char kernelName[128];
+    int nameCode = metal_shape_kernel_name(
+        kernelName,
+        sizeof(kernelName),
+        "concat",
+        elementDType,
+        status
+    );
+
+    if (nameCode != 0) {
+        return nameCode;
+    }
 
     return metal_shape_dispatch(
         contextRef,
-        "concat_bytes",
+        kernelName,
         (NSUInteger)((totalBytes + 15) / 16),
         completionToken,
         status,
@@ -183,6 +92,7 @@ int metal_dispatch_concat_bytes(
 
 int metal_dispatch_split2_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef inputRef,
     MetalBufferRef leftRef,
     MetalBufferRef rightRef,
@@ -197,10 +107,22 @@ int metal_dispatch_split2_bytes(
     }
 
     uint32_t totalBytes = leftBytes + rightBytes;
+    char kernelName[128];
+    int nameCode = metal_shape_kernel_name(
+        kernelName,
+        sizeof(kernelName),
+        "split2",
+        elementDType,
+        status
+    );
+
+    if (nameCode != 0) {
+        return nameCode;
+    }
 
     return metal_shape_dispatch(
         contextRef,
-        "split2_bytes",
+        kernelName,
         (NSUInteger)((totalBytes + 15) / 16),
         completionToken,
         status,
@@ -216,6 +138,7 @@ int metal_dispatch_split2_bytes(
 
 int metal_dispatch_last_token_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef inputRef,
     MetalBufferRef outRef,
     uint32_t seq,
@@ -229,9 +152,22 @@ int metal_dispatch_last_token_bytes(
         return -2;
     }
 
+    char kernelName[128];
+    int nameCode = metal_shape_kernel_name(
+        kernelName,
+        sizeof(kernelName),
+        "last_token",
+        elementDType,
+        status
+    );
+
+    if (nameCode != 0) {
+        return nameCode;
+    }
+
     return metal_shape_dispatch(
         contextRef,
-        "last_token_bytes",
+        kernelName,
         (NSUInteger)((outBytes + 15) / 16),
         completionToken,
         status,
@@ -247,11 +183,11 @@ int metal_dispatch_last_token_bytes(
 
 int metal_dispatch_transpose2d_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef inputRef,
     MetalBufferRef outRef,
     uint32_t rows,
     uint32_t cols,
-    uint32_t elementBytes,
     uint64_t completionToken,
     MetalStatus* status
 ) {
@@ -260,9 +196,22 @@ int metal_dispatch_transpose2d_bytes(
         return -2;
     }
 
+    char kernelName[128];
+    int nameCode = metal_shape_kernel_name(
+        kernelName,
+        sizeof(kernelName),
+        "transpose2d",
+        elementDType,
+        status
+    );
+
+    if (nameCode != 0) {
+        return nameCode;
+    }
+
     return metal_shape_dispatch(
         contextRef,
-        "transpose2d_bytes",
+        kernelName,
         (NSUInteger)(rows * cols),
         completionToken,
         status,
@@ -271,13 +220,13 @@ int metal_dispatch_transpose2d_bytes(
             [encoder setBuffer:(__bridge id<MTLBuffer>)outRef offset:0 atIndex:1];
             [encoder setBytes:&rows length:sizeof(rows) atIndex:2];
             [encoder setBytes:&cols length:sizeof(cols) atIndex:3];
-            [encoder setBytes:&elementBytes length:sizeof(elementBytes) atIndex:4];
         }
     );
 }
 
 int metal_dispatch_upsample_nearest2d_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef inputRef,
     MetalBufferRef outRef,
     uint32_t channels,
@@ -285,7 +234,6 @@ int metal_dispatch_upsample_nearest2d_bytes(
     uint32_t inWidth,
     uint32_t outHeight,
     uint32_t outWidth,
-    uint32_t elementBytes,
     uint32_t outElements,
     uint64_t completionToken,
     MetalStatus* status
@@ -295,9 +243,22 @@ int metal_dispatch_upsample_nearest2d_bytes(
         return -2;
     }
 
+    char kernelName[128];
+    int nameCode = metal_shape_kernel_name(
+        kernelName,
+        sizeof(kernelName),
+        "upsample_nearest2d",
+        elementDType,
+        status
+    );
+
+    if (nameCode != 0) {
+        return nameCode;
+    }
+
     return metal_shape_dispatch(
         contextRef,
-        "upsample_nearest2d_bytes",
+        kernelName,
         (NSUInteger)outElements,
         completionToken,
         status,
@@ -309,8 +270,7 @@ int metal_dispatch_upsample_nearest2d_bytes(
             [encoder setBytes:&inWidth length:sizeof(inWidth) atIndex:4];
             [encoder setBytes:&outHeight length:sizeof(outHeight) atIndex:5];
             [encoder setBytes:&outWidth length:sizeof(outWidth) atIndex:6];
-            [encoder setBytes:&elementBytes length:sizeof(elementBytes) atIndex:7];
-            [encoder setBytes:&outElements length:sizeof(outElements) atIndex:8];
+            [encoder setBytes:&outElements length:sizeof(outElements) atIndex:7];
         }
     );
 }

@@ -99,6 +99,7 @@ int metal_dispatch_unary_elementwise(
 );
 int metal_dispatch_copy_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef inputRef,
     MetalBufferRef outRef,
     uint32_t byteCount,
@@ -107,6 +108,7 @@ int metal_dispatch_copy_bytes(
 );
 int metal_dispatch_concat_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef leftRef,
     MetalBufferRef rightRef,
     MetalBufferRef outRef,
@@ -117,6 +119,7 @@ int metal_dispatch_concat_bytes(
 );
 int metal_dispatch_split2_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef inputRef,
     MetalBufferRef leftRef,
     MetalBufferRef rightRef,
@@ -127,6 +130,7 @@ int metal_dispatch_split2_bytes(
 );
 int metal_dispatch_last_token_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef inputRef,
     MetalBufferRef outRef,
     uint32_t seq,
@@ -137,16 +141,17 @@ int metal_dispatch_last_token_bytes(
 );
 int metal_dispatch_transpose2d_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef inputRef,
     MetalBufferRef outRef,
     uint32_t rows,
     uint32_t cols,
-    uint32_t elementBytes,
     uint64_t completionToken,
     MetalStatus* status
 );
 int metal_dispatch_upsample_nearest2d_bytes(
     MetalDeviceRef contextRef,
+    int elementDType,
     MetalBufferRef inputRef,
     MetalBufferRef outRef,
     uint32_t channels,
@@ -154,7 +159,6 @@ int metal_dispatch_upsample_nearest2d_bytes(
     uint32_t inWidth,
     uint32_t outHeight,
     uint32_t outWidth,
-    uint32_t elementBytes,
     uint32_t outElements,
     uint64_t completionToken,
     MetalStatus* status

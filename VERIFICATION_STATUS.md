@@ -24,6 +24,99 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal shape kernel expansion
+
+This adds real Metal device kernels for dense shape/data-movement ops
+across `float32`, `float16`, and `bfloat16` storage:
+
+- `reshape`, `merge_heads`, `split_heads`, `view_as_heads`
+- `concat`, `split2`, `last_token`, `transpose2d`
+- `upsample_nearest2d`
+
+The kernels live in `pkg/backend/device/metal/shape.metal` and run
+through the Objective-C shape bridge. The registry was already split
+by dtype in `pkg/backend/device/metal/shape.go`; this update makes the
+Metal shader entry points dtype-specific as well:
+
+- `copy_{float32,float16,bfloat16}`
+- `concat_{float32,float16,bfloat16}`
+- `split2_{float32,float16,bfloat16}`
+- `last_token_{float32,float16,bfloat16}`
+- `transpose2d_{float32,float16,bfloat16}`
+- `upsample_nearest2d_{float32,float16,bfloat16}`
+
+`copy`, `concat`, `split2`, and `last_token` use `uint4` 16-byte
+movement for contiguous aligned ranges and copy individual bytes only
+for tail or boundary ranges. `transpose2d` and `upsample_nearest2d`
+use exact-width storage kernels: `uint` for `float32`, `ushort` for
+`float16`, and `ushort` for `bfloat16`, preserving tensor bytes exactly
+instead of converting numeric values. `split2` uses the completion
+registry's multi-output path so both destination tensors become ready
+from the same Metal command completion. Shape dispatch resolves dtype
+before registering the async completion token, so a validation error
+cannot leave a pending tensor use-count. The Metal dense registry now
+has 84 verified signatures: 57 elementwise and 27 shape signatures.
+
+Focused shape parity command:
+
+```
+go test ./pkg/backend/device/metal -run TestKernelRegistry_MetalShapeDTypes -count=1 -v
+=== RUN   TestKernelRegistry_MetalShapeDTypes
+--- PASS: TestKernelRegistry_MetalShapeDTypes (0.07s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.567s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.601s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.498s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.844s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	1.027s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.402s
+```
+
+Metal shape benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunShapeDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunShapeDTypes/f32/reshape-16 	   10726	    110750 ns/op	 591.75 MB/s	    1321 B/op	       5 allocs/op
+BenchmarkKernel_RunShapeDTypes/f32/merge_heads-16         	   10000	    108388 ns/op	3627.84 MB/s	    1376 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeDTypes/f32/split_heads-16         	   10000	    108210 ns/op	3633.83 MB/s	    1376 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeDTypes/f32/view_as_heads-16       	   10000	    106448 ns/op	3693.98 MB/s	    1396 B/op	       8 allocs/op
+BenchmarkKernel_RunShapeDTypes/f32/concat-16              	   10000	    105819 ns/op	1238.64 MB/s	    1344 B/op	       5 allocs/op
+BenchmarkKernel_RunShapeDTypes/f32/split2-16              	   10000	    105713 ns/op	1239.89 MB/s	    1464 B/op	       6 allocs/op
+BenchmarkKernel_RunShapeDTypes/f32/last_token-16          	   10000	    105333 ns/op	2488.71 MB/s	    1368 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeDTypes/f32/transpose2d-16         	   10000	    108084 ns/op	1212.69 MB/s	    1368 B/op	       8 allocs/op
+BenchmarkKernel_RunShapeDTypes/f32/upsample_nearest2d-16  	   10000	    111278 ns/op	2944.70 MB/s	    1448 B/op	       9 allocs/op
+BenchmarkKernel_RunShapeDTypes/f16/reshape-16             	   10000	    109502 ns/op	 299.25 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunShapeDTypes/f16/merge_heads-16         	   10000	    109713 ns/op	1792.01 MB/s	    1376 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeDTypes/f16/split_heads-16         	   10000	    110099 ns/op	1785.74 MB/s	    1376 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeDTypes/f16/view_as_heads-16       	   10000	    109484 ns/op	1795.77 MB/s	    1396 B/op	       8 allocs/op
+BenchmarkKernel_RunShapeDTypes/f16/concat-16              	   10000	    109316 ns/op	 599.51 MB/s	    1344 B/op	       5 allocs/op
+BenchmarkKernel_RunShapeDTypes/f16/split2-16              	   10000	    110383 ns/op	 593.71 MB/s	    1464 B/op	       6 allocs/op
+BenchmarkKernel_RunShapeDTypes/f16/last_token-16          	    9870	    109620 ns/op	1195.70 MB/s	    1368 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeDTypes/f16/transpose2d-16         	   10000	    109599 ns/op	 597.96 MB/s	    1368 B/op	       8 allocs/op
+BenchmarkKernel_RunShapeDTypes/f16/upsample_nearest2d-16  	   10000	    111559 ns/op	1468.64 MB/s	    1448 B/op	       9 allocs/op
+BenchmarkKernel_RunShapeDTypes/bf16/reshape-16            	   10000	    110003 ns/op	 297.88 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunShapeDTypes/bf16/merge_heads-16        	   10000	    108453 ns/op	1812.84 MB/s	    1376 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeDTypes/bf16/split_heads-16        	   10000	    109850 ns/op	1789.79 MB/s	    1376 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeDTypes/bf16/view_as_heads-16      	   10000	    109479 ns/op	1795.85 MB/s	    1396 B/op	       8 allocs/op
+BenchmarkKernel_RunShapeDTypes/bf16/concat-16             	    9958	    109049 ns/op	 600.98 MB/s	    1344 B/op	       5 allocs/op
+BenchmarkKernel_RunShapeDTypes/bf16/split2-16             	   10000	    110424 ns/op	 593.49 MB/s	    1464 B/op	       6 allocs/op
+BenchmarkKernel_RunShapeDTypes/bf16/last_token-16         	    9710	    110356 ns/op	1187.72 MB/s	    1368 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeDTypes/bf16/transpose2d-16        	   10000	    109619 ns/op	 597.85 MB/s	    1368 B/op	       8 allocs/op
+BenchmarkKernel_RunShapeDTypes/bf16/upsample_nearest2d-16 	   10000	    111051 ns/op	1475.36 MB/s	    1448 B/op	       9 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	29.776s
+```
+
 ### 2026-05-18 Metal elementwise dtype expansion
 
 This adds real Metal device kernels for dense `float16` and `bfloat16`
@@ -660,7 +753,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | verified dense elementwise kernels for `float32`, `float16`, `bfloat16` |
+| 4     | Metal device backend          | 84 verified dense elementwise + shape signatures for `float32`, `float16`, `bfloat16` |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
@@ -761,17 +854,27 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_darwin.m`    | verified              |
 | `pkg/backend/device/metal/bridge_darwin_private.h` | verified        |
 | `pkg/backend/device/metal/bridge_elementwise_darwin.m` | verified     |
+| `pkg/backend/device/metal/bridge_shape_common_darwin.m` | verified    |
+| `pkg/backend/device/metal/bridge_shape_darwin.m` | verified           |
+| `pkg/backend/device/metal/bridge_shape_private.h` | verified          |
 | `pkg/backend/device/metal/bridge_unary_darwin.m` | verified           |
 | `pkg/backend/device/metal/unary_darwin.go`    | verified              |
 | `pkg/backend/device/metal/elementwise_float32.metal` | verified       |
 | `pkg/backend/device/metal/elementwise_float16.metal` | verified       |
 | `pkg/backend/device/metal/elementwise_bfloat16.metal` | verified     |
+| `pkg/backend/device/metal/shape.metal`        | verified              |
 | `pkg/backend/device/metal/elementwise_dtype_darwin.go` | verified    |
 | `pkg/backend/device/metal/elementwise_dtype_test.go` | verified       |
 | `pkg/backend/device/metal/elementwise_dtype_bench_test.go` | verified |
 | `pkg/backend/device/metal/kernels.metallib`   | verified              |
 | `pkg/backend/device/metal/generate.go`        | verified              |
 | `pkg/backend/device/metal/kernels.go`         | verified              |
+| `pkg/backend/device/metal/shape.go`           | verified              |
+| `pkg/backend/device/metal/shape_darwin.go`    | verified              |
+| `pkg/backend/device/metal/shape_validate_darwin.go` | verified       |
+| `pkg/backend/device/metal/shape_test.go`      | verified              |
+| `pkg/backend/device/metal/shape_test_helpers.go` | verified          |
+| `pkg/backend/device/metal/shape_bench_test.go` | verified             |
 | `pkg/backend/device/metal/unary_float32.go`   | verified              |
 | `pkg/backend/device/metal/unary_float32_test.go` | verified           |
 | `pkg/backend/device/metal/backend_test.go`    | verified              |

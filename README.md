@@ -121,9 +121,10 @@ The Metal backend embeds `pkg/backend/device/metal/kernels.metallib`
 from `pkg/backend/device/metal/*.metal`. Dense elementwise binary and
 unary kernels cover `float32`, `float16`, and `bfloat16`; Metal shape
 kernels cover concat/split/head reshape/last-token/transpose/upsample
-movement across the same storage dtypes. Both families run through the
-device command queue with async completion, pooled `MTLBuffer` storage,
-and per-kernel pipeline caching.
+movement across the same storage dtypes with dtype-specific shader
+entry points and `uint4` movement for aligned contiguous ranges. Both
+families run through the device command queue with async completion,
+pooled `MTLBuffer` storage, and per-kernel pipeline caching.
 
 Every backend implements the same interface, and the optimizer does the same math everywhere:
 

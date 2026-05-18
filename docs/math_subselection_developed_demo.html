@@ -1,0 +1,405 @@
+<style>
+.t2-demo { padding: 0.5rem 0; }
+.t2-stage {
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-lg);
+  padding: 1.5rem;
+  min-height: 100px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem;
+  margin-bottom: 0.5rem;
+  overflow-x: auto;
+}
+.t2-stage .ast-node { cursor: pointer; border-radius: 3px; transition: background 0.1s; }
+.t2-stage .ast-node:hover:not(:has(.ast-node:hover)) { background: rgba(120,120,120,0.18); }
+.t2-stage .ast-node.selected { background: var(--color-background-info); outline: 1px solid var(--color-border-info); }
+.t2-selection {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
+  margin-bottom: 1rem;
+  font-size: 13px;
+  min-height: 36px;
+}
+.t2-sel-label { color: var(--color-text-secondary); font-family: var(--font-mono); font-size: 12px; }
+.t2-sel-mini { color: var(--color-text-primary); }
+.t2-rename {
+  font-family: var(--font-mono);
+  width: 70px;
+  padding: 4px 8px;
+  font-size: 13px;
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md);
+  color: var(--color-text-primary);
+}
+.t2-deselect {
+  margin-left: auto;
+  background: none; border: none;
+  color: var(--color-text-tertiary);
+  cursor: pointer; font-size: 12px;
+  font-family: var(--font-mono);
+}
+.t2-deselect:hover { color: var(--color-text-primary); }
+.t2-section-label {
+  font-size: 11px; color: var(--color-text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin: 0 0 8px;
+}
+.t2-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1rem; }
+.t2-chip {
+  display: inline-flex; align-items: baseline; gap: 8px;
+  padding: 7px 11px;
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-md);
+  cursor: pointer; color: var(--color-text-primary); font-size: 13px;
+}
+.t2-chip:hover { background: var(--color-background-secondary); border-color: var(--color-border-secondary); }
+.t2-chip-icon { font-family: var(--font-mono); font-weight: 500; }
+.t2-chip-label { color: var(--color-text-secondary); font-size: 12px; }
+.t2-source-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 0.75rem;
+  font-family: var(--font-mono); font-size: 12px;
+}
+.t2-source-label { color: var(--color-text-tertiary); flex-shrink: 0; }
+.t2-source {
+  color: var(--color-text-secondary);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
+  padding: 6px 10px;
+  flex: 1; word-break: break-all; min-width: 0;
+}
+.t2-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1rem; align-items: center; }
+.t2-preset-label { font-size: 11px; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; margin-right: 4px; }
+.t2-preset {
+  padding: 5px 10px; font-size: 12px;
+  background: transparent;
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.t2-preset:hover { background: var(--color-background-secondary); color: var(--color-text-primary); }
+.t2-actions { display: flex; gap: 6px; }
+.t2-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+</style>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<!-- Production UI: frontend/src/components/latex/math-subselection/ -->
+
+<h2 class="sr-only">Math editor demo with clickable subexpressions, terminal renaming, and transformations applied to the current selection.</h2>
+
+<div class="t2-demo">
+  <div class="t2-presets">
+    <span class="t2-preset-label">Start from:</span>
+    <button class="t2-preset" data-preset="default">x² + y</button>
+    <button class="t2-preset" data-preset="variance">variance</button>
+    <button class="t2-preset" data-preset="gauss">Gaussian shape</button>
+    <button class="t2-preset" data-preset="atom">just x</button>
+  </div>
+
+  <div class="t2-stage" id="t2-stage">x² + y</div>
+
+  <div class="t2-selection" id="t2-selection"></div>
+
+  <p class="t2-section-label" id="t2-section-label">Apply transformations</p>
+  <div class="t2-chips" id="t2-chips"></div>
+
+  <div class="t2-source-row">
+    <span class="t2-source-label">// LaTeX:</span>
+    <span class="t2-source" id="t2-source">x^2 + y</span>
+  </div>
+
+  <div class="t2-actions">
+    <button id="t2-undo">← Undo</button>
+    <button id="t2-reset">Reset</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script>
+(function(){
+  let nextId = 1;
+  const newId = () => nextId++;
+  const V = (n) => ({_id:newId(), type:'var', name:n});
+  const N = (v) => ({_id:newId(), type:'num', value:v});
+  const Pow = (b,e) => ({_id:newId(), type:'pow', base:b, exp:e});
+  const Sqrt = (a) => ({_id:newId(), type:'sqrt', arg:a});
+  const Div = (n,d) => ({_id:newId(), type:'div', num:n, den:d});
+  const Sum = (b) => ({_id:newId(), type:'sum', body:b});
+  const Int = (b,v) => ({_id:newId(), type:'integral', body:b, v});
+  const Der = (b,v) => ({_id:newId(), type:'deriv', body:b, v});
+  const Add = (a,b) => ({_id:newId(), type:'add', a, b});
+  const Mul = (a,b) => ({_id:newId(), type:'mul', a, b});
+  const Log = (a) => ({_id:newId(), type:'log', arg:a});
+  const Lim = (b,v,t) => ({_id:newId(), type:'limit', body:b, v, to:t});
+  const Neg = (a) => ({_id:newId(), type:'neg', arg:a});
+
+  const txns = [
+    { icon:'x²', label:'square it', apply:e=>Pow(e,N(2)) },
+    { icon:'√x', label:'square root', apply:e=>Sqrt(e) },
+    { icon:'1/x', label:'reciprocal', apply:e=>Div(N(1),e) },
+    { icon:'Σ', label:'sum from i=1 to n', apply:e=>Sum(e) },
+    { icon:'∫', label:'integrate over x', apply:e=>Int(e,'x') },
+    { icon:'d/dx', label:'differentiate', apply:e=>Der(e,'x') },
+    { icon:'+ y', label:'add a term', apply:e=>Add(e,V('y')) },
+    { icon:'· y', label:'multiply by', apply:e=>Mul(e,V('y')) },
+    { icon:'log', label:'logarithm', apply:e=>Log(e) },
+    { icon:'lim', label:'limit as x→∞', apply:e=>Lim(e,'x','\\infty') },
+    { icon:'−', label:'negate', apply:e=>Neg(e) },
+  ];
+
+  const presets = {
+    default: () => Add(Pow(V('x'),N(2)), V('y')),
+    variance: () => Sum(Pow(Add(V('x_i'), Neg(V('\\bar{x}'))), N(2))),
+    gauss: () => Pow(V('e'), Neg(Div(Pow(V('x'),N(2)), N(2)))),
+    atom: () => V('x'),
+  };
+
+  let root, history, selectedId;
+  function loadPreset(name) {
+    nextId = 1;
+    root = presets[name]();
+    history = [clone(root)];
+    selectedId = null;
+  }
+  loadPreset('default');
+
+  function clone(n){ return JSON.parse(JSON.stringify(n)); }
+
+  function prec(n){
+    if(!n) return 5;
+    if(n.type==='add') return 1;
+    if(n.type==='mul') return 2;
+    if(n.type==='neg') return 3;
+    if(n.type==='sum'||n.type==='integral'||n.type==='deriv'||n.type==='limit') return 1;
+    return 5;
+  }
+  function atomic(n){ return n.type==='var'||n.type==='num'; }
+
+  function toLatex(n){ return `\\htmlClass{ast-node node-${n._id}}{${inner(n)}}`; }
+  function plain(n){ return innerPlain(n); }
+
+  function powBase(n, fn){ const s = fn(n); return atomic(n) ? s : `\\left(${s}\\right)`; }
+  function wrap(n, min, fn){ const s = fn(n); return prec(n) < min ? `\\left(${s}\\right)` : s; }
+
+  function inner(n){
+    switch(n.type){
+      case 'var': return n.name;
+      case 'num': return String(n.value);
+      case 'pow': return `${powBase(n.base, toLatex)}^{${toLatex(n.exp)}}`;
+      case 'sqrt': return `\\sqrt{${toLatex(n.arg)}}`;
+      case 'div': return `\\frac{${toLatex(n.num)}}{${toLatex(n.den)}}`;
+      case 'sum': return `\\sum_{i=1}^{n} ${wrap(n.body, 2, toLatex)}`;
+      case 'integral': return `\\int ${wrap(n.body, 2, toLatex)} \\, d${n.v}`;
+      case 'deriv': return `\\frac{d}{d${n.v}}${wrap(n.body, 3, toLatex)}`;
+      case 'add': return `${toLatex(n.a)} + ${toLatex(n.b)}`;
+      case 'mul': return `${wrap(n.a, 2, toLatex)} \\cdot ${wrap(n.b, 2, toLatex)}`;
+      case 'log': return `\\log\\left(${toLatex(n.arg)}\\right)`;
+      case 'limit': return `\\lim_{${n.v} \\to ${n.to}} ${wrap(n.body, 2, toLatex)}`;
+      case 'neg': return `-${wrap(n.arg, 3, toLatex)}`;
+    }
+    return '?';
+  }
+  function innerPlain(n){
+    switch(n.type){
+      case 'var': return n.name;
+      case 'num': return String(n.value);
+      case 'pow': return `${powBase(n.base, plain)}^{${plain(n.exp)}}`;
+      case 'sqrt': return `\\sqrt{${plain(n.arg)}}`;
+      case 'div': return `\\frac{${plain(n.num)}}{${plain(n.den)}}`;
+      case 'sum': return `\\sum_{i=1}^{n} ${wrap(n.body, 2, plain)}`;
+      case 'integral': return `\\int ${wrap(n.body, 2, plain)} \\, d${n.v}`;
+      case 'deriv': return `\\frac{d}{d${n.v}}${wrap(n.body, 3, plain)}`;
+      case 'add': return `${plain(n.a)} + ${plain(n.b)}`;
+      case 'mul': return `${wrap(n.a, 2, plain)} \\cdot ${wrap(n.b, 2, plain)}`;
+      case 'log': return `\\log\\left(${plain(n.arg)}\\right)`;
+      case 'limit': return `\\lim_{${n.v} \\to ${n.to}} ${wrap(n.body, 2, plain)}`;
+      case 'neg': return `-${wrap(n.arg, 3, plain)}`;
+    }
+    return '?';
+  }
+
+  const CHILD_KEYS = ['base','exp','arg','num','den','body','a','b'];
+  function findNode(n, id){
+    if(n._id === id) return n;
+    for(const k of CHILD_KEYS){
+      if(n[k] && typeof n[k]==='object' && '_id' in n[k]){
+        const f = findNode(n[k], id);
+        if(f) return f;
+      }
+    }
+    return null;
+  }
+  function findReplace(n, id, fn){
+    if(n._id === id) return fn(n);
+    const out = {...n};
+    for(const k of CHILD_KEYS){
+      if(n[k] && typeof n[k]==='object' && '_id' in n[k]){
+        out[k] = findReplace(n[k], id, fn);
+      }
+    }
+    return out;
+  }
+
+  const stage = document.getElementById('t2-stage');
+  const selectionEl = document.getElementById('t2-selection');
+  const chipsEl = document.getElementById('t2-chips');
+  const sourceEl = document.getElementById('t2-source');
+  const sectionLabel = document.getElementById('t2-section-label');
+  const undoBtn = document.getElementById('t2-undo');
+  const resetBtn = document.getElementById('t2-reset');
+
+  function describe(n){
+    return ({
+      var: `variable "${n.name}"`,
+      num: `the number ${n.value}`,
+      pow: 'a power',
+      sqrt: 'a square root',
+      div: 'a fraction',
+      sum: 'a sum',
+      integral: 'an integral',
+      deriv: 'a derivative',
+      add: 'a sum of terms',
+      mul: 'a product',
+      log: 'a logarithm',
+      limit: 'a limit',
+      neg: 'a negation',
+    })[n.type] || 'a subexpression';
+  }
+
+  function renderSelection(){
+    selectionEl.innerHTML = '';
+    if(selectedId === null){
+      sectionLabel.textContent = 'Transformations apply to the whole expression';
+      const hint = document.createElement('span');
+      hint.className = 't2-sel-label';
+      hint.textContent = '↑ click any part of the expression to narrow the focus';
+      selectionEl.appendChild(hint);
+      return;
+    }
+    const n = findNode(root, selectedId);
+    if(!n){ selectedId = null; renderSelection(); return; }
+
+    sectionLabel.textContent = `Transformations apply to ${describe(n)}`;
+
+    const label = document.createElement('span');
+    label.className = 't2-sel-label';
+    label.textContent = 'selected:';
+    selectionEl.appendChild(label);
+
+    const mini = document.createElement('span');
+    mini.className = 't2-sel-mini';
+    selectionEl.appendChild(mini);
+    try { katex.render(plain(n), mini, {throwOnError:false, displayMode:false}); }
+    catch(e){ mini.textContent = plain(n); }
+
+    if(atomic(n)){
+      const input = document.createElement('input');
+      input.className = 't2-rename';
+      input.value = n.type==='var' ? n.name : String(n.value);
+      input.placeholder = n.type==='var' ? 'name' : 'number';
+      input.oninput = (e) => {
+        const v = e.target.value;
+        if(v === '') return;
+        root = findReplace(root, selectedId, (node) => {
+          if(node.type==='var') return {...node, name:v};
+          const num = parseFloat(v);
+          if(!isNaN(num)) return {...node, value:num};
+          return node;
+        });
+        renderStage();
+        renderSource();
+      };
+      input.onchange = () => { history.push(clone(root)); undoBtn.disabled = history.length <= 1; };
+      selectionEl.appendChild(input);
+    }
+
+    const deselect = document.createElement('button');
+    deselect.className = 't2-deselect';
+    deselect.textContent = '✕ deselect';
+    deselect.onclick = () => { selectedId = null; renderAll(); };
+    selectionEl.appendChild(deselect);
+  }
+
+  function renderStage(){
+    const latex = toLatex(root);
+    try {
+      katex.render(latex, stage, {
+        throwOnError:false, displayMode:true,
+        trust:true, strict:'ignore'
+      });
+    } catch(e){
+      stage.textContent = plain(root);
+      return;
+    }
+    stage.querySelectorAll('.ast-node').forEach(el => {
+      const m = el.className.match(/node-(\d+)/);
+      if(!m) return;
+      const id = parseInt(m[1]);
+      if(id === selectedId) el.classList.add('selected');
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectedId = id;
+        renderAll();
+      });
+    });
+  }
+  function renderSource(){ sourceEl.textContent = plain(root); }
+
+  function renderChips(){
+    chipsEl.innerHTML = '';
+    txns.forEach(t => {
+      const btn = document.createElement('button');
+      btn.className = 't2-chip';
+      btn.innerHTML = `<span class="t2-chip-icon">${t.icon}</span><span class="t2-chip-label">${t.label}</span>`;
+      btn.onclick = () => {
+        if(selectedId === null){
+          root = t.apply(root);
+        } else {
+          let newId = null;
+          root = findReplace(root, selectedId, (n) => {
+            const nw = t.apply(n);
+            newId = nw._id;
+            return nw;
+          });
+          selectedId = newId;
+        }
+        history.push(clone(root));
+        renderAll();
+      };
+      chipsEl.appendChild(btn);
+    });
+  }
+
+  function renderAll(){
+    renderStage();
+    renderSelection();
+    renderSource();
+    undoBtn.disabled = history.length <= 1;
+  }
+
+  stage.addEventListener('click', (e) => {
+    if(e.target === stage){ selectedId = null; renderAll(); }
+  });
+
+  undoBtn.onclick = () => {
+    if(history.length <= 1) return;
+    history.pop();
+    root = clone(history[history.length - 1]);
+    selectedId = null;
+    renderAll();
+  };
+  resetBtn.onclick = () => { loadPreset('default'); renderAll(); };
+
+  document.querySelectorAll('.t2-preset').forEach(btn => {
+    btn.onclick = () => { loadPreset(btn.dataset.preset); renderAll(); };
+  });
+
+  renderChips();
+  renderAll();
+})();
+</script>

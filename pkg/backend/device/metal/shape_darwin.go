@@ -81,6 +81,11 @@ func runMetalConcat(left tensor.Tensor, right tensor.Tensor, out tensor.Tensor) 
 		return nil
 	}
 
+	elementDType, err := metalShapeElementDType(leftTensor)
+	if err != nil {
+		return err
+	}
+
 	token, err := metalCompletions.Begin(outTensor, leftTensor, rightTensor)
 	if err != nil {
 		return err
@@ -89,6 +94,7 @@ func runMetalConcat(left tensor.Tensor, right tensor.Tensor, out tensor.Tensor) 
 	status := C.MetalStatus{}
 	rc := C.metal_dispatch_concat_bytes(
 		leftTensor.bridge.device,
+		C.int(elementDType),
 		leftTensor.buffer,
 		rightTensor.buffer,
 		outTensor.buffer,
@@ -117,6 +123,11 @@ func runMetalSplit2(input tensor.Tensor, left tensor.Tensor, right tensor.Tensor
 		return nil
 	}
 
+	elementDType, err := metalShapeElementDType(inputTensor)
+	if err != nil {
+		return err
+	}
+
 	token, err := metalCompletions.BeginMany([]*metalTensor{leftTensor, rightTensor}, inputTensor)
 	if err != nil {
 		return err
@@ -125,6 +136,7 @@ func runMetalSplit2(input tensor.Tensor, left tensor.Tensor, right tensor.Tensor
 	status := C.MetalStatus{}
 	rc := C.metal_dispatch_split2_bytes(
 		inputTensor.bridge.device,
+		C.int(elementDType),
 		inputTensor.buffer,
 		leftTensor.buffer,
 		rightTensor.buffer,
@@ -157,6 +169,11 @@ func runMetalLastToken(input tensor.Tensor, out tensor.Tensor) error {
 	elementBytes, _ := inputTensor.dtype.Size()
 	hiddenBytes := dims[2] * elementBytes
 
+	elementDType, err := metalShapeElementDType(inputTensor)
+	if err != nil {
+		return err
+	}
+
 	token, err := metalCompletions.Begin(outTensor, inputTensor)
 	if err != nil {
 		return err
@@ -165,6 +182,7 @@ func runMetalLastToken(input tensor.Tensor, out tensor.Tensor) error {
 	status := C.MetalStatus{}
 	rc := C.metal_dispatch_last_token_bytes(
 		inputTensor.bridge.device,
+		C.int(elementDType),
 		inputTensor.buffer,
 		outTensor.buffer,
 		C.uint32_t(dims[1]),
@@ -194,7 +212,11 @@ func runMetalTranspose2D(input tensor.Tensor, out tensor.Tensor) error {
 	}
 
 	dims := inputTensor.shape.Dims()
-	elementBytes, _ := inputTensor.dtype.Size()
+	elementDType, err := metalShapeElementDType(inputTensor)
+	if err != nil {
+		return err
+	}
+
 	token, err := metalCompletions.Begin(outTensor, inputTensor)
 	if err != nil {
 		return err
@@ -203,11 +225,11 @@ func runMetalTranspose2D(input tensor.Tensor, out tensor.Tensor) error {
 	status := C.MetalStatus{}
 	rc := C.metal_dispatch_transpose2d_bytes(
 		inputTensor.bridge.device,
+		C.int(elementDType),
 		inputTensor.buffer,
 		outTensor.buffer,
 		C.uint32_t(dims[0]),
 		C.uint32_t(dims[1]),
-		C.uint32_t(elementBytes),
 		C.uint64_t(token),
 		&status,
 	)
@@ -233,7 +255,11 @@ func runMetalUpsampleNearest2D(input tensor.Tensor, out tensor.Tensor) error {
 
 	inDims := inputTensor.shape.Dims()
 	outDims := outTensor.shape.Dims()
-	elementBytes, _ := inputTensor.dtype.Size()
+	elementDType, err := metalShapeElementDType(inputTensor)
+	if err != nil {
+		return err
+	}
+
 	token, err := metalCompletions.Begin(outTensor, inputTensor)
 	if err != nil {
 		return err
@@ -242,6 +268,7 @@ func runMetalUpsampleNearest2D(input tensor.Tensor, out tensor.Tensor) error {
 	status := C.MetalStatus{}
 	rc := C.metal_dispatch_upsample_nearest2d_bytes(
 		inputTensor.bridge.device,
+		C.int(elementDType),
 		inputTensor.buffer,
 		outTensor.buffer,
 		C.uint32_t(inDims[1]),
@@ -249,7 +276,6 @@ func runMetalUpsampleNearest2D(input tensor.Tensor, out tensor.Tensor) error {
 		C.uint32_t(inDims[3]),
 		C.uint32_t(outDims[2]),
 		C.uint32_t(outDims[3]),
-		C.uint32_t(elementBytes),
 		C.uint32_t(outTensor.shape.Len()),
 		C.uint64_t(token),
 		&status,
@@ -269,6 +295,11 @@ func dispatchMetalCopyBytes(inputTensor *metalTensor, outTensor *metalTensor) er
 		return nil
 	}
 
+	elementDType, err := metalShapeElementDType(inputTensor)
+	if err != nil {
+		return err
+	}
+
 	token, err := metalCompletions.Begin(outTensor, inputTensor)
 	if err != nil {
 		return err
@@ -277,6 +308,7 @@ func dispatchMetalCopyBytes(inputTensor *metalTensor, outTensor *metalTensor) er
 	status := C.MetalStatus{}
 	rc := C.metal_dispatch_copy_bytes(
 		inputTensor.bridge.device,
+		C.int(elementDType),
 		inputTensor.buffer,
 		outTensor.buffer,
 		C.uint32_t(outTensor.bytes),
@@ -291,4 +323,8 @@ func dispatchMetalCopyBytes(inputTensor *metalTensor, outTensor *metalTensor) er
 	}
 
 	return nil
+}
+
+func metalShapeElementDType(inputTensor *metalTensor) (metalElementDType, error) {
+	return metalElementDTypeFor(inputTensor.dtype)
 }

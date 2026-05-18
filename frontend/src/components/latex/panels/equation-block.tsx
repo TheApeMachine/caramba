@@ -3,10 +3,20 @@
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import {
+	type FocusEventHandler,
+	type KeyboardEventHandler,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { usePaperEditor } from "#/components/latex/context";
+import { EquationStructureEditor } from "#/components/latex/math-subselection/equation-structure-editor";
 import type { PaperEquationBlock } from "#/components/latex/model/types";
 import { EditableBlock } from "#/components/latex/panels/editable-block";
+import { Button } from "#/components/ui/button";
+import { cn } from "#/lib/utils";
 
 export function EquationBlock({
 	block,
@@ -21,9 +31,16 @@ export function EquationBlock({
 		removeBlockAndFocusPrevious,
 		blocks,
 	} = usePaperEditor();
-	const [editing, setEditing] = useState(block.latex === "");
+	const [chromeOpen, setChromeOpen] = useState(block.latex === "");
+	const [editing, setEditing] = useState(false);
 	const editableRef = useRef<HTMLDivElement>(null);
 	const previewRef = useRef<HTMLButtonElement>(null);
+	const equationShellRef = useRef<HTMLDivElement>(null);
+	const editingReference = useRef(editing);
+	const chromeOpenReference = useRef(chromeOpen);
+
+	editingReference.current = editing;
+	chromeOpenReference.current = chromeOpen;
 
 	useEffect(() => {
 		if (editing) {
@@ -55,23 +72,82 @@ export function EquationBlock({
 		}
 	}, [block.latex, block.display]);
 
-	const openEditor = () => setEditing(true);
+	const closeEquationChrome = useCallback(() => {
+		setChromeOpen(false);
+		setEditing(false);
+	}, []);
+
+	const openEquationChrome = () => {
+		setChromeOpen(true);
+	};
+
+	useEffect(() => {
+		if (!chromeOpen) {
+			return;
+		}
+
+		const onPointerDownCapture = (event: PointerEvent) => {
+			const shell = equationShellRef.current;
+			const target = event.target;
+
+			if (!(target instanceof Node) || !shell) {
+				return;
+			}
+
+			if (shell.contains(target)) {
+				return;
+			}
+
+			if (target instanceof Element && target.closest("[data-portal]")) {
+				return;
+			}
+
+			closeEquationChrome();
+		};
+
+		document.addEventListener("pointerdown", onPointerDownCapture, true);
+
+		return () => {
+			document.removeEventListener("pointerdown", onPointerDownCapture, true);
+		};
+	}, [chromeOpen]);
+
+	useEffect(() => {
+		if (!chromeOpen) {
+			return;
+		}
+
+		const onEscape = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") {
+				return;
+			}
+
+			event.preventDefault();
+
+			if (editingReference.current) {
+				setEditing(false);
+
+				return;
+			}
+
+			setChromeOpen(false);
+		};
+
+		window.addEventListener("keydown", onEscape, true);
+
+		return () => {
+			window.removeEventListener("keydown", onEscape, true);
+		};
+	}, [chromeOpen]);
 
 	const onPreviewKeyDown = (event: React.KeyboardEvent) => {
 		if (event.key === "Enter" || event.key === " ") {
 			event.preventDefault();
-			openEditor();
+			openEquationChrome();
 		}
 	};
 
-	const onEditorKeyDown: React.KeyboardEventHandler<HTMLDivElement> = (
-		event,
-	) => {
-		if (event.key === "Escape") {
-			setEditing(false);
-			return;
-		}
-
+	const onEditorKeyDown: KeyboardEventHandler<HTMLDivElement> = (event) => {
 		if (event.key === "Enter" && !event.shiftKey && block.latex.trim() === "") {
 			event.preventDefault();
 			insertParagraphAfter(block.id);
@@ -84,21 +160,77 @@ export function EquationBlock({
 		}
 	};
 
+	const handleEditorBlur: FocusEventHandler<HTMLDivElement> = (event) => {
+		const relatedTarget = event.relatedTarget;
+
+		window.setTimeout(() => {
+			window.requestAnimationFrame(() => {
+				const shell = equationShellRef.current;
+				const active = document.activeElement;
+
+				if (shell?.contains(active)) {
+					return;
+				}
+
+				if (relatedTarget instanceof Node && shell?.contains(relatedTarget)) {
+					return;
+				}
+
+				if (active instanceof Element && active.closest("[data-portal]")) {
+					return;
+				}
+
+				if (!chromeOpenReference.current) {
+					return;
+				}
+
+				setEditing(false);
+			});
+		});
+	};
+
+	const structurePanelHidden = !chromeOpen || editing;
+
 	return (
-		<div className="flex flex-col gap-1.5">
+		<div className="flex flex-col gap-3" ref={equationShellRef}>
 			<button
 				className="min-h-10 w-full cursor-text rounded-md px-2 py-2 text-center hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-				onClick={openEditor}
+				onClick={openEquationChrome}
 				onFocus={onFocus}
 				onKeyDown={onPreviewKeyDown}
 				ref={previewRef}
 				type="button"
 			/>
 
+			{chromeOpen ? (
+				<div className="flex flex-wrap items-center justify-end gap-2">
+					{!editing ? (
+						<Button
+							className="h-8 font-mono text-xs"
+							onClick={() => {
+								setEditing(true);
+							}}
+							type="button"
+							variant="ghost"
+						>
+							LaTeX source
+						</Button>
+					) : null}
+					<Button
+						className="h-8"
+						onClick={closeEquationChrome}
+						type="button"
+						variant="secondary"
+					>
+						Done
+					</Button>
+				</div>
+			) : null}
+
 			{editing ? (
 				<EditableBlock
 					className="min-h-8 rounded-md bg-muted/30 px-2 py-1.5 font-mono text-sm focus-visible:ring-1 focus-visible:ring-ring"
-					onBlur={() => setEditing(false)}
+					onBlur={handleEditorBlur}
 					onChange={(value) => updateLatex(block.id, value)}
 					onKeyDown={onEditorKeyDown}
 					placeholder="\frac{a}{b} = c"
@@ -106,6 +238,17 @@ export function EquationBlock({
 					value={block.latex}
 				/>
 			) : null}
+
+			<div
+				aria-hidden={structurePanelHidden}
+				className={cn(structurePanelHidden && "hidden")}
+			>
+				<EquationStructureEditor
+					displayMode={block.display}
+					latex={block.latex}
+					onLatexChange={(value) => updateLatex(block.id, value)}
+				/>
+			</div>
 		</div>
 	);
 }
