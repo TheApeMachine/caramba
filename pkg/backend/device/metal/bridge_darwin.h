@@ -97,6 +97,68 @@ int metal_dispatch_unary_elementwise(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_copy_bytes(
+    MetalDeviceRef contextRef,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t byteCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_concat_bytes(
+    MetalDeviceRef contextRef,
+    MetalBufferRef leftRef,
+    MetalBufferRef rightRef,
+    MetalBufferRef outRef,
+    uint32_t leftBytes,
+    uint32_t rightBytes,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_split2_bytes(
+    MetalDeviceRef contextRef,
+    MetalBufferRef inputRef,
+    MetalBufferRef leftRef,
+    MetalBufferRef rightRef,
+    uint32_t leftBytes,
+    uint32_t rightBytes,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_last_token_bytes(
+    MetalDeviceRef contextRef,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t seq,
+    uint32_t hiddenBytes,
+    uint32_t outBytes,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_transpose2d_bytes(
+    MetalDeviceRef contextRef,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t rows,
+    uint32_t cols,
+    uint32_t elementBytes,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_upsample_nearest2d_bytes(
+    MetalDeviceRef contextRef,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t channels,
+    uint32_t inHeight,
+    uint32_t inWidth,
+    uint32_t outHeight,
+    uint32_t outWidth,
+    uint32_t elementBytes,
+    uint32_t outElements,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 void metal_device_release(MetalDeviceRef contextRef);
 
 #ifdef __cplusplus

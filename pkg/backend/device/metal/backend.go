@@ -64,6 +64,7 @@ func (backend *Backend) SupportedDTypes() []dtype.DType {
 		dtype.Float32,
 		dtype.BFloat16,
 		dtype.Float16,
+		dtype.Int32,
 		dtype.Int8,
 		dtype.Int4,
 		dtype.Bool,

@@ -75,46 +75,46 @@ goos: darwin
 goarch: arm64
 pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
 cpu: Apple M4 Max
-BenchmarkKernel_RunElementwiseDTypes/f16/add-16     	   11607	    102817 ns/op	 478.05 MB/s	    1289 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/sub-16     	   12115	     99106 ns/op	 495.95 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/mul-16     	   12214	     97998 ns/op	 501.56 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/div-16     	   12224	     98268 ns/op	 500.18 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/max-16     	   10000	    100376 ns/op	 489.68 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/min-16     	   12093	     99328 ns/op	 494.85 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/eq-16      	   10000	    100164 ns/op	 490.72 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/ne-16      	   12009	    100146 ns/op	 490.80 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/lt-16      	   12117	     99908 ns/op	 491.97 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/le-16      	   12081	     99230 ns/op	 495.34 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/gt-16      	   10000	    101007 ns/op	 486.62 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/ge-16      	   10000	    101694 ns/op	 483.33 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/relu-16    	   12015	     99743 ns/op	 328.52 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/abs-16     	   10000	    101475 ns/op	 322.92 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/neg-16     	   10000	    101810 ns/op	 321.85 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/square-16  	   12036	     99388 ns/op	 329.70 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/recip-16   	   10000	    102670 ns/op	 319.16 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/sqrt-16    	   10000	    106141 ns/op	 308.72 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/f16/sign-16    	   10000	    103576 ns/op	 316.37 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/add-16    	   10000	    101962 ns/op	 482.06 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/sub-16    	   10000	    101042 ns/op	 486.45 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/mul-16    	   10000	    102275 ns/op	 480.59 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/div-16    	   10000	    104431 ns/op	 470.67 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/max-16    	   10000	    103455 ns/op	 475.11 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/min-16    	   10000	    104943 ns/op	 468.37 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/eq-16     	   10000	    108618 ns/op	 452.52 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/ne-16     	   10000	    110976 ns/op	 442.91 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/lt-16     	   10000	    108646 ns/op	 452.41 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/le-16     	   10000	    107830 ns/op	 455.83 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/gt-16     	   10000	    108167 ns/op	 454.41 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/ge-16     	   10000	    108200 ns/op	 454.27 MB/s	    1288 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/relu-16   	   10000	    107838 ns/op	 303.86 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/abs-16    	   10000	    108723 ns/op	 301.39 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/neg-16    	   10000	    108189 ns/op	 302.88 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/square-16 	   10000	    108050 ns/op	 303.27 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/recip-16  	   10000	    108495 ns/op	 302.02 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/sqrt-16   	   10000	    108725 ns/op	 301.38 MB/s	    1280 B/op	       3 allocs/op
-BenchmarkKernel_RunElementwiseDTypes/bf16/sign-16   	   10000	    107370 ns/op	 305.19 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/add-16     	   10882	    108345 ns/op	 453.66 MB/s	    1289 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/sub-16     	   10000	    103366 ns/op	 475.51 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/mul-16     	   10000	    101763 ns/op	 483.01 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/div-16     	   10000	    101096 ns/op	 486.19 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/max-16     	   10000	    101070 ns/op	 486.32 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/min-16     	   10000	    101773 ns/op	 482.96 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/eq-16      	   10000	    100825 ns/op	 487.50 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/ne-16      	   10000	    101475 ns/op	 484.38 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/lt-16      	   10000	    101086 ns/op	 486.24 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/le-16      	   10000	    101109 ns/op	 486.13 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/gt-16      	   10000	    101608 ns/op	 483.74 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/ge-16      	   10000	    101274 ns/op	 485.34 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/relu-16    	   10000	    101722 ns/op	 322.13 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/abs-16     	   10000	    101402 ns/op	 323.15 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/neg-16     	   10000	    101836 ns/op	 321.77 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/square-16  	   10000	    101702 ns/op	 322.20 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/recip-16   	   10000	    102519 ns/op	 319.63 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/sqrt-16    	   10000	    101228 ns/op	 323.70 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/sign-16    	   10000	    102466 ns/op	 319.79 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/add-16    	   10000	    101648 ns/op	 483.55 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/sub-16    	   10000	    106007 ns/op	 463.67 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/mul-16    	   10000	    104784 ns/op	 469.08 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/div-16    	   10000	    101681 ns/op	 483.39 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/max-16    	   10000	    101253 ns/op	 485.44 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/min-16    	   10000	    101909 ns/op	 482.31 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/eq-16     	   10000	    102179 ns/op	 481.04 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/ne-16     	   10000	    101813 ns/op	 482.77 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/lt-16     	   10000	    101760 ns/op	 483.02 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/le-16     	   10000	    103094 ns/op	 476.77 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/gt-16     	   10000	    102155 ns/op	 481.15 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/ge-16     	   10000	    100543 ns/op	 488.87 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/relu-16   	   10000	    107316 ns/op	 305.34 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/abs-16    	   10000	    101901 ns/op	 321.57 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/neg-16    	   10000	    102938 ns/op	 318.33 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/square-16 	   10000	    102073 ns/op	 321.02 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/recip-16  	   10000	    101383 ns/op	 323.21 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/sqrt-16   	   10000	    101065 ns/op	 324.23 MB/s	    1280 B/op	       3 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/sign-16   	   10000	    104843 ns/op	 312.54 MB/s	    1280 B/op	       3 allocs/op
 PASS
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	41.871s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	39.495s
 ```
 
 ### 2026-05-18 Metal elementwise float32 expansion

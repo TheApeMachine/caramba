@@ -136,3 +136,69 @@ func runMetalUnaryElementwise(
 
 	return tensor.ErrNeedsPlatformSetup
 }
+
+func runMetalReshape(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalMergeHeads(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalSplitHeads(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalViewAsHeads(input tensor.Tensor, heads tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = heads
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalConcat(left tensor.Tensor, right tensor.Tensor, out tensor.Tensor) error {
+	_ = left
+	_ = right
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalSplit2(input tensor.Tensor, left tensor.Tensor, right tensor.Tensor) error {
+	_ = input
+	_ = left
+	_ = right
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalLastToken(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalTranspose2D(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalUpsampleNearest2D(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}

@@ -480,9 +480,9 @@ type metalCompletionRegistry struct {
 }
 
 type metalCompletion struct {
-	bridge *metalBridge
-	target *metalTensor
-	uses   []*metalTensor
+	bridge  *metalBridge
+	targets []*metalTensor
+	uses    []*metalTensor
 }
 
 func newMetalCompletionRegistry() *metalCompletionRegistry {
@@ -495,16 +495,33 @@ func (registry *metalCompletionRegistry) Begin(
 	target *metalTensor,
 	inputs ...*metalTensor,
 ) (uint64, error) {
-	target.bridge.submission.Lock()
-	defer target.bridge.submission.Unlock()
+	return registry.BeginMany([]*metalTensor{target}, inputs...)
+}
 
-	if target.bridge.closed.Load() {
+func (registry *metalCompletionRegistry) BeginMany(
+	targets []*metalTensor,
+	inputs ...*metalTensor,
+) (uint64, error) {
+	if len(targets) == 0 || targets[0] == nil {
+		return 0, tensor.ErrShapeMismatch
+	}
+
+	bridge := targets[0].bridge
+	bridge.submission.Lock()
+	defer bridge.submission.Unlock()
+
+	if bridge.closed.Load() {
 		return 0, tensor.ErrBackendClosed
 	}
 
-	uses := make([]*metalTensor, 0, len(inputs)+1)
+	uses := make([]*metalTensor, 0, len(inputs)+len(targets))
 
 	for _, input := range inputs {
+		if input == nil || input.bridge != bridge {
+			releaseTensorUses(uses)
+			return 0, tensor.ErrShapeMismatch
+		}
+
 		if err := input.retainUse(); err != nil {
 			releaseTensorUses(uses)
 			return 0, err
@@ -513,13 +530,21 @@ func (registry *metalCompletionRegistry) Begin(
 		uses = append(uses, input)
 	}
 
-	if err := target.beginPendingUse(); err != nil {
-		releaseTensorUses(uses)
-		return 0, err
+	for _, target := range targets {
+		if target == nil || target.bridge != bridge {
+			releaseTensorUses(uses)
+			return 0, tensor.ErrShapeMismatch
+		}
+
+		if err := target.beginPendingUse(); err != nil {
+			releaseTensorUses(uses)
+			return 0, err
+		}
+
+		uses = append(uses, target)
 	}
 
-	uses = append(uses, target)
-	target.bridge.pending.Add(1)
+	bridge.pending.Add(1)
 
 	registry.mutex.Lock()
 	defer registry.mutex.Unlock()
@@ -531,9 +556,9 @@ func (registry *metalCompletionRegistry) Begin(
 
 	token := registry.next
 	registry.targets[token] = metalCompletion{
-		bridge: target.bridge,
-		target: target,
-		uses:   uses,
+		bridge:  bridge,
+		targets: append([]*metalTensor(nil), targets...),
+		uses:    uses,
 	}
 
 	return token, nil
@@ -541,29 +566,37 @@ func (registry *metalCompletionRegistry) Begin(
 
 func (registry *metalCompletionRegistry) Complete(token uint64, code int, message string) {
 	completion := registry.take(token)
-	if completion.target == nil {
+	if len(completion.targets) == 0 {
 		return
 	}
 	defer completion.bridge.pending.Done()
 	defer releaseTensorUses(completion.uses)
 
 	if code == 0 {
-		completion.target.complete(nil)
+		for _, target := range completion.targets {
+			target.complete(nil)
+		}
 		return
 	}
 
-	completion.target.complete(fmt.Errorf("metal command failed: %s (code=%d)", message, code))
+	err := fmt.Errorf("metal command failed: %s (code=%d)", message, code)
+
+	for _, target := range completion.targets {
+		target.complete(err)
+	}
 }
 
 func (registry *metalCompletionRegistry) Fail(token uint64, err error) {
 	completion := registry.take(token)
-	if completion.target == nil {
+	if len(completion.targets) == 0 {
 		return
 	}
 	defer completion.bridge.pending.Done()
 	defer releaseTensorUses(completion.uses)
 
-	completion.target.complete(err)
+	for _, target := range completion.targets {
+		target.complete(err)
+	}
 }
 
 func (registry *metalCompletionRegistry) take(token uint64) metalCompletion {
