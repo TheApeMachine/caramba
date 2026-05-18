@@ -3,6 +3,7 @@
 caramba
 .pnpm-store/
 *.metallib
+!pkg/backend/device/metal/kernels.metallib
 *.air
 .vscode/
 frontend/node_modules/

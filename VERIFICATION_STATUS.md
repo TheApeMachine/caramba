@@ -36,7 +36,7 @@ Focused Metal device tests:
 
 2 total assertions
 
---- PASS: TestNewBackend (0.05s)
+--- PASS: TestNewBackend (0.08s)
 === RUN   TestBackend_UploadDownloadFloat32
 
   Given a Metal float32 tensor upload ✔✔✔✔✔✔✔
@@ -46,32 +46,98 @@ Focused Metal device tests:
 
 --- PASS: TestBackend_UploadDownloadFloat32 (0.00s)
 === RUN   TestBackend_AddFloat32
+=== RUN   TestBackend_AddFloat32/N=1
 
-  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔✔✔✔✔✔✔
+  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
 
 
-23 total assertions
+17 total assertions
 
---- PASS: TestBackend_AddFloat32 (0.00s)
+=== RUN   TestBackend_AddFloat32/N=7
+
+  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
+
+
+25 total assertions
+
+=== RUN   TestBackend_AddFloat32/N=64
+
+  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
+
+
+33 total assertions
+
+=== RUN   TestBackend_AddFloat32/N=1024
+
+  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
+
+
+41 total assertions
+
+=== RUN   TestBackend_AddFloat32/N=8192
+
+  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
+
+
+49 total assertions
+
+--- PASS: TestBackend_AddFloat32 (0.01s)
+    --- PASS: TestBackend_AddFloat32/N=1 (0.00s)
+    --- PASS: TestBackend_AddFloat32/N=7 (0.00s)
+    --- PASS: TestBackend_AddFloat32/N=64 (0.00s)
+    --- PASS: TestBackend_AddFloat32/N=1024 (0.00s)
+    --- PASS: TestBackend_AddFloat32/N=8192 (0.00s)
 === RUN   TestKernelRegistry_MetalAddFloat32
 
   Given the device kernel registry ✔✔✔✔✔✔✔✔✔✔
 
 
-33 total assertions
+59 total assertions
 
 --- PASS: TestKernelRegistry_MetalAddFloat32 (0.01s)
 PASS
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.392s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.452s
+```
+
+Metal library generator tests:
+
+```
+=== RUN   TestNewGenerator
+
+  Given a Metal library generator ✔✔
+
+
+2 total assertions
+
+--- PASS: TestNewGenerator (0.00s)
+=== RUN   TestGenerator_MetalArgs
+
+  Given a Metal library generator ✔
+
+
+3 total assertions
+
+--- PASS: TestGenerator_MetalArgs (0.00s)
+=== RUN   TestGenerator_MetallibArgs
+
+  Given a Metal library generator ✔
+
+
+4 total assertions
+
+--- PASS: TestGenerator_MetallibArgs (0.00s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.341s
 ```
 
 Focused package sweep:
 
 ```
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.748s
-ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.223s
-ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	0.409s
-ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.018s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.353s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.789s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	1.133s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	0.313s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	0.668s
 ```
 
 Metal benchmark output:
@@ -81,18 +147,40 @@ goos: darwin
 goarch: arm64
 pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
 cpu: Apple M4 Max
-BenchmarkNewBackend-16            	    6978	    177969 ns/op	      24 B/op	       2 allocs/op
-BenchmarkBackend_AddFloat32-16    	    9154	    126715 ns/op	     224 B/op	       4 allocs/op
+BenchmarkBackend_AddFloat32/N=1-16  	   10813	    107968 ns/op	   0.11 MB/s	    1376 B/op	       5 allocs/op
+BenchmarkBackend_AddFloat32/N=7-16  	   10000	    106433 ns/op	   0.79 MB/s	    1376 B/op	       5 allocs/op
+BenchmarkBackend_AddFloat32/N=64-16 	   10000	    105629 ns/op	   7.27 MB/s	    1376 B/op	       5 allocs/op
+BenchmarkBackend_AddFloat32/N=1024-16         	   10000	    101703 ns/op	 120.82 MB/s	    1376 B/op	       5 allocs/op
+BenchmarkBackend_AddFloat32/N=8192-16         	   10000	    112563 ns/op	 873.32 MB/s	    1376 B/op	       5 allocs/op
+BenchmarkKernel_RunAddFloat32/N=1-16          	   11793	    101707 ns/op	   0.12 MB/s	    1152 B/op	       1 allocs/op
+BenchmarkKernel_RunAddFloat32/N=7-16          	   10000	    102620 ns/op	   0.82 MB/s	    1152 B/op	       1 allocs/op
+BenchmarkKernel_RunAddFloat32/N=64-16         	   12024	    100199 ns/op	   7.66 MB/s	    1152 B/op	       1 allocs/op
+BenchmarkKernel_RunAddFloat32/N=1024-16       	   10000	    100861 ns/op	 121.83 MB/s	    1152 B/op	       1 allocs/op
+BenchmarkKernel_RunAddFloat32/N=8192-16       	   10000	    101841 ns/op	 965.27 MB/s	    1152 B/op	       1 allocs/op
 PASS
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	2.787s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	11.315s
 ```
 
-This slice adds a real `MTLBuffer` upload/download path in
-`pkg/backend/device/metal/bridge_darwin.go`, a real Metal command
-submission path for float32 elementwise add, and a Metal-specific
-kernel registry entry resolved through `LookupLocation`. Metal
-capabilities report `SupportsAsync: false` because upload currently
-returns a ready tensor.
+Metal backend construction benchmark:
+
+```
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkNewBackend-16    	    7256	    155690 ns/op	    1160 B/op	       2 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.355s
+```
+
+This slice adds `pkg/backend/device/metal/add_float32.metal`,
+`pkg/backend/device/metal/kernels.metallib`, a reproducible
+`go generate ./pkg/backend/device/metal` path, a real `MTLBuffer`
+upload/download path, a `newLibraryWithData` Metal library load, a
+real Metal command submission path for float32 elementwise add, and a
+Metal-specific kernel registry entry resolved through `LookupLocation`.
+Metal capabilities report `SupportsAsync: false` because upload returns
+a ready tensor.
 
 ### 2026-05-18 Phase 7 slice
 
@@ -314,8 +402,15 @@ invalidation works.
 | `pkg/backend/device/metal/backend.go`         | verified              |
 | `pkg/backend/device/metal/bridge_stub.go`     | verified              |
 | `pkg/backend/device/metal/bridge_darwin.go`   | verified              |
+| `pkg/backend/device/metal/bridge_darwin.h`    | verified              |
+| `pkg/backend/device/metal/bridge_darwin.m`    | verified              |
+| `pkg/backend/device/metal/add_float32.metal`  | verified              |
+| `pkg/backend/device/metal/kernels.metallib`   | verified              |
+| `pkg/backend/device/metal/generate.go`        | verified              |
 | `pkg/backend/device/metal/kernels.go`         | verified              |
 | `pkg/backend/device/metal/backend_test.go`    | verified              |
+| `pkg/backend/device/metal/internal/metallibgen/main.go` | verified  |
+| `pkg/backend/device/metal/internal/metallibgen/main_test.go` | verified |
 | `pkg/backend/device/cuda/backend.go`          | verified              |
 | `pkg/backend/device/cuda/bridge_stub.go`      | verified              |
 | `pkg/backend/device/cuda/bridge_real.go`      | needs-platform-setup  |

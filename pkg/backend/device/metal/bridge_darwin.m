@@ -2,6 +2,7 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <Metal/Metal.h>
+#include "_cgo_export.h"
 #include <dispatch/dispatch.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -224,6 +225,7 @@ int metal_dispatch_add_float32(
     MetalBufferRef rightRef,
     MetalBufferRef outRef,
     uint32_t count,
+    uint64_t completionToken,
     MetalStatus* status
 ) {
     metal_status_clear(status);
@@ -269,29 +271,42 @@ int metal_dispatch_add_float32(
     [encoder setBuffer:left offset:0 atIndex:0];
     [encoder setBuffer:right offset:0 atIndex:1];
     [encoder setBuffer:out offset:0 atIndex:2];
+    [encoder setBytes:&count length:sizeof(count) atIndex:3];
 
-    NSUInteger threadWidth = [pipeline maxTotalThreadsPerThreadgroup];
-
-    if (threadWidth > count) {
-        threadWidth = count;
-    }
+    NSUInteger threadWidth = [pipeline threadExecutionWidth];
 
     if (threadWidth == 0) {
         threadWidth = 1;
     }
 
-    MTLSize gridSize = MTLSizeMake(count, 1, 1);
+    NSUInteger vectorCount = (NSUInteger)((count + 3) / 4);
+    MTLSize gridSize = MTLSizeMake(vectorCount, 1, 1);
     MTLSize threadgroupSize = MTLSizeMake(threadWidth, 1, 1);
 
     [encoder dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
     [encoder endEncoding];
-    [commandBuffer commit];
-    [commandBuffer waitUntilCompleted];
 
-    if ([commandBuffer status] != MTLCommandBufferStatusCompleted) {
-        metal_status_set_ns_error(status, -5, @"Metal command buffer failed", [commandBuffer error]);
-        return -5;
-    }
+    [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedBuffer) {
+        if ([completedBuffer status] == MTLCommandBufferStatusCompleted) {
+            metalCommandCompleted(completionToken, 0, "");
+            return;
+        }
+
+        NSError* error = [completedBuffer error];
+        NSString* message = @"Metal command buffer failed";
+
+        if (error != nil) {
+            message = [NSString
+                stringWithFormat:@"%@: %@",
+                message,
+                [error localizedDescription]
+            ];
+        }
+
+        metalCommandCompleted(completionToken, -5, (char*)[message UTF8String]);
+    }];
+
+    [commandBuffer commit];
 
     return 0;
 }

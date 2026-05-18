@@ -335,6 +335,10 @@ func benchmarkKernelRunAddFloat32(benchmark *testing.B, backend *Backend, elemen
 		if err := runMetalAddFloat32(left, right, out); err != nil {
 			benchmark.Fatal(err)
 		}
+
+		if err := out.Sync(context.Background()); err != nil {
+			benchmark.Fatal(err)
+		}
 	}
 }
 

@@ -32,6 +32,7 @@ int metal_dispatch_add_float32(
     MetalBufferRef rightRef,
     MetalBufferRef outRef,
     uint32_t count,
+    uint64_t completionToken,
     MetalStatus* status
 );
 void metal_device_release(MetalDeviceRef contextRef);
