@@ -23,6 +23,17 @@ system:
         out: [y]
 `
 
+const unusedInputManifest = `
+system:
+  topology:
+    inputs: [x, timestep]
+    nodes:
+      - id: relu
+        op: activation.relu
+        in: [x]
+        out: [y]
+`
+
 func writeManifest(t *testing.T, root, relative, body string) {
 	t.Helper()
 	full := filepath.Join(root, relative)
@@ -73,6 +84,39 @@ func TestGraphRunnerCall(t *testing.T) {
 			_, err := runner.Call(context.Background(), noManifestModule, map[string]any{})
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "no manifest path declared")
+		})
+	})
+
+	Convey("Given a graph call binds an unused topology input", t, func() {
+		root := t.TempDir()
+		writeManifest(t, root, "unused.yml", unusedInputManifest)
+
+		backend, err := compute.NewBackend(compute.CPU)
+		So(err, ShouldBeNil)
+		defer backend.Close()
+
+		runner, err := New(Options{
+			ComputeBackend: backend,
+			ProjectRoot:    root,
+		})
+		So(err, ShouldBeNil)
+
+		module := program.GraphModule{
+			ID:       "unused",
+			Manifest: "unused.yml",
+			Config: map[string]any{
+				"outputs": map[string]any{"y": "relu"},
+			},
+		}
+
+		Convey("Call should reject the graph before execution", func() {
+			_, err := runner.Call(context.Background(), module, map[string]any{
+				"x":        []float64{-1, 2},
+				"timestep": 999.0,
+			})
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, `input "timestep" is declared by the graph but has no consumers`)
 		})
 	})
 

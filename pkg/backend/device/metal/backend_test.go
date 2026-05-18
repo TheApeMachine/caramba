@@ -1,0 +1,19 @@
+package metal
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+)
+
+func TestNewBackend_Stub(t *testing.T) {
+	convey.Convey("On non-darwin or no-cgo builds", t, func() {
+		_, err := NewBackend()
+
+		convey.Convey("It should return ErrNeedsPlatformSetup", func() {
+			convey.So(errors.Is(err, tensor.ErrNeedsPlatformSetup), convey.ShouldBeTrue)
+		})
+	})
+}

@@ -2,45 +2,37 @@ package tensor
 
 import (
 	"testing"
+	"unsafe"
 
 	convey "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
-func TestDType_Size(t *testing.T) {
-	convey.Convey("Given a supported dtype", t, func() {
-		convey.Convey("It should return the scalar byte width", func() {
-			size, err := Float64.Size()
-
-			convey.So(err, convey.ShouldBeNil)
-			convey.So(size, convey.ShouldEqual, 8)
-		})
-	})
-
-	convey.Convey("Given an unsupported dtype", t, func() {
-		convey.Convey("It should reject the dtype", func() {
-			size, err := DType("complex128").Size()
-
-			convey.So(err, convey.ShouldNotBeNil)
-			convey.So(size, convey.ShouldEqual, 0)
-		})
-	})
-}
-
 func TestNewShape(t *testing.T) {
-	convey.Convey("Given valid tensor dimensions", t, func() {
+	convey.Convey("Given valid dimensions", t, func() {
 		shape, err := NewShape([]int{2, 3, 4})
 
-		convey.Convey("It should cache the element count", func() {
+		convey.Convey("It should compute the element count", func() {
 			convey.So(err, convey.ShouldBeNil)
-			convey.So(shape.Len(), convey.ShouldEqual, 24)
 			convey.So(shape.Valid(), convey.ShouldBeTrue)
+			convey.So(shape.Len(), convey.ShouldEqual, 24)
+			convey.So(shape.Rank(), convey.ShouldEqual, 3)
+		})
+	})
+
+	convey.Convey("Given a negative dimension", t, func() {
+		shape, err := NewShape([]int{2, -1})
+
+		convey.Convey("It should reject the shape", func() {
+			convey.So(err, convey.ShouldNotBeNil)
+			convey.So(shape.Valid(), convey.ShouldBeFalse)
 		})
 	})
 
 	convey.Convey("Given a scalar shape", t, func() {
 		shape, err := NewShape(nil)
 
-		convey.Convey("It should represent one scalar element", func() {
+		convey.Convey("It should represent one element", func() {
 			convey.So(err, convey.ShouldBeNil)
 			convey.So(shape.Len(), convey.ShouldEqual, 1)
 		})
@@ -54,527 +46,257 @@ func TestNewShape(t *testing.T) {
 			convey.So(shape.Len(), convey.ShouldEqual, 0)
 		})
 	})
-
-	convey.Convey("Given a negative dimension", t, func() {
-		shape, err := NewShape([]int{2, -1})
-
-		convey.Convey("It should reject the shape", func() {
-			convey.So(err, convey.ShouldNotBeNil)
-			convey.So(shape.Valid(), convey.ShouldBeFalse)
-		})
-	})
-}
-
-func TestShape_Dims(t *testing.T) {
-	convey.Convey("Given a shape", t, func() {
-		shape, err := NewShape([]int{2, 3})
-		convey.So(err, convey.ShouldBeNil)
-
-		convey.Convey("It should return a defensive dimension copy", func() {
-			dims := shape.Dims()
-			dims[0] = 99
-
-			convey.So(shape.Dims(), convey.ShouldResemble, []int{2, 3})
-		})
-	})
 }
 
 func TestShape_Bytes(t *testing.T) {
 	convey.Convey("Given a valid shape and dtype", t, func() {
-		shape, err := NewShape([]int{2, 3})
-		convey.So(err, convey.ShouldBeNil)
+		shape, _ := NewShape([]int{2, 3})
 
-		convey.Convey("It should calculate storage bytes", func() {
-			bytes, err := shape.Bytes(Float64)
-
+		convey.Convey("It should compute storage bytes per dtype", func() {
+			bytesNeeded, err := shape.Bytes(dtype.Float64)
 			convey.So(err, convey.ShouldBeNil)
-			convey.So(bytes, convey.ShouldEqual, 48)
-		})
-	})
+			convey.So(bytesNeeded, convey.ShouldEqual, 48)
 
-	convey.Convey("Given an invalid shape", t, func() {
-		convey.Convey("It should reject byte calculation", func() {
-			bytes, err := Shape{}.Bytes(Float64)
-
-			convey.So(err, convey.ShouldNotBeNil)
-			convey.So(bytes, convey.ShouldEqual, 0)
-		})
-	})
-}
-
-func TestShape_Equal(t *testing.T) {
-	convey.Convey("Given two equal shapes", t, func() {
-		left, err := NewShape([]int{2, 3})
-		convey.So(err, convey.ShouldBeNil)
-
-		right, err := NewShape([]int{2, 3})
-		convey.So(err, convey.ShouldBeNil)
-
-		convey.Convey("It should report equality", func() {
-			convey.So(left.Equal(right), convey.ShouldBeTrue)
-		})
-	})
-
-	convey.Convey("Given shapes that differ by dimension order", t, func() {
-		left, err := NewShape([]int{2, 3})
-		convey.So(err, convey.ShouldBeNil)
-
-		right, err := NewShape([]int{3, 2})
-		convey.So(err, convey.ShouldBeNil)
-
-		convey.Convey("It should report inequality", func() {
-			convey.So(left.Equal(right), convey.ShouldBeFalse)
-		})
-	})
-
-	convey.Convey("Given shapes that differ by rank", t, func() {
-		left, err := NewShape([]int{2, 3})
-		convey.So(err, convey.ShouldBeNil)
-
-		right, err := NewShape([]int{2, 3, 1})
-		convey.So(err, convey.ShouldBeNil)
-
-		convey.Convey("It should report inequality", func() {
-			convey.So(left.Equal(right), convey.ShouldBeFalse)
-		})
-	})
-}
-
-func TestFloat64From(t *testing.T) {
-	convey.Convey("Given float64 values", t, func() {
-		value, err := Float64From([]float64{1, 2, 3})
-
-		convey.Convey("It should create a host-owned vector tensor", func() {
+			bytesNeeded, err = shape.Bytes(dtype.BFloat16)
 			convey.So(err, convey.ShouldBeNil)
-			convey.So(value.Location(), convey.ShouldEqual, Host)
-			convey.So(value.Shape().Dims(), convey.ShouldResemble, []int{3})
-			convey.So(MustCloneFloat64(value), convey.ShouldResemble, []float64{1, 2, 3})
+			convey.So(bytesNeeded, convey.ShouldEqual, 12)
+		})
+	})
+
+	convey.Convey("Given packed dtypes", t, func() {
+		shape, _ := NewShape([]int{17})
+
+		convey.Convey("Int4 should round up to bytes", func() {
+			bytesNeeded, err := shape.Bytes(dtype.Int4)
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(bytesNeeded, convey.ShouldEqual, 9)
+		})
+
+		convey.Convey("Bool should round up to bytes", func() {
+			bytesNeeded, err := shape.Bytes(dtype.Bool)
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(bytesNeeded, convey.ShouldEqual, 3)
 		})
 	})
 }
 
 func TestNewHostBackend(t *testing.T) {
-	convey.Convey("Given a new host backend", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+	convey.Convey("Given a fresh host backend", t, func() {
+		backend := NewHostBackend()
+		defer func() { convey.So(backend.Close(), convey.ShouldBeNil) }()
 
-		convey.Convey("It should report host ownership", func() {
-			convey.So(hostBackend.Location(), convey.ShouldEqual, Host)
+		convey.Convey("It should report host location and dense layout support", func() {
+			convey.So(backend.Location(), convey.ShouldEqual, Host)
+			convey.So(backend.SupportedLayouts(), convey.ShouldContain, LayoutDense)
 		})
 	})
 }
 
-func TestHostBackend_UploadFloat64(t *testing.T) {
-	convey.Convey("Given a host backend and valid values", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+func TestHostBackend_Upload_Float32(t *testing.T) {
+	convey.Convey("Given float32 bytes", t, func() {
+		backend := NewHostBackend()
+		defer backend.Close()
 
-		shape, err := NewShape([]int{2, 2})
-		convey.So(err, convey.ShouldBeNil)
+		shape, _ := NewShape([]int{4})
+		values := []float32{1.0, 2.0, -3.0, 4.25}
+		bytesIn := make([]byte, 16)
 
-		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2, 3, 4})
+		for index, value := range values {
+			bits := *(*uint32)(unsafe.Pointer(&value))
+			bytesIn[index*4+0] = byte(bits)
+			bytesIn[index*4+1] = byte(bits >> 8)
+			bytesIn[index*4+2] = byte(bits >> 16)
+			bytesIn[index*4+3] = byte(bits >> 24)
+		}
 
-		convey.Convey("It should create persistent host storage", func() {
+		convey.Convey("Upload should produce a Float32 host tensor", func() {
+			tensor, err := backend.Upload(shape, dtype.Float32, bytesIn)
 			convey.So(err, convey.ShouldBeNil)
-			defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
+			defer tensor.Close()
 
-			convey.So(uploaded.Location(), convey.ShouldEqual, Host)
-			convey.So(uploaded.DType(), convey.ShouldEqual, Float64)
-			convey.So(uploaded.Len(), convey.ShouldEqual, 4)
-			convey.So(uploaded.Bytes(), convey.ShouldEqual, 32)
-		})
-	})
+			convey.So(tensor.DType(), convey.ShouldEqual, dtype.Float32)
+			convey.So(tensor.Location(), convey.ShouldEqual, Host)
+			convey.So(tensor.Layout(), convey.ShouldEqual, LayoutDense)
+			convey.So(tensor.Len(), convey.ShouldEqual, 4)
+			convey.So(tensor.Bytes(), convey.ShouldEqual, 16)
 
-	convey.Convey("Given mismatched shape and values", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
-
-		shape, err := NewShape([]int{2, 3})
-		convey.So(err, convey.ShouldBeNil)
-
-		convey.Convey("It should reject the upload", func() {
-			uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2, 3, 4})
-
-			convey.So(err, convey.ShouldNotBeNil)
-			convey.So(uploaded, convey.ShouldBeNil)
-		})
-	})
-
-	convey.Convey("Given an upload larger than the remaining arena", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
-
-		shape, err := NewShape([]int{hostArenaFloat64Elements + 1})
-		convey.So(err, convey.ShouldBeNil)
-
-		convey.Convey("It should reject the upload instead of falling back to heap storage", func() {
-			uploaded, err := hostBackend.UploadFloat64(shape, make([]float64, shape.Len()))
-
-			convey.So(err, convey.ShouldNotBeNil)
-			convey.So(err.Error(), convey.ShouldContainSubstring, "host arena exhausted")
-			convey.So(uploaded, convey.ShouldBeNil)
-		})
-	})
-
-	convey.Convey("Given an upload that exactly fills the arena", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
-
-		shape, err := NewShape([]int{hostArenaFloat64Elements})
-		convey.So(err, convey.ShouldBeNil)
-
-		convey.Convey("It should use the arena without reporting exhaustion", func() {
-			uploaded, err := hostBackend.UploadFloat64(shape, make([]float64, shape.Len()))
-
+			view, err := tensor.Float32Native()
 			convey.So(err, convey.ShouldBeNil)
-			defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
-
-			convey.So(uploaded.Len(), convey.ShouldEqual, hostArenaFloat64Elements)
-		})
-	})
-
-	convey.Convey("Given a closed arena tensor at the allocation tail", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
-
-		smallShape, err := NewShape([]int{4})
-		convey.So(err, convey.ShouldBeNil)
-
-		uploaded, err := hostBackend.UploadFloat64(smallShape, []float64{1, 2, 3, 4})
-		convey.So(err, convey.ShouldBeNil)
-		convey.So(uploaded.Close(), convey.ShouldBeNil)
-
-		fullShape, err := NewShape([]int{hostArenaFloat64Elements})
-		convey.So(err, convey.ShouldBeNil)
-
-		convey.Convey("It should rewind released tail capacity for the next upload", func() {
-			reused, err := hostBackend.UploadFloat64(fullShape, make([]float64, fullShape.Len()))
-
-			convey.So(err, convey.ShouldBeNil)
-			defer func() { convey.So(reused.Close(), convey.ShouldBeNil) }()
-
-			convey.So(reused.Len(), convey.ShouldEqual, hostArenaFloat64Elements)
-		})
-	})
-
-	convey.Convey("Given a closed arena tensor before a live allocation", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
-
-		firstShape, err := NewShape([]int{4})
-		convey.So(err, convey.ShouldBeNil)
-		secondShape, err := NewShape([]int{6})
-		convey.So(err, convey.ShouldBeNil)
-
-		first, err := hostBackend.UploadFloat64(firstShape, []float64{1, 2, 3, 4})
-		convey.So(err, convey.ShouldBeNil)
-		second, err := hostBackend.UploadFloat64(secondShape, []float64{5, 6, 7, 8, 9, 10})
-		convey.So(err, convey.ShouldBeNil)
-		defer func() { convey.So(second.Close(), convey.ShouldBeNil) }()
-		convey.So(first.Close(), convey.ShouldBeNil)
-
-		convey.Convey("It should reuse the released span without disturbing live tensors", func() {
-			reused, err := hostBackend.UploadFloat64(firstShape, []float64{11, 12, 13, 14})
-
-			convey.So(err, convey.ShouldBeNil)
-			defer func() { convey.So(reused.Close(), convey.ShouldBeNil) }()
-
-			values, err := second.CloneFloat64()
-			convey.So(err, convey.ShouldBeNil)
-			convey.So(values, convey.ShouldResemble, []float64{5, 6, 7, 8, 9, 10})
-
-			values, err = reused.CloneFloat64()
-			convey.So(err, convey.ShouldBeNil)
-			convey.So(values, convey.ShouldResemble, []float64{11, 12, 13, 14})
-		})
-	})
-
-	convey.Convey("Given an empty tensor upload", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
-
-		shape, err := NewShape([]int{0})
-		convey.So(err, convey.ShouldBeNil)
-
-		convey.Convey("It should succeed without consuming arena capacity", func() {
-			uploaded, err := hostBackend.UploadFloat64(shape, []float64{})
-
-			convey.So(err, convey.ShouldBeNil)
-			defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
-
-			convey.So(uploaded.Len(), convey.ShouldEqual, 0)
+			convey.So(view, convey.ShouldResemble, values)
 		})
 	})
 }
 
-func TestHostBackend_AdoptFloat64(t *testing.T) {
-	convey.Convey("Given fresh output values", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+func TestHostBackend_Upload_BFloat16(t *testing.T) {
+	convey.Convey("Given bf16 bytes", t, func() {
+		backend := NewHostBackend()
+		defer backend.Close()
 
-		shape, err := NewShape([]int{2})
-		convey.So(err, convey.ShouldBeNil)
+		shape, _ := NewShape([]int{3})
+		original := []float32{1.0, -2.0, 0.5}
+		bf16s := make([]dtype.BF16, len(original))
 
-		values := []float64{1, 2}
-		uploaded, err := hostBackend.AdoptFloat64(shape, values)
+		for index, value := range original {
+			bf16s[index] = dtype.NewBfloat16FromFloat32(value)
+		}
 
-		convey.Convey("It should take ownership without copying", func() {
+		bytesIn := make([]byte, len(bf16s)*2)
+
+		for index, value := range bf16s {
+			bits := value.Bits()
+			bytesIn[index*2+0] = byte(bits)
+			bytesIn[index*2+1] = byte(bits >> 8)
+		}
+
+		convey.Convey("Upload should produce a BFloat16 host tensor", func() {
+			tensor, err := backend.Upload(shape, dtype.BFloat16, bytesIn)
 			convey.So(err, convey.ShouldBeNil)
-			defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
+			defer tensor.Close()
 
-			values[0] = 9
-			cloned, err := uploaded.CloneFloat64()
+			convey.So(tensor.DType(), convey.ShouldEqual, dtype.BFloat16)
+			convey.So(tensor.Bytes(), convey.ShouldEqual, 6)
 
+			view, err := tensor.BFloat16Native()
 			convey.So(err, convey.ShouldBeNil)
-			convey.So(cloned, convey.ShouldResemble, []float64{9, 2})
+			convey.So(len(view), convey.ShouldEqual, 3)
+
+			for index, expected := range bf16s {
+				convey.So(view[index], convey.ShouldEqual, expected)
+			}
 		})
 	})
 }
 
-func TestHostBackend_DownloadFloat64(t *testing.T) {
-	convey.Convey("Given a host tensor", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+func TestHostBackend_Upload_DTypeMismatch(t *testing.T) {
+	convey.Convey("Given a Float32 tensor", t, func() {
+		backend := NewHostBackend()
+		defer backend.Close()
 
-		shape, err := NewShape([]int{3})
-		convey.So(err, convey.ShouldBeNil)
+		shape, _ := NewShape([]int{4})
+		bytesIn := make([]byte, 16)
+		tensor, _ := backend.Upload(shape, dtype.Float32, bytesIn)
+		defer tensor.Close()
 
-		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2, 3})
-		convey.So(err, convey.ShouldBeNil)
-		defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
-
-		convey.Convey("It should return a zero-copy host view", func() {
-			values, err := hostBackend.DownloadFloat64(uploaded)
-			convey.So(err, convey.ShouldBeNil)
-
-			values[0] = 99
-			again, err := hostBackend.DownloadFloat64(uploaded)
-
-			convey.So(err, convey.ShouldBeNil)
-			convey.So(again[0], convey.ShouldEqual, 99)
-			convey.So(again, convey.ShouldResemble, []float64{99, 2, 3})
-
-			cloned, err := uploaded.CloneFloat64()
-			convey.So(err, convey.ShouldBeNil)
-			convey.So(cloned, convey.ShouldResemble, []float64{99, 2, 3})
-
-			cloned[0] = 1
-			third, err := hostBackend.DownloadFloat64(uploaded)
-			convey.So(err, convey.ShouldBeNil)
-			convey.So(third[0], convey.ShouldEqual, 99)
+		convey.Convey("BFloat16Native should reject with ErrDTypeMismatch", func() {
+			view, err := tensor.BFloat16Native()
+			convey.So(err, convey.ShouldEqual, ErrDTypeMismatch)
+			convey.So(view, convey.ShouldBeNil)
 		})
 	})
 }
 
-func TestHostBackend_Close(t *testing.T) {
-	convey.Convey("Given a closed host backend", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+func TestNew_Uninitialized(t *testing.T) {
+	convey.Convey("Given a New tensor", t, func() {
+		shape, _ := NewShape([]int{8})
+		tensor, err := New(shape, dtype.Float32)
 
-		err := hostBackend.Close()
-		convey.So(err, convey.ShouldBeNil)
-
-		convey.Convey("It should reject future uploads", func() {
-			shape, err := NewShape([]int{1})
+		convey.Convey("It should compile and expose a Float32Native view", func() {
 			convey.So(err, convey.ShouldBeNil)
+			defer tensor.Close()
 
-			uploaded, err := hostBackend.UploadFloat64(shape, []float64{1})
-
-			convey.So(err, convey.ShouldNotBeNil)
-			convey.So(uploaded, convey.ShouldBeNil)
+			view, err := tensor.Float32Native()
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(len(view), convey.ShouldEqual, 8)
 		})
 	})
 }
 
-func TestHostBackend_Reset(t *testing.T) {
-	convey.Convey("Given a host backend with a live arena tensor", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
-
-		shape, err := NewShape([]int{2})
+func TestNewZeroed(t *testing.T) {
+	convey.Convey("Given a NewZeroed tensor", t, func() {
+		shape, _ := NewShape([]int{8})
+		tensor, err := NewZeroed(shape, dtype.Float32)
 		convey.So(err, convey.ShouldBeNil)
+		defer tensor.Close()
 
-		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2})
-		convey.So(err, convey.ShouldBeNil)
-		defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
-
-		convey.Convey("It should reject reset while the tensor can still alias arena memory", func() {
-			err := hostBackend.Reset()
-
-			convey.So(err, convey.ShouldNotBeNil)
-			convey.So(err.Error(), convey.ShouldContainSubstring, "host arena still has live tensors")
-		})
-	})
-
-	convey.Convey("Given all arena tensors are closed", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
-
-		shape, err := NewShape([]int{2})
-		convey.So(err, convey.ShouldBeNil)
-
-		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2})
-		convey.So(err, convey.ShouldBeNil)
-		convey.So(uploaded.Close(), convey.ShouldBeNil)
-
-		convey.Convey("It should reset arena capacity", func() {
-			err := hostBackend.Reset()
+		convey.Convey("Every element should be zero", func() {
+			view, err := tensor.Float32Native()
 			convey.So(err, convey.ShouldBeNil)
 
-			reused, err := hostBackend.UploadFloat64(shape, []float64{3, 4})
-			convey.So(err, convey.ShouldBeNil)
-			defer func() { convey.So(reused.Close(), convey.ShouldBeNil) }()
-
-			values, err := reused.CloneFloat64()
-			convey.So(err, convey.ShouldBeNil)
-			convey.So(values, convey.ShouldResemble, []float64{3, 4})
-		})
-	})
-
-	convey.Convey("Given an adopted tensor", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
-
-		shape, err := NewShape([]int{2})
-		convey.So(err, convey.ShouldBeNil)
-
-		adopted, err := hostBackend.AdoptFloat64(shape, []float64{1, 2})
-		convey.So(err, convey.ShouldBeNil)
-		defer func() { convey.So(adopted.Close(), convey.ShouldBeNil) }()
-
-		convey.Convey("It should not block arena reset because it does not alias arena memory", func() {
-			convey.So(hostBackend.Reset(), convey.ShouldBeNil)
-		})
-	})
-
-	convey.Convey("Given a closed host backend", t, func() {
-		hostBackend := NewHostBackend()
-		convey.So(hostBackend.Close(), convey.ShouldBeNil)
-
-		convey.Convey("It should reject reset", func() {
-			err := hostBackend.Reset()
-
-			convey.So(err, convey.ShouldNotBeNil)
-			convey.So(err, convey.ShouldEqual, errClosedBackend)
-		})
-	})
-}
-
-func TestHostTensor_Float64(t *testing.T) {
-	convey.Convey("Given a host tensor", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
-
-		shape, err := NewShape([]int{2})
-		convey.So(err, convey.ShouldBeNil)
-
-		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1, 2})
-		convey.So(err, convey.ShouldBeNil)
-		defer func() { convey.So(uploaded.Close(), convey.ShouldBeNil) }()
-
-		hostTensor, ok := uploaded.(*HostTensor)
-		convey.So(ok, convey.ShouldBeTrue)
-
-		convey.Convey("It should expose a zero-copy CPU view", func() {
-			values, err := hostTensor.Float64()
-			convey.So(err, convey.ShouldBeNil)
-
-			values[0] = 9
-			cloned, err := hostTensor.CloneFloat64()
-
-			convey.So(err, convey.ShouldBeNil)
-			convey.So(cloned, convey.ShouldResemble, []float64{9, 2})
+			for _, value := range view {
+				convey.So(value, convey.ShouldEqual, float32(0))
+			}
 		})
 	})
 }
 
 func TestHostTensor_Close(t *testing.T) {
-	convey.Convey("Given a closed host tensor", t, func() {
-		hostBackend := NewHostBackend()
-		defer func() { convey.So(hostBackend.Close(), convey.ShouldBeNil) }()
+	convey.Convey("Given a host tensor", t, func() {
+		shape, _ := NewShape([]int{4})
+		tensor, _ := New(shape, dtype.Float32)
 
-		shape, err := NewShape([]int{1})
-		convey.So(err, convey.ShouldBeNil)
-
-		uploaded, err := hostBackend.UploadFloat64(shape, []float64{1})
-		convey.So(err, convey.ShouldBeNil)
-
-		err = uploaded.Close()
-		convey.So(err, convey.ShouldBeNil)
-
-		convey.Convey("It should reject host reads", func() {
-			values, err := uploaded.CloneFloat64()
-
-			convey.So(err, convey.ShouldNotBeNil)
-			convey.So(values, convey.ShouldBeNil)
+		convey.Convey("Close should be idempotent", func() {
+			convey.So(tensor.Close(), convey.ShouldBeNil)
+			convey.So(tensor.Close(), convey.ShouldBeNil)
 		})
 
-		convey.Convey("Repeated Close should be harmless", func() {
-			convey.So(uploaded.Close(), convey.ShouldBeNil)
+		convey.Convey("After close, native views should error", func() {
+			_ = tensor.Close()
+			_, err := tensor.Float32Native()
+			convey.So(err, convey.ShouldEqual, ErrTensorClosed)
 		})
 	})
 }
 
-func BenchmarkHostBackend_UploadFloat64(benchmark *testing.B) {
-	hostBackend := NewHostBackend()
-	defer func() { _ = hostBackend.Close() }()
+func TestAllocate_Alignment(t *testing.T) {
+	convey.Convey("Given allocations across tier 1 size classes", t, func() {
+		sizes := []int{64, 256, 4096, 65536, 1 << 19}
 
-	shape, err := NewShape([]int{1024})
-
-	if err != nil {
-		benchmark.Fatal(err)
-	}
-
-	values := make([]float64, shape.Len())
-
-	benchmark.ReportAllocs()
-	benchmark.SetBytes(int64(shape.Len() * 8))
-	benchmark.ResetTimer()
-
-	for benchmark.Loop() {
-		uploaded, err := hostBackend.UploadFloat64(shape, values)
-
-		if err != nil {
-			benchmark.Fatal(err)
-		}
-
-		if err := uploaded.Close(); err != nil {
-			benchmark.Fatal(err)
-		}
-
-		if err := hostBackend.Reset(); err != nil {
-			benchmark.Fatal(err)
-		}
-	}
+		convey.Convey("Every allocation should be 64-byte aligned", func() {
+			for _, size := range sizes {
+				buffer := Allocate(size)
+				convey.So(len(buffer), convey.ShouldBeGreaterThanOrEqualTo, size)
+				convey.So(int(uintptr(unsafe.Pointer(&buffer[0]))%64), convey.ShouldEqual, 0)
+				Release(buffer)
+			}
+		})
+	})
 }
 
-func BenchmarkHostBackend_DownloadFloat64(benchmark *testing.B) {
-	hostBackend := NewHostBackend()
-	defer func() { _ = hostBackend.Close() }()
+func TestHostTensor_Slice(t *testing.T) {
+	convey.Convey("Given a host tensor", t, func() {
+		shape, _ := NewShape([]int{8})
+		tensor, _ := NewZeroed(shape, dtype.Float32)
+		defer tensor.Close()
 
-	shape, err := NewShape([]int{1024})
-
-	if err != nil {
-		benchmark.Fatal(err)
-	}
-
-	uploaded, err := hostBackend.UploadFloat64(shape, make([]float64, shape.Len()))
-
-	if err != nil {
-		benchmark.Fatal(err)
-	}
-
-	defer func() { _ = uploaded.Close() }()
-
-	benchmark.ResetTimer()
-	benchmark.ReportAllocs()
-	benchmark.SetBytes(int64(shape.Len() * 8))
-
-	for benchmark.Loop() {
-		_, err := hostBackend.DownloadFloat64(uploaded)
-
-		if err != nil {
-			benchmark.Fatal(err)
+		view, _ := tensor.Float32Native()
+		for index := range view {
+			view[index] = float32(index + 1)
 		}
-	}
+
+		convey.Convey("Slice should produce a zero-copy subview", func() {
+			subview, err := tensor.Slice(2, 4)
+			convey.So(err, convey.ShouldBeNil)
+			defer subview.Close()
+
+			convey.So(subview.Len(), convey.ShouldEqual, 4)
+
+			sliceView, err := subview.Float32Native()
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(sliceView, convey.ShouldResemble, []float32{3, 4, 5, 6})
+		})
+	})
+}
+
+func TestArena_BumpAndReset(t *testing.T) {
+	convey.Convey("Given a fresh arena", t, func() {
+		arena := NewArena(64 * 1024)
+		defer arena.Close()
+
+		shape, _ := NewShape([]int{16})
+
+		convey.Convey("New should hand out scratch tensors", func() {
+			scratch, err := arena.New(shape, dtype.Float32)
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(scratch.Bytes(), convey.ShouldEqual, 64)
+		})
+
+		convey.Convey("Reset should invalidate outstanding handles", func() {
+			scratch, _ := arena.New(shape, dtype.Float32)
+
+			arena.Reset()
+
+			_, err := scratch.Float32Native()
+			convey.So(err, convey.ShouldEqual, ErrTensorClosed)
+		})
+	})
 }

@@ -274,6 +274,44 @@ func bindOne(index *ir.Index, name string, value any) error {
 	return nil
 }
 
+func validateBoundInputsUsed(
+	index *ir.Index,
+	inputs map[string]any,
+	targets []*ir.Node,
+) error {
+	targetSet := make(map[string]bool, len(targets))
+
+	for _, target := range targets {
+		targetSet[target.ID()] = true
+	}
+
+	for name := range inputs {
+		if name == "graph" {
+			continue
+		}
+
+		node := index.Node(name)
+
+		if node == nil {
+			continue
+		}
+
+		if node.OpType() != ir.OpInput {
+			continue
+		}
+
+		if targetSet[name] {
+			continue
+		}
+
+		if len(index.Users(name)) == 0 {
+			return fmt.Errorf("input %q is declared by the graph but has no consumers", name)
+		}
+	}
+
+	return nil
+}
+
 func coerceValues(value any) ([]float64, error) {
 	switch typed := value.(type) {
 	case []float64:

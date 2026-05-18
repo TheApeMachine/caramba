@@ -9,6 +9,7 @@ This document defines how coding agents work on this platform. It is a contract,
 This platform is a general AI research substrate. Researchers iterate on architectures that may be esoteric, and they rely on the platform to execute those architectures at full performance on every supported target. For every operation and optimizer, all of the following are required execution targets, with equal standing. There is no "required" vs "optional" backend, no "for now" path, no preview path that defers to a fallback:
 
 - Go (scalar reference)
+- AVX-512 assembly (amd64)
 - AVX2 assembly (amd64)
 - SSE2 assembly (amd64)
 - NEON assembly (arm64)

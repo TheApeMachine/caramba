@@ -56,6 +56,39 @@ func TestCompileDiffusionManifest(t *testing.T) {
 	})
 }
 
+func TestDefaultDiffusionRuntimeImageLayout(t *testing.T) {
+	Convey("Given the embedded diffusion runtime manifest", t, func() {
+		runtimeProgram, _, err := loadRuntimeProgram(
+			"",
+			diffusionRuntimeAsset,
+			diffusionManifestPrefix,
+		)
+		So(err, ShouldBeNil)
+
+		writeStep := runtimeProgram.FindStep("write_image")
+		So(writeStep, ShouldNotBeNil)
+
+		Convey("It should write the VAE's NCHW output as channel-planar RGB", func() {
+			So(writeStep.Config["layout"], ShouldEqual, "channel_planar")
+			So(writeStep.Config["channels"], ShouldEqual, 3)
+			So(writeStep.Config["range"], ShouldEqual, "neg_one_one")
+		})
+	})
+}
+
+func TestValidateRuntimeGraphInputs(t *testing.T) {
+	Convey("Given the FLUX.2 denoiser manifest", t, func() {
+		graph, _, err := CompileDiffusionManifest(DefaultDiffusionManifest)
+		So(err, ShouldBeNil)
+
+		Convey("It should reject the unused timestep input", func() {
+			err := validateRuntimeGraphInputs("denoiser", graph)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, `input "timestep" has no consumers`)
+		})
+	})
+}
+
 func BenchmarkResolveDiffusionConfig(benchmark *testing.B) {
 	for benchmark.Loop() {
 		if _, _, _, err := ResolveDiffusionConfig(DiffusionConfig{

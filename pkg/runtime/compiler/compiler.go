@@ -12,7 +12,7 @@ Compiler turns a manifest document into a runtime program.Program.
 It reuses the existing manifest parser for YAML loading, include
 resolution, variable interpolation, and repeat expansion; the
 compiler's job is to interpret the system.runtime block, normalize
-the YAML shortcuts described in the platform requirements, and
+the YAML shorthand forms described in the platform requirements, and
 return a typed, fully validated runtime IR.
 */
 type Compiler struct {

@@ -64,7 +64,7 @@ func TestFromNaN32ps(test *testing.T) {
 
 		Convey("It should reject the input", func() {
 			So(err, ShouldEqual, ErrInvalidNaNValue)
-			So(float16, ShouldEqual, Float16(0x7c01))
+			So(float16, ShouldEqual, F16(0x7c01))
 		})
 	})
 }
@@ -96,7 +96,7 @@ func TestInf(test *testing.T) {
 }
 
 func TestFloat16_Float32(test *testing.T) {
-	Convey("Given a Float16 value", test, func() {
+	Convey("Given a F16 value", test, func() {
 		float16 := Frombits(0x4200)
 
 		Convey("It should convert to float32", func() {
@@ -106,7 +106,7 @@ func TestFloat16_Float32(test *testing.T) {
 }
 
 func TestFloat16_Bits(test *testing.T) {
-	Convey("Given a Float16 value", test, func() {
+	Convey("Given a F16 value", test, func() {
 		float16 := Fromfloat32(-2.0)
 
 		Convey("It should expose the raw bits", func() {
@@ -116,7 +116,7 @@ func TestFloat16_Bits(test *testing.T) {
 }
 
 func TestFloat16_IsNaN(test *testing.T) {
-	Convey("Given Float16 values", test, func() {
+	Convey("Given F16 values", test, func() {
 		Convey("It should detect NaN values", func() {
 			So(NaN().IsNaN(), ShouldBeTrue)
 			So(Fromfloat32(1.0).IsNaN(), ShouldBeFalse)
@@ -125,9 +125,9 @@ func TestFloat16_IsNaN(test *testing.T) {
 }
 
 func TestFloat16_IsQuietNaN(test *testing.T) {
-	Convey("Given Float16 NaN values", test, func() {
-		quiet := Float16(0x7e01)
-		signaling := Float16(0x7c01)
+	Convey("Given F16 NaN values", test, func() {
+		quiet := F16(0x7e01)
+		signaling := F16(0x7c01)
 
 		Convey("It should distinguish quiet NaN values", func() {
 			So(quiet.IsQuietNaN(), ShouldBeTrue)
@@ -137,7 +137,7 @@ func TestFloat16_IsQuietNaN(test *testing.T) {
 }
 
 func TestFloat16_IsInf(test *testing.T) {
-	Convey("Given Float16 values", test, func() {
+	Convey("Given F16 values", test, func() {
 		Convey("It should detect infinity by sign", func() {
 			So(Inf(1).IsInf(0), ShouldBeTrue)
 			So(Inf(-1).IsInf(0), ShouldBeTrue)
@@ -148,7 +148,7 @@ func TestFloat16_IsInf(test *testing.T) {
 }
 
 func TestFloat16_IsFinite(test *testing.T) {
-	Convey("Given Float16 values", test, func() {
+	Convey("Given F16 values", test, func() {
 		Convey("It should reject infinite and NaN values", func() {
 			So(Fromfloat32(1.0).IsFinite(), ShouldBeTrue)
 			So(Inf(1).IsFinite(), ShouldBeFalse)
@@ -158,7 +158,7 @@ func TestFloat16_IsFinite(test *testing.T) {
 }
 
 func TestFloat16_IsNormal(test *testing.T) {
-	Convey("Given Float16 values", test, func() {
+	Convey("Given F16 values", test, func() {
 		Convey("It should detect normal finite values", func() {
 			So(Fromfloat32(1.0).IsNormal(), ShouldBeTrue)
 			So(Frombits(0).IsNormal(), ShouldBeFalse)
@@ -169,7 +169,7 @@ func TestFloat16_IsNormal(test *testing.T) {
 }
 
 func TestFloat16_Signbit(test *testing.T) {
-	Convey("Given positive and negative Float16 values", test, func() {
+	Convey("Given positive and negative F16 values", test, func() {
 		Convey("It should report the sign bit", func() {
 			So(Fromfloat32(-1.0).Signbit(), ShouldBeTrue)
 			So(Fromfloat32(1.0).Signbit(), ShouldBeFalse)
@@ -179,7 +179,7 @@ func TestFloat16_Signbit(test *testing.T) {
 }
 
 func TestFloat16_String(test *testing.T) {
-	Convey("Given a Float16 value", test, func() {
+	Convey("Given a F16 value", test, func() {
 		float16 := Fromfloat32(1.5)
 
 		Convey("It should format the float32 value", func() {

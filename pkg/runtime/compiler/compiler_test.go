@@ -115,7 +115,7 @@ func TestCompileChatProgram(t *testing.T) {
 			So(module.Topology, ShouldEqual, "tiny.topology")
 		})
 
-		Convey("Top-level steps should compile with normalized shortcuts", func() {
+		Convey("Top-level steps should compile with normalized shorthand", func() {
 			So(len(runtimeProgram.Steps), ShouldEqual, 3)
 
 			encodeStep := runtimeProgram.Steps[1]

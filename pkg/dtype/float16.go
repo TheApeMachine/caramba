@@ -5,10 +5,12 @@ import (
 	"strconv"
 )
 
-// Float16 represents IEEE 754 half-precision floating-point numbers (binary16).
-type Float16 uint16
+// F16 represents IEEE 754 half-precision floating-point numbers (binary16).
+// The dtype constant for the same format is dtype.Float16; the helper type
+// is named F16 to avoid the constant/type collision in Go's flat namespace.
+type F16 uint16
 
-// Precision indicates whether the conversion to Float16 is
+// Precision indicates whether the conversion to F16 is
 // exact, subnormal without dropped bits, inexact, underflow, or overflow.
 type Precision int
 
@@ -38,8 +40,8 @@ const (
 // It's the float16 equivalent for [math.SmallestNonzeroFloat32] and [math.SmallestNonzeroFloat64].
 // For context, [math.SmallestNonzeroFloat32] used the formula 1 / 2**(127 - 1 + 23) to produce
 // the smallest denormal value for float32 (1.401298464324817070923729583289916131280e-45).
-// The equivalent formula for float16 is 1 / 2**(15 - 1 + 10). We use Float16(0x0001) to compile as const.
-const SmallestNonzero = Float16(0x0001) // 5.9604645e-08 (effectively 0x1p-14 * 0x1p-10)
+// The equivalent formula for float16 is 1 / 2**(15 - 1 + 10). We use F16(0x0001) to compile as const.
+const SmallestNonzero = F16(0x0001) // 5.9604645e-08 (effectively 0x1p-14 * 0x1p-10)
 
 // PrecisionFromfloat32 returns Precision without performing
 // the conversion.  Conversions from both Infinity and NaN
@@ -98,14 +100,14 @@ func PrecisionFromfloat32(f32 float32) Precision {
 // Frombits returns the float16 number corresponding to the IEEE 754 binary16
 // representation u16, with the sign bit of u16 and the result in the same bit
 // position. Frombits(Bits(x)) == x.
-func Frombits(u16 uint16) Float16 {
-	return Float16(u16)
+func Frombits(u16 uint16) F16 {
+	return F16(u16)
 }
 
-// Fromfloat32 returns a Float16 value converted from f32. Conversion uses
+// Fromfloat32 returns a F16 value converted from f32. Conversion uses
 // IEEE default rounding (nearest int, with ties to even).
-func Fromfloat32(f32 float32) Float16 {
-	return Float16(f32bitsToF16bits(math.Float32bits(f32)))
+func Fromfloat32(f32 float32) F16 {
+	return F16(f32bitsToF16bits(math.Float32bits(f32)))
 }
 
 // ErrInvalidNaNValue indicates a NaN was not received.
@@ -122,8 +124,8 @@ func (e float16Error) Error() string { return string(e) }
 // lowest bit of payload is set to make the result a NaN.
 // Returns ErrInvalidNaNValue and 0x7c01 (sNaN) if nan isn't IEEE 754 NaN.
 // This function was kept simple to be able to inline.
-func FromNaN32ps(nan float32) (Float16, error) {
-	const SNAN = Float16(uint16(0x7c01)) // signaling NaN
+func FromNaN32ps(nan float32) (F16, error) {
+	const SNAN = F16(uint16(0x7c01)) // signaling NaN
 
 	u32 := math.Float32bits(nan)
 	sign := u32 & 0x80000000
@@ -141,48 +143,48 @@ func FromNaN32ps(nan float32) (Float16, error) {
 		u16 |= 0x0001
 	}
 
-	return Float16(u16), nil
+	return F16(u16), nil
 }
 
-// NaN returns a Float16 of IEEE 754 binary16 not-a-number (NaN).
+// NaN returns a F16 of IEEE 754 binary16 not-a-number (NaN).
 // Returned NaN value 0x7e01 has all exponent bits = 1 with the
 // first and last bits = 1 in the significand. This is consistent
 // with Go's 64-bit math.NaN(). Canonical CBOR in RFC 7049 uses 0x7e00.
-func NaN() Float16 {
-	return Float16(0x7e01)
+func NaN() F16 {
+	return F16(0x7e01)
 }
 
-// Inf returns a Float16 with an infinity value with the specified sign.
+// Inf returns a F16 with an infinity value with the specified sign.
 // A sign >= returns positive infinity.
 // A sign < 0 returns negative infinity.
-func Inf(sign int) Float16 {
+func Inf(sign int) F16 {
 	if sign >= 0 {
-		return Float16(0x7c00)
+		return F16(0x7c00)
 	}
-	return Float16(0x8000 | 0x7c00)
+	return F16(0x8000 | 0x7c00)
 }
 
-// Float32 returns a float32 converted from f (Float16).
+// Float32 returns a float32 converted from f (F16).
 // This is a lossless conversion.
-func (f Float16) Float32() float32 {
+func (f F16) Float32() float32 {
 	u32 := f16bitsToF32bits(uint16(f))
 	return math.Float32frombits(u32)
 }
 
 // Bits returns the IEEE 754 binary16 representation of f, with the sign bit
 // of f and the result in the same bit position. Bits(Frombits(x)) == x.
-func (f Float16) Bits() uint16 {
+func (f F16) Bits() uint16 {
 	return uint16(f)
 }
 
 // IsNaN reports whether f is an IEEE 754 binary16 “not-a-number” value.
-func (f Float16) IsNaN() bool {
+func (f F16) IsNaN() bool {
 	return (f&0x7c00 == 0x7c00) && (f&0x03ff != 0)
 }
 
 // IsQuietNaN reports whether f is a quiet (non-signaling) IEEE 754 binary16
 // “not-a-number” value.
-func (f Float16) IsQuietNaN() bool {
+func (f F16) IsQuietNaN() bool {
 	return (f&0x7c00 == 0x7c00) && (f&0x03ff != 0) && (f&0x0200 != 0)
 }
 
@@ -190,29 +192,29 @@ func (f Float16) IsQuietNaN() bool {
 // A sign > 0 reports whether f is positive inf.
 // A sign < 0 reports whether f is negative inf.
 // A sign == 0 reports whether f is either inf.
-func (f Float16) IsInf(sign int) bool {
+func (f F16) IsInf(sign int) bool {
 	return ((f == 0x7c00) && sign >= 0) ||
 		(f == 0xfc00 && sign <= 0)
 }
 
 // IsFinite returns true if f is neither infinite nor NaN.
-func (f Float16) IsFinite() bool {
+func (f F16) IsFinite() bool {
 	return (uint16(f) & uint16(0x7c00)) != uint16(0x7c00)
 }
 
 // IsNormal returns true if f is neither zero, infinite, subnormal, or NaN.
-func (f Float16) IsNormal() bool {
+func (f F16) IsNormal() bool {
 	exp := uint16(f) & uint16(0x7c00)
 	return (exp != uint16(0x7c00)) && (exp != 0)
 }
 
 // Signbit reports whether f is negative or negative zero.
-func (f Float16) Signbit() bool {
+func (f F16) Signbit() bool {
 	return (uint16(f) & uint16(0x8000)) != 0
 }
 
 // String satisfies the fmt.Stringer interface.
-func (f Float16) String() string {
+func (f F16) String() string {
 	return strconv.FormatFloat(float64(f.Float32()), 'f', -1, 32)
 }
 
@@ -253,7 +255,7 @@ func f16bitsToF32bits(in uint16) uint32 {
 }
 
 /*
-f32bitsToF16bits returns uint16 (Float16 bits) converted from the specified float32.
+f32bitsToF16bits returns uint16 (F16 bits) converted from the specified float32.
 Conversion rounds to nearest integer with ties to even.
 */
 func f32bitsToF16bits(u32 uint32) uint16 {

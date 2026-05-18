@@ -13,7 +13,7 @@ The platform is complete for research use only when all of the following hold:
 3. KV cache, rotary position state, diffusion scheduler state, optimizer state, RNG state, and dataset cursor state are first-class runtime state objects.
 4. Every state object is replaceable by manifest selection.
 5. Graph execution keeps tensors resident on the selected backend until an explicit output boundary.
-6. Every compute operation and optimizer has real implementations on Go scalar, AVX2, SSE2, NEON, Metal, CUDA, and XLA.
+6. Every compute operation and optimizer has real implementations on Go scalar, AVX-512, AVX2, SSE2, NEON, Metal, CUDA, and XLA.
 7. Backend legality is checked against exact operation, dtype, layout, state, and fusion capabilities.
 8. Unsupported manifest behavior fails at compile time with the exact missing contract.
 9. Research runs produce a signed provenance ledger containing manifests, source revisions, artifact hashes, backend capabilities, seeds, metrics, traces, checkpoints, and generated outputs.

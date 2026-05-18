@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
+	"github.com/theapemachine/caramba/pkg/manifest"
 	modelweights "github.com/theapemachine/caramba/pkg/model/weights"
 	runtimebackend "github.com/theapemachine/caramba/pkg/runtime/backend"
 	"github.com/theapemachine/caramba/pkg/runtime/program"
@@ -21,6 +22,28 @@ func validateDiffusionRuntime(config DiffusionConfig) error {
 	}
 
 	return fmt.Errorf("runtime/diffusion: unsupported manifest runtime %q", config.Runtime)
+}
+
+func validateRuntimeGraphInputs(graphID string, graph *manifest.Graph) error {
+	used := map[string]bool{}
+
+	for _, node := range graph.Nodes() {
+		for _, input := range node.In {
+			used[input] = true
+		}
+	}
+
+	for _, input := range graph.ExternalInputs() {
+		if !used[input] {
+			return fmt.Errorf(
+				"runtime/diffusion: graph %q input %q has no consumers",
+				graphID,
+				input,
+			)
+		}
+	}
+
+	return nil
 }
 
 func loadDiffusionTokenizer(

@@ -141,5 +141,5 @@ system:
           width: ${generation.output_width}
           height: ${generation.output_height}
           channels: ${generation.output_channels}
-          layout: channel_interleaved
+          layout: channel_planar
           range: neg_one_one

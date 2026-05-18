@@ -221,13 +221,20 @@ func loadDiffusionAssets(
 			return nil, nil, fmt.Errorf("runtime/diffusion: compile %s manifest: %w", spec.ID, err)
 		}
 
+		if err := validateRuntimeGraphInputs(spec.ID, graph); err != nil {
+			return nil, nil, err
+		}
+
+		topologies[spec.ID] = graph
+	}
+
+	for _, spec := range specs {
 		store, err := modelweights.Resolve(ctx, weightSource(spec.Source))
 
 		if err != nil {
 			return nil, nil, fmt.Errorf("runtime/diffusion: resolve %s weights: %w", spec.ID, err)
 		}
 
-		topologies[spec.ID] = graph
 		stores[spec.ID] = store
 	}
 

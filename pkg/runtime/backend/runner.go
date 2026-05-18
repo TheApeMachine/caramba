@@ -181,6 +181,10 @@ func (graphRunner *GraphRunner) Call(
 		return nil, fmt.Errorf("graph %q: resolving outputs: %w", module.ID, err)
 	}
 
+	if err := validateBoundInputsUsed(index, inputs, targets); err != nil {
+		return nil, fmt.Errorf("graph %q: %w", module.ID, err)
+	}
+
 	executionOutputs, err := graphRunner.compute.Execute(callContext, irGraph, targets)
 
 	if err != nil {

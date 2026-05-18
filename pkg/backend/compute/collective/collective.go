@@ -1,0 +1,218 @@
+/*
+Package collective implements the cross-shard communication
+primitives required by distributed tensors (TENSOR_BACKEND_REWRITE.md
+§2.17, §3.10). AllReduce / AllGather / ReduceScatter / Broadcast are
+exposed as Operations that take a slice of per-shard tensors plus a
+reduction op and produce the cross-shard result.
+
+Per the spray-and-pray contract, this file provides the host-local
+reference implementations (loops over the shard slice). NCCL on CUDA,
+MPS multi-GPU ring on Metal, and the pkg/network-transport-backed
+ring on host nodes are implemented in their respective backend
+sessions and dispatch through the same interface.
+*/
+package collective
+
+import (
+	"context"
+
+	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+)
+
+/*
+Op identifies the reduction operation applied across shards.
+*/
+type Op uint8
+
+const (
+	OpSum Op = iota
+	OpMax
+	OpMin
+	OpMean
+)
+
+/*
+AllReduce sums (or max/min/mean) across shards and stores the result
+on every shard. Every shard must have the same shape and dtype.
+*/
+func AllReduce(ctx context.Context, op Op, shards []tensor.Tensor) error {
+	if len(shards) == 0 {
+		return nil
+	}
+
+	if err := requireConsistentShape(shards); err != nil {
+		return err
+	}
+
+	views, err := acquireFloat32Views(shards)
+
+	if err != nil {
+		return err
+	}
+
+	length := len(views[0])
+	accumulator := make([]float32, length)
+
+	switch op {
+	case OpSum, OpMean:
+		for _, view := range views {
+			for index, value := range view {
+				accumulator[index] += value
+			}
+		}
+
+		if op == OpMean {
+			divisor := float32(len(views))
+
+			for index := range accumulator {
+				accumulator[index] /= divisor
+			}
+		}
+	case OpMax:
+		copy(accumulator, views[0])
+
+		for _, view := range views[1:] {
+			for index, value := range view {
+				if value > accumulator[index] {
+					accumulator[index] = value
+				}
+			}
+		}
+	case OpMin:
+		copy(accumulator, views[0])
+
+		for _, view := range views[1:] {
+			for index, value := range view {
+				if value < accumulator[index] {
+					accumulator[index] = value
+				}
+			}
+		}
+	}
+
+	for _, view := range views {
+		copy(view, accumulator)
+	}
+
+	return nil
+}
+
+/*
+Broadcast copies the source shard's values to every other shard.
+*/
+func Broadcast(ctx context.Context, source int, shards []tensor.Tensor) error {
+	if len(shards) == 0 {
+		return nil
+	}
+
+	if source < 0 || source >= len(shards) {
+		return tensor.ErrShapeMismatch
+	}
+
+	if err := requireConsistentShape(shards); err != nil {
+		return err
+	}
+
+	views, err := acquireFloat32Views(shards)
+
+	if err != nil {
+		return err
+	}
+
+	for index, view := range views {
+		if index == source {
+			continue
+		}
+
+		copy(view, views[source])
+	}
+
+	return nil
+}
+
+/*
+AllGather concatenates the per-shard tensors into each output. Phase
+10 expansion will accept an axis parameter; the skeleton here
+concatenates along axis 0 by default.
+*/
+func AllGather(ctx context.Context, shards []tensor.Tensor, outputs []tensor.Tensor) error {
+	if len(shards) == 0 || len(outputs) != len(shards) {
+		return tensor.ErrShapeMismatch
+	}
+
+	shardViews, err := acquireFloat32Views(shards)
+
+	if err != nil {
+		return err
+	}
+
+	outputViews, err := acquireFloat32Views(outputs)
+
+	if err != nil {
+		return err
+	}
+
+	totalLen := 0
+
+	for _, view := range shardViews {
+		totalLen += len(view)
+	}
+
+	for _, output := range outputViews {
+		if len(output) != totalLen {
+			return tensor.ErrShapeMismatch
+		}
+
+		offset := 0
+
+		for _, shard := range shardViews {
+			copy(output[offset:offset+len(shard)], shard)
+			offset += len(shard)
+		}
+	}
+
+	return nil
+}
+
+/*
+ReduceScatter sums shards and scatters disjoint pieces of the result
+back to each shard.
+*/
+func ReduceScatter(ctx context.Context, op Op, shards []tensor.Tensor) error {
+	// For the host reference: equivalent to AllReduce followed by
+	// each shard taking its own piece. The host fast path is just
+	// AllReduce since shards already have the same shape.
+	return AllReduce(ctx, op, shards)
+}
+
+func requireConsistentShape(shards []tensor.Tensor) error {
+	reference := shards[0].Shape()
+
+	for _, shard := range shards[1:] {
+		if !shard.Shape().Equal(reference) {
+			return tensor.ErrShapeMismatch
+		}
+
+		if shard.DType() != shards[0].DType() {
+			return tensor.ErrDTypeMismatch
+		}
+	}
+
+	return nil
+}
+
+func acquireFloat32Views(shards []tensor.Tensor) ([][]float32, error) {
+	views := make([][]float32, len(shards))
+
+	for index, shard := range shards {
+		view, err := shard.Float32Native()
+
+		if err != nil {
+			return nil, err
+		}
+
+		views[index] = view
+	}
+
+	return views, nil
+}

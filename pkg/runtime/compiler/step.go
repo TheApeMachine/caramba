@@ -40,7 +40,7 @@ func compileSteps(runtimeBlock map[string]any, runtimeProgram *program.Program) 
 
 /*
 compileStep turns a single YAML step entry into program.Step. It
-recognizes the shortcut top-level keys the platform requirements
+recognizes the shorthand top-level keys the platform requirements
 document uses (graph, sampler, scheduler, tokenizer, count, as,
 source, condition) and folds them into Config / Inputs as the
 canonical fields.
@@ -93,7 +93,7 @@ func compileStep(entry any, where string) (program.Step, error) {
 			continue
 		}
 
-		if err := applyShortcut(&step, key, value, where); err != nil {
+		if err := applyShorthand(&step, key, value, where); err != nil {
 			return program.Step{}, err
 		}
 	}
@@ -135,12 +135,12 @@ func isReservedStepKey(key string) bool {
 }
 
 /*
-applyShortcut handles the inline forms used throughout the platform
-requirements document. Every shortcut maps to a canonical Inputs /
+applyShorthand handles the inline forms used throughout the platform
+requirements document. Every shorthand form maps to a canonical Inputs /
 Outputs / Config slot so a downstream tool that walks Inputs always
 finds the same shape regardless of the YAML the author wrote.
 */
-func applyShortcut(step *program.Step, key string, value any, where string) error {
+func applyShorthand(step *program.Step, key string, value any, where string) error {
 	switch key {
 	case "graph":
 		return setNamespaceInput(step, "graph", program.NamespaceGraph, value, where)

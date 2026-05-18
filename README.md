@@ -36,6 +36,7 @@ Operating on the core philosophy that **a manifest is a model**, Caramba allows 
 - [x] Multiple Compute Backends
   - [x] CPU (Go native)
   - [x] SIMD/Assembly
+    - [ ] AVX-512 (amd64)
     - [x] AVX2 (amd64)
     - [x] SSE2 (amd64)
     - [x] NEON (arm64)
