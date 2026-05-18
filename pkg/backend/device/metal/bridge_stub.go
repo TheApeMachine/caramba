@@ -111,6 +111,21 @@ const (
 	metalUnaryFloat32Recip
 	metalUnaryFloat32Sqrt
 	metalUnaryFloat32Sign
+	metalUnaryFloat32Rsqrt
+	metalUnaryFloat32Exp
+	metalUnaryFloat32Log
+	metalUnaryFloat32Sin
+	metalUnaryFloat32Cos
+	metalUnaryFloat32Tanh
+	metalUnaryFloat32Sigmoid
+	metalUnaryFloat32Silu
+	metalUnaryFloat32Swish
+	metalUnaryFloat32Softsign
+	metalUnaryFloat32ELU
+	metalUnaryFloat32SELU
+	metalUnaryFloat32LeakyReLU
+	metalUnaryFloat32HardSigmoid
+	metalUnaryFloat32HardSwish
 )
 
 func runMetalUnaryFloat32(

@@ -40,6 +40,21 @@ typedef enum MetalUnaryFloat32Op {
     MetalUnaryFloat32Recip = 4,
     MetalUnaryFloat32Sqrt = 5,
     MetalUnaryFloat32Sign = 6,
+    MetalUnaryFloat32Rsqrt = 7,
+    MetalUnaryFloat32Exp = 8,
+    MetalUnaryFloat32Log = 9,
+    MetalUnaryFloat32Sin = 10,
+    MetalUnaryFloat32Cos = 11,
+    MetalUnaryFloat32Tanh = 12,
+    MetalUnaryFloat32Sigmoid = 13,
+    MetalUnaryFloat32Silu = 14,
+    MetalUnaryFloat32Swish = 15,
+    MetalUnaryFloat32Softsign = 16,
+    MetalUnaryFloat32ELU = 17,
+    MetalUnaryFloat32SELU = 18,
+    MetalUnaryFloat32LeakyReLU = 19,
+    MetalUnaryFloat32HardSigmoid = 20,
+    MetalUnaryFloat32HardSwish = 21,
 } MetalUnaryFloat32Op;
 
 typedef enum MetalElementDType {

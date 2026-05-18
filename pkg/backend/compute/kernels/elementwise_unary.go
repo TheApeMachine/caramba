@@ -73,6 +73,87 @@ func registerUnarySIMD(name string, run func(args ...tensor.Tensor) error) {
 	})
 }
 
+func registerUnarySIMDBFloat16(name string, run func(args ...tensor.Tensor) error) {
+	Default.Register(Kernel{
+		Name: name,
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       run,
+	})
+}
+
+func unaryBFloat16Args(args []tensor.Tensor) (in, out []dtype.BF16, err error) {
+	if len(args) != 2 {
+		return nil, nil, tensor.ErrShapeMismatch
+	}
+
+	in, err = args[0].BFloat16Native()
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	out, err = args[1].BFloat16Native()
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(in) != len(out) {
+		return nil, nil, tensor.ErrShapeMismatch
+	}
+
+	return in, out, nil
+}
+
+func runAbsBFloat16(args ...tensor.Tensor) error {
+	in, out, err := unaryBFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	absBFloat16Native(out, in)
+	return nil
+}
+
+func runNegBFloat16(args ...tensor.Tensor) error {
+	in, out, err := unaryBFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	negBFloat16Native(out, in)
+	return nil
+}
+
+func runSqrtBFloat16(args ...tensor.Tensor) error {
+	in, out, err := unaryBFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	sqrtBFloat16Native(out, in)
+	return nil
+}
+
+func runReluBFloat16(args ...tensor.Tensor) error {
+	in, out, err := unaryBFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	reluBFloat16Native(out, in)
+	return nil
+}
+
 func unaryFloat32Args(args []tensor.Tensor) (in, out []float32, err error) {
 	if len(args) != 2 {
 		return nil, nil, tensor.ErrShapeMismatch
@@ -139,6 +220,9 @@ func init() {
 	registerUnarySIMD("abs", runAbsFloat32)
 	registerUnarySIMD("neg", runNegFloat32)
 	registerUnarySIMD("sqrt", runSqrtFloat32)
+	registerUnarySIMDBFloat16("abs", runAbsBFloat16)
+	registerUnarySIMDBFloat16("neg", runNegBFloat16)
+	registerUnarySIMDBFloat16("sqrt", runSqrtBFloat16)
 
 	registerUnary("square", func(value float32) float32 { return value * value })
 	registerUnary("rsqrt", func(value float32) float32 {

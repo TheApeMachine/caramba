@@ -19,9 +19,170 @@ and dispatch through Default.Lookup.
 
 func init() {
 	registerMulFloat32()
+	registerMulBFloat16()
+	registerMulFloat16()
 	registerSubFloat32()
+	registerSubBFloat16()
+	registerSubFloat16()
 	registerGELUFloat32()
 	registerReLUFloat32()
+	registerReLUBFloat16()
+}
+
+func registerMulFloat16() {
+	Default.Register(Kernel{
+		Name: "mul",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16, dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runMulFloat16,
+	})
+}
+
+func registerSubFloat16() {
+	Default.Register(Kernel{
+		Name: "sub",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16, dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runSubFloat16,
+	})
+}
+
+func runMulFloat16(args ...tensor.Tensor) error {
+	left, right, out, err := binaryFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	mulFloat16Native(out, left, right)
+	return nil
+}
+
+func runSubFloat16(args ...tensor.Tensor) error {
+	left, right, out, err := binaryFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	subFloat16Native(out, left, right)
+	return nil
+}
+
+func binaryFloat16Args(args []tensor.Tensor) (left, right, out []dtype.F16, err error) {
+	if len(args) != 3 {
+		return nil, nil, nil, tensor.ErrShapeMismatch
+	}
+
+	left, err = args[0].Float16Native()
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	right, err = args[1].Float16Native()
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	out, err = args[2].Float16Native()
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if len(left) != len(right) || len(out) != len(left) {
+		return nil, nil, nil, tensor.ErrShapeMismatch
+	}
+
+	return left, right, out, nil
+}
+
+func registerMulBFloat16() {
+	Default.Register(Kernel{
+		Name: "mul",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16, dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runMulBFloat16,
+	})
+}
+
+func registerSubBFloat16() {
+	Default.Register(Kernel{
+		Name: "sub",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16, dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runSubBFloat16,
+	})
+}
+
+func runMulBFloat16(args ...tensor.Tensor) error {
+	left, right, out, err := binaryBFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	mulBFloat16Native(out, left, right)
+	return nil
+}
+
+func runSubBFloat16(args ...tensor.Tensor) error {
+	left, right, out, err := binaryBFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	subBFloat16Native(out, left, right)
+	return nil
+}
+
+func binaryBFloat16Args(args []tensor.Tensor) (left, right, out []dtype.BF16, err error) {
+	if len(args) != 3 {
+		return nil, nil, nil, tensor.ErrShapeMismatch
+	}
+
+	left, err = args[0].BFloat16Native()
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	right, err = args[1].BFloat16Native()
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	out, err = args[2].BFloat16Native()
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if len(left) != len(right) || len(out) != len(left) {
+		return nil, nil, nil, tensor.ErrShapeMismatch
+	}
+
+	return left, right, out, nil
 }
 
 func registerMulFloat32() {
@@ -73,6 +234,19 @@ func registerReLUFloat32() {
 		},
 		Locations: []tensor.Location{tensor.Host},
 		Run:       runReLUFloat32,
+	})
+}
+
+func registerReLUBFloat16() {
+	Default.Register(Kernel{
+		Name: "relu",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runReluBFloat16,
 	})
 }
 

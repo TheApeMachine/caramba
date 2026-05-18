@@ -119,7 +119,10 @@ go build -tags "cgo xla" ./pkg/backend/device/xla/...
 
 The Metal backend embeds `pkg/backend/device/metal/kernels.metallib`
 from `pkg/backend/device/metal/*.metal`. Dense elementwise binary and
-unary kernels cover `float32`, `float16`, and `bfloat16`; Metal shape
+unary kernels cover `float32`, `float16`, and `bfloat16`, including
+extended unary math and activation kernels for `rsqrt`, `exp`, `log`,
+`sin`, `cos`, `tanh`, `sigmoid`, `silu`, `swish`, `softsign`, `elu`,
+`selu`, `leaky_relu`, `hardsigmoid`, and `hardswish`; Metal shape
 kernels cover concat/split/head reshape/last-token/transpose/upsample
 movement across the same storage dtypes with dtype-specific shader
 entry points and `uint4` movement for aligned contiguous ranges.

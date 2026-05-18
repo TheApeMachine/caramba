@@ -22,6 +22,51 @@ func init() {
 	registerAddFloat32()
 	registerAddFloat64()
 	registerAddBFloat16()
+	registerAddFloat16()
+}
+
+func registerAddFloat16() {
+	Default.Register(Kernel{
+		Name: "add",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16, dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runAddFloat16,
+	})
+}
+
+func runAddFloat16(args ...tensor.Tensor) error {
+	if len(args) != 3 {
+		return tensor.ErrShapeMismatch
+	}
+
+	left, err := args[0].Float16Native()
+
+	if err != nil {
+		return err
+	}
+
+	right, err := args[1].Float16Native()
+
+	if err != nil {
+		return err
+	}
+
+	out, err := args[2].Float16Native()
+
+	if err != nil {
+		return err
+	}
+
+	if len(left) != len(right) || len(out) != len(left) {
+		return tensor.ErrShapeMismatch
+	}
+
+	addFloat16Native(out, left, right)
+	return nil
 }
 
 func registerAddFloat32() {
@@ -156,12 +201,7 @@ func runAddBFloat16(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	// bf16 + bf16 with fp32 accumulation per the mixed-dtype
-	// kernel convention (§5.5 of TENSOR_BACKEND_REWRITE.md).
-	for index := range out {
-		sum := (&left[index]).Float32() + (&right[index]).Float32()
-		out[index] = dtype.NewBfloat16FromFloat32(sum)
-	}
+	addBFloat16Native(out, left, right)
 
 	return nil
 }

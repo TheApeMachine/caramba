@@ -24,6 +24,124 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal extended unary elementwise expansion
+
+This adds real Metal device kernels for 15 dense unary math and
+activation ops:
+
+- `rsqrt_{float32,float16,bfloat16}`
+- `exp_{float32,float16,bfloat16}`
+- `log_{float32,float16,bfloat16}`
+- `sin_{float32,float16,bfloat16}`
+- `cos_{float32,float16,bfloat16}`
+- `tanh_{float32,float16,bfloat16}`
+- `sigmoid_{float32,float16,bfloat16}`
+- `silu_{float32,float16,bfloat16}`
+- `swish_{float32,float16,bfloat16}`
+- `softsign_{float32,float16,bfloat16}`
+- `elu_{float32,float16,bfloat16}`
+- `selu_{float32,float16,bfloat16}`
+- `leaky_relu_{float32,float16,bfloat16}`
+- `hardsigmoid_{float32,float16,bfloat16}`
+- `hardswish_{float32,float16,bfloat16}`
+
+The kernels live in `pkg/backend/device/metal/elementwise_extended.metal`
+and run through the existing `runMetalUnaryElementwise` path in
+`pkg/backend/device/metal/bridge_elementwise_darwin.m`. Float16 and
+bfloat16 read native storage, compute the scalar math in float32, and
+write native storage. The parity cases use `N ∈ {1, 7, 64, 1024, 8192}`.
+F32 parity uses tight per-op ULP bounds: 1 ULP for `leaky_relu`, 2 ULP
+for `rsqrt`, `softsign`, and `hardswish`, 8 ULP for transcendental
+ops and exp-derived activations, and 16 ULP for `hardsigmoid` because
+Metal division by 6 differs from the scalar reference by up to 13 ULP
+near zero. Float16 and bfloat16 parity use 1- or 2-ULP bounds on the
+stored 16-bit representation.
+
+Exact `gelu` is not promoted in this pass because this Metal SDK does
+not expose `erf`; substituting the tanh variant under the exact name
+would violate the scalar definition. `softplus`, `mish`, and
+`gelu_tanh` were also not promoted because they did not satisfy tight
+f32 ULP parity against the scalar reference on this SDK.
+
+The Metal dense registry now has 144 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, and 6 normalization
+signatures.
+
+Focused extended unary parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalExtendedUnaryElementwiseDTypes' -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.659s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.463s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.413s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	1.322s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	0.765s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.856s
+```
+
+Metal extended unary benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunExtendedUnaryElementwiseDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/rsqrt-16   	    9772	    122316 ns/op	 535.79 MB/s	    1289 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/exp-16     	   10000	    120859 ns/op	 542.25 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/log-16     	   10000	    118758 ns/op	 551.84 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/sin-16     	   10000	    118009 ns/op	 555.35 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/cos-16     	   10000	    115248 ns/op	 568.65 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/tanh-16    	   10000	    117118 ns/op	 559.57 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/sigmoid-16 	    9085	    116854 ns/op	 560.83 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/silu-16    	   10000	    115047 ns/op	 569.64 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/swish-16   	   10000	    114661 ns/op	 571.56 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/softsign-16         	    9907	    121251 ns/op	 540.50 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/elu-16              	   10000	    114845 ns/op	 570.65 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/selu-16             	    9097	    114667 ns/op	 571.54 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/leaky_relu-16       	   10000	    116130 ns/op	 564.33 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/hardsigmoid-16      	    9570	    118546 ns/op	 552.83 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f32/hardswish-16        	    9858	    115211 ns/op	 568.83 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/rsqrt-16            	   10000	    115811 ns/op	 282.94 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/exp-16              	    9902	    118710 ns/op	 276.03 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/log-16              	    9864	    115091 ns/op	 284.71 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/sin-16              	    9590	    116125 ns/op	 282.18 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/cos-16              	    9398	    118587 ns/op	 276.32 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/tanh-16             	   10000	    118979 ns/op	 275.41 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/sigmoid-16          	   10000	    115364 ns/op	 284.04 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/silu-16             	   10000	    115386 ns/op	 283.98 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/swish-16            	   10000	    116048 ns/op	 282.37 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/softsign-16         	    9723	    123620 ns/op	 265.07 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/elu-16              	   10000	    112232 ns/op	 291.97 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/selu-16             	    9154	    115536 ns/op	 283.62 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/leaky_relu-16       	    9890	    122013 ns/op	 268.56 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/hardsigmoid-16      	   10000	    114178 ns/op	 286.99 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/f16/hardswish-16        	    9246	    124229 ns/op	 263.77 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/rsqrt-16           	    9831	    119290 ns/op	 274.69 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/exp-16             	    9956	    118298 ns/op	 277.00 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/log-16             	    9272	    116900 ns/op	 280.31 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/sin-16             	    9378	    115353 ns/op	 284.07 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/cos-16             	    9987	    116221 ns/op	 281.95 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/tanh-16            	   10000	    116197 ns/op	 282.00 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/sigmoid-16         	   10000	    121997 ns/op	 268.60 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/silu-16            	   10000	    120717 ns/op	 271.44 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/swish-16           	   10000	    114777 ns/op	 285.49 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/softsign-16        	    9386	    113516 ns/op	 288.66 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/elu-16             	    9664	    125110 ns/op	 261.91 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/selu-16            	    9500	    116912 ns/op	 280.28 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/leaky_relu-16      	   10000	    113568 ns/op	 288.53 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/hardsigmoid-16     	   10000	    114555 ns/op	 286.05 MB/s	    1288 B/op	       4 allocs/op
+BenchmarkKernel_RunExtendedUnaryElementwiseDTypes/bf16/hardswish-16       	   10000	    119183 ns/op	 274.94 MB/s	    1288 B/op	       4 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	53.361s
+```
+
 ### 2026-05-18 Metal normalization kernel expansion
 
 This adds real Metal device kernels for last-dimension normalization:
@@ -1059,7 +1177,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 99 verified dense elementwise + shape + matmul + softmax + normalization signatures for `float32`, `float16`, `bfloat16` |
+| 4     | Metal device backend          | 144 verified dense elementwise + shape + matmul + softmax + normalization signatures for `float32`, `float16`, `bfloat16` |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
@@ -1171,6 +1289,7 @@ invalidation works.
 | `pkg/backend/device/metal/elementwise_float32.metal` | verified       |
 | `pkg/backend/device/metal/elementwise_float16.metal` | verified       |
 | `pkg/backend/device/metal/elementwise_bfloat16.metal` | verified     |
+| `pkg/backend/device/metal/elementwise_extended.metal` | verified      |
 | `pkg/backend/device/metal/matmul.metal`       | verified              |
 | `pkg/backend/device/metal/normalization.metal` | verified             |
 | `pkg/backend/device/metal/shape.metal`        | verified              |
@@ -1178,6 +1297,8 @@ invalidation works.
 | `pkg/backend/device/metal/elementwise_dtype_darwin.go` | verified    |
 | `pkg/backend/device/metal/elementwise_dtype_test.go` | verified       |
 | `pkg/backend/device/metal/elementwise_dtype_bench_test.go` | verified |
+| `pkg/backend/device/metal/elementwise_unary_extended_test.go` | verified |
+| `pkg/backend/device/metal/elementwise_unary_extended_bench_test.go` | verified |
 | `pkg/backend/device/metal/kernels.metallib`   | verified              |
 | `pkg/backend/device/metal/generate.go`        | verified              |
 | `pkg/backend/device/metal/kernels.go`         | verified              |
@@ -1205,6 +1326,7 @@ invalidation works.
 | `pkg/backend/device/metal/softmax_bench_test.go` | verified           |
 | `pkg/backend/device/metal/unary_float32.go`   | verified              |
 | `pkg/backend/device/metal/unary_float32_test.go` | verified           |
+| `pkg/backend/device/metal/unary_extended.go`  | verified              |
 | `pkg/backend/device/metal/backend_test.go`    | verified              |
 | `pkg/backend/device/metal/internal/metallibgen/main.go` | verified  |
 | `pkg/backend/device/metal/internal/metallibgen/main_test.go` | verified |

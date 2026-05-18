@@ -27,6 +27,78 @@ func runDivFloat32(args ...tensor.Tensor) error {
 	return nil
 }
 
+func runDivBFloat16(args ...tensor.Tensor) error {
+	left, right, out, err := binaryBFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	divBFloat16Native(out, left, right)
+
+	return nil
+}
+
+func runMaxBFloat16(args ...tensor.Tensor) error {
+	left, right, out, err := binaryBFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	maxBFloat16Native(out, left, right)
+
+	return nil
+}
+
+func runMinBFloat16(args ...tensor.Tensor) error {
+	left, right, out, err := binaryBFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	minBFloat16Native(out, left, right)
+
+	return nil
+}
+
+func runDivFloat16(args ...tensor.Tensor) error {
+	left, right, out, err := binaryFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	divFloat16Native(out, left, right)
+
+	return nil
+}
+
+func runMaxFloat16(args ...tensor.Tensor) error {
+	left, right, out, err := binaryFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	maxFloat16Native(out, left, right)
+
+	return nil
+}
+
+func runMinFloat16(args ...tensor.Tensor) error {
+	left, right, out, err := binaryFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	minFloat16Native(out, left, right)
+
+	return nil
+}
+
 func runMaxFloat32(args ...tensor.Tensor) error {
 	left, right, out, err := binaryFloat32Args(args)
 
@@ -143,6 +215,26 @@ func init() {
 		Locations: []tensor.Location{tensor.Host},
 		Run:       runDivFloat32,
 	})
+	Default.Register(Kernel{
+		Name: "div",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16, dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runDivBFloat16,
+	})
+	Default.Register(Kernel{
+		Name: "div",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16, dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runDivFloat16,
+	})
 	registerBinary("pow", func(a, b float32) float32 {
 		return float32(math.Pow(float64(a), float64(b)))
 	})
@@ -170,6 +262,46 @@ func init() {
 		},
 		Locations: []tensor.Location{tensor.Host},
 		Run:       runMinFloat32,
+	})
+	Default.Register(Kernel{
+		Name: "max",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16, dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runMaxBFloat16,
+	})
+	Default.Register(Kernel{
+		Name: "min",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16, dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runMinBFloat16,
+	})
+	Default.Register(Kernel{
+		Name: "max",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16, dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runMaxFloat16,
+	})
+	Default.Register(Kernel{
+		Name: "min",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16, dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runMinFloat16,
 	})
 	registerBinary("mod", func(a, b float32) float32 {
 		return float32(math.Mod(float64(a), float64(b)))
