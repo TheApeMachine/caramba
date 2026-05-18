@@ -149,6 +149,54 @@ func assertBitwiseEqual(t *testing.T, op string, scalar, neon []float32) {
 	}
 }
 
+func TestMaxFloat32NEONAsmParity(t *testing.T) {
+	for _, n := range elementwiseParityNs {
+		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
+			left := randomFloat32Slice(n, 0xAAAA+int64(n))
+			right := randomFloat32Slice(n, 0xBBBB+int64(n))
+
+			scalar := make([]float32, n)
+
+			for index := range scalar {
+				scalar[index] = right[index]
+
+				if left[index] > right[index] {
+					scalar[index] = left[index]
+				}
+			}
+
+			neon := make([]float32, n)
+			maxFloat32NEONAsm(&neon[0], &left[0], &right[0], n)
+
+			assertBitwiseEqual(t, "max", scalar, neon)
+		})
+	}
+}
+
+func TestMinFloat32NEONAsmParity(t *testing.T) {
+	for _, n := range elementwiseParityNs {
+		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
+			left := randomFloat32Slice(n, 0xCCCC+int64(n))
+			right := randomFloat32Slice(n, 0xDDDD+int64(n))
+
+			scalar := make([]float32, n)
+
+			for index := range scalar {
+				scalar[index] = right[index]
+
+				if left[index] < right[index] {
+					scalar[index] = left[index]
+				}
+			}
+
+			neon := make([]float32, n)
+			minFloat32NEONAsm(&neon[0], &left[0], &right[0], n)
+
+			assertBitwiseEqual(t, "min", scalar, neon)
+		})
+	}
+}
+
 func BenchmarkAddFloat32NEONAsm(b *testing.B) {
 	for _, n := range []int{64, 1024, 8192, 65536} {
 		n := n

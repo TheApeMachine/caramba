@@ -40,3 +40,19 @@ func divFloat32Native(dst, left, right []float32) {
 
 	divFloat32NEONAsm(&dst[0], &left[0], &right[0], len(dst))
 }
+
+func maxFloat32Native(dst, left, right []float32) {
+	if len(dst) == 0 {
+		return
+	}
+
+	maxFloat32NEONAsm(&dst[0], &left[0], &right[0], len(dst))
+}
+
+func minFloat32Native(dst, left, right []float32) {
+	if len(dst) == 0 {
+		return
+	}
+
+	minFloat32NEONAsm(&dst[0], &left[0], &right[0], len(dst))
+}

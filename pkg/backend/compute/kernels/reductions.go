@@ -57,15 +57,7 @@ func registerReduce(name string, op reducer) {
 }
 
 func init() {
-	registerReduce("sum", func(values []float32) float32 {
-		var sum float64
-
-		for _, value := range values {
-			sum += float64(value)
-		}
-
-		return float32(sum)
-	})
+	registerReduce("sum", sumFloat32Native)
 
 	registerReduce("mean", func(values []float32) float32 {
 		var sum float64

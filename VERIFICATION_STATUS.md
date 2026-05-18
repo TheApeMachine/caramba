@@ -24,6 +24,85 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal softmax kernel expansion
+
+This adds real Metal device kernels for last-dimension softmax:
+
+- `softmax_{float32,float16,bfloat16}`
+
+The kernels live in `pkg/backend/device/metal/softmax.metal` and run
+through `pkg/backend/device/metal/bridge_softmax_darwin.m`. Each row
+is assigned one 256-thread threadgroup. The kernel performs a parallel
+max reduction, a parallel sum reduction over shifted exponentials, and
+then normalized writes back to the same storage dtype. Float16 and
+bfloat16 read their native storage, compute in float32, and write
+their native storage. The parity cases use rows=13 and
+`N ∈ {1, 7, 64, 1024, 8192}` as the softmax row width. F32 parity uses
+a 64-ULP bound against the scalar reference because the device path
+uses parallel reduction order plus Metal `exp`; f16 and bf16 parity
+use a 1-ULP bound on the stored 16-bit representation.
+
+The Metal dense registry now has 93 verified signatures: 57
+elementwise, 27 shape, 6 matmul, and 3 softmax signatures.
+
+Focused host softmax parity command:
+
+```
+go test ./pkg/backend/compute/kernels -run 'TestSoftmax(Float32|Float16AndBFloat16)$' -count=1 -v
+=== RUN   TestSoftmaxFloat32
+--- PASS: TestSoftmaxFloat32 (0.00s)
+=== RUN   TestSoftmaxFloat16AndBFloat16
+--- PASS: TestSoftmaxFloat16AndBFloat16 (0.00s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	0.532s
+```
+
+Focused Metal matmul + softmax parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_Metal(Softmax|MatMul)' -count=1 -v
+=== RUN   TestKernelRegistry_MetalMatMulDTypes
+--- PASS: TestKernelRegistry_MetalMatMulDTypes (0.06s)
+=== RUN   TestKernelRegistry_MetalMatMulAddDTypes
+--- PASS: TestKernelRegistry_MetalMatMulAddDTypes (0.02s)
+=== RUN   TestKernelRegistry_MetalSoftmaxDTypes
+--- PASS: TestKernelRegistry_MetalSoftmaxDTypes (0.02s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.437s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	3.766s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	3.523s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	3.649s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	3.275s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	3.218s
+```
+
+Metal matmul + softmax benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_Run(Softmax|MatMul)DTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunMatMulDTypes/f32/matmul-16         	   10827	    108208 ns/op	1816.95 MB/s	    1346 B/op	       7 allocs/op
+BenchmarkKernel_RunMatMulDTypes/f32/matmul_add-16     	   10000	    106145 ns/op	1857.08 MB/s	    1360 B/op	       8 allocs/op
+BenchmarkKernel_RunMatMulDTypes/f16/matmul-16         	    9666	    105796 ns/op	 929.18 MB/s	    1344 B/op	       7 allocs/op
+BenchmarkKernel_RunMatMulDTypes/f16/matmul_add-16     	    9876	    109676 ns/op	 898.65 MB/s	    1360 B/op	       8 allocs/op
+BenchmarkKernel_RunMatMulDTypes/bf16/matmul-16        	    9957	    107538 ns/op	 914.13 MB/s	    1344 B/op	       7 allocs/op
+BenchmarkKernel_RunMatMulDTypes/bf16/matmul_add-16    	   10000	    107582 ns/op	 916.14 MB/s	    1360 B/op	       8 allocs/op
+BenchmarkKernel_RunSoftmaxDTypes/f32-16               	   11238	    106679 ns/op	9829.28 MB/s	    1304 B/op	       5 allocs/op
+BenchmarkKernel_RunSoftmaxDTypes/f16-16               	   10000	    106526 ns/op	4921.67 MB/s	    1304 B/op	       5 allocs/op
+BenchmarkKernel_RunSoftmaxDTypes/bf16-16              	   10000	    108761 ns/op	4820.56 MB/s	    1304 B/op	       5 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	10.060s
+```
+
 ### 2026-05-18 Metal matmul kernel expansion
 
 This adds real tiled Metal device kernels for dense matrix
@@ -43,7 +122,7 @@ and partial boundary tiles while N drives the inner dimension at
 `N ∈ {1, 7, 64, 1024, 8192}`. F32 parity uses a 1-ULP bound; f16 and
 bf16 parity use a 1-ULP bound on the stored 16-bit representation.
 
-The Metal dense registry now has 90 verified signatures: 57
+After this slice, the Metal dense registry had 90 verified signatures: 57
 elementwise, 27 shape, and 6 matmul signatures.
 
 Focused matmul parity command:
@@ -858,7 +937,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 90 verified dense elementwise + shape + matmul signatures for `float32`, `float16`, `bfloat16` |
+| 4     | Metal device backend          | 93 verified dense elementwise + shape + matmul + softmax signatures for `float32`, `float16`, `bfloat16` |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
@@ -963,6 +1042,7 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_shape_common_darwin.m` | verified    |
 | `pkg/backend/device/metal/bridge_shape_darwin.m` | verified           |
 | `pkg/backend/device/metal/bridge_shape_private.h` | verified          |
+| `pkg/backend/device/metal/bridge_softmax_darwin.m` | verified       |
 | `pkg/backend/device/metal/bridge_unary_darwin.m` | verified           |
 | `pkg/backend/device/metal/unary_darwin.go`    | verified              |
 | `pkg/backend/device/metal/elementwise_float32.metal` | verified       |
@@ -970,6 +1050,7 @@ invalidation works.
 | `pkg/backend/device/metal/elementwise_bfloat16.metal` | verified     |
 | `pkg/backend/device/metal/matmul.metal`       | verified              |
 | `pkg/backend/device/metal/shape.metal`        | verified              |
+| `pkg/backend/device/metal/softmax.metal`      | verified              |
 | `pkg/backend/device/metal/elementwise_dtype_darwin.go` | verified    |
 | `pkg/backend/device/metal/elementwise_dtype_test.go` | verified       |
 | `pkg/backend/device/metal/elementwise_dtype_bench_test.go` | verified |
@@ -987,6 +1068,11 @@ invalidation works.
 | `pkg/backend/device/metal/shape_test.go`      | verified              |
 | `pkg/backend/device/metal/shape_test_helpers.go` | verified          |
 | `pkg/backend/device/metal/shape_bench_test.go` | verified             |
+| `pkg/backend/device/metal/softmax.go`         | verified              |
+| `pkg/backend/device/metal/softmax_darwin.go`  | verified              |
+| `pkg/backend/device/metal/softmax_stub.go`    | verified              |
+| `pkg/backend/device/metal/softmax_test.go`    | verified              |
+| `pkg/backend/device/metal/softmax_bench_test.go` | verified           |
 | `pkg/backend/device/metal/unary_float32.go`   | verified              |
 | `pkg/backend/device/metal/unary_float32_test.go` | verified           |
 | `pkg/backend/device/metal/backend_test.go`    | verified              |
@@ -1027,6 +1113,7 @@ transformer math stack.
 | `pkg/backend/compute/kernels/matmul.go`           | verified  |
 | `pkg/backend/compute/kernels/elementwise.go`      | verified  |
 | `pkg/backend/compute/kernels/softmax.go`          | verified  |
+| `pkg/backend/compute/kernels/softmax_dtype_test.go` | verified |
 | `pkg/backend/compute/kernels/layernorm.go`        | verified  |
 | `pkg/backend/compute/kernels/kernels_test.go`     | verified  |
 | `pkg/backend/compute/kernels/matmul_test.go`      | verified  |

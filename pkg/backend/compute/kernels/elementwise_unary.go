@@ -60,11 +60,87 @@ func registerUnary(name string, op unaryOp) {
 	})
 }
 
+func registerUnarySIMD(name string, run func(args ...tensor.Tensor) error) {
+	Default.Register(Kernel{
+		Name: name,
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float32},
+			Outputs: []dtype.DType{dtype.Float32},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       run,
+	})
+}
+
+func unaryFloat32Args(args []tensor.Tensor) (in, out []float32, err error) {
+	if len(args) != 2 {
+		return nil, nil, tensor.ErrShapeMismatch
+	}
+
+	in, err = args[0].Float32Native()
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	out, err = args[1].Float32Native()
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(in) != len(out) {
+		return nil, nil, tensor.ErrShapeMismatch
+	}
+
+	return in, out, nil
+}
+
+func runAbsFloat32(args ...tensor.Tensor) error {
+	in, out, err := unaryFloat32Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	absFloat32Native(out, in)
+
+	return nil
+}
+
+func runNegFloat32(args ...tensor.Tensor) error {
+	in, out, err := unaryFloat32Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	negFloat32Native(out, in)
+
+	return nil
+}
+
+func runSqrtFloat32(args ...tensor.Tensor) error {
+	in, out, err := unaryFloat32Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	sqrtFloat32Native(out, in)
+
+	return nil
+}
+
 func init() {
-	registerUnary("abs", func(value float32) float32 { return float32(math.Abs(float64(value))) })
-	registerUnary("neg", func(value float32) float32 { return -value })
+	// abs, neg, sqrt: SIMD-specialized runners route through the per-arch
+	// dispatcher into NEON / AVX-512 / AVX2 / SSE2 paths.
+	registerUnarySIMD("abs", runAbsFloat32)
+	registerUnarySIMD("neg", runNegFloat32)
+	registerUnarySIMD("sqrt", runSqrtFloat32)
+
 	registerUnary("square", func(value float32) float32 { return value * value })
-	registerUnary("sqrt", func(value float32) float32 { return float32(math.Sqrt(float64(value))) })
 	registerUnary("rsqrt", func(value float32) float32 {
 		return float32(1.0 / math.Sqrt(float64(value)))
 	})

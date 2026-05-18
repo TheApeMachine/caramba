@@ -16,6 +16,9 @@
 // BSL Vd.16B, Vn.16B, Vm.16B: 0|1|1|01110|01|1|Rm|00011|1|Rn|Rd = 0x6E601C00
 // Semantics: per-bit, where original Vd=1 take from Vn, where Vd=0 take from Vm.
 #define VBSL_B16(m, n, d) WORD $(0x6E601C00 | ((m) << 16) | ((n) << 5) | (d))
+// ORR Vd.16B, Vn.16B, Vm.16B with m=n acts as vector-register move:
+// 0|1|0|01110|10|1|Rm|00011|1|Rn|Rd = 0x4EA01C00
+#define VMOV_B16(src, dst) WORD $(0x4EA01C00 | ((src) << 16) | ((src) << 5) | (dst))
 
 #define ELEMENTWISE_TEMPLATE(op_4x4, op_4, op_scalar)              \
     MOVD dst+0(FP), R0                                              \
@@ -108,6 +111,62 @@ done:                                                               \
 #define DIV_SCALAR                                                  \
     FDIVS F1, F0, F0
 
+// MAX = if (a > b) a else b
+// FCMGT writes a per-lane mask into scratch (V8-V11), BSL with that
+// scratch as destination picks a-or-b per bit (mask=1 → a, mask=0 → b),
+// then ORR moves the result back into V0-V3 for the store.
+//
+// Go's scalar `if a > b { return a } return b` does NOT propagate NaN
+// on the b operand; FCMGT returns false on any NaN, so BSL falls
+// through to b, matching the scalar behavior bit-for-bit.
+#define MAX_4X4                                                     \
+    VFCMGT_S4(4, 0, 8)                                              \
+    VFCMGT_S4(5, 1, 9)                                              \
+    VFCMGT_S4(6, 2, 10)                                             \
+    VFCMGT_S4(7, 3, 11)                                             \
+    VBSL_B16(4, 0, 8)                                               \
+    VBSL_B16(5, 1, 9)                                               \
+    VBSL_B16(6, 2, 10)                                              \
+    VBSL_B16(7, 3, 11)                                              \
+    VMOV_B16(8, 0)                                                  \
+    VMOV_B16(9, 1)                                                  \
+    VMOV_B16(10, 2)                                                 \
+    VMOV_B16(11, 3)
+
+#define MAX_4                                                       \
+    VFCMGT_S4(4, 0, 8)                                              \
+    VBSL_B16(4, 0, 8)                                               \
+    VMOV_B16(8, 0)
+
+#define MAX_SCALAR                                                  \
+    FCMPS F1, F0                                                    \
+    FCSELS GT, F0, F1, F0
+
+// MIN = if (a < b) a else b.  a < b is FCMGT(b, a), so swap Rn/Rm in
+// the comparison; everything else mirrors MAX.
+#define MIN_4X4                                                     \
+    VFCMGT_S4(0, 4, 8)                                              \
+    VFCMGT_S4(1, 5, 9)                                              \
+    VFCMGT_S4(2, 6, 10)                                             \
+    VFCMGT_S4(3, 7, 11)                                             \
+    VBSL_B16(4, 0, 8)                                               \
+    VBSL_B16(5, 1, 9)                                               \
+    VBSL_B16(6, 2, 10)                                              \
+    VBSL_B16(7, 3, 11)                                              \
+    VMOV_B16(8, 0)                                                  \
+    VMOV_B16(9, 1)                                                  \
+    VMOV_B16(10, 2)                                                 \
+    VMOV_B16(11, 3)
+
+#define MIN_4                                                       \
+    VFCMGT_S4(0, 4, 8)                                              \
+    VBSL_B16(4, 0, 8)                                               \
+    VMOV_B16(8, 0)
+
+#define MIN_SCALAR                                                  \
+    FCMPS F1, F0                                                    \
+    FCSELS LT, F0, F1, F0
+
 // func addFloat32NEONAsm(dst, left, right *float32, n int)
 TEXT ·addFloat32NEONAsm(SB), NOSPLIT, $0-32
     ELEMENTWISE_TEMPLATE(ADD_4X4, ADD_4, ADD_SCALAR)
@@ -123,3 +182,11 @@ TEXT ·mulFloat32NEONAsm(SB), NOSPLIT, $0-32
 // func divFloat32NEONAsm(dst, left, right *float32, n int)
 TEXT ·divFloat32NEONAsm(SB), NOSPLIT, $0-32
     ELEMENTWISE_TEMPLATE(DIV_4X4, DIV_4, DIV_SCALAR)
+
+// func maxFloat32NEONAsm(dst, left, right *float32, n int)
+TEXT ·maxFloat32NEONAsm(SB), NOSPLIT, $0-32
+    ELEMENTWISE_TEMPLATE(MAX_4X4, MAX_4, MAX_SCALAR)
+
+// func minFloat32NEONAsm(dst, left, right *float32, n int)
+TEXT ·minFloat32NEONAsm(SB), NOSPLIT, $0-32
+    ELEMENTWISE_TEMPLATE(MIN_4X4, MIN_4, MIN_SCALAR)

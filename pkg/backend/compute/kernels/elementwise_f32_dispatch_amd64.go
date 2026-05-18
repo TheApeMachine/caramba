@@ -32,3 +32,23 @@ func divFloat32Native(dst, left, right []float32) {
 		dst[index] = left[index] / right[index]
 	}
 }
+
+func maxFloat32Native(dst, left, right []float32) {
+	for index := range dst {
+		dst[index] = right[index]
+
+		if left[index] > right[index] {
+			dst[index] = left[index]
+		}
+	}
+}
+
+func minFloat32Native(dst, left, right []float32) {
+	for index := range dst {
+		dst[index] = right[index]
+
+		if left[index] < right[index] {
+			dst[index] = left[index]
+		}
+	}
+}

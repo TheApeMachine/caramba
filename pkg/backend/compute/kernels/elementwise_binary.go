@@ -16,35 +16,69 @@ these kernels require matching shapes.
 type binaryOp func(a, b float32) float32
 
 func runDivFloat32(args ...tensor.Tensor) error {
-	if len(args) != 3 {
-		return tensor.ErrShapeMismatch
-	}
-
-	left, err := args[0].Float32Native()
+	left, right, out, err := binaryFloat32Args(args)
 
 	if err != nil {
 		return err
-	}
-
-	right, err := args[1].Float32Native()
-
-	if err != nil {
-		return err
-	}
-
-	out, err := args[2].Float32Native()
-
-	if err != nil {
-		return err
-	}
-
-	if len(left) != len(right) || len(out) != len(left) {
-		return tensor.ErrShapeMismatch
 	}
 
 	divFloat32Native(out, left, right)
 
 	return nil
+}
+
+func runMaxFloat32(args ...tensor.Tensor) error {
+	left, right, out, err := binaryFloat32Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	maxFloat32Native(out, left, right)
+
+	return nil
+}
+
+func runMinFloat32(args ...tensor.Tensor) error {
+	left, right, out, err := binaryFloat32Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	minFloat32Native(out, left, right)
+
+	return nil
+}
+
+func binaryFloat32Args(args []tensor.Tensor) (left, right, out []float32, err error) {
+	if len(args) != 3 {
+		return nil, nil, nil, tensor.ErrShapeMismatch
+	}
+
+	left, err = args[0].Float32Native()
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	right, err = args[1].Float32Native()
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	out, err = args[2].Float32Native()
+
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if len(left) != len(right) || len(out) != len(left) {
+		return nil, nil, nil, tensor.ErrShapeMismatch
+	}
+
+	return left, right, out, nil
 }
 
 func binaryFloat32(op binaryOp) func(args ...tensor.Tensor) error {
@@ -115,19 +149,27 @@ func init() {
 	registerBinary("atan2", func(a, b float32) float32 {
 		return float32(math.Atan2(float64(a), float64(b)))
 	})
-	registerBinary("max", func(a, b float32) float32 {
-		if a > b {
-			return a
-		}
-
-		return b
+	// max and min get SIMD-specialized runners so the per-arch
+	// dispatcher routes through NEON / AVX-512 / AVX2 / SSE2 paths.
+	Default.Register(Kernel{
+		Name: "max",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float32, dtype.Float32},
+			Outputs: []dtype.DType{dtype.Float32},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runMaxFloat32,
 	})
-	registerBinary("min", func(a, b float32) float32 {
-		if a < b {
-			return a
-		}
-
-		return b
+	Default.Register(Kernel{
+		Name: "min",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float32, dtype.Float32},
+			Outputs: []dtype.DType{dtype.Float32},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runMinFloat32,
 	})
 	registerBinary("mod", func(a, b float32) float32 {
 		return float32(math.Mod(float64(a), float64(b)))

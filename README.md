@@ -124,9 +124,12 @@ kernels cover concat/split/head reshape/last-token/transpose/upsample
 movement across the same storage dtypes with dtype-specific shader
 entry points and `uint4` movement for aligned contiguous ranges.
 Metal matmul kernels cover `matmul` and fused `matmul_add` for the
-same storage dtypes with tiled threadgroup execution. These families
-run through the device command queue with async completion, pooled
-`MTLBuffer` storage, and per-kernel pipeline caching.
+same storage dtypes with tiled threadgroup execution. Metal softmax
+covers the same storage dtypes with one threadgroup per row, parallel
+max reduction, parallel sum reduction, and normalized dtype-native
+writes. These families run through the device command queue with async
+completion, pooled `MTLBuffer` storage, and per-kernel pipeline
+caching.
 
 Every backend implements the same interface, and the optimizer does the same math everywhere:
 

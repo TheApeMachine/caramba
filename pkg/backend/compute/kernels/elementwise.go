@@ -194,13 +194,7 @@ func runReLUFloat32(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for index, value := range input {
-		out[index] = 0
-
-		if value > 0 {
-			out[index] = value
-		}
-	}
+	reluFloat32Native(out, input)
 
 	return nil
 }

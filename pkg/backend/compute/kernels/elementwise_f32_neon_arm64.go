@@ -20,3 +20,9 @@ func mulFloat32NEONAsm(dst, left, right *float32, n int)
 
 //go:noescape
 func divFloat32NEONAsm(dst, left, right *float32, n int)
+
+//go:noescape
+func maxFloat32NEONAsm(dst, left, right *float32, n int)
+
+//go:noescape
+func minFloat32NEONAsm(dst, left, right *float32, n int)

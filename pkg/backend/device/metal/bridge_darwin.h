@@ -188,6 +188,39 @@ int metal_dispatch_matmul_add(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_softmax(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t rows,
+    uint32_t cols,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_layernorm(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef scaleRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef outRef,
+    uint32_t rows,
+    uint32_t cols,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_rmsnorm(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef scaleRef,
+    MetalBufferRef outRef,
+    uint32_t rows,
+    uint32_t cols,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 void metal_device_release(MetalDeviceRef contextRef);
 
 #ifdef __cplusplus
