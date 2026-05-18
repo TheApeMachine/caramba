@@ -24,6 +24,183 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal vision kernel expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `conv2d_{float32,float16,bfloat16}`
+- `conv1d_{float32,float16,bfloat16}`
+- `conv3d_{float32,float16,bfloat16}`
+- `conv_transpose2d_{float32,float16,bfloat16}`
+- `max_pool2d_{float32,float16,bfloat16}`
+- `avg_pool2d_{float32,float16,bfloat16}`
+- `adaptive_avg_pool2d_{float32,float16,bfloat16}`
+- `adaptive_max_pool2d_{float32,float16,bfloat16}`
+
+The public registry entries are `conv1d`, `conv2d`, `conv3d`,
+`conv_transpose2d`, `max_pool2d`, `avg_pool2d`, `adaptive_avg_pool2d`,
+and `adaptive_max_pool2d` for all three storage dtypes. The shaders
+live in `pkg/backend/device/metal/vision.metal` and run through
+`pkg/backend/device/metal/bridge_vision_*.m`.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}` as output spatial
+width for `conv1d`, `conv2d`, and `conv3d`, and input width for
+`conv_transpose2d`. The convolution kernels use the scalar registry's
+default stride 1 / padding 0 / dilation 1 semantics. Standard pooling
+uses the scalar registry's 2x2 stride-2 window; adaptive pooling uses
+output-driven integer regions. The expected values are computed from
+dtype-stored inputs and checked with tight ULP bounds on the stored
+output representation. `conv_transpose2d` is implemented as a
+per-output gather kernel so no two GPU threads write the same output
+element.
+
+The Metal dense registry now has 195 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 15 transformer embedding/masking, and 24 vision
+signatures.
+
+Focused vision parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_Metal(Convolution|Vision)DTypes' -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.865s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.996s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	2.224s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.471s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	0.858s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	2.641s
+```
+
+Metal vision benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunVisionDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunVisionDTypes/f32/conv1d-16                       	   11176	    106517 ns/op	  385.63 MB/s	    1417 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/f32/conv2d-16                       	   10000	    103376 ns/op	  676.33 MB/s	    1440 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/f32/conv3d-16                       	   10000	    105382 ns/op	  508.55 MB/s	    1488 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/f32/conv_transpose2d-16             	   12168	     98427 ns/op	  752.60 MB/s	    1440 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/f32/max_pool2d-16                   	   12120	     98932 ns/op	 2484.13 MB/s	    1352 B/op	       6 allocs/op
+BenchmarkKernel_RunVisionDTypes/f32/avg_pool2d-16                   	   10000	    103610 ns/op	 2371.96 MB/s	    1352 B/op	       6 allocs/op
+BenchmarkKernel_RunVisionDTypes/f32/adaptive_avg_pool2d-16          	   10000	    101404 ns/op	 1294.93 MB/s	    1352 B/op	       6 allocs/op
+BenchmarkKernel_RunVisionDTypes/f32/adaptive_max_pool2d-16          	   10000	    102521 ns/op	 1280.83 MB/s	    1352 B/op	       6 allocs/op
+BenchmarkKernel_RunVisionDTypes/f16/conv1d-16                       	   12238	     98387 ns/op	  208.75 MB/s	    1416 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/f16/conv2d-16                       	   12031	     99569 ns/op	  351.09 MB/s	    1440 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/f16/conv3d-16                       	   10000	    377695 ns/op	   70.95 MB/s	    1488 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/f16/conv_transpose2d-16             	    1819	    693823 ns/op	   53.38 MB/s	    1440 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/f16/max_pool2d-16                   	    1660	    691781 ns/op	  177.63 MB/s	    1352 B/op	       6 allocs/op
+BenchmarkKernel_RunVisionDTypes/f16/avg_pool2d-16                   	    2036	    650273 ns/op	  188.97 MB/s	    1352 B/op	       6 allocs/op
+BenchmarkKernel_RunVisionDTypes/f16/adaptive_avg_pool2d-16          	    1880	    691122 ns/op	   95.00 MB/s	    1352 B/op	       6 allocs/op
+BenchmarkKernel_RunVisionDTypes/f16/adaptive_max_pool2d-16          	    1627	    715274 ns/op	   91.79 MB/s	    1352 B/op	       6 allocs/op
+BenchmarkKernel_RunVisionDTypes/bf16/conv1d-16                      	    1778	    650861 ns/op	   31.56 MB/s	    1416 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/bf16/conv2d-16                      	    1803	    556548 ns/op	   62.81 MB/s	    1440 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/bf16/conv3d-16                      	    5856	    197884 ns/op	  135.41 MB/s	    1488 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/bf16/conv_transpose2d-16            	    7365	    142829 ns/op	  259.32 MB/s	    1440 B/op	       9 allocs/op
+BenchmarkKernel_RunVisionDTypes/bf16/max_pool2d-16                  	   10000	    101981 ns/op	 1204.93 MB/s	    1352 B/op	       6 allocs/op
+BenchmarkKernel_RunVisionDTypes/bf16/avg_pool2d-16                  	   12028	     99777 ns/op	 1231.55 MB/s	    1352 B/op	       6 allocs/op
+BenchmarkKernel_RunVisionDTypes/bf16/adaptive_avg_pool2d-16         	   12176	     98928 ns/op	  663.67 MB/s	    1352 B/op	       6 allocs/op
+BenchmarkKernel_RunVisionDTypes/bf16/adaptive_max_pool2d-16         	   12045	    100288 ns/op	  654.68 MB/s	    1352 B/op	       6 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	30.462s
+```
+
+### 2026-05-18 Metal transformer embedding and masking expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `embedding_lookup_{float32,float16,bfloat16}`
+- `embedding_bag_{float32,float16,bfloat16}`
+- `apply_mask_{float32,float16,bfloat16}`
+- `causal_mask_{float32,float16,bfloat16}`
+- `alibi_bias_{float32,float16,bfloat16}`
+
+The public registry entries are `embedding_lookup`, `embedding_bag`,
+`apply_mask`, `causal_mask`, and `alibi_bias` for all three storage
+dtypes. The shaders live in
+`pkg/backend/device/metal/transformer.metal` and run through the
+embedding and masking bridge files under
+`pkg/backend/device/metal/bridge_transformer_*.m`.
+
+Embedding kernels use a device-visible validation buffer. Invalid
+token ids, invalid bag offsets, or out-of-range bag spans set that
+buffer from the shader; the Objective-C completion handler reads it
+after command completion and reports the error through the existing
+Metal completion registry. That prevents out-of-bounds table reads
+without moving embedding math to the host.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}` as hidden width for
+embedding ops, element count for `apply_mask`, and key width for
+`causal_mask` / `alibi_bias`. Float32 copy/add/mask parity is bitwise
+where the operation is exact; float16 and bfloat16 parity use 0- or
+1-ULP bounds on the stored 16-bit representation depending on whether
+the operation accumulates.
+
+RoPE is not promoted in this pass. A direct Metal shader using
+`precise::sin/cos` produced a correct rotation shape but missed a
+defensible ULP contract against the scalar double-reference at small
+cancellation outputs. It needs a different accuracy strategy before it
+can be marked verified.
+
+The Metal dense registry now has 171 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, and 15 transformer embedding/masking signatures.
+
+Focused transformer parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_Metal(Embedding|MaskingAndPositional)DTypes' -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.602s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.029s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	1.137s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.335s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	0.833s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.510s
+```
+
+Metal transformer benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunTransformerDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunTransformerDTypes/f32/embedding_lookup-16         	   10669	    113925 ns/op	 9204.12 MB/s	    1337 B/op	       7 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f32/embedding_bag-16            	   11904	    246126 ns/op	 4792.86 MB/s	    1352 B/op	       8 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f32/apply_mask-16               	    7738	    139846 ns/op	22494.23 MB/s	    1296 B/op	       4 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f32/causal_mask-16              	   10000	    116249 ns/op	 9020.09 MB/s	    1304 B/op	       5 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f32/alibi_bias-16               	   10000	    114753 ns/op	18275.33 MB/s	    1312 B/op	       5 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f16/embedding_lookup-16         	    8182	    343721 ns/op	 1525.33 MB/s	    1336 B/op	       7 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f16/embedding_bag-16            	    5300	    201978 ns/op	 2920.24 MB/s	    1352 B/op	       8 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f16/apply_mask-16               	    5205	    226901 ns/op	 6931.94 MB/s	    1296 B/op	       4 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f16/causal_mask-16              	    4938	    248547 ns/op	 2109.41 MB/s	    1304 B/op	       5 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f16/alibi_bias-16               	    8911	    127825 ns/op	 8203.22 MB/s	    1312 B/op	       5 allocs/op
+BenchmarkKernel_RunTransformerDTypes/bf16/embedding_lookup-16        	   10000	    114930 ns/op	 4561.80 MB/s	    1336 B/op	       7 allocs/op
+BenchmarkKernel_RunTransformerDTypes/bf16/embedding_bag-16           	   11038	    109685 ns/op	 5377.42 MB/s	    1352 B/op	       8 allocs/op
+BenchmarkKernel_RunTransformerDTypes/bf16/apply_mask-16              	   10000	    111599 ns/op	14093.92 MB/s	    1296 B/op	       4 allocs/op
+BenchmarkKernel_RunTransformerDTypes/bf16/causal_mask-16             	   10000	    114130 ns/op	 4593.77 MB/s	    1304 B/op	       5 allocs/op
+BenchmarkKernel_RunTransformerDTypes/bf16/alibi_bias-16              	    9412	    116387 ns/op	 9009.36 MB/s	    1312 B/op	       5 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	21.290s
+```
+
 ### 2026-05-18 Metal projection and LoRA kernel expansion
 
 This adds real Metal device kernels for projection and model-adapter
@@ -1254,7 +1431,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 156 verified dense elementwise + shape + matmul + softmax + normalization + projection/model signatures for `float32`, `float16`, `bfloat16` |
+| 4     | Metal device backend          | 195 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer embedding/masking + vision signatures for `float32`, `float16`, `bfloat16` |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
@@ -1362,7 +1539,13 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_shape_darwin.m` | verified           |
 | `pkg/backend/device/metal/bridge_shape_private.h` | verified          |
 | `pkg/backend/device/metal/bridge_softmax_darwin.m` | verified       |
+| `pkg/backend/device/metal/bridge_transformer_darwin.m` | verified |
+| `pkg/backend/device/metal/bridge_transformer_masking_darwin.m` | verified |
+| `pkg/backend/device/metal/bridge_transformer_private.h` | verified |
 | `pkg/backend/device/metal/bridge_unary_darwin.m` | verified           |
+| `pkg/backend/device/metal/bridge_vision_convolution_darwin.m` | verified |
+| `pkg/backend/device/metal/bridge_vision_darwin.m` | verified       |
+| `pkg/backend/device/metal/bridge_vision_private.h` | verified      |
 | `pkg/backend/device/metal/unary_darwin.go`    | verified              |
 | `pkg/backend/device/metal/elementwise_float32.metal` | verified       |
 | `pkg/backend/device/metal/elementwise_float16.metal` | verified       |
@@ -1373,6 +1556,8 @@ invalidation works.
 | `pkg/backend/device/metal/projection.metal`   | verified              |
 | `pkg/backend/device/metal/shape.metal`        | verified              |
 | `pkg/backend/device/metal/softmax.metal`      | verified              |
+| `pkg/backend/device/metal/transformer.metal`  | verified              |
+| `pkg/backend/device/metal/vision.metal`       | verified              |
 | `pkg/backend/device/metal/elementwise_dtype_darwin.go` | verified    |
 | `pkg/backend/device/metal/elementwise_dtype_test.go` | verified       |
 | `pkg/backend/device/metal/elementwise_dtype_bench_test.go` | verified |
@@ -1396,6 +1581,20 @@ invalidation works.
 | `pkg/backend/device/metal/projection_darwin.go` | verified            |
 | `pkg/backend/device/metal/projection_test.go` | verified              |
 | `pkg/backend/device/metal/projection_bench_test.go` | verified        |
+| `pkg/backend/device/metal/transformer.go`     | verified              |
+| `pkg/backend/device/metal/transformer_darwin.go` | verified           |
+| `pkg/backend/device/metal/transformer_validate_darwin.go` | verified |
+| `pkg/backend/device/metal/transformer_embedding_test.go` | verified |
+| `pkg/backend/device/metal/transformer_masking_test.go` | verified |
+| `pkg/backend/device/metal/transformer_bench_test.go` | verified     |
+| `pkg/backend/device/metal/vision.go`          | verified              |
+| `pkg/backend/device/metal/vision_convolution_darwin.go` | verified |
+| `pkg/backend/device/metal/vision_convolution_test.go` | verified |
+| `pkg/backend/device/metal/vision_convolution_expected_test.go` | verified |
+| `pkg/backend/device/metal/vision_darwin.go`   | verified              |
+| `pkg/backend/device/metal/vision_test.go`     | verified              |
+| `pkg/backend/device/metal/vision_expected_test.go` | verified       |
+| `pkg/backend/device/metal/vision_bench_test.go` | verified            |
 | `pkg/backend/device/metal/shape.go`           | verified              |
 | `pkg/backend/device/metal/shape_darwin.go`    | verified              |
 | `pkg/backend/device/metal/shape_validate_darwin.go` | verified       |
@@ -1452,17 +1651,18 @@ transformer math stack.
 | `pkg/backend/compute/kernels/layernorm.go`        | verified  |
 | `pkg/backend/compute/kernels/layernorm_dtype.go`  | verified  |
 | `pkg/backend/compute/kernels/layernorm_dtype_test.go` | verified |
+| `pkg/backend/compute/kernels/axpy_f32_dispatch_arm64.go` | verified |
+| `pkg/backend/compute/kernels/axpy_f32_dispatch_other.go` | verified |
 | `pkg/backend/compute/kernels/axpy_f32_neon_arm64.s` | verified |
 | `pkg/backend/compute/kernels/axpy_f32_neon_arm64.go` | verified |
 | `pkg/backend/compute/kernels/axpy_f32_neon_arm64_test.go` | verified |
 | `pkg/backend/compute/kernels/kernels_test.go`     | verified  |
 | `pkg/backend/compute/kernels/matmul_test.go`      | verified  |
 
-Still pending: attention variants (flash-attention, alibi, rope,
-sliding window), convolution (vendor primitives), optimizer states
-(Adam/AdamW/Lion/Sophia), quantized inference kernels (GPTQ, AWQ,
-SmoothQuant), FP8 paths, and SIMD `.s` bodies for every kernel
-shipped today.
+Still pending: attention variants (flash-attention, rope,
+sliding window), optimizer states (Adam/AdamW/Lion/Sophia), quantized
+inference kernels (GPTQ, AWQ, SmoothQuant), FP8 paths, and SIMD `.s`
+bodies for every kernel shipped today.
 
 ## Phase 9: sparse
 

@@ -131,14 +131,21 @@ same storage dtypes with tiled threadgroup execution. Metal projection
 and model kernels cover `linear`, `fused_qkv`, `lora_merge`, and
 `lora_apply` for the same storage dtypes; the LoRA apply path stages
 the rank-space intermediate in device scratch storage and submits the
-two GPU stages in one command buffer. Metal softmax covers the same
-storage dtypes with one threadgroup per row, parallel max reduction,
-parallel sum reduction, and normalized dtype-native writes. Metal
-normalization covers `layernorm` and `rmsnorm` for the same storage
-dtypes with row-local parallel reductions and dtype-native writes.
-These families run through the device command queue with async
-completion, pooled `MTLBuffer` storage, and per-kernel pipeline
-caching.
+two GPU stages in one command buffer. Metal transformer support covers
+`embedding_lookup`, `embedding_bag`, `apply_mask`, `causal_mask`, and
+`alibi_bias` for the same storage dtypes; embedding kernels report
+invalid index data through the asynchronous command completion path.
+Metal vision kernels cover `conv1d`, `conv2d`, `conv3d`,
+`conv_transpose2d`, `max_pool2d`, `avg_pool2d`,
+`adaptive_avg_pool2d`, and `adaptive_max_pool2d` for the same storage
+dtypes using NCL/NCHW/NCDHW memory layout and GPU-side accumulation.
+Metal softmax covers the same storage dtypes with one threadgroup per
+row, parallel max reduction, parallel sum reduction, and normalized
+dtype-native writes. Metal normalization covers `layernorm` and
+`rmsnorm` for the same storage dtypes with row-local parallel
+reductions and dtype-native writes. These families run through the
+device command queue with async completion, pooled `MTLBuffer`
+storage, and per-kernel pipeline caching.
 
 Every backend implements the same interface, and the optimizer does the same math everywhere:
 

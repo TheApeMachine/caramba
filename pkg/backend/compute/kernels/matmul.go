@@ -206,22 +206,37 @@ func runMatMulFloat16(args ...tensor.Tensor) error {
 		return err
 	}
 
-	accumulator := make([]float32, rows*cols)
+	// Mixed-dtype matmul per §5.5: f32 accumulation. Same widen→axpy→
+	// narrow approach as BF16 matmul, but via FCVTL/FCVTN for fp16
+	// widening/narrowing.
+	leftF32 := borrowFloat32Buffer(rows * inner)
+	rightF32 := borrowFloat32Buffer(inner * cols)
+	accumulator := borrowFloat32Buffer(rows * cols)
 
-	for rowIndex := 0; rowIndex < rows; rowIndex++ {
-		for innerIndex := 0; innerIndex < inner; innerIndex++ {
-			leftValue := leftView[rowIndex*inner+innerIndex].Float32()
+	defer releaseFloat32Buffer(leftF32)
+	defer releaseFloat32Buffer(rightF32)
+	defer releaseFloat32Buffer(accumulator)
 
-			for colIndex := 0; colIndex < cols; colIndex++ {
-				rightValue := rightView[innerIndex*cols+colIndex].Float32()
-				accumulator[rowIndex*cols+colIndex] += leftValue * rightValue
-			}
+	float16BulkToFloat32(leftF32, leftView)
+	float16BulkToFloat32(rightF32, rightView)
+
+	for index := range accumulator {
+		accumulator[index] = 0
+	}
+
+	for rowIndex := range rows {
+		rowOffset := rowIndex * cols
+		accRow := accumulator[rowOffset : rowOffset+cols]
+
+		for innerIndex := range inner {
+			leftValue := leftF32[rowIndex*inner+innerIndex]
+			rightRow := rightF32[innerIndex*cols : innerIndex*cols+cols]
+
+			axpyFloat32Native(accRow, rightRow, leftValue)
 		}
 	}
 
-	for index, value := range accumulator {
-		outView[index] = dtype.Fromfloat32(value)
-	}
+	float32BulkToFloat16(outView, accumulator)
 
 	return nil
 }
@@ -257,23 +272,40 @@ func runMatMulBFloat16(args ...tensor.Tensor) error {
 		return err
 	}
 
-	// Accumulate in float32 per §5.5 mixed-dtype convention.
-	accumulator := make([]float32, rows*cols)
+	// Mixed-dtype matmul per §5.5: f32 accumulation throughout.
+	// Strategy: bulk-widen both operands to f32 via NEON, run a
+	// rank-1 update kernel against an f32 accumulator (each k step
+	// uses an axpy-style inner loop that the compiler vectorizes via
+	// addFloat32Native), narrow the accumulator back to bf16.
+	leftF32 := borrowFloat32Buffer(rows * inner)
+	rightF32 := borrowFloat32Buffer(inner * cols)
+	accumulator := borrowFloat32Buffer(rows * cols)
 
-	for rowIndex := 0; rowIndex < rows; rowIndex++ {
-		for innerIndex := 0; innerIndex < inner; innerIndex++ {
-			leftValue := (&leftView[rowIndex*inner+innerIndex]).Float32()
+	defer releaseFloat32Buffer(leftF32)
+	defer releaseFloat32Buffer(rightF32)
+	defer releaseFloat32Buffer(accumulator)
 
-			for colIndex := 0; colIndex < cols; colIndex++ {
-				rightValue := (&rightView[innerIndex*cols+colIndex]).Float32()
-				accumulator[rowIndex*cols+colIndex] += leftValue * rightValue
-			}
+	bfloat16BulkToFloat32(leftF32, leftView)
+	bfloat16BulkToFloat32(rightF32, rightView)
+
+	for index := range accumulator {
+		accumulator[index] = 0
+	}
+
+	for rowIndex := range rows {
+		rowOffset := rowIndex * cols
+		accRow := accumulator[rowOffset : rowOffset+cols]
+
+		for innerIndex := range inner {
+			leftValue := leftF32[rowIndex*inner+innerIndex]
+			rightRow := rightF32[innerIndex*cols : innerIndex*cols+cols]
+
+			// accRow += leftValue * rightRow — single-pass NEON axpy.
+			axpyFloat32Native(accRow, rightRow, leftValue)
 		}
 	}
 
-	for index, value := range accumulator {
-		outView[index] = dtype.NewBfloat16FromFloat32(value)
-	}
+	float32BulkToBFloat16(outView, accumulator)
 
 	return nil
 }

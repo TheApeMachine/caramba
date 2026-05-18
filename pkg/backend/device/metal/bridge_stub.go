@@ -279,3 +279,136 @@ func runMetalLoRAApply(
 
 	return tensor.ErrNeedsPlatformSetup
 }
+
+func runMetalEmbeddingLookup(
+	table tensor.Tensor,
+	indices tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = table
+	_ = indices
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalEmbeddingBag(
+	table tensor.Tensor,
+	indices tensor.Tensor,
+	offsets tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = table
+	_ = indices
+	_ = offsets
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalApplyMask(input tensor.Tensor, mask tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = mask
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalCausalMask(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalALiBiBias(scores tensor.Tensor, slope tensor.Tensor, out tensor.Tensor) error {
+	_ = scores
+	_ = slope
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalConv2D(
+	input tensor.Tensor,
+	weight tensor.Tensor,
+	bias tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = input
+	_ = weight
+	_ = bias
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalConv1D(
+	input tensor.Tensor,
+	weight tensor.Tensor,
+	bias tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = input
+	_ = weight
+	_ = bias
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalConv3D(
+	input tensor.Tensor,
+	weight tensor.Tensor,
+	bias tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = input
+	_ = weight
+	_ = bias
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalConvTranspose2D(
+	input tensor.Tensor,
+	weight tensor.Tensor,
+	bias tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = input
+	_ = weight
+	_ = bias
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalMaxPool2D(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalAvgPool2D(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalAdaptiveAvgPool2D(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalAdaptiveMaxPool2D(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}

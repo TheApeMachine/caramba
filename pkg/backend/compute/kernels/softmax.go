@@ -163,15 +163,11 @@ func softmaxDims(input tensor.Tensor, out tensor.Tensor) (int, int, error) {
 findRowMax returns the maximum value in the row.
 */
 func findRowMax(row []float32) float32 {
-	maximum := row[0]
-
-	for _, candidate := range row[1:] {
-		if candidate > maximum {
-			maximum = candidate
-		}
+	if len(row) == 0 {
+		return 0
 	}
 
-	return maximum
+	return reduceMaxFloat32Native(row)
 }
 
 func findRowMaxFloat16(row []dtype.F16) float32 {

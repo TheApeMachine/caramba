@@ -190,16 +190,22 @@ func runRMSNormFloat32(args ...tensor.Tensor) error {
 }
 
 func applyRMSRow(row, outRow, scale []float32) {
-	var meanSquare float64
-
-	for _, value := range row {
-		meanSquare += float64(value) * float64(value)
-	}
-
-	meanSquare /= float64(len(row))
+	// Sum of squares via the NEON dot kernel (f64 accumulation
+	// internally) — single-pass and ~64 GB/s for the f32 path.
+	sumOfSquares := dotFloat32Native(row, row)
+	meanSquare := float64(sumOfSquares) / float64(len(row))
 	invRMS := 1.0 / math.Sqrt(meanSquare+rmsNormEpsilon)
+	invRMSf32 := float32(invRMS)
 
-	for index, value := range row {
-		outRow[index] = float32(float64(value)*invRMS) * scale[index]
+	// Vectorized output: outRow[i] = row[i] * (invRMS * scale[i]).
+	// Borrow a scratch buffer for the combined factor so the inner
+	// multiply runs through mulFloat32Native (NEON FMUL .4S).
+	combined := borrowFloat32Buffer(len(row))
+	defer releaseFloat32Buffer(combined)
+
+	for index := range scale {
+		combined[index] = invRMSf32 * scale[index]
 	}
+
+	mulFloat32Native(outRow, row, combined)
 }

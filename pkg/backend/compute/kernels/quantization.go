@@ -1,8 +1,6 @@
 package kernels
 
 import (
-	"math"
-
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
@@ -139,10 +137,7 @@ func DequantInt4Float32(
 		return tensor.ErrShapeMismatch
 	}
 
-	for index := range outView {
-		nibble := pairs.Get(index)
-		outView[index] = float32(int(nibble)-int(config.ZeroPoint)) * config.Scale
-	}
+	dequantInt4Native(outView, pairs, config.Scale, config.ZeroPoint)
 
 	return nil
 }
@@ -179,18 +174,7 @@ func QuantInt8Float32(
 		return tensor.ErrShapeMismatch
 	}
 
-	for index, value := range inputView {
-		scaled := math.Round(float64(value/config.Scale)) + float64(config.ZeroPoint)
-
-		switch {
-		case scaled > float64(math.MaxInt8):
-			outView[index] = math.MaxInt8
-		case scaled < float64(math.MinInt8):
-			outView[index] = math.MinInt8
-		default:
-			outView[index] = int8(scaled)
-		}
-	}
+	quantInt8Native(outView, inputView, config.Scale, config.ZeroPoint)
 
 	return nil
 }

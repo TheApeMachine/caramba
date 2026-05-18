@@ -2,6 +2,7 @@
 #define CARAMBA_BACKEND_DEVICE_METAL_BRIDGE_DARWIN_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define METAL_STATUS_MESSAGE_BYTES 1024
 
@@ -290,6 +291,154 @@ int metal_dispatch_lora_apply(
     uint32_t inner,
     uint32_t rank,
     uint32_t outDim,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_embedding_lookup(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef tableRef,
+    MetalBufferRef indicesRef,
+    MetalBufferRef outRef,
+    uint32_t vocab,
+    uint32_t hidden,
+    uint32_t indexCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_embedding_bag(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef tableRef,
+    MetalBufferRef indicesRef,
+    MetalBufferRef offsetsRef,
+    MetalBufferRef outRef,
+    uint32_t vocab,
+    uint32_t hidden,
+    uint32_t indexCount,
+    uint32_t bagCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_apply_mask(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef maskRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_causal_mask(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef outRef,
+    uint32_t rows,
+    uint32_t cols,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_alibi_bias(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef scoresRef,
+    MetalBufferRef slopeRef,
+    MetalBufferRef outRef,
+    uint32_t rows,
+    uint32_t cols,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_conv1d(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef weightRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t inChannels,
+    uint32_t inLength,
+    uint32_t outChannels,
+    uint32_t kernelLength,
+    uint32_t outLength,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_conv2d(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef weightRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t inChannels,
+    uint32_t inHeight,
+    uint32_t inWidth,
+    uint32_t outChannels,
+    uint32_t kernelHeight,
+    uint32_t kernelWidth,
+    uint32_t outHeight,
+    uint32_t outWidth,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_conv3d(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef weightRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t inChannels,
+    uint32_t inDepth,
+    uint32_t inHeight,
+    uint32_t inWidth,
+    uint32_t outChannels,
+    uint32_t kernelDepth,
+    uint32_t kernelHeight,
+    uint32_t kernelWidth,
+    uint32_t outDepth,
+    uint32_t outHeight,
+    uint32_t outWidth,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_conv_transpose2d(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef weightRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t inChannels,
+    uint32_t inHeight,
+    uint32_t inWidth,
+    uint32_t outChannels,
+    uint32_t kernelHeight,
+    uint32_t kernelWidth,
+    uint32_t outHeight,
+    uint32_t outWidth,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_pool2d(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t channels,
+    uint32_t inHeight,
+    uint32_t inWidth,
+    uint32_t outHeight,
+    uint32_t outWidth,
+    bool useMax,
+    bool adaptive,
     uint64_t completionToken,
     MetalStatus* status
 );

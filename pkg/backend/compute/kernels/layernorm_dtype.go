@@ -84,12 +84,25 @@ func runRMSNormFloat16(args ...tensor.Tensor) error {
 
 	rows := len(input) / lastDim
 
+	// Bulk widen via NEON; run vectorized f32 RMSNorm; bulk narrow.
+	inputF32 := borrowFloat32Buffer(len(input))
+	scaleF32 := borrowFloat32Buffer(lastDim)
+	outF32 := borrowFloat32Buffer(len(input))
+
+	defer releaseFloat32Buffer(inputF32)
+	defer releaseFloat32Buffer(scaleF32)
+	defer releaseFloat32Buffer(outF32)
+
+	float16BulkToFloat32(inputF32, input)
+	float16BulkToFloat32(scaleF32, scale)
+
 	for rowIndex := range rows {
-		row := input[rowIndex*lastDim : (rowIndex+1)*lastDim]
-		outRow := out[rowIndex*lastDim : (rowIndex+1)*lastDim]
-		applyRMSNormFloat16Row(row, outRow, scale)
+		row := inputF32[rowIndex*lastDim : (rowIndex+1)*lastDim]
+		outRow := outF32[rowIndex*lastDim : (rowIndex+1)*lastDim]
+		applyRMSRow(row, outRow, scaleF32)
 	}
 
+	float32BulkToFloat16(out, outF32)
 	return nil
 }
 
@@ -101,12 +114,24 @@ func runRMSNormBFloat16(args ...tensor.Tensor) error {
 
 	rows := len(input) / lastDim
 
+	inputF32 := borrowFloat32Buffer(len(input))
+	scaleF32 := borrowFloat32Buffer(lastDim)
+	outF32 := borrowFloat32Buffer(len(input))
+
+	defer releaseFloat32Buffer(inputF32)
+	defer releaseFloat32Buffer(scaleF32)
+	defer releaseFloat32Buffer(outF32)
+
+	bfloat16BulkToFloat32(inputF32, input)
+	bfloat16BulkToFloat32(scaleF32, scale)
+
 	for rowIndex := range rows {
-		row := input[rowIndex*lastDim : (rowIndex+1)*lastDim]
-		outRow := out[rowIndex*lastDim : (rowIndex+1)*lastDim]
-		applyRMSNormBFloat16Row(row, outRow, scale)
+		row := inputF32[rowIndex*lastDim : (rowIndex+1)*lastDim]
+		outRow := outF32[rowIndex*lastDim : (rowIndex+1)*lastDim]
+		applyRMSRow(row, outRow, scaleF32)
 	}
 
+	float32BulkToBFloat16(out, outF32)
 	return nil
 }
 
