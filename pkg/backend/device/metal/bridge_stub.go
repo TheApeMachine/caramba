@@ -56,7 +56,22 @@ func (bridge *metalBridge) close() error {
 	return nil
 }
 
-func runMetalAddFloat32(left, right, out tensor.Tensor) error {
+type metalBinaryFloat32Operation int
+
+const (
+	metalBinaryFloat32Add metalBinaryFloat32Operation = iota
+	metalBinaryFloat32Sub
+	metalBinaryFloat32Mul
+	metalBinaryFloat32Div
+)
+
+func runMetalBinaryFloat32(
+	operation metalBinaryFloat32Operation,
+	left tensor.Tensor,
+	right tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = operation
 	_ = left
 	_ = right
 	_ = out

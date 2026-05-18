@@ -29,57 +29,65 @@ to the commit message that promotes it.
 Focused Metal device tests:
 
 ```
-=== RUN   TestNewBackend
+=== RUN   TestBackend_Capabilities
 
-  Given the Metal backend constructor ✔✔
+  Capabilities should report Apple-recommended alignment ✔✔
 
 
 2 total assertions
 
---- PASS: TestNewBackend (0.04s)
-=== RUN   TestBackend_UploadDownloadFloat32
+--- PASS: TestBackend_Capabilities (0.00s)
+=== RUN   TestBackend_Capabilities_Device
 
-  Given a Metal float32 tensor upload ✔✔✔✔✔✔✔
+  Given an opened Metal backend ✔✔
 
 
-9 total assertions
+4 total assertions
 
---- PASS: TestBackend_UploadDownloadFloat32 (0.00s)
+--- PASS: TestBackend_Capabilities_Device (0.05s)
+=== RUN   TestBackend_UploadAsyncFloat32
+
+  Given an async Metal float32 tensor upload ✔✔✔
+
+
+7 total assertions
+
+--- PASS: TestBackend_UploadAsyncFloat32 (0.00s)
 === RUN   TestBackend_AddFloat32
 === RUN   TestBackend_AddFloat32/N=1
 
   Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
 
 
-17 total assertions
+15 total assertions
 
 === RUN   TestBackend_AddFloat32/N=7
 
   Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
 
 
-25 total assertions
+23 total assertions
 
 === RUN   TestBackend_AddFloat32/N=64
 
   Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
 
 
-33 total assertions
+31 total assertions
 
 === RUN   TestBackend_AddFloat32/N=1024
 
   Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
 
 
-41 total assertions
+39 total assertions
 
 === RUN   TestBackend_AddFloat32/N=8192
 
   Given two Metal float32 tensors ✔✔✔✔✔✔✔✔
 
 
-49 total assertions
+47 total assertions
 
 --- PASS: TestBackend_AddFloat32 (0.01s)
     --- PASS: TestBackend_AddFloat32/N=1 (0.00s)
@@ -87,16 +95,40 @@ Focused Metal device tests:
     --- PASS: TestBackend_AddFloat32/N=64 (0.00s)
     --- PASS: TestBackend_AddFloat32/N=1024 (0.00s)
     --- PASS: TestBackend_AddFloat32/N=8192 (0.00s)
+=== RUN   TestBackend_AddFloat32_CloseInputsBeforeDownload
+
+  Given a queued Metal add whose inputs are closed immediately ✔✔✔✔✔✔✔
+
+
+54 total assertions
+
+--- PASS: TestBackend_AddFloat32_CloseInputsBeforeDownload (0.01s)
+=== RUN   TestBackend_AddFloat32_CloseOutputBeforeCompletion
+
+  Given a queued Metal add whose output is closed immediately ✔✔✔✔✔✔✔✔
+
+
+62 total assertions
+
+--- PASS: TestBackend_AddFloat32_CloseOutputBeforeCompletion (0.01s)
+=== RUN   TestMetalBufferPool_AlignedBuckets
+
+  Given closed Metal tensors with nearby byte sizes ✔✔✔✔✔✔✔✔✔
+
+
+71 total assertions
+
+--- PASS: TestMetalBufferPool_AlignedBuckets (0.00s)
 === RUN   TestKernelRegistry_MetalAddFloat32
 
   Given the device kernel registry ✔✔✔✔✔✔✔✔✔✔
 
 
-59 total assertions
+81 total assertions
 
 --- PASS: TestKernelRegistry_MetalAddFloat32 (0.01s)
 PASS
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.653s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.683s
 ```
 
 Metal library generator tests:
@@ -133,11 +165,11 @@ ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallib
 Focused package sweep:
 
 ```
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.302s
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.959s
-ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.758s
-ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	1.277s
-ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	0.471s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.383s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.722s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.372s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	1.780s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.066s
 ```
 
 Metal benchmark output:
@@ -147,31 +179,33 @@ goos: darwin
 goarch: arm64
 pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
 cpu: Apple M4 Max
-BenchmarkNewBackend-16              	    8492	    142513 ns/op	    1264 B/op	       4 allocs/op
-BenchmarkBackend_AddFloat32/N=1-16  	    9727	    116965 ns/op	   0.10 MB/s	    1521 B/op	       6 allocs/op
-BenchmarkBackend_AddFloat32/N=7-16  	   10000	    111639 ns/op	   0.75 MB/s	    1520 B/op	       6 allocs/op
-BenchmarkBackend_AddFloat32/N=64-16 	   10000	    111633 ns/op	   6.88 MB/s	    1520 B/op	       6 allocs/op
-BenchmarkBackend_AddFloat32/N=1024-16         	   10000	    110222 ns/op	 111.48 MB/s	    1520 B/op	       6 allocs/op
-BenchmarkBackend_AddFloat32/N=8192-16         	   10000	    106858 ns/op	 919.95 MB/s	    1520 B/op	       6 allocs/op
-BenchmarkKernel_RunAddFloat32/N=1-16          	   10594	    113950 ns/op	   0.11 MB/s	    1264 B/op	       2 allocs/op
-BenchmarkKernel_RunAddFloat32/N=7-16          	   10000	    114260 ns/op	   0.74 MB/s	    1264 B/op	       2 allocs/op
-BenchmarkKernel_RunAddFloat32/N=64-16         	   10000	    114239 ns/op	   6.72 MB/s	    1264 B/op	       2 allocs/op
-BenchmarkKernel_RunAddFloat32/N=1024-16       	   10000	    115498 ns/op	 106.39 MB/s	    1264 B/op	       2 allocs/op
-BenchmarkKernel_RunAddFloat32/N=8192-16       	   10000	    111902 ns/op	 878.49 MB/s	    1264 B/op	       2 allocs/op
+BenchmarkNewBackend-16              	    5760	    176067 ns/op	    1264 B/op	       4 allocs/op
+BenchmarkBackend_AddFloat32/N=1-16  	   10053	    117761 ns/op	   0.10 MB/s	    1545 B/op	       7 allocs/op
+BenchmarkBackend_AddFloat32/N=7-16  	   10000	    113283 ns/op	   0.74 MB/s	    1544 B/op	       7 allocs/op
+BenchmarkBackend_AddFloat32/N=64-16 	   10000	    113181 ns/op	   6.79 MB/s	    1544 B/op	       7 allocs/op
+BenchmarkBackend_AddFloat32/N=1024-16         	   10000	    112788 ns/op	 108.95 MB/s	    1544 B/op	       7 allocs/op
+BenchmarkBackend_AddFloat32/N=8192-16         	   10000	    115343 ns/op	 852.28 MB/s	    1544 B/op	       7 allocs/op
+BenchmarkKernel_RunAddFloat32/N=1-16          	    8244	    122634 ns/op	   0.10 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunAddFloat32/N=7-16          	    9357	    123086 ns/op	   0.68 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunAddFloat32/N=64-16         	   10000	    123314 ns/op	   6.23 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunAddFloat32/N=1024-16       	   10000	    126174 ns/op	  97.39 MB/s	    1288 B/op	       3 allocs/op
+BenchmarkKernel_RunAddFloat32/N=8192-16       	   10000	    123755 ns/op	 794.34 MB/s	    1288 B/op	       3 allocs/op
 PASS
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	12.912s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	12.888s
 ```
 
 This slice adds `pkg/backend/device/metal/add_float32.metal`,
 `pkg/backend/device/metal/kernels.metallib`, a reproducible
-`go generate ./pkg/backend/device/metal` path, a pooled `MTLBuffer`
-upload/download path with finalizers, a `newLibraryWithData` Metal
-library load, asynchronous command submission with completion callbacks
-and tensor readiness tracking, `threadExecutionWidth` threadgroups, a
-`float4` vectorized add body with scalar tail handling, and a
-Metal-specific kernel registry entry resolved through `LookupLocation`.
-Metal capabilities report `SupportsAsync: false` because upload returns
-a ready tensor; compute dispatch itself is asynchronous.
+`go generate ./pkg/backend/device/metal` path, a 256-byte bucketed
+`MTLBuffer` pool, non-blocking tensor `Close`, finalizer-safe cleanup,
+in-flight input/output use tracking, asynchronous upload, asynchronous
+command submission with completion callbacks and tensor readiness
+tracking, `threadExecutionWidth` threadgroups, a `float4` vectorized
+add body with scalar tail handling, `@autoreleasepool` coverage for
+Metal library opening, buffer allocation, dispatch, and completion
+handler error formatting, and a Metal-specific kernel registry entry
+resolved through `LookupLocation`. Metal capabilities report
+`SupportsAsync: true` when the real bridge is open.
 
 ### 2026-05-18 Phase 7 slice
 

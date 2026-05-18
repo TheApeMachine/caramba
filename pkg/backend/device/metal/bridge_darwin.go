@@ -310,7 +310,21 @@ func alignBufferSize(bytes int) int {
 	return bytes + padding
 }
 
-func runMetalAddFloat32(left, right, out tensor.Tensor) error {
+type metalBinaryFloat32Operation int
+
+const (
+	metalBinaryFloat32Add metalBinaryFloat32Operation = iota
+	metalBinaryFloat32Sub
+	metalBinaryFloat32Mul
+	metalBinaryFloat32Div
+)
+
+func runMetalBinaryFloat32(
+	operation metalBinaryFloat32Operation,
+	left tensor.Tensor,
+	right tensor.Tensor,
+	out tensor.Tensor,
+) error {
 	leftTensor, err := requireMetalTensor(left)
 	if err != nil {
 		return err
@@ -359,8 +373,9 @@ func runMetalAddFloat32(left, right, out tensor.Tensor) error {
 	}
 
 	status := C.MetalStatus{}
-	rc := C.metal_dispatch_add_float32(
+	rc := C.metal_dispatch_binary_float32(
 		leftTensor.bridge.device,
+		C.int(operation),
 		leftTensor.buffer,
 		rightTensor.buffer,
 		outTensor.buffer,
@@ -370,7 +385,7 @@ func runMetalAddFloat32(left, right, out tensor.Tensor) error {
 	)
 
 	if rc != 0 {
-		err := fmt.Errorf("metal add float32: %s", metalStatus("dispatch", status))
+		err := fmt.Errorf("metal binary float32: %s", metalStatus("dispatch", status))
 		metalCompletions.Fail(token, err)
 		return err
 	}
