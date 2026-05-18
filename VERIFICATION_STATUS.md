@@ -24,6 +24,94 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal active-inference expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `free_energy`
+- `expected_free_energy`
+- `belief_update`
+- `precision_weight`
+
+`free_energy` and `expected_free_energy` run chunked fp32 partial
+reductions into a device scratch tensor and finish with a second
+device reduction stage before narrowing to the output dtype.
+`belief_update` runs one reduction stage for the product normalizer,
+then writes the normalized posterior from the same command buffer.
+`precision_weight` runs one Metal thread per prediction-error element.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}` for every active
+inference dtype case. Expected values mirror the Metal reduction
+order and are computed from dtype-stored inputs before ULP checks.
+
+The Metal dense registry now has 339 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 30 transformer attention/embedding/masking, 24
+vision, 30 optimizer, 3 quantization, 18 loss, 33 reduction, 9 math
+utility, 24 research VSA/predictive-coding signatures, and 12 active
+inference signatures.
+
+Focused parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalActiveInferenceDTypes' -count=1 -v
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f32
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f32/N=1
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f32/N=7
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f32/N=64
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f32/N=1024
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f32/N=8192
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f16
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f16/N=1
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f16/N=7
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f16/N=64
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f16/N=1024
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/f16/N=8192
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/bf16
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/bf16/N=1
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/bf16/N=7
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/bf16/N=64
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/bf16/N=1024
+=== RUN   TestKernelRegistry_MetalActiveInferenceDTypes/bf16/N=8192
+--- PASS: TestKernelRegistry_MetalActiveInferenceDTypes (0.19s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.730s
+```
+
+Metal active-inference benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunActiveInferenceDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunActiveInferenceDTypes/f32/free_energy-16         	   10160	    115054 ns/op	1139.26 MB/s	    1737 B/op	       9 allocs/op
+BenchmarkKernel_RunActiveInferenceDTypes/f32/expected_free_energy-16         	    9571	    111371 ns/op	 882.71 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunActiveInferenceDTypes/f32/belief_update-16                	    9429	    113742 ns/op	 864.27 MB/s	    1696 B/op	       9 allocs/op
+BenchmarkKernel_RunActiveInferenceDTypes/f32/precision_weight-16             	   10000	    108701 ns/op	 904.35 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunActiveInferenceDTypes/f16/free_energy-16                  	   10000	    109350 ns/op	 599.34 MB/s	    1736 B/op	       9 allocs/op
+BenchmarkKernel_RunActiveInferenceDTypes/f16/expected_free_energy-16         	   10000	    105363 ns/op	 466.52 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunActiveInferenceDTypes/f16/belief_update-16                	    9951	    114271 ns/op	 430.14 MB/s	    1696 B/op	       9 allocs/op
+BenchmarkKernel_RunActiveInferenceDTypes/f16/precision_weight-16             	   10000	    106094 ns/op	 463.29 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunActiveInferenceDTypes/bf16/free_energy-16                 	   10000	    108078 ns/op	 606.40 MB/s	    1736 B/op	       9 allocs/op
+BenchmarkKernel_RunActiveInferenceDTypes/bf16/expected_free_energy-16        	   10000	    105979 ns/op	 463.81 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunActiveInferenceDTypes/bf16/belief_update-16               	   10000	    113089 ns/op	 434.63 MB/s	    1696 B/op	       9 allocs/op
+BenchmarkKernel_RunActiveInferenceDTypes/bf16/precision_weight-16            	   10000	    109168 ns/op	 450.24 MB/s	    1320 B/op	       5 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	13.392s
+```
+
+Full Metal package sweep:
+
+```
+go test ./pkg/backend/device/metal/... -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	7.256s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.612s
+```
+
 ### 2026-05-18 Metal VSA / predictive-coding expansion and normalization repair
 
 This adds real Metal device kernels across `float32`, `float16`, and
@@ -2055,7 +2143,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 327 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer attention/embedding/masking + vision + optimizer + quantization + loss + reduction + math utility + research VSA/predictive-coding signatures |
+| 4     | Metal device backend          | 339 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer attention/embedding/masking + vision + optimizer + quantization + loss + reduction + math utility + research VSA/predictive-coding + active-inference signatures |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |

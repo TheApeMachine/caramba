@@ -173,9 +173,13 @@ dtype-native writes. Metal research kernels cover `vsa_bind`,
 `vsa_bundle`, `vsa_permute`, `vsa_inverse_permute`, `pc_prediction`,
 `pc_prediction_error`, `pc_update_representation`, and
 `pc_update_weights` for the same storage dtypes, using fp32
-accumulation for predictive-coding matrix/vector contractions. These
-families run through the device command queue with async completion,
-pooled `MTLBuffer` storage, and per-kernel pipeline caching.
+accumulation for predictive-coding matrix/vector contractions. Metal
+active-inference kernels cover `free_energy`, `expected_free_energy`,
+`belief_update`, and `precision_weight` for the same storage dtypes,
+using fp32 scratch reductions for scalar free-energy objectives and
+belief normalization. These families run through the device command
+queue with async completion, pooled `MTLBuffer` storage, and
+per-kernel pipeline caching.
 
 Every backend implements the same interface, and the optimizer does the same math everywhere:
 

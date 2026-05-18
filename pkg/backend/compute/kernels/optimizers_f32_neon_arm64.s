@@ -388,3 +388,164 @@ rms_loop4:
 
 rms_done:
     RET
+
+// FCMGT (zero) vector .4S — V_d = (V_n > 0) ? all-ones : 0
+#define VFCMGTZ_S4(n, d) WORD $(0x4EA0C800 | ((n) << 5) | (d))
+// FCMLT (zero) vector .4S — V_d = (V_n < 0) ? all-ones : 0
+#define VFCMLTZ_S4(n, d) WORD $(0x4EA0E800 | ((n) << 5) | (d))
+// AND .B16 already implicit via VAND? add macro
+#define VAND_B16(m, n, d)   WORD $(0x4E201C00 | ((m) << 16) | ((n) << 5) | (d))
+// BIC .B16 (Vd = Vn AND NOT Vm)
+#define VBIC_B16(m, n, d)   WORD $(0x4E601C00 | ((m) << 16) | ((n) << 5) | (d))
+// FNEG .4S
+#define VFNEG_S4(n, d)      WORD $(0x6EA0F800 | ((n) << 5) | (d))
+
+// func lionStepFloat32NEONAsm(
+//     params, grad, momentum, output *float32,
+//     n int,
+//     lr, beta1, beta2, weightDecay float32,
+// )
+//
+// update = beta1*momentum + (1-beta1)*grad
+// sign(update): +1 if >0, -1 if <0, else 0
+// momentum := beta2*momentum + (1-beta2)*grad
+// output = params - lr*(sign + weightDecay*params)
+TEXT ·lionStepFloat32NEONAsm(SB), NOSPLIT, $0-56
+    MOVD params+0(FP), R0
+    MOVD grad+8(FP), R1
+    MOVD momentum+16(FP), R2
+    MOVD output+24(FP), R3
+    MOVD n+32(FP), R4
+
+    FMOVS lr+40(FP), F16        ; VDUP V16.S[0], V16.S4
+    FMOVS beta1+44(FP), F17     ; VDUP V17.S[0], V17.S4
+    FMOVS beta2+48(FP), F18     ; VDUP V18.S[0], V18.S4
+    FMOVS weightDecay+52(FP), F19 ; VDUP V19.S[0], V19.S4
+
+    MOVD $0x3F800000, R6
+    VMOV R6, V22.S[0]
+    VDUP V22.S[0], V22.S4         // 1.0
+    VFSUB_S4(17, 22, 23)          // V23 = 1 - beta1
+    VFSUB_S4(18, 22, 24)          // V24 = 1 - beta2
+
+    // V25 = -1.0 (bit pattern 0xBF800000)
+    MOVD $0xBF800000, R6
+    VMOV R6, V25.S[0]
+    VDUP V25.S[0], V25.S4
+
+lion_loop4:
+    CMP  $4, R4
+    BLT  lion_done
+    VLD1 (R0), [V0.S4]
+    VLD1 (R1), [V1.S4]
+    VLD1 (R2), [V2.S4]
+    // V3 = beta1*momentum + (1-beta1)*grad
+    VFMUL_S4(17, 2, 3)
+    VFMLA_S4(1, 23, 3)
+    // sign(V3): build mask_pos = (V3 > 0), mask_neg = (V3 < 0)
+    // sign = (1.0 AND mask_pos) OR (-1.0 AND mask_neg)
+    VFCMGTZ_S4(3, 4)              // V4 = pos mask
+    VFCMLTZ_S4(3, 5)              // V5 = neg mask
+    VAND_B16(4, 22, 6)            // V6 = mask_pos & 1.0
+    VAND_B16(5, 25, 7)            // V7 = mask_neg & -1.0
+    WORD $(0x4EA01C00 | (7 << 16) | (6 << 5) | 6)  // VORR V7, V6, V6 → V6 |= V7
+    // step = lr * (sign + weightDecay*params)
+    // V8 = weightDecay*params + sign
+    WORD $(0x4EA01C00 | (6 << 16) | (6 << 5) | 8)   // VMOV V6.B16, V8.B16 (V8 = V6)
+    VFMLA_S4(0, 19, 8)            // V8 = sign + wd*params (FMLA Vd += Vn*Vm)
+    VFMUL_S4(16, 8, 8)            // V8 *= lr
+    VFSUB_S4(8, 0, 0)             // params -= step
+    // momentum := beta2*momentum + (1-beta2)*grad
+    VFMUL_S4(18, 2, 2)
+    VFMLA_S4(1, 24, 2)
+    VST1 [V2.S4], (R2)
+    VST1 [V0.S4], (R3)
+    ADD  $16, R0
+    ADD  $16, R1
+    ADD  $16, R2
+    ADD  $16, R3
+    SUB  $4, R4
+    B    lion_loop4
+
+lion_done:
+    RET
+
+// func lbfgsStepFloat32NEONAsm(
+//     params, grad, output *float32,
+//     n int,
+//     lr float32,
+// )
+//
+// Simple gradient descent: out = params - lr*grad
+TEXT ·lbfgsStepFloat32NEONAsm(SB), NOSPLIT, $0-36
+    MOVD params+0(FP), R0
+    MOVD grad+8(FP), R1
+    MOVD output+16(FP), R2
+    MOVD n+24(FP), R3
+    FMOVS lr+32(FP), F16 ; VDUP V16.S[0], V16.S4
+
+lbfgs_loop4:
+    CMP  $4, R3
+    BLT  lbfgs_done
+    VLD1 (R0), [V0.S4]
+    VLD1 (R1), [V1.S4]
+    VFMUL_S4(16, 1, 1)
+    VFSUB_S4(1, 0, 0)
+    VST1 [V0.S4], (R2)
+    ADD  $16, R0
+    ADD  $16, R1
+    ADD  $16, R2
+    SUB  $4, R3
+    B    lbfgs_loop4
+
+lbfgs_done:
+    RET
+
+// func larsStepFloat32NEONAsm(
+//     params, grad, momentum, output *float32,
+//     n int,
+//     lr, momentumFactor, weightDecay float32,
+//     effectiveLr float32,
+// )
+//
+// Caller pre-computes the trust-ratio-scaled effectiveLr. The inner
+// loop is then identical to SGD with that effective LR:
+//   effective = grad + weightDecay*params
+//   momentum = momentumFactor*momentum + effective
+//   output = params - effectiveLr * momentum
+TEXT ·larsStepFloat32NEONAsm(SB), NOSPLIT, $0-56
+    MOVD params+0(FP), R0
+    MOVD grad+8(FP), R1
+    MOVD momentum+16(FP), R2
+    MOVD output+24(FP), R3
+    MOVD n+32(FP), R4
+
+    FMOVS momentumFactor+44(FP), F17 ; VDUP V17.S[0], V17.S4
+    FMOVS weightDecay+48(FP), F18    ; VDUP V18.S[0], V18.S4
+    FMOVS effectiveLr+52(FP), F16    ; VDUP V16.S[0], V16.S4
+
+lars_loop4:
+    CMP  $4, R4
+    BLT  lars_done
+    VLD1 (R0), [V0.S4]
+    VLD1 (R1), [V1.S4]
+    VLD1 (R2), [V2.S4]
+    // effective = grad + weightDecay*params (FMLA into V1)
+    VFMLA_S4(0, 18, 1)
+    // momentum = momentumFactor*momentum + effective
+    VFMUL_S4(17, 2, 2)
+    VFADD_S4(1, 2, 2)
+    // out = params - effectiveLr*momentum
+    VFMUL_S4(16, 2, 3)
+    VFSUB_S4(3, 0, 0)
+    VST1 [V2.S4], (R2)
+    VST1 [V0.S4], (R3)
+    ADD  $16, R0
+    ADD  $16, R1
+    ADD  $16, R2
+    ADD  $16, R3
+    SUB  $4, R4
+    B    lars_loop4
+
+lars_done:
+    RET

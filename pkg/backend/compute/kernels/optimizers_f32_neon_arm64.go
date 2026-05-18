@@ -43,3 +43,24 @@ func rmspropStepFloat32NEONAsm(
 	n int,
 	lr, decay, eps float32,
 )
+
+//go:noescape
+func lionStepFloat32NEONAsm(
+	params, grad, momentum, output *float32,
+	n int,
+	lr, beta1, beta2, weightDecay float32,
+)
+
+//go:noescape
+func lbfgsStepFloat32NEONAsm(
+	params, grad, output *float32,
+	n int,
+	lr float32,
+)
+
+//go:noescape
+func larsStepFloat32NEONAsm(
+	params, grad, momentum, output *float32,
+	n int,
+	lr, momentumFactor, weightDecay, effectiveLr float32,
+)
