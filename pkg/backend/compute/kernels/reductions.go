@@ -69,6 +69,44 @@ func registerReduceBFloat16(name string, run func(args ...tensor.Tensor) error) 
 	})
 }
 
+func registerReduceFloat16(name string, run func(args ...tensor.Tensor) error) {
+	Default.Register(Kernel{
+		Name: name,
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       run,
+	})
+}
+
+func runSumFloat16(args ...tensor.Tensor) error {
+	if len(args) != 2 {
+		return tensor.ErrShapeMismatch
+	}
+
+	input, err := args[0].Float16Native()
+
+	if err != nil {
+		return err
+	}
+
+	out, err := args[1].Float16Native()
+
+	if err != nil {
+		return err
+	}
+
+	if len(out) < 1 || len(input) == 0 {
+		return tensor.ErrShapeMismatch
+	}
+
+	out[0] = sumFloat16Native(input)
+	return nil
+}
+
 func runSumBFloat16(args ...tensor.Tensor) error {
 	if len(args) != 2 {
 		return tensor.ErrShapeMismatch
@@ -97,6 +135,7 @@ func runSumBFloat16(args ...tensor.Tensor) error {
 func init() {
 	registerReduce("sum", sumFloat32Native)
 	registerReduceBFloat16("sum", runSumBFloat16)
+	registerReduceFloat16("sum", runSumFloat16)
 
 	registerReduce("mean", func(values []float32) float32 {
 		var sum float64

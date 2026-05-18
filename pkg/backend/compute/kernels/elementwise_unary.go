@@ -154,6 +154,87 @@ func runReluBFloat16(args ...tensor.Tensor) error {
 	return nil
 }
 
+func registerUnarySIMDFloat16(name string, run func(args ...tensor.Tensor) error) {
+	Default.Register(Kernel{
+		Name: name,
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       run,
+	})
+}
+
+func unaryFloat16Args(args []tensor.Tensor) (in, out []dtype.F16, err error) {
+	if len(args) != 2 {
+		return nil, nil, tensor.ErrShapeMismatch
+	}
+
+	in, err = args[0].Float16Native()
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	out, err = args[1].Float16Native()
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(in) != len(out) {
+		return nil, nil, tensor.ErrShapeMismatch
+	}
+
+	return in, out, nil
+}
+
+func runAbsFloat16(args ...tensor.Tensor) error {
+	in, out, err := unaryFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	absFloat16Native(out, in)
+	return nil
+}
+
+func runNegFloat16(args ...tensor.Tensor) error {
+	in, out, err := unaryFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	negFloat16Native(out, in)
+	return nil
+}
+
+func runSqrtFloat16(args ...tensor.Tensor) error {
+	in, out, err := unaryFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	sqrtFloat16Native(out, in)
+	return nil
+}
+
+func runReluFloat16(args ...tensor.Tensor) error {
+	in, out, err := unaryFloat16Args(args)
+
+	if err != nil {
+		return err
+	}
+
+	reluFloat16Native(out, in)
+	return nil
+}
+
 func unaryFloat32Args(args []tensor.Tensor) (in, out []float32, err error) {
 	if len(args) != 2 {
 		return nil, nil, tensor.ErrShapeMismatch
@@ -223,6 +304,9 @@ func init() {
 	registerUnarySIMDBFloat16("abs", runAbsBFloat16)
 	registerUnarySIMDBFloat16("neg", runNegBFloat16)
 	registerUnarySIMDBFloat16("sqrt", runSqrtBFloat16)
+	registerUnarySIMDFloat16("abs", runAbsFloat16)
+	registerUnarySIMDFloat16("neg", runNegFloat16)
+	registerUnarySIMDFloat16("sqrt", runSqrtFloat16)
 
 	registerUnary("square", func(value float32) float32 { return value * value })
 	registerUnary("rsqrt", func(value float32) float32 {

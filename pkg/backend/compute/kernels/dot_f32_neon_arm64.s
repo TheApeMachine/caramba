@@ -20,7 +20,7 @@
 #define FADDP_D(n, d)     WORD $(0x7E70D800 | ((n) << 5) | (d))
 
 // func dotFloat32NEONAsm(a, b *float32, n int) float32
-TEXT ·dotFloat32NEONAsm(SB), NOSPLIT, $0-32
+TEXT ·dotFloat32NEONAsm(SB), NOSPLIT, $0-28
     MOVD a+0(FP), R0
     MOVD b+8(FP), R1
     MOVD n+16(FP), R2

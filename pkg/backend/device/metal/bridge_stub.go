@@ -217,3 +217,65 @@ func runMetalUpsampleNearest2D(input tensor.Tensor, out tensor.Tensor) error {
 
 	return tensor.ErrNeedsPlatformSetup
 }
+
+func runMetalLinear(
+	input tensor.Tensor,
+	weight tensor.Tensor,
+	bias tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = input
+	_ = weight
+	_ = bias
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalFusedQKV(
+	input tensor.Tensor,
+	weight tensor.Tensor,
+	bias tensor.Tensor,
+	query tensor.Tensor,
+	key tensor.Tensor,
+	value tensor.Tensor,
+) error {
+	_ = input
+	_ = weight
+	_ = bias
+	_ = query
+	_ = key
+	_ = value
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalLoRAMerge(
+	baseWeight tensor.Tensor,
+	loraA tensor.Tensor,
+	loraB tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = baseWeight
+	_ = loraA
+	_ = loraB
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalLoRAApply(
+	baseOut tensor.Tensor,
+	loraA tensor.Tensor,
+	loraB tensor.Tensor,
+	input tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = baseOut
+	_ = loraA
+	_ = loraB
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}

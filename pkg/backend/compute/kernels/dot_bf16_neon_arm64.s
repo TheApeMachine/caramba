@@ -19,7 +19,7 @@
 #define WIDEN_H8_TO_S4_HIGH(src_h8, dst_h8) VZIP2 src_h8, V31.H8, dst_h8
 
 // func dotBFloat16NEONAsm(a, b *uint16, n int) uint16
-TEXT ·dotBFloat16NEONAsm(SB), NOSPLIT, $0-32
+TEXT ·dotBFloat16NEONAsm(SB), NOSPLIT, $0-26
     MOVD a+0(FP), R0
     MOVD b+8(FP), R1
     MOVD n+16(FP), R2

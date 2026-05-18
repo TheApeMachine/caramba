@@ -236,6 +236,63 @@ int metal_dispatch_rmsnorm(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_linear(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef weightRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t inner,
+    uint32_t outDim,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_fused_qkv(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef weightRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef queryRef,
+    MetalBufferRef keyRef,
+    MetalBufferRef valueRef,
+    uint32_t batch,
+    uint32_t inner,
+    uint32_t outDim,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_lora_merge(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef baseRef,
+    MetalBufferRef loraARef,
+    MetalBufferRef loraBRef,
+    MetalBufferRef outRef,
+    uint32_t outDim,
+    uint32_t rank,
+    uint32_t inner,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_lora_apply(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef baseRef,
+    MetalBufferRef loraARef,
+    MetalBufferRef loraBRef,
+    MetalBufferRef inputRef,
+    MetalBufferRef scratchRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t inner,
+    uint32_t rank,
+    uint32_t outDim,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 void metal_device_release(MetalDeviceRef contextRef);
 
 #ifdef __cplusplus

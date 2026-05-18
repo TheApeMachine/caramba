@@ -27,6 +27,20 @@ func init() {
 	registerGELUFloat32()
 	registerReLUFloat32()
 	registerReLUBFloat16()
+	registerReLUFloat16()
+}
+
+func registerReLUFloat16() {
+	Default.Register(Kernel{
+		Name: "relu",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runReluFloat16,
+	})
 }
 
 func registerMulFloat16() {

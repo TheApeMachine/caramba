@@ -24,6 +24,83 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal projection and LoRA kernel expansion
+
+This adds real Metal device kernels for projection and model-adapter
+ops across `float32`, `float16`, and `bfloat16` storage:
+
+- `linear_{float32,float16,bfloat16}`
+- `fused_qkv_{float32,float16,bfloat16}`
+- `lora_merge_{float32,float16,bfloat16}`
+- `lora_apply_stage1_{float32,float16,bfloat16}`
+- `lora_apply_stage2_{float32,float16,bfloat16}`
+
+The public registry entries are `linear`, `fused_qkv`, `lora_merge`,
+and `lora_apply` for all three storage dtypes. The shaders live in
+`pkg/backend/device/metal/projection.metal` and run through
+`pkg/backend/device/metal/bridge_projection_darwin.m`.
+
+`linear` and `fused_qkv` use 16x16 tiled threadgroups with shared
+input and weight tiles. `fused_qkv` computes query/key/value in one
+pass over the input tile. `lora_merge` computes
+`baseWeight + A @ B` per output element. `lora_apply` allocates a
+device-resident float32 scratch tensor, computes `B @ input` once in
+stage 1, then applies `A @ scratch` plus `baseOut` in stage 2. Both
+LoRA stages are encoded into one Metal command buffer and tracked by
+one completion token, so scratch lifetime is protected by the same
+use-counting path as user-visible tensors.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}` as the projection
+inner dimension. Float32 parity is verified within 1 ULP. Float16 and
+bfloat16 parity are verified within 1 ULP on the stored 16-bit
+representation.
+
+The Metal dense registry now has 156 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, and 12
+projection/model signatures.
+
+Focused projection parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalProjectionDTypes' -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.819s
+```
+
+Focused package sweep:
+
+```
+go test ./pkg/backend/device/metal/... ./pkg/backend/device/cuda ./pkg/backend/device/xla ./pkg/backend/compute/kernels -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.139s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.313s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.918s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	1.350s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.693s
+```
+
+Metal projection benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunProjectionDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunProjectionDTypes/f32/linear-16         	    8210	    144876 ns/op	 6340.11 MB/s	    1393 B/op	       9 allocs/op
+BenchmarkKernel_RunProjectionDTypes/f32/fused_qkv-16     	    7682	    152268 ns/op	12501.71 MB/s	    1680 B/op	      12 allocs/op
+BenchmarkKernel_RunProjectionDTypes/f32/lora_merge-16    	   10000	    115241 ns/op	18482.24 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunProjectionDTypes/f32/lora_apply-16    	    7146	    166260 ns/op	 2562.16 MB/s	    1824 B/op	      14 allocs/op
+BenchmarkKernel_RunProjectionDTypes/f16/linear-16        	    8036	    150810 ns/op	 3045.32 MB/s	    1392 B/op	       9 allocs/op
+BenchmarkKernel_RunProjectionDTypes/f16/fused_qkv-16     	    7188	    159047 ns/op	 5984.44 MB/s	    1680 B/op	      12 allocs/op
+BenchmarkKernel_RunProjectionDTypes/f16/lora_merge-16    	   10000	    122497 ns/op	 8693.77 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunProjectionDTypes/f16/lora_apply-16    	    7149	    160228 ns/op	 1329.31 MB/s	    1824 B/op	      14 allocs/op
+BenchmarkKernel_RunProjectionDTypes/bf16/linear-16       	    7852	    146818 ns/op	 3128.12 MB/s	    1392 B/op	       9 allocs/op
+BenchmarkKernel_RunProjectionDTypes/bf16/fused_qkv-16    	    7472	    159344 ns/op	 5973.28 MB/s	    1680 B/op	      12 allocs/op
+BenchmarkKernel_RunProjectionDTypes/bf16/lora_merge-16   	    9260	    121218 ns/op	 8785.48 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunProjectionDTypes/bf16/lora_apply-16   	    7287	    161392 ns/op	 1319.72 MB/s	    1824 B/op	      14 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	14.580s
+```
+
 ### 2026-05-18 Metal extended unary elementwise expansion
 
 This adds real Metal device kernels for 15 dense unary math and
@@ -1177,7 +1254,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 144 verified dense elementwise + shape + matmul + softmax + normalization signatures for `float32`, `float16`, `bfloat16` |
+| 4     | Metal device backend          | 156 verified dense elementwise + shape + matmul + softmax + normalization + projection/model signatures for `float32`, `float16`, `bfloat16` |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
@@ -1280,6 +1357,7 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_elementwise_darwin.m` | verified     |
 | `pkg/backend/device/metal/bridge_matmul_darwin.m` | verified        |
 | `pkg/backend/device/metal/bridge_normalization_darwin.m` | verified |
+| `pkg/backend/device/metal/bridge_projection_darwin.m` | verified |
 | `pkg/backend/device/metal/bridge_shape_common_darwin.m` | verified    |
 | `pkg/backend/device/metal/bridge_shape_darwin.m` | verified           |
 | `pkg/backend/device/metal/bridge_shape_private.h` | verified          |
@@ -1292,6 +1370,7 @@ invalidation works.
 | `pkg/backend/device/metal/elementwise_extended.metal` | verified      |
 | `pkg/backend/device/metal/matmul.metal`       | verified              |
 | `pkg/backend/device/metal/normalization.metal` | verified             |
+| `pkg/backend/device/metal/projection.metal`   | verified              |
 | `pkg/backend/device/metal/shape.metal`        | verified              |
 | `pkg/backend/device/metal/softmax.metal`      | verified              |
 | `pkg/backend/device/metal/elementwise_dtype_darwin.go` | verified    |
@@ -1313,6 +1392,10 @@ invalidation works.
 | `pkg/backend/device/metal/normalization_test.go` | verified            |
 | `pkg/backend/device/metal/normalization_test_helpers.go` | verified    |
 | `pkg/backend/device/metal/normalization_bench_test.go` | verified      |
+| `pkg/backend/device/metal/projection.go`      | verified              |
+| `pkg/backend/device/metal/projection_darwin.go` | verified            |
+| `pkg/backend/device/metal/projection_test.go` | verified              |
+| `pkg/backend/device/metal/projection_bench_test.go` | verified        |
 | `pkg/backend/device/metal/shape.go`           | verified              |
 | `pkg/backend/device/metal/shape_darwin.go`    | verified              |
 | `pkg/backend/device/metal/shape_validate_darwin.go` | verified       |

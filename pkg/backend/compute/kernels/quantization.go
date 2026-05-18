@@ -101,9 +101,7 @@ func DequantInt8Float32(
 		return tensor.ErrShapeMismatch
 	}
 
-	for index, value := range quantView {
-		outView[index] = float32(int(value)-int(config.ZeroPoint)) * config.Scale
-	}
+	dequantInt8Native(outView, quantView, config.Scale, config.ZeroPoint)
 
 	return nil
 }

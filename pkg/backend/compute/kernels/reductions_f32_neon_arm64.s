@@ -21,7 +21,7 @@
 #define FADDP_D(n, d)      WORD $(0x7E70D800 | ((n) << 5) | (d))
 
 // func sumFloat32NEONAsm(src *float32, n int) float32
-TEXT ·sumFloat32NEONAsm(SB), NOSPLIT, $0-24
+TEXT ·sumFloat32NEONAsm(SB), NOSPLIT, $0-20
     MOVD src+0(FP), R0
     MOVD n+8(FP), R1
 

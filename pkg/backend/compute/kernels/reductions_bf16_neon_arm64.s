@@ -23,7 +23,7 @@
 #define WIDEN_H8_TO_S4_HIGH(src_h8, dst_h8) VZIP2 src_h8, V31.H8, dst_h8
 
 // func sumBFloat16NEONAsm(src *uint16, n int) uint16
-TEXT ·sumBFloat16NEONAsm(SB), NOSPLIT, $0-24
+TEXT ·sumBFloat16NEONAsm(SB), NOSPLIT, $0-18
     MOVD src+0(FP), R0
     MOVD n+8(FP), R1
 
