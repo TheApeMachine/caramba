@@ -320,6 +320,33 @@ int metal_dispatch_embedding_bag(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_attention(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef queryRef,
+    MetalBufferRef keyRef,
+    MetalBufferRef valueRef,
+    MetalBufferRef scoresRef,
+    MetalBufferRef outRef,
+    uint32_t seqQ,
+    uint32_t seqK,
+    uint32_t depth,
+    uint32_t valueDim,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_rope(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t seqLen,
+    uint32_t numHeads,
+    uint32_t headDim,
+    uint32_t pairCount,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 int metal_dispatch_apply_mask(
     MetalDeviceRef contextRef,
     int elementDType,

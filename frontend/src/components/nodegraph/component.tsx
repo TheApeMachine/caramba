@@ -38,9 +38,6 @@ const CLICK_SLOP_PX = 5;
 /* When a node is framed and the camera zoom rises past this, descend into
    the framed node. */
 const ENTER_ZOOM_THRESHOLD = 3.0;
-/* When inside a sub-graph and the camera zoom drops below this, pop back
-   to the parent level. */
-const EXIT_ZOOM_THRESHOLD = 0.5;
 /* After any auto enter/exit, ignore the watcher for this long so the new
    level's zoom doesn't immediately re-trip the same condition. */
 const LEVEL_CHANGE_COOLDOWN_MS = 350;
@@ -278,7 +275,12 @@ export const NodeGraph = () => {
 				}
 				return;
 			}
-			if (vectorStore.state.path.length > 0 && zoom <= EXIT_ZOOM_THRESHOLD) {
+			const nestedExitZoom = scene.getNestedAutoExitZoomThreshold();
+			if (
+				vectorStore.state.path.length > 0 &&
+				nestedExitZoom !== undefined &&
+				zoom <= nestedExitZoom
+			) {
 				if (scene.beginExit()) {
 					cooldownUntil = performance.now() + LEVEL_CHANGE_COOLDOWN_MS;
 				}
@@ -328,7 +330,8 @@ export const NodeGraph = () => {
 				<br />
 				drag empty → pan · click node → frame · drag node → move · drag from
 				port → edge · double-click gates → hero zoom then enter · right-click →
-				add node · wheel → zoom · framed + zoom threshold → enter · Esc → up
+				add node · wheel → zoom · framed + zoom threshold → enter · zoom out vs
+				sub-graph fit → up · Esc → up
 			</div>
 			<NodeLabels sceneRef={sceneRef} />
 			{palette ? (

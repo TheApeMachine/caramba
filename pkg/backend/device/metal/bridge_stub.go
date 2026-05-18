@@ -306,6 +306,27 @@ func runMetalEmbeddingBag(
 	return tensor.ErrNeedsPlatformSetup
 }
 
+func runMetalAttention(
+	query tensor.Tensor,
+	key tensor.Tensor,
+	value tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = query
+	_ = key
+	_ = value
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalRoPE(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
 func runMetalApplyMask(input tensor.Tensor, mask tensor.Tensor, out tensor.Tensor) error {
 	_ = input
 	_ = mask

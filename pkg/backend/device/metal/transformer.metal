@@ -178,6 +178,170 @@ static inline void alibi_bias_kernel(
     Storage::store(out, index, value);
 }
 
+template <typename Storage, typename Scalar>
+static inline void attention_scores_tiled(
+    device const Scalar* query,
+    device const Scalar* key,
+    device float* scores,
+    threadgroup float* queryTile,
+    threadgroup float* keyTile,
+    constant uint& seqQ,
+    constant uint& seqK,
+    constant uint& depth,
+    uint2 localPosition,
+    uint2 groupPosition
+) {
+    uint row = groupPosition.y * 16 + localPosition.y;
+    uint col = groupPosition.x * 16 + localPosition.x;
+    uint localOffset = localPosition.y * 16 + localPosition.x;
+    float accumulator = 0.0f;
+
+    for (uint tileStart = 0; tileStart < depth; tileStart += 16) {
+        uint queryDepth = tileStart + localPosition.x;
+        uint keyDepth = tileStart + localPosition.y;
+
+        queryTile[localOffset] =
+            row < seqQ && queryDepth < depth ? Storage::load(query, row * depth + queryDepth) : 0.0f;
+        keyTile[localOffset] =
+            col < seqK && keyDepth < depth ? Storage::load(key, col * depth + keyDepth) : 0.0f;
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        for (uint tileIndex = 0; tileIndex < 16; tileIndex++) {
+            accumulator += queryTile[localPosition.y * 16 + tileIndex] *
+                keyTile[tileIndex * 16 + localPosition.x];
+        }
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (row < seqQ && col < seqK) {
+        scores[row * seqK + col] = accumulator * rsqrt(float(depth));
+    }
+}
+
+static inline void attention_softmax_row(
+    device float* scores,
+    threadgroup float* reduction,
+    constant uint& seqK,
+    uint row,
+    uint threadIndex
+) {
+    uint rowOffset = row * seqK;
+    float localMax = -3.4028234663852886e38f;
+
+    for (uint col = threadIndex; col < seqK; col += 256) {
+        localMax = max(localMax, scores[rowOffset + col]);
+    }
+
+    reduction[threadIndex] = localMax;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint stride = 128; stride > 0; stride >>= 1) {
+        if (threadIndex < stride) {
+            reduction[threadIndex] = max(reduction[threadIndex], reduction[threadIndex + stride]);
+        }
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    float maximum = reduction[0];
+    float localSum = 0.0f;
+
+    for (uint col = threadIndex; col < seqK; col += 256) {
+        localSum += exp(scores[rowOffset + col] - maximum);
+    }
+
+    reduction[threadIndex] = localSum;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint stride = 128; stride > 0; stride >>= 1) {
+        if (threadIndex < stride) {
+            reduction[threadIndex] += reduction[threadIndex + stride];
+        }
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    float sum = reduction[0];
+
+    for (uint col = threadIndex; col < seqK; col += 256) {
+        scores[rowOffset + col] = sum == 0.0f ? 0.0f : exp(scores[rowOffset + col] - maximum) / sum;
+    }
+}
+
+template <typename Storage, typename Scalar>
+static inline void attention_weighted_tiled(
+    device const float* scores,
+    device const Scalar* value,
+    device Scalar* out,
+    threadgroup float* scoreTile,
+    threadgroup float* valueTile,
+    constant uint& seqQ,
+    constant uint& seqK,
+    constant uint& valueDim,
+    uint2 localPosition,
+    uint2 groupPosition
+) {
+    uint row = groupPosition.y * 16 + localPosition.y;
+    uint col = groupPosition.x * 16 + localPosition.x;
+    uint localOffset = localPosition.y * 16 + localPosition.x;
+    float accumulator = 0.0f;
+
+    for (uint tileStart = 0; tileStart < seqK; tileStart += 16) {
+        uint scoreCol = tileStart + localPosition.x;
+        uint valueRow = tileStart + localPosition.y;
+
+        scoreTile[localOffset] =
+            row < seqQ && scoreCol < seqK ? scores[row * seqK + scoreCol] : 0.0f;
+        valueTile[localOffset] =
+            valueRow < seqK && col < valueDim ? Storage::load(value, valueRow * valueDim + col) : 0.0f;
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        for (uint tileIndex = 0; tileIndex < 16; tileIndex++) {
+            accumulator += scoreTile[localPosition.y * 16 + tileIndex] *
+                valueTile[tileIndex * 16 + localPosition.x];
+        }
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (row < seqQ && col < valueDim) {
+        Storage::store(out, row * valueDim + col, accumulator);
+    }
+}
+
+template <typename Storage, typename Scalar>
+static inline void rope_kernel(
+    device const Scalar* input,
+    device Scalar* out,
+    constant uint& seqLen,
+    constant uint& numHeads,
+    constant uint& headDim,
+    constant uint& pairCount,
+    uint index
+) {
+    if (index >= pairCount) {
+        return;
+    }
+
+    uint halfDim = headDim / 2;
+    uint pairIndex = index % halfDim;
+    uint headIndex = (index / halfDim) % numHeads;
+    uint seqIndex = index / (halfDim * numHeads);
+    uint inputIndex = (seqIndex * numHeads + headIndex) * headDim + pairIndex * 2;
+    float exponent = -2.0f * float(pairIndex) / float(headDim);
+    float theta = float(seqIndex) * pow(10000.0f, exponent);
+    float cosTheta = cos(theta);
+    float sinTheta = sin(theta);
+    float even = Storage::load(input, inputIndex);
+    float odd = Storage::load(input, inputIndex + 1);
+
+    Storage::store(out, inputIndex, even * cosTheta - odd * sinTheta);
+    Storage::store(out, inputIndex + 1, even * sinTheta + odd * cosTheta);
+}
+
 #define EMBEDDING_LOOKUP_KERNEL(name, storage, scalar) \
 kernel void name( \
     device const scalar* table [[buffer(0)]], \
@@ -245,6 +409,57 @@ kernel void name( \
     alibi_bias_kernel<storage, scalar>(scores, slope, out, rows, cols, index); \
 }
 
+#define ATTENTION_SCORES_KERNEL(name, storage, scalar) \
+kernel void name( \
+    device const scalar* query [[buffer(0)]], \
+    device const scalar* key [[buffer(1)]], \
+    device float* scores [[buffer(2)]], \
+    constant uint& seqQ [[buffer(3)]], \
+    constant uint& seqK [[buffer(4)]], \
+    constant uint& depth [[buffer(5)]], \
+    uint2 localPosition [[thread_position_in_threadgroup]], \
+    uint2 groupPosition [[threadgroup_position_in_grid]] \
+) { \
+    threadgroup float queryTile[256]; \
+    threadgroup float keyTile[256]; \
+    attention_scores_tiled<storage, scalar>( \
+        query, key, scores, queryTile, keyTile, \
+        seqQ, seqK, depth, localPosition, groupPosition \
+    ); \
+}
+
+#define ATTENTION_WEIGHTED_KERNEL(name, storage, scalar) \
+kernel void name( \
+    device const float* scores [[buffer(0)]], \
+    device const scalar* value [[buffer(1)]], \
+    device scalar* out [[buffer(2)]], \
+    constant uint& seqQ [[buffer(3)]], \
+    constant uint& seqK [[buffer(4)]], \
+    constant uint& valueDim [[buffer(5)]], \
+    uint2 localPosition [[thread_position_in_threadgroup]], \
+    uint2 groupPosition [[threadgroup_position_in_grid]] \
+) { \
+    threadgroup float scoreTile[256]; \
+    threadgroup float valueTile[256]; \
+    attention_weighted_tiled<storage, scalar>( \
+        scores, value, out, scoreTile, valueTile, \
+        seqQ, seqK, valueDim, localPosition, groupPosition \
+    ); \
+}
+
+#define ROPE_KERNEL(name, storage, scalar) \
+kernel void name( \
+    device const scalar* input [[buffer(0)]], \
+    device scalar* out [[buffer(1)]], \
+    constant uint& seqLen [[buffer(2)]], \
+    constant uint& numHeads [[buffer(3)]], \
+    constant uint& headDim [[buffer(4)]], \
+    constant uint& pairCount [[buffer(5)]], \
+    uint index [[thread_position_in_grid]] \
+) { \
+    rope_kernel<storage, scalar>(input, out, seqLen, numHeads, headDim, pairCount, index); \
+}
+
 EMBEDDING_LOOKUP_KERNEL(embedding_lookup_float32, Float32TransformerStorage, float)
 EMBEDDING_LOOKUP_KERNEL(embedding_lookup_float16, Float16TransformerStorage, half)
 EMBEDDING_LOOKUP_KERNEL(embedding_lookup_bfloat16, BFloat16TransformerStorage, ushort)
@@ -264,3 +479,25 @@ CAUSAL_MASK_KERNEL(causal_mask_bfloat16, BFloat16TransformerStorage, ushort)
 ALIBI_BIAS_KERNEL(alibi_bias_float32, Float32TransformerStorage, float)
 ALIBI_BIAS_KERNEL(alibi_bias_float16, Float16TransformerStorage, half)
 ALIBI_BIAS_KERNEL(alibi_bias_bfloat16, BFloat16TransformerStorage, ushort)
+
+ATTENTION_SCORES_KERNEL(attention_scores_float32, Float32TransformerStorage, float)
+ATTENTION_SCORES_KERNEL(attention_scores_float16, Float16TransformerStorage, half)
+ATTENTION_SCORES_KERNEL(attention_scores_bfloat16, BFloat16TransformerStorage, ushort)
+
+kernel void attention_softmax(
+    device float* scores [[buffer(0)]],
+    constant uint& seqK [[buffer(1)]],
+    uint row [[threadgroup_position_in_grid]],
+    uint threadIndex [[thread_position_in_threadgroup]]
+) {
+    threadgroup float reduction[256];
+    attention_softmax_row(scores, reduction, seqK, row, threadIndex);
+}
+
+ATTENTION_WEIGHTED_KERNEL(attention_weighted_float32, Float32TransformerStorage, float)
+ATTENTION_WEIGHTED_KERNEL(attention_weighted_float16, Float16TransformerStorage, half)
+ATTENTION_WEIGHTED_KERNEL(attention_weighted_bfloat16, BFloat16TransformerStorage, ushort)
+
+ROPE_KERNEL(rope_float32, Float32TransformerStorage, float)
+ROPE_KERNEL(rope_float16, Float16TransformerStorage, half)
+ROPE_KERNEL(rope_bfloat16, BFloat16TransformerStorage, ushort)

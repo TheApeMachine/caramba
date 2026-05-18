@@ -43,6 +43,17 @@ const PORTAL_BODY_WINDOW_FILL = 0.92;
 const GATE_CARD_LEAD_FILL = 0.9;
 const GATE_LEAD_FRAMING_MS = 560;
 
+/**
+ * Zoom-based “pop parent” compares current zoom against a level-specific
+ * threshold derived from autofit zoom on enter. A single global cutoff (e.g.
+ * 0.5) is wrong: subgraph framing often yields fit zoom ≈ 0.4–0.48 on common
+ * viewports, which immediately retriggers exit and keeps `phase !== idle`.
+ */
+const NESTED_AUTO_EXIT_OF_FIT = 0.6;
+const NESTED_AUTO_EXIT_ZOOM_CLAMP_MIN = 0.07;
+const NESTED_AUTO_EXIT_ZOOM_CLAMP_MAX = 0.92;
+const NESTED_AUTO_EXIT_FALLBACK = 0.32;
+
 /** Body band centre aligns with card centre (see `bodyWindowWorld` in vector). */
 const BODY_WINDOW_CY = 0;
 
@@ -147,6 +158,7 @@ export type SceneHandle = {
 	beginEnter: (parentId: number, options?: BeginEnterOptions) => boolean;
 	beginExit: () => boolean;
 	isTransitioning: () => boolean;
+	getNestedAutoExitZoomThreshold: () => number | undefined;
 	dispose: () => void;
 };
 
@@ -178,6 +190,17 @@ export function setupScene(container: HTMLElement): SceneHandle {
 	let parentWorldY = 0;
 	let stagedEnterLeadInterrupted = false;
 	let stagedEnterLead: Node | null = null;
+	const nestedAutoExitZoomThresholdStack: number[] = [];
+
+	const pushNestedAutoExitThresholdForFitZoom = (fitZoom: number) => {
+		const scaled = fitZoom * NESTED_AUTO_EXIT_OF_FIT;
+		const clipped = THREE.MathUtils.clamp(
+			scaled,
+			NESTED_AUTO_EXIT_ZOOM_CLAMP_MIN,
+			NESTED_AUTO_EXIT_ZOOM_CLAMP_MAX,
+		);
+		nestedAutoExitZoomThresholdStack.push(clipped);
+	};
 
 	const rejectStagingEnterLead = () => {
 		stagedEnterLead = null;
@@ -437,6 +460,7 @@ export function setupScene(container: HTMLElement): SceneHandle {
 			maxY,
 			PORTAL_EXPANDED_GRAPH_FILL,
 		);
+		pushNestedAutoExitThresholdForFitZoom(fit.zoom);
 		const transitionStartMs = performance.now();
 
 		camera.snapAndEaseTo(
@@ -471,6 +495,7 @@ export function setupScene(container: HTMLElement): SceneHandle {
 		const parent = outerLvl.nodes.find((n) => n.id === parentId);
 		if (!parent || parent.nodes.length === 0) {
 			vectorStore.actions.enter(parentId);
+			nestedAutoExitZoomThresholdStack.push(NESTED_AUTO_EXIT_FALLBACK);
 			return true;
 		}
 
@@ -576,6 +601,7 @@ export function setupScene(container: HTMLElement): SceneHandle {
 				// (Px,Py), so shift the camera by +(Px,Py) — same pixels stay
 				// on screen.
 				vectorStore.actions.up();
+				nestedAutoExitZoomThresholdStack.pop();
 				camera.x += parentWorldX;
 				camera.y += parentWorldY;
 				camera.resize();
@@ -679,6 +705,12 @@ export function setupScene(container: HTMLElement): SceneHandle {
 		beginEnter,
 		beginExit,
 		isTransitioning: () => phase !== "idle",
+		getNestedAutoExitZoomThreshold: () =>
+			nestedAutoExitZoomThresholdStack.length === 0
+				? undefined
+				: nestedAutoExitZoomThresholdStack[
+						nestedAutoExitZoomThresholdStack.length - 1
+					],
 		dispose,
 	};
 }

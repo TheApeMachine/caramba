@@ -19,11 +19,29 @@ func init() {
 }
 
 func registerMetalTransformerKernels(storageDType dtype.DType) {
+	registerMetalAttentionKernel(storageDType)
 	registerMetalEmbeddingLookupKernel(storageDType)
 	registerMetalEmbeddingBagKernel(storageDType)
 	registerMetalApplyMaskKernel(storageDType)
 	registerMetalCausalMaskKernel(storageDType)
 	registerMetalALiBiBiasKernel(storageDType)
+}
+
+func registerMetalAttentionKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "attention",
+		Signature: kernels.Signature{
+			Layout: tensor.LayoutDense,
+			Inputs: []dtype.DType{
+				storageDType,
+				storageDType,
+				storageDType,
+			},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runMetalAttentionKernel,
+	})
 }
 
 func registerMetalEmbeddingLookupKernel(storageDType dtype.DType) {
@@ -89,6 +107,14 @@ func registerMetalALiBiBiasKernel(storageDType dtype.DType) {
 		Locations: []tensor.Location{tensor.Metal},
 		Run:       runMetalALiBiBiasKernel,
 	})
+}
+
+func runMetalAttentionKernel(args ...tensor.Tensor) error {
+	if len(args) != 4 {
+		return tensor.ErrShapeMismatch
+	}
+
+	return runMetalAttention(args[0], args[1], args[2], args[3])
 }
 
 func runMetalEmbeddingLookupKernel(args ...tensor.Tensor) error {

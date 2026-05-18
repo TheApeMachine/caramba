@@ -18,6 +18,8 @@ func BenchmarkKernel_RunTransformerDTypes(benchmark *testing.B) {
 		storageDType := storageDType
 
 		benchmark.Run(storageDType.Name(), func(benchmark *testing.B) {
+			benchmarkAttentionDType(benchmark, backend, storageDType)
+			benchmarkRoPEDType(benchmark, backend, storageDType)
 			benchmarkEmbeddingLookupDType(benchmark, backend, storageDType)
 			benchmarkEmbeddingBagDType(benchmark, backend, storageDType)
 			benchmarkApplyMaskDType(benchmark, backend, storageDType)
@@ -25,6 +27,60 @@ func BenchmarkKernel_RunTransformerDTypes(benchmark *testing.B) {
 			benchmarkALiBiBiasDType(benchmark, backend, storageDType)
 		})
 	}
+}
+
+func benchmarkAttentionDType(
+	benchmark *testing.B,
+	backend *Backend,
+	storageDType dtype.DType,
+) {
+	benchmark.Run("attention", func(benchmark *testing.B) {
+		seqQ, seqK, depth, valueDim := 64, 64, 128, 64
+		query, key, value, out := benchmarkAttentionTensors(
+			benchmark, backend, seqQ, seqK, depth, valueDim, storageDType,
+		)
+		defer closeBenchmarkTensors(query, key, value, out)
+
+		benchmark.SetBytes(attentionBenchmarkBytes(seqQ, seqK, depth, valueDim, storageDType))
+		benchmark.ResetTimer()
+
+		for benchmark.Loop() {
+			if err := runMetalAttention(query, key, value, out); err != nil {
+				benchmark.Fatal(err)
+			}
+
+			if err := out.Sync(context.Background()); err != nil {
+				benchmark.Fatal(err)
+			}
+		}
+	})
+}
+
+func benchmarkRoPEDType(
+	benchmark *testing.B,
+	backend *Backend,
+	storageDType dtype.DType,
+) {
+	benchmark.Run("rope", func(benchmark *testing.B) {
+		seqLen, numHeads, headDim := 512, 8, 64
+		input, out := benchmarkRoPETensors(
+			benchmark, backend, seqLen, numHeads, headDim, storageDType,
+		)
+		defer closeBenchmarkTensors(input, out)
+
+		benchmark.SetBytes(int64(seqLen * numHeads * headDim * dtypeBytesForBenchmark(storageDType) * 2))
+		benchmark.ResetTimer()
+
+		for benchmark.Loop() {
+			if err := runMetalRoPE(input, out); err != nil {
+				benchmark.Fatal(err)
+			}
+
+			if err := out.Sync(context.Background()); err != nil {
+				benchmark.Fatal(err)
+			}
+		}
+	})
 }
 
 func benchmarkEmbeddingLookupDType(
@@ -156,6 +212,39 @@ func benchmarkALiBiBiasDType(
 	})
 }
 
+func benchmarkAttentionTensors(
+	testingObject testing.TB,
+	backend *Backend,
+	seqQ int,
+	seqK int,
+	depth int,
+	valueDim int,
+	storageDType dtype.DType,
+) (tensor.Tensor, tensor.Tensor, tensor.Tensor, tensor.Tensor) {
+	testingObject.Helper()
+
+	fixture := attentionFixtureForTest(seqQ, seqK, depth, valueDim, storageDType)
+	return attentionTensorsForTest(
+		testingObject, backend, seqQ, seqK, depth, valueDim, storageDType, fixture,
+	)
+}
+
+func benchmarkRoPETensors(
+	testingObject testing.TB,
+	backend *Backend,
+	seqLen int,
+	numHeads int,
+	headDim int,
+	storageDType dtype.DType,
+) (tensor.Tensor, tensor.Tensor) {
+	testingObject.Helper()
+
+	fixture := ropeFixtureForTest(seqLen, numHeads, headDim, storageDType)
+	return ropeTensorsForTest(
+		testingObject, backend, seqLen, numHeads, headDim, storageDType, fixture.inputBytes,
+	)
+}
+
 func benchmarkEmbeddingLookupTensors(
 	testingObject testing.TB,
 	backend *Backend,
@@ -246,4 +335,18 @@ func benchmarkALiBiBiasTensors(
 	)
 	out := emptyTensorForTest(testingObject, backend, shape, storageDType)
 	return scores, slope, out
+}
+
+func attentionBenchmarkBytes(
+	seqQ int,
+	seqK int,
+	depth int,
+	valueDim int,
+	storageDType dtype.DType,
+) int64 {
+	elementBytes := int64(dtypeBytesForBenchmark(storageDType))
+	storedElements := seqQ*depth + seqK*depth + seqK*valueDim + seqQ*valueDim
+	scoreBytes := int64(seqQ * seqK * 4)
+
+	return int64(storedElements)*elementBytes + scoreBytes
 }
