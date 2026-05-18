@@ -36,7 +36,7 @@ Focused Metal device tests:
 
 2 total assertions
 
---- PASS: TestNewBackend (0.08s)
+--- PASS: TestNewBackend (0.04s)
 === RUN   TestBackend_UploadDownloadFloat32
 
   Given a Metal float32 tensor upload ✔✔✔✔✔✔✔
@@ -96,7 +96,7 @@ Focused Metal device tests:
 
 --- PASS: TestKernelRegistry_MetalAddFloat32 (0.01s)
 PASS
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.452s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.653s
 ```
 
 Metal library generator tests:
@@ -133,11 +133,11 @@ ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallib
 Focused package sweep:
 
 ```
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.353s
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.789s
-ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	1.133s
-ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	0.313s
-ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	0.668s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.302s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.959s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.758s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	1.277s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	0.471s
 ```
 
 Metal benchmark output:
@@ -147,40 +147,31 @@ goos: darwin
 goarch: arm64
 pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
 cpu: Apple M4 Max
-BenchmarkBackend_AddFloat32/N=1-16  	   10813	    107968 ns/op	   0.11 MB/s	    1376 B/op	       5 allocs/op
-BenchmarkBackend_AddFloat32/N=7-16  	   10000	    106433 ns/op	   0.79 MB/s	    1376 B/op	       5 allocs/op
-BenchmarkBackend_AddFloat32/N=64-16 	   10000	    105629 ns/op	   7.27 MB/s	    1376 B/op	       5 allocs/op
-BenchmarkBackend_AddFloat32/N=1024-16         	   10000	    101703 ns/op	 120.82 MB/s	    1376 B/op	       5 allocs/op
-BenchmarkBackend_AddFloat32/N=8192-16         	   10000	    112563 ns/op	 873.32 MB/s	    1376 B/op	       5 allocs/op
-BenchmarkKernel_RunAddFloat32/N=1-16          	   11793	    101707 ns/op	   0.12 MB/s	    1152 B/op	       1 allocs/op
-BenchmarkKernel_RunAddFloat32/N=7-16          	   10000	    102620 ns/op	   0.82 MB/s	    1152 B/op	       1 allocs/op
-BenchmarkKernel_RunAddFloat32/N=64-16         	   12024	    100199 ns/op	   7.66 MB/s	    1152 B/op	       1 allocs/op
-BenchmarkKernel_RunAddFloat32/N=1024-16       	   10000	    100861 ns/op	 121.83 MB/s	    1152 B/op	       1 allocs/op
-BenchmarkKernel_RunAddFloat32/N=8192-16       	   10000	    101841 ns/op	 965.27 MB/s	    1152 B/op	       1 allocs/op
+BenchmarkNewBackend-16              	    8492	    142513 ns/op	    1264 B/op	       4 allocs/op
+BenchmarkBackend_AddFloat32/N=1-16  	    9727	    116965 ns/op	   0.10 MB/s	    1521 B/op	       6 allocs/op
+BenchmarkBackend_AddFloat32/N=7-16  	   10000	    111639 ns/op	   0.75 MB/s	    1520 B/op	       6 allocs/op
+BenchmarkBackend_AddFloat32/N=64-16 	   10000	    111633 ns/op	   6.88 MB/s	    1520 B/op	       6 allocs/op
+BenchmarkBackend_AddFloat32/N=1024-16         	   10000	    110222 ns/op	 111.48 MB/s	    1520 B/op	       6 allocs/op
+BenchmarkBackend_AddFloat32/N=8192-16         	   10000	    106858 ns/op	 919.95 MB/s	    1520 B/op	       6 allocs/op
+BenchmarkKernel_RunAddFloat32/N=1-16          	   10594	    113950 ns/op	   0.11 MB/s	    1264 B/op	       2 allocs/op
+BenchmarkKernel_RunAddFloat32/N=7-16          	   10000	    114260 ns/op	   0.74 MB/s	    1264 B/op	       2 allocs/op
+BenchmarkKernel_RunAddFloat32/N=64-16         	   10000	    114239 ns/op	   6.72 MB/s	    1264 B/op	       2 allocs/op
+BenchmarkKernel_RunAddFloat32/N=1024-16       	   10000	    115498 ns/op	 106.39 MB/s	    1264 B/op	       2 allocs/op
+BenchmarkKernel_RunAddFloat32/N=8192-16       	   10000	    111902 ns/op	 878.49 MB/s	    1264 B/op	       2 allocs/op
 PASS
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	11.315s
-```
-
-Metal backend construction benchmark:
-
-```
-goos: darwin
-goarch: arm64
-pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
-cpu: Apple M4 Max
-BenchmarkNewBackend-16    	    7256	    155690 ns/op	    1160 B/op	       2 allocs/op
-PASS
-ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.355s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	12.912s
 ```
 
 This slice adds `pkg/backend/device/metal/add_float32.metal`,
 `pkg/backend/device/metal/kernels.metallib`, a reproducible
-`go generate ./pkg/backend/device/metal` path, a real `MTLBuffer`
-upload/download path, a `newLibraryWithData` Metal library load, a
-real Metal command submission path for float32 elementwise add, and a
+`go generate ./pkg/backend/device/metal` path, a pooled `MTLBuffer`
+upload/download path with finalizers, a `newLibraryWithData` Metal
+library load, asynchronous command submission with completion callbacks
+and tensor readiness tracking, `threadExecutionWidth` threadgroups, a
+`float4` vectorized add body with scalar tail handling, and a
 Metal-specific kernel registry entry resolved through `LookupLocation`.
 Metal capabilities report `SupportsAsync: false` because upload returns
-a ready tensor.
+a ready tensor; compute dispatch itself is asynchronous.
 
 ### 2026-05-18 Phase 7 slice
 

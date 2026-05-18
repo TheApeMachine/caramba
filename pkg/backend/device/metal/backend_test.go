@@ -65,6 +65,22 @@ func TestBackend_Capabilities(t *testing.T) {
 		backend := &Backend{}
 		caps := backend.Capabilities()
 		convey.So(caps.NativeAlignment, convey.ShouldEqual, 256)
+		convey.So(caps.SupportsAsync, convey.ShouldBeFalse)
+	})
+}
+
+func TestBackend_Capabilities_Device(t *testing.T) {
+	backend := newBackendForDeviceTest(t)
+	defer func() {
+		if err := backend.Close(); err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+	}()
+
+	convey.Convey("Given an opened Metal backend", t, func() {
+		caps := backend.Capabilities()
+		convey.So(caps.SupportsAsync, convey.ShouldBeTrue)
+		convey.So(caps.NativeAlignment, convey.ShouldEqual, 256)
 	})
 }
 
@@ -121,6 +137,30 @@ func TestBackend_UploadDownloadFloat32(t *testing.T) {
 	})
 }
 
+func TestBackend_UploadAsyncFloat32(t *testing.T) {
+	backend := newBackendForDeviceTest(t)
+	defer func() {
+		if err := backend.Close(); err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+	}()
+
+	convey.Convey("Given an async Metal float32 tensor upload", t, func() {
+		shape, err := tensor.NewShape([]int{8192})
+		convey.So(err, convey.ShouldBeNil)
+
+		values, _, _ := addFloat32ParityValues(shape.Len())
+		uploaded, err := backend.UploadAsync(shape, dtype.Float32, dtypeconvert.Float32ToBytes(values))
+		convey.So(err, convey.ShouldBeNil)
+		defer func() {
+			convey.So(uploaded.Close(), convey.ShouldBeNil)
+		}()
+
+		actual := downloadFloat32ForTest(t, backend, uploaded)
+		assertFloat32BitwiseEqual(t, actual, values)
+	})
+}
+
 func TestBackend_AddFloat32(t *testing.T) {
 	backend := newBackendForDeviceTest(t)
 	defer func() {
@@ -163,6 +203,111 @@ func TestBackend_AddFloat32(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestBackend_AddFloat32_CloseInputsBeforeDownload(t *testing.T) {
+	backend := newBackendForDeviceTest(t)
+	defer func() {
+		if err := backend.Close(); err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+	}()
+
+	convey.Convey("Given a queued Metal add whose inputs are closed immediately", t, func() {
+		shape, err := tensor.NewShape([]int{8192})
+		convey.So(err, convey.ShouldBeNil)
+
+		leftValues, rightValues, expectedValues := addFloat32ParityValues(shape.Len())
+		left, err := backend.Upload(shape, dtype.Float32, dtypeconvert.Float32ToBytes(leftValues))
+		convey.So(err, convey.ShouldBeNil)
+
+		right, err := backend.Upload(shape, dtype.Float32, dtypeconvert.Float32ToBytes(rightValues))
+		convey.So(err, convey.ShouldBeNil)
+
+		out, err := backend.AddFloat32(context.Background(), left, right)
+		convey.So(err, convey.ShouldBeNil)
+		defer func() {
+			convey.So(out.Close(), convey.ShouldBeNil)
+		}()
+
+		convey.So(left.Close(), convey.ShouldBeNil)
+		convey.So(right.Close(), convey.ShouldBeNil)
+		assertFloat32BitwiseEqual(t, downloadFloat32ForTest(t, backend, out), expectedValues)
+	})
+}
+
+func TestBackend_AddFloat32_CloseOutputBeforeCompletion(t *testing.T) {
+	backend := newBackendForDeviceTest(t)
+	defer func() {
+		if err := backend.Close(); err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+	}()
+
+	convey.Convey("Given a queued Metal add whose output is closed immediately", t, func() {
+		shape, err := tensor.NewShape([]int{8192})
+		convey.So(err, convey.ShouldBeNil)
+
+		leftValues, rightValues, _ := addFloat32ParityValues(shape.Len())
+		left, err := backend.Upload(shape, dtype.Float32, dtypeconvert.Float32ToBytes(leftValues))
+		convey.So(err, convey.ShouldBeNil)
+		defer func() {
+			convey.So(left.Close(), convey.ShouldBeNil)
+		}()
+
+		right, err := backend.Upload(shape, dtype.Float32, dtypeconvert.Float32ToBytes(rightValues))
+		convey.So(err, convey.ShouldBeNil)
+		defer func() {
+			convey.So(right.Close(), convey.ShouldBeNil)
+		}()
+
+		out, err := backend.AddFloat32(context.Background(), left, right)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(out.Close(), convey.ShouldBeNil)
+		convey.So(out.State(), convey.ShouldEqual, tensor.StateClosed)
+	})
+}
+
+func TestMetalBufferPool_AlignedBuckets(t *testing.T) {
+	backend := newBackendForDeviceTest(t)
+	defer func() {
+		if err := backend.Close(); err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+	}()
+
+	convey.Convey("Given closed Metal tensors with nearby byte sizes", t, func() {
+		firstShape, err := tensor.NewShape([]int{1})
+		convey.So(err, convey.ShouldBeNil)
+
+		first, err := backend.Upload(
+			firstShape,
+			dtype.Float32,
+			dtypeconvert.Float32ToBytes([]float32{1}),
+		)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(first.Close(), convey.ShouldBeNil)
+
+		secondShape, err := tensor.NewShape([]int{7})
+		convey.So(err, convey.ShouldBeNil)
+
+		second, err := backend.Upload(
+			secondShape,
+			dtype.Float32,
+			dtypeconvert.Float32ToBytes([]float32{1, 2, 3, 4, 5, 6, 7}),
+		)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(second.Close(), convey.ShouldBeNil)
+
+		backend.bridge.pool.mutex.Lock()
+		defer backend.bridge.pool.mutex.Unlock()
+
+		convey.So(len(backend.bridge.pool.buffer[256]), convey.ShouldBeGreaterThanOrEqualTo, 1)
+		_, hasFourByteBucket := backend.bridge.pool.buffer[4]
+		_, hasTwentyEightByteBucket := backend.bridge.pool.buffer[28]
+		convey.So(hasFourByteBucket, convey.ShouldBeFalse)
+		convey.So(hasTwentyEightByteBucket, convey.ShouldBeFalse)
+	})
 }
 
 func TestKernelRegistry_MetalAddFloat32(t *testing.T) {
@@ -302,6 +447,10 @@ func benchmarkBackendAddFloat32(benchmark *testing.B, backend *Backend, elementC
 	for benchmark.Loop() {
 		out, err := backend.AddFloat32(context.Background(), left, right)
 		if err != nil {
+			benchmark.Fatal(err)
+		}
+
+		if err := out.Sync(context.Background()); err != nil {
 			benchmark.Fatal(err)
 		}
 

@@ -93,7 +93,7 @@ func (backend *Backend) Capabilities() tensor.Capabilities {
 
 	return tensor.Capabilities{
 		MaxBytes:         maxBytes,
-		SupportsAsync:    false,
+		SupportsAsync:    backend.bridge != nil,
 		SupportsSparse:   false,
 		SupportsAutograd: false,
 		NativeAlignment:  256,
@@ -125,9 +125,8 @@ func (backend *Backend) Upload(
 }
 
 /*
-UploadAsync follows the Backend contract for synchronous upload paths:
-it returns a ready tensor, and Capabilities reports SupportsAsync
-false until this backend has a genuinely non-blocking transfer path.
+UploadAsync returns a pending tensor and completes the shared-buffer
+copy on a background worker.
 */
 func (backend *Backend) UploadAsync(
 	shape tensor.Shape,

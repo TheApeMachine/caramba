@@ -96,15 +96,23 @@ func (bridge *metalBridge) upload(
 		return target, nil
 	}
 
+	if err := bridge.copyBytes(target, bytesIn); err != nil {
+		_ = target.Close()
+		return nil, err
+	}
+
+	return target, nil
+}
+
+func (bridge *metalBridge) copyBytes(target *metalTensor, bytesIn []byte) error {
 	contents := C.metal_buffer_contents(target.buffer)
 	if contents == nil {
-		_ = target.Close()
-		return nil, tensor.ErrNeedsPlatformSetup
+		return tensor.ErrNeedsPlatformSetup
 	}
 
 	C.memcpy(contents, unsafe.Pointer(&bytesIn[0]), C.size_t(len(bytesIn)))
 
-	return target, nil
+	return nil
 }
 
 func (bridge *metalBridge) uploadAsync(
@@ -112,7 +120,33 @@ func (bridge *metalBridge) uploadAsync(
 	sourceDType dtype.DType,
 	bytesIn []byte,
 ) (tensor.Tensor, error) {
-	return bridge.upload(shape, sourceDType, bytesIn)
+	expectedBytes, err := shape.Bytes(sourceDType)
+	if err != nil {
+		return nil, err
+	}
+
+	if expectedBytes != len(bytesIn) {
+		return nil, tensor.ErrShapeMismatch
+	}
+
+	target, err := bridge.empty(shape, sourceDType)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(bytesIn) == 0 {
+		return target, nil
+	}
+
+	stagedBytes := append([]byte(nil), bytesIn...)
+	if err := bridge.beginAsyncUpload(target); err != nil {
+		_ = target.Close()
+		return nil, err
+	}
+
+	go bridge.finishAsyncUpload(target, stagedBytes)
+
+	return target, nil
 }
 
 func (bridge *metalBridge) empty(
@@ -200,14 +234,16 @@ func (bridge *metalBridge) close() error {
 }
 
 func (bridge *metalBridge) acquireBuffer(bytes int) C.MetalBufferRef {
+	alignedBytes := alignBufferSize(bytes)
+
 	if bridge.pool != nil {
-		buffer := bridge.pool.Take(bytes)
+		buffer := bridge.pool.Take(alignedBytes)
 		if buffer != nil {
 			return buffer
 		}
 	}
 
-	return C.metal_buffer_new_shared(bridge.device, C.longlong(bytes))
+	return C.metal_buffer_new_shared(bridge.device, C.longlong(alignedBytes))
 }
 
 func (bridge *metalBridge) releaseBuffer(buffer C.MetalBufferRef, bytes int) {
@@ -215,16 +251,63 @@ func (bridge *metalBridge) releaseBuffer(buffer C.MetalBufferRef, bytes int) {
 		return
 	}
 
+	alignedBytes := alignBufferSize(bytes)
+
 	if bridge == nil || bridge.closed.Load() || bridge.pool == nil {
 		C.metal_buffer_release(buffer)
 		return
 	}
 
-	if bridge.pool.Put(bytes, buffer) {
+	if bridge.pool.Put(alignedBytes, buffer) {
 		return
 	}
 
 	C.metal_buffer_release(buffer)
+}
+
+func (bridge *metalBridge) beginAsyncUpload(target *metalTensor) error {
+	bridge.submission.Lock()
+	defer bridge.submission.Unlock()
+
+	if bridge.closed.Load() {
+		return tensor.ErrBackendClosed
+	}
+
+	if err := target.beginPendingUse(); err != nil {
+		return err
+	}
+
+	bridge.pending.Add(1)
+
+	return nil
+}
+
+func (bridge *metalBridge) finishAsyncUpload(target *metalTensor, bytesIn []byte) {
+	defer bridge.pending.Done()
+	defer target.releaseUse()
+
+	err := bridge.copyBytes(target, bytesIn)
+	target.complete(err)
+}
+
+const metalBufferAlignment = 256
+
+func alignBufferSize(bytes int) int {
+	if bytes <= 0 {
+		return 0
+	}
+
+	remainder := bytes % metalBufferAlignment
+	if remainder == 0 {
+		return bytes
+	}
+
+	padding := metalBufferAlignment - remainder
+	if bytes > int(^uint(0)>>1)-padding {
+		return bytes
+	}
+
+	return bytes + padding
 }
 
 func runMetalAddFloat32(left, right, out tensor.Tensor) error {
@@ -270,7 +353,7 @@ func runMetalAddFloat32(left, right, out tensor.Tensor) error {
 		return nil
 	}
 
-	token, err := metalCompletions.Begin(outTensor)
+	token, err := metalCompletions.Begin(outTensor, leftTensor, rightTensor)
 	if err != nil {
 		return err
 	}
@@ -376,6 +459,7 @@ type metalCompletionRegistry struct {
 type metalCompletion struct {
 	bridge *metalBridge
 	target *metalTensor
+	uses   []*metalTensor
 }
 
 func newMetalCompletionRegistry() *metalCompletionRegistry {
@@ -384,7 +468,10 @@ func newMetalCompletionRegistry() *metalCompletionRegistry {
 	}
 }
 
-func (registry *metalCompletionRegistry) Begin(target *metalTensor) (uint64, error) {
+func (registry *metalCompletionRegistry) Begin(
+	target *metalTensor,
+	inputs ...*metalTensor,
+) (uint64, error) {
 	target.bridge.submission.Lock()
 	defer target.bridge.submission.Unlock()
 
@@ -392,10 +479,23 @@ func (registry *metalCompletionRegistry) Begin(target *metalTensor) (uint64, err
 		return 0, tensor.ErrBackendClosed
 	}
 
-	if err := target.beginPending(); err != nil {
+	uses := make([]*metalTensor, 0, len(inputs)+1)
+
+	for _, input := range inputs {
+		if err := input.retainUse(); err != nil {
+			releaseTensorUses(uses)
+			return 0, err
+		}
+
+		uses = append(uses, input)
+	}
+
+	if err := target.beginPendingUse(); err != nil {
+		releaseTensorUses(uses)
 		return 0, err
 	}
 
+	uses = append(uses, target)
 	target.bridge.pending.Add(1)
 
 	registry.mutex.Lock()
@@ -410,6 +510,7 @@ func (registry *metalCompletionRegistry) Begin(target *metalTensor) (uint64, err
 	registry.targets[token] = metalCompletion{
 		bridge: target.bridge,
 		target: target,
+		uses:   uses,
 	}
 
 	return token, nil
@@ -421,6 +522,7 @@ func (registry *metalCompletionRegistry) Complete(token uint64, code int, messag
 		return
 	}
 	defer completion.bridge.pending.Done()
+	defer releaseTensorUses(completion.uses)
 
 	if code == 0 {
 		completion.target.complete(nil)
@@ -436,6 +538,7 @@ func (registry *metalCompletionRegistry) Fail(token uint64, err error) {
 		return
 	}
 	defer completion.bridge.pending.Done()
+	defer releaseTensorUses(completion.uses)
 
 	completion.target.complete(err)
 }
@@ -448,6 +551,12 @@ func (registry *metalCompletionRegistry) take(token uint64) metalCompletion {
 	delete(registry.targets, token)
 
 	return completion
+}
+
+func releaseTensorUses(targets []*metalTensor) {
+	for targetIndex := len(targets) - 1; targetIndex >= 0; targetIndex-- {
+		targets[targetIndex].releaseUse()
+	}
 }
 
 func requireMetalTensor(input tensor.Tensor) (*metalTensor, error) {
@@ -477,6 +586,7 @@ type metalTensor struct {
 	err         error
 	ready       chan struct{}
 	readyClosed bool
+	uses        int
 	closed      atomic.Bool
 	state       atomic.Uint32
 }
@@ -511,13 +621,11 @@ func (target *metalTensor) Close() error {
 	}
 
 	runtime.SetFinalizer(target, nil)
-	<-target.Ready()
-	target.state.Store(uint32(tensor.StateClosed))
+	target.mutex.Lock()
+	defer target.mutex.Unlock()
 
-	if target.buffer != nil {
-		target.bridge.releaseBuffer(target.buffer, target.bytes)
-		target.buffer = nil
-	}
+	target.state.Store(uint32(tensor.StateClosed))
+	target.releaseClosedBufferLocked()
 
 	return nil
 }
@@ -635,7 +743,7 @@ func (target *metalTensor) Ready() <-chan struct{} {
 	return target.ready
 }
 
-func (target *metalTensor) beginPending() error {
+func (target *metalTensor) beginPendingUse() error {
 	target.mutex.Lock()
 	defer target.mutex.Unlock()
 
@@ -651,8 +759,33 @@ func (target *metalTensor) beginPending() error {
 	target.ready = make(chan struct{})
 	target.readyClosed = false
 	target.state.Store(uint32(tensor.StatePending))
+	target.uses++
 
 	return nil
+}
+
+func (target *metalTensor) retainUse() error {
+	target.mutex.Lock()
+	defer target.mutex.Unlock()
+
+	if target.closed.Load() {
+		return tensor.ErrTensorClosed
+	}
+
+	target.uses++
+
+	return nil
+}
+
+func (target *metalTensor) releaseUse() {
+	target.mutex.Lock()
+	defer target.mutex.Unlock()
+
+	if target.uses > 0 {
+		target.uses--
+	}
+
+	target.releaseClosedBufferLocked()
 }
 
 func (target *metalTensor) complete(err error) {
@@ -669,6 +802,8 @@ func (target *metalTensor) complete(err error) {
 		close(target.ready)
 		target.readyClosed = true
 	}
+
+	target.releaseClosedBufferLocked()
 }
 
 func (target *metalTensor) completionError() error {
@@ -676,6 +811,15 @@ func (target *metalTensor) completionError() error {
 	defer target.mutex.Unlock()
 
 	return target.err
+}
+
+func (target *metalTensor) releaseClosedBufferLocked() {
+	if !target.closed.Load() || target.uses > 0 || target.buffer == nil {
+		return
+	}
+
+	target.bridge.releaseBuffer(target.buffer, target.bytes)
+	target.buffer = nil
 }
 
 func (target *metalTensor) RequiresGrad() bool {
