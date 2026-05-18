@@ -16,6 +16,19 @@ import (
 
 var parityElementCounts = []int{1, 7, 64, 1024, 8192}
 
+type binaryFloat32Case struct {
+	name      string
+	operation metalBinaryFloat32Operation
+	apply     func(*Backend, context.Context, tensor.Tensor, tensor.Tensor) (tensor.Tensor, error)
+}
+
+var binaryFloat32Cases = []binaryFloat32Case{
+	{name: "add", operation: metalBinaryFloat32Add, apply: (*Backend).AddFloat32},
+	{name: "sub", operation: metalBinaryFloat32Sub, apply: (*Backend).SubFloat32},
+	{name: "mul", operation: metalBinaryFloat32Mul, apply: (*Backend).MulFloat32},
+	{name: "div", operation: metalBinaryFloat32Div, apply: (*Backend).DivFloat32},
+}
+
 func TestNewBackend(t *testing.T) {
 	convey.Convey("Given the Metal backend constructor", t, func() {
 		backend, err := NewBackend()
@@ -162,6 +175,22 @@ func TestBackend_UploadAsyncFloat32(t *testing.T) {
 }
 
 func TestBackend_AddFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[0])
+}
+
+func TestBackend_SubFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[1])
+}
+
+func TestBackend_MulFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[2])
+}
+
+func TestBackend_DivFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[3])
+}
+
+func testBackendBinaryFloat32(t *testing.T, testCase binaryFloat32Case) {
 	backend := newBackendForDeviceTest(t)
 	defer func() {
 		if err := backend.Close(); err != nil {
@@ -173,11 +202,14 @@ func TestBackend_AddFloat32(t *testing.T) {
 		elementCount := elementCount
 
 		t.Run(fmt.Sprintf("N=%d", elementCount), func(t *testing.T) {
-			convey.Convey("Given two Metal float32 tensors", t, func() {
+			convey.Convey("Given two Metal float32 tensors for "+testCase.name, t, func() {
 				shape, err := tensor.NewShape([]int{elementCount})
 				convey.So(err, convey.ShouldBeNil)
 
-				leftValues, rightValues, expectedValues := addFloat32ParityValues(elementCount)
+				leftValues, rightValues, expectedValues := binaryFloat32ParityValues(
+					elementCount,
+					testCase.name,
+				)
 
 				left, err := backend.Upload(shape, dtype.Float32, dtypeconvert.Float32ToBytes(leftValues))
 				convey.So(err, convey.ShouldBeNil)
@@ -191,7 +223,7 @@ func TestBackend_AddFloat32(t *testing.T) {
 					convey.So(right.Close(), convey.ShouldBeNil)
 				}()
 
-				out, err := backend.AddFloat32(context.Background(), left, right)
+				out, err := testCase.apply(backend, context.Background(), left, right)
 				convey.So(err, convey.ShouldBeNil)
 				defer func() {
 					convey.So(out.Close(), convey.ShouldBeNil)
@@ -217,7 +249,7 @@ func TestBackend_AddFloat32_CloseInputsBeforeDownload(t *testing.T) {
 		shape, err := tensor.NewShape([]int{8192})
 		convey.So(err, convey.ShouldBeNil)
 
-		leftValues, rightValues, expectedValues := addFloat32ParityValues(shape.Len())
+		leftValues, rightValues, expectedValues := binaryFloat32ParityValues(shape.Len(), "add")
 		left, err := backend.Upload(shape, dtype.Float32, dtypeconvert.Float32ToBytes(leftValues))
 		convey.So(err, convey.ShouldBeNil)
 
@@ -248,7 +280,7 @@ func TestBackend_AddFloat32_CloseOutputBeforeCompletion(t *testing.T) {
 		shape, err := tensor.NewShape([]int{8192})
 		convey.So(err, convey.ShouldBeNil)
 
-		leftValues, rightValues, _ := addFloat32ParityValues(shape.Len())
+		leftValues, rightValues, _ := binaryFloat32ParityValues(shape.Len(), "add")
 		left, err := backend.Upload(shape, dtype.Float32, dtypeconvert.Float32ToBytes(leftValues))
 		convey.So(err, convey.ShouldBeNil)
 		defer func() {
@@ -310,7 +342,7 @@ func TestMetalBufferPool_AlignedBuckets(t *testing.T) {
 	})
 }
 
-func TestKernelRegistry_MetalAddFloat32(t *testing.T) {
+func TestKernelRegistry_MetalBinaryFloat32(t *testing.T) {
 	backend := newBackendForDeviceTest(t)
 	defer func() {
 		if err := backend.Close(); err != nil {
@@ -318,47 +350,54 @@ func TestKernelRegistry_MetalAddFloat32(t *testing.T) {
 		}
 	}()
 
-	convey.Convey("Given the device kernel registry", t, func() {
-		kernel, ok := kernels.Default.LookupLocation("add", kernels.Signature{
-			Layout:  tensor.LayoutDense,
-			Inputs:  []dtype.DType{dtype.Float32, dtype.Float32},
-			Outputs: []dtype.DType{dtype.Float32},
-		}, tensor.Metal)
-		convey.So(ok, convey.ShouldBeTrue)
+	for _, testCase := range binaryFloat32Cases {
+		testCase := testCase
 
-		shape, err := tensor.NewShape([]int{1})
-		convey.So(err, convey.ShouldBeNil)
+		t.Run(testCase.name, func(t *testing.T) {
+			convey.Convey("Given the device kernel registry for "+testCase.name, t, func() {
+				kernel, ok := kernels.Default.LookupLocation(testCase.name, kernels.Signature{
+					Layout:  tensor.LayoutDense,
+					Inputs:  []dtype.DType{dtype.Float32, dtype.Float32},
+					Outputs: []dtype.DType{dtype.Float32},
+				}, tensor.Metal)
+				convey.So(ok, convey.ShouldBeTrue)
 
-		left, err := backend.Upload(
-			shape,
-			dtype.Float32,
-			dtypeconvert.Float32ToBytes([]float32{2}),
-		)
-		convey.So(err, convey.ShouldBeNil)
-		defer func() {
-			convey.So(left.Close(), convey.ShouldBeNil)
-		}()
+				shape, err := tensor.NewShape([]int{1})
+				convey.So(err, convey.ShouldBeNil)
 
-		right, err := backend.Upload(
-			shape,
-			dtype.Float32,
-			dtypeconvert.Float32ToBytes([]float32{3}),
-		)
-		convey.So(err, convey.ShouldBeNil)
-		defer func() {
-			convey.So(right.Close(), convey.ShouldBeNil)
-		}()
+				leftValues, rightValues, expectedValues := binaryFloat32ParityValues(1, testCase.name)
+				left, err := backend.Upload(
+					shape,
+					dtype.Float32,
+					dtypeconvert.Float32ToBytes(leftValues),
+				)
+				convey.So(err, convey.ShouldBeNil)
+				defer func() {
+					convey.So(left.Close(), convey.ShouldBeNil)
+				}()
 
-		out, err := backend.bridge.empty(shape, dtype.Float32)
-		convey.So(err, convey.ShouldBeNil)
-		defer func() {
-			convey.So(out.Close(), convey.ShouldBeNil)
-		}()
+				right, err := backend.Upload(
+					shape,
+					dtype.Float32,
+					dtypeconvert.Float32ToBytes(rightValues),
+				)
+				convey.So(err, convey.ShouldBeNil)
+				defer func() {
+					convey.So(right.Close(), convey.ShouldBeNil)
+				}()
 
-		err = kernel.Run(left, right, out)
-		convey.So(err, convey.ShouldBeNil)
-		convey.So(downloadFloat32ForTest(t, backend, out), convey.ShouldResemble, []float32{5})
-	})
+				out, err := backend.bridge.empty(shape, dtype.Float32)
+				convey.So(err, convey.ShouldBeNil)
+				defer func() {
+					convey.So(out.Close(), convey.ShouldBeNil)
+				}()
+
+				err = kernel.Run(left, right, out)
+				convey.So(err, convey.ShouldBeNil)
+				assertFloat32BitwiseEqual(t, downloadFloat32ForTest(t, backend, out), expectedValues)
+			})
+		})
+	}
 }
 
 func TestBackend_Close(t *testing.T) {
@@ -402,40 +441,62 @@ func BenchmarkBackend_Close(b *testing.B) {
 	}
 }
 
-func BenchmarkBackend_AddFloat32(b *testing.B) {
+func BenchmarkBackend_BinaryFloat32(b *testing.B) {
 	backend := newBackendForBenchmark(b)
 	defer func() {
 		_ = backend.Close()
 	}()
 
-	for _, elementCount := range parityElementCounts {
-		elementCount := elementCount
+	for _, testCase := range binaryFloat32Cases {
+		testCase := testCase
 
-		b.Run(fmt.Sprintf("N=%d", elementCount), func(b *testing.B) {
-			benchmarkBackendAddFloat32(b, backend, elementCount)
+		b.Run(testCase.name, func(b *testing.B) {
+			for _, elementCount := range parityElementCounts {
+				elementCount := elementCount
+
+				b.Run(fmt.Sprintf("N=%d", elementCount), func(b *testing.B) {
+					benchmarkBackendBinaryFloat32(b, backend, testCase, elementCount)
+				})
+			}
 		})
 	}
 }
 
-func BenchmarkKernel_RunAddFloat32(b *testing.B) {
+func BenchmarkKernel_RunBinaryFloat32(b *testing.B) {
 	backend := newBackendForBenchmark(b)
 	defer func() {
 		_ = backend.Close()
 	}()
 
-	for _, elementCount := range parityElementCounts {
-		elementCount := elementCount
+	for _, testCase := range binaryFloat32Cases {
+		testCase := testCase
 
-		b.Run(fmt.Sprintf("N=%d", elementCount), func(b *testing.B) {
-			benchmarkKernelRunAddFloat32(b, backend, elementCount)
+		b.Run(testCase.name, func(b *testing.B) {
+			for _, elementCount := range parityElementCounts {
+				elementCount := elementCount
+
+				b.Run(fmt.Sprintf("N=%d", elementCount), func(b *testing.B) {
+					benchmarkKernelRunBinaryFloat32(b, backend, testCase, elementCount)
+				})
+			}
 		})
 	}
 }
 
-func benchmarkBackendAddFloat32(benchmark *testing.B, backend *Backend, elementCount int) {
+func benchmarkBackendBinaryFloat32(
+	benchmark *testing.B,
+	backend *Backend,
+	testCase binaryFloat32Case,
+	elementCount int,
+) {
 	benchmark.Helper()
 
-	shape, left, right := uploadAddFloat32BenchmarkInputs(benchmark, backend, elementCount)
+	shape, left, right := uploadBinaryFloat32BenchmarkInputs(
+		benchmark,
+		backend,
+		testCase.name,
+		elementCount,
+	)
 	defer func() {
 		_ = left.Close()
 		_ = right.Close()
@@ -445,7 +506,7 @@ func benchmarkBackendAddFloat32(benchmark *testing.B, backend *Backend, elementC
 	benchmark.ResetTimer()
 
 	for benchmark.Loop() {
-		out, err := backend.AddFloat32(context.Background(), left, right)
+		out, err := testCase.apply(backend, context.Background(), left, right)
 		if err != nil {
 			benchmark.Fatal(err)
 		}
@@ -460,10 +521,20 @@ func benchmarkBackendAddFloat32(benchmark *testing.B, backend *Backend, elementC
 	}
 }
 
-func benchmarkKernelRunAddFloat32(benchmark *testing.B, backend *Backend, elementCount int) {
+func benchmarkKernelRunBinaryFloat32(
+	benchmark *testing.B,
+	backend *Backend,
+	testCase binaryFloat32Case,
+	elementCount int,
+) {
 	benchmark.Helper()
 
-	shape, left, right := uploadAddFloat32BenchmarkInputs(benchmark, backend, elementCount)
+	shape, left, right := uploadBinaryFloat32BenchmarkInputs(
+		benchmark,
+		backend,
+		testCase.name,
+		elementCount,
+	)
 	defer func() {
 		_ = left.Close()
 		_ = right.Close()
@@ -481,7 +552,7 @@ func benchmarkKernelRunAddFloat32(benchmark *testing.B, backend *Backend, elemen
 	benchmark.ResetTimer()
 
 	for benchmark.Loop() {
-		if err := runMetalAddFloat32(left, right, out); err != nil {
+		if err := runMetalBinaryFloat32(testCase.operation, left, right, out); err != nil {
 			benchmark.Fatal(err)
 		}
 
@@ -491,9 +562,10 @@ func benchmarkKernelRunAddFloat32(benchmark *testing.B, backend *Backend, elemen
 	}
 }
 
-func uploadAddFloat32BenchmarkInputs(
+func uploadBinaryFloat32BenchmarkInputs(
 	testingObject testing.TB,
 	backend *Backend,
+	name string,
 	elementCount int,
 ) (tensor.Shape, tensor.Tensor, tensor.Tensor) {
 	testingObject.Helper()
@@ -503,7 +575,7 @@ func uploadAddFloat32BenchmarkInputs(
 		testingObject.Fatal(err)
 	}
 
-	leftValues, rightValues, _ := addFloat32ParityValues(elementCount)
+	leftValues, rightValues, _ := binaryFloat32ParityValues(elementCount, name)
 
 	left, err := backend.Upload(shape, dtype.Float32, dtypeconvert.Float32ToBytes(leftValues))
 	if err != nil {
@@ -520,17 +592,54 @@ func uploadAddFloat32BenchmarkInputs(
 }
 
 func addFloat32ParityValues(elementCount int) ([]float32, []float32, []float32) {
+	return binaryFloat32ParityValues(elementCount, "add")
+}
+
+func binaryFloat32ParityValues(
+	elementCount int,
+	name string,
+) ([]float32, []float32, []float32) {
 	leftValues := make([]float32, elementCount)
 	rightValues := make([]float32, elementCount)
 	expectedValues := make([]float32, elementCount)
 
 	for index := range leftValues {
-		leftValues[index] = float32((index%257)-128) * 0.125
-		rightValues[index] = float32((index%131)-65) * 0.0625
-		expectedValues[index] = leftValues[index] + rightValues[index]
+		leftValues[index] = float32((index % 511) - 255)
+		rightValues[index] = binaryFloat32RightValue(index)
+		expectedValues[index] = binaryFloat32Expected(
+			name,
+			leftValues[index],
+			rightValues[index],
+		)
 	}
 
 	return leftValues, rightValues, expectedValues
+}
+
+func binaryFloat32RightValue(index int) float32 {
+	integerValue := 1 << uint(index%4)
+	value := float32(integerValue)
+
+	if index%5 == 0 {
+		return -value
+	}
+
+	return value
+}
+
+func binaryFloat32Expected(name string, left float32, right float32) float32 {
+	switch name {
+	case "add":
+		return left + right
+	case "sub":
+		return left - right
+	case "mul":
+		return left * right
+	case "div":
+		return left / right
+	}
+
+	panic("unknown binary float32 operation: " + name)
 }
 
 func assertFloat32BitwiseEqual(

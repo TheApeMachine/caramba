@@ -131,16 +131,15 @@ static id<MTLComputePipelineState> metal_get_pipeline(
 
     [pipelineLock lock];
     id<MTLComputePipelineState> cachedPipeline = [pipelineCache objectForKey:functionName];
+    [pipelineLock unlock];
 
     if (cachedPipeline != nil) {
-        [pipelineLock unlock];
         return cachedPipeline;
     }
 
     id<MTLFunction> function = [library newFunctionWithName:functionName];
 
     if (function == nil) {
-        [pipelineLock unlock];
         metal_status_set(status, -6, "newFunctionWithName returned nil");
         return nil;
     }
@@ -150,9 +149,16 @@ static id<MTLComputePipelineState> metal_get_pipeline(
         [device newComputePipelineStateWithFunction:function error:&error];
 
     if (pipeline == nil) {
-        [pipelineLock unlock];
         metal_status_set_ns_error(status, -7, @"newComputePipelineStateWithFunction", error);
         return nil;
+    }
+
+    [pipelineLock lock];
+    cachedPipeline = [pipelineCache objectForKey:functionName];
+
+    if (cachedPipeline != nil) {
+        [pipelineLock unlock];
+        return cachedPipeline;
     }
 
     [pipelineCache setObject:pipeline forKey:functionName];

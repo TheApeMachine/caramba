@@ -356,7 +356,7 @@ func runMetalBinaryFloat32(
 	}
 
 	if leftTensor.bridge != rightTensor.bridge || leftTensor.bridge != outTensor.bridge {
-		return errors.New("metal add float32: tensors belong to different Metal backends")
+		return errors.New("metal binary float32: tensors belong to different Metal backends")
 	}
 
 	if leftTensor.shape.Len() > math.MaxUint32 {
