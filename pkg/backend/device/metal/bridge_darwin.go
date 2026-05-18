@@ -35,9 +35,11 @@ metalBridge wraps a Metal device, command queue, and compiled kernel
 pipelines.
 */
 type metalBridge struct {
-	device C.MetalDeviceRef
-	pool   *metalBufferPool
-	closed atomic.Bool
+	device     C.MetalDeviceRef
+	pool       *metalBufferPool
+	submission sync.Mutex
+	pending    sync.WaitGroup
+	closed     atomic.Bool
 }
 
 func openMetalBridge() (*metalBridge, error) {
@@ -176,9 +178,14 @@ func (bridge *metalBridge) download(input tensor.Tensor) (dtype.DType, []byte, e
 }
 
 func (bridge *metalBridge) close() error {
+	bridge.submission.Lock()
 	if !bridge.closed.CompareAndSwap(false, true) {
+		bridge.submission.Unlock()
 		return nil
 	}
+	bridge.submission.Unlock()
+
+	bridge.pending.Wait()
 
 	if bridge.pool != nil {
 		bridge.pool.ReleaseAll()
@@ -363,19 +370,33 @@ var metalCompletions = newMetalCompletionRegistry()
 type metalCompletionRegistry struct {
 	mutex   sync.Mutex
 	next    uint64
-	targets map[uint64]*metalTensor
+	targets map[uint64]metalCompletion
+}
+
+type metalCompletion struct {
+	bridge *metalBridge
+	target *metalTensor
 }
 
 func newMetalCompletionRegistry() *metalCompletionRegistry {
 	return &metalCompletionRegistry{
-		targets: make(map[uint64]*metalTensor),
+		targets: make(map[uint64]metalCompletion),
 	}
 }
 
 func (registry *metalCompletionRegistry) Begin(target *metalTensor) (uint64, error) {
+	target.bridge.submission.Lock()
+	defer target.bridge.submission.Unlock()
+
+	if target.bridge.closed.Load() {
+		return 0, tensor.ErrBackendClosed
+	}
+
 	if err := target.beginPending(); err != nil {
 		return 0, err
 	}
+
+	target.bridge.pending.Add(1)
 
 	registry.mutex.Lock()
 	defer registry.mutex.Unlock()
@@ -386,42 +407,47 @@ func (registry *metalCompletionRegistry) Begin(target *metalTensor) (uint64, err
 	}
 
 	token := registry.next
-	registry.targets[token] = target
+	registry.targets[token] = metalCompletion{
+		bridge: target.bridge,
+		target: target,
+	}
 
 	return token, nil
 }
 
 func (registry *metalCompletionRegistry) Complete(token uint64, code int, message string) {
-	target := registry.take(token)
-	if target == nil {
+	completion := registry.take(token)
+	if completion.target == nil {
 		return
 	}
+	defer completion.bridge.pending.Done()
 
 	if code == 0 {
-		target.complete(nil)
+		completion.target.complete(nil)
 		return
 	}
 
-	target.complete(fmt.Errorf("metal command failed: %s (code=%d)", message, code))
+	completion.target.complete(fmt.Errorf("metal command failed: %s (code=%d)", message, code))
 }
 
 func (registry *metalCompletionRegistry) Fail(token uint64, err error) {
-	target := registry.take(token)
-	if target == nil {
+	completion := registry.take(token)
+	if completion.target == nil {
 		return
 	}
+	defer completion.bridge.pending.Done()
 
-	target.complete(err)
+	completion.target.complete(err)
 }
 
-func (registry *metalCompletionRegistry) take(token uint64) *metalTensor {
+func (registry *metalCompletionRegistry) take(token uint64) metalCompletion {
 	registry.mutex.Lock()
 	defer registry.mutex.Unlock()
 
-	target := registry.targets[token]
+	completion := registry.targets[token]
 	delete(registry.targets, token)
 
-	return target
+	return completion
 }
 
 func requireMetalTensor(input tensor.Tensor) (*metalTensor, error) {
