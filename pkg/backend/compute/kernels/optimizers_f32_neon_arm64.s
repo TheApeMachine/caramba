@@ -143,3 +143,81 @@ sgd_loop4:
 
 sgd_done:
     RET
+
+// func adamwStepFloat32NEONAsm(
+//     params, grad, first, second, output *float32,
+//     n int,
+//     lr, beta1, beta2, eps, beta1Corr, beta2Corr, weightDecay float32,
+// )
+//
+// firstNew  = beta1 * first + (1-beta1) * grad
+// secondNew = beta2 * second + (1-beta2) * grad²
+// biasFirst = firstNew / beta1Correction
+// biasSec   = secondNew / beta2Correction
+// gradStep  = lr * biasFirst / (sqrt(biasSec) + eps)
+// decayStep = lr * weightDecay * params
+// output    = params - gradStep - decayStep
+TEXT ·adamwStepFloat32NEONAsm(SB), NOSPLIT, $0-76
+    MOVD params+0(FP), R0
+    MOVD grad+8(FP), R1
+    MOVD first+16(FP), R2
+    MOVD second+24(FP), R3
+    MOVD output+32(FP), R4
+    MOVD n+40(FP), R5
+
+    FMOVS lr+48(FP), F16        ; VDUP V16.S[0], V16.S4
+    FMOVS beta1+52(FP), F17     ; VDUP V17.S[0], V17.S4
+    FMOVS beta2+56(FP), F18     ; VDUP V18.S[0], V18.S4
+    FMOVS eps+60(FP), F19       ; VDUP V19.S[0], V19.S4
+    FMOVS beta1Corr+64(FP), F20 ; VDUP V20.S[0], V20.S4
+    FMOVS beta2Corr+68(FP), F21 ; VDUP V21.S[0], V21.S4
+    FMOVS weightDecay+72(FP), F25 ; VDUP V25.S[0], V25.S4
+
+    MOVD $0x3F800000, R6
+    VMOV R6, V22.S[0]
+    VDUP V22.S[0], V22.S4
+
+    VFSUB_S4(17, 22, 23)         // V23 = 1 - beta1
+    VFSUB_S4(18, 22, 24)         // V24 = 1 - beta2
+
+adamw_loop4:
+    CMP  $4, R5
+    BLT  adamw_done
+    VLD1 (R0), [V0.S4]
+    VLD1 (R1), [V1.S4]
+    VLD1 (R2), [V2.S4]
+    VLD1 (R3), [V3.S4]
+    // firstNew = beta1*first + (1-beta1)*grad
+    VFMUL_S4(17, 2, 2)
+    VFMLA_S4(1, 23, 2)
+    // secondNew = beta2*second + (1-beta2)*grad²
+    VFMUL_S4(18, 3, 3)
+    VFMUL_S4(1, 1, 4)
+    VFMLA_S4(4, 24, 3)
+    // bias correction
+    VFDIV_S4(20, 2, 5)
+    VFDIV_S4(21, 3, 6)
+    VFSQRT_S4(6, 6)
+    VFADD_S4(19, 6, 6)
+    VFMUL_S4(16, 5, 5)
+    VFDIV_S4(6, 5, 5)
+    // decayStep = lr * weightDecay * params = V16 * V25 * V0
+    VFMUL_S4(25, 16, 7)          // V7 = lr * weightDecay (scalar product per-lane)
+    VFMUL_S4(0, 7, 7)            // V7 = lr*wd*params
+    // out = params - gradStep - decayStep
+    VFSUB_S4(5, 0, 0)
+    VFSUB_S4(7, 0, 0)
+
+    VST1 [V2.S4], (R2)
+    VST1 [V3.S4], (R3)
+    VST1 [V0.S4], (R4)
+    ADD  $16, R0
+    ADD  $16, R1
+    ADD  $16, R2
+    ADD  $16, R3
+    ADD  $16, R4
+    SUB  $4, R5
+    B    adamw_loop4
+
+adamw_done:
+    RET

@@ -22,14 +22,15 @@ import (
 Server is the main server for the API.
 */
 type Server struct {
-	app               *fiber.App
-	compute           *compute.Service
-	architecture      *architecture.Service
-	modelscope        *modelscope.Service
-	researchProjects  *ResearchProjectService
-	researchPapers    *ResearchPaperService
-	assistantPersonas *AssistantPersonaService
-	assistantSessions *AssistantSessionService
+	app                *fiber.App
+	compute            *compute.Service
+	architecture       *architecture.Service
+	modelscope         *modelscope.Service
+	researchProjects   *ResearchProjectService
+	researchPapers     *ResearchPaperService
+	researcherProfiles *ResearcherProfileService
+	assistantPersonas  *AssistantPersonaService
+	assistantSessions  *AssistantSessionService
 }
 
 /*
@@ -43,13 +44,14 @@ func NewServer() *Server {
 			ServerHeader:  "Fiber",
 			AppName:       "Caramba v1.0.0",
 		}),
-		compute:           compute.NewService(),
-		architecture:      architecture.NewService(),
-		modelscope:        modelscope.NewService(),
-		researchProjects:  NewResearchProjectService(config.NewDevTeamConfig().DatabaseURL),
-		researchPapers:    NewResearchPaperService(config.NewDevTeamConfig().DatabaseURL),
-		assistantPersonas: NewAssistantPersonaService(config.NewDevTeamConfig().DatabaseURL),
-		assistantSessions: NewAssistantSessionService(config.NewDevTeamConfig().DatabaseURL),
+		compute:            compute.NewService(),
+		architecture:       architecture.NewService(),
+		modelscope:         modelscope.NewService(),
+		researchProjects:   NewResearchProjectService(config.NewDevTeamConfig().DatabaseURL),
+		researchPapers:     NewResearchPaperService(config.NewDevTeamConfig().DatabaseURL),
+		researcherProfiles: NewResearcherProfileService(config.NewDevTeamConfig().DatabaseURL),
+		assistantPersonas:  NewAssistantPersonaService(config.NewDevTeamConfig().DatabaseURL),
+		assistantSessions:  NewAssistantSessionService(config.NewDevTeamConfig().DatabaseURL),
 	}
 }
 
@@ -85,6 +87,9 @@ func (server *Server) Up() error {
 	server.app.Get("/backend/architecture/:name", wrap(server.architecture.Load))
 	server.app.Post("/backend/architecture/:name", RequireClerkAdmin(), wrap(server.architecture.Save))
 	server.app.Post("/backend/research-projects", RequireClerkAdmin(), wrap(server.researchProjects.Create))
+	server.app.Post("/backend/research-projects/provision", wrap(server.researchProjects.Provision))
+	server.app.Get("/backend/researcher-profile", wrap(server.researcherProfiles.Get))
+	server.app.Put("/backend/researcher-profile", wrap(server.researcherProfiles.Save))
 	server.app.Post("/backend/research-papers", wrap(server.researchPapers.Create))
 	server.app.Put("/backend/research-papers", wrap(server.researchPapers.Update))
 

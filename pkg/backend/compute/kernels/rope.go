@@ -222,24 +222,31 @@ func RunRoPEFloat32(config RoPEConfig, input, output tensor.Tensor) error {
 
 	halfDim := headDim / 2
 
+	// Pre-compute cos/sin for one position at a time. RoPE rotation
+	// matrices repeat across heads at the same sequence position; we
+	// can share the cos/sin buffer per position.
+	cosBuf := borrowFloat32Buffer(halfDim)
+	sinBuf := borrowFloat32Buffer(halfDim)
+	defer releaseFloat32Buffer(cosBuf)
+	defer releaseFloat32Buffer(sinBuf)
+
 	for seqIndex := 0; seqIndex < seqLen; seqIndex++ {
 		position := float64(seqIndex + config.StartPosition)
 
+		for pairIndex := 0; pairIndex < halfDim; pairIndex++ {
+			exponent := -float64(2*pairIndex) / float64(headDim)
+			theta := position * math.Pow(config.BaseFreq, exponent)
+			cosBuf[pairIndex] = float32(math.Cos(theta))
+			sinBuf[pairIndex] = float32(math.Sin(theta))
+		}
+
 		for headIndex := 0; headIndex < numHeads; headIndex++ {
 			rowOffset := (seqIndex*numHeads + headIndex) * headDim
-
-			for pairIndex := 0; pairIndex < halfDim; pairIndex++ {
-				exponent := -float64(2*pairIndex) / float64(headDim)
-				theta := position * math.Pow(config.BaseFreq, exponent)
-				cos := float32(math.Cos(theta))
-				sin := float32(math.Sin(theta))
-
-				even := inputView[rowOffset+2*pairIndex]
-				odd := inputView[rowOffset+2*pairIndex+1]
-
-				outputView[rowOffset+2*pairIndex] = even*cos - odd*sin
-				outputView[rowOffset+2*pairIndex+1] = even*sin + odd*cos
-			}
+			ropePairsNative(
+				outputView[rowOffset:rowOffset+headDim],
+				inputView[rowOffset:rowOffset+headDim],
+				cosBuf, sinBuf,
+			)
 		}
 	}
 

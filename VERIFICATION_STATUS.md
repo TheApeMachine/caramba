@@ -24,6 +24,136 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal attention kernel expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `attention`
+- `flash_attention`
+- `multi_head_attention`
+- `grouped_query_attention`
+- `sliding_window_attention`
+
+The Metal implementation writes scaled `Q @ K^T` scores into a
+device-resident float32 scratch tensor with a tiled score kernel,
+normalizes each query row with a row-local parallel softmax kernel,
+then computes `softmax(scores) @ V` with a second tiled kernel in the
+same command buffer. The scratch tensor is owned by the Metal bridge
+lifecycle and is returned through the existing asynchronous completion
+registry after the command buffer completes.
+
+The flash attention implementation runs an online softmax Metal kernel
+over row/value tiles. Each threadgroup owns one query row and a
+64-column value tile; 256 lanes reduce each `Q·K` dot product once per
+tile, then the active value lanes update the running max, normalizer,
+and weighted accumulator before storing the output dtype.
+
+The multi-head variants use row/head/value-tile Metal kernels with the
+same online-softmax state. The full MHA path uses eight query heads and
+eight KV heads, GQA uses eight query heads over two shared KV heads,
+and sliding-window attention applies causal plus 128-token window
+masks before scoring.
+
+The parity cases use `N ∈ {1, 7, 64, 1024, 8192}` as the attention
+depth for `attention` / `flash_attention` and as the key length for
+the multi-head variants. Expected values are computed from dtype-stored
+inputs and checked against scalar-reference output using tight ULP
+bounds.
+
+The Metal dense registry now has 303 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 30 transformer attention/embedding/masking, 24
+vision, 30 optimizer, 3 quantization, 18 loss, 33 reduction, and 9
+math utility signatures.
+
+Focused attention parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalAttentionVariantDTypes|TestKernelRegistry_MetalAttentionAndFlashDTypes' -count=1 -v
+=== RUN   TestKernelRegistry_MetalAttentionAndFlashDTypes
+--- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes (0.07s)
+    --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f32 (0.01s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f32/N=1 (0.01s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f32/N=7 (0.00s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f32/N=64 (0.00s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f32/N=1024 (0.00s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f32/N=8192 (0.01s)
+    --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f16 (0.01s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f16/N=1 (0.00s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f16/N=7 (0.00s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f16/N=64 (0.00s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f16/N=1024 (0.00s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/f16/N=8192 (0.01s)
+    --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/bf16 (0.01s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/bf16/N=1 (0.00s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/bf16/N=7 (0.00s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/bf16/N=64 (0.00s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/bf16/N=1024 (0.00s)
+        --- PASS: TestKernelRegistry_MetalAttentionAndFlashDTypes/bf16/N=8192 (0.00s)
+=== RUN   TestKernelRegistry_MetalAttentionVariantDTypes
+--- PASS: TestKernelRegistry_MetalAttentionVariantDTypes (6.07s)
+    --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/f32 (2.01s)
+        --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/f32/multi_head_attention (1.16s)
+        --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/f32/grouped_query_attention (0.82s)
+        --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/f32/sliding_window_attention (0.03s)
+    --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/f16 (2.05s)
+        --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/f16/multi_head_attention (1.19s)
+        --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/f16/grouped_query_attention (0.81s)
+        --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/f16/sliding_window_attention (0.05s)
+    --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/bf16 (2.01s)
+        --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/bf16/multi_head_attention (1.16s)
+        --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/bf16/grouped_query_attention (0.82s)
+        --- PASS: TestKernelRegistry_MetalAttentionVariantDTypes/bf16/sliding_window_attention (0.03s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	6.671s
+```
+
+Metal attention benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunTransformerDTypes/.*/(attention|flash_attention|multi_head_attention|grouped_query_attention|sliding_window_attention)' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunTransformerDTypes/f32/attention-16                    	    9171	    125697 ns/op	 912.42 MB/s	    1794 B/op	      13 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f32/flash_attention-16              	    6441	    183778 ns/op	 624.06 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f32/multi_head_attention-16         	    1407	    895646 ns/op	 585.37 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f32/grouped_query_attention-16      	    1406	    878792 ns/op	 372.88 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f32/sliding_window_attention-16     	    2427	    472575 ns/op	1109.43 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f16/attention-16                    	   10075	    119080 ns/op	 550.35 MB/s	    1792 B/op	      13 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f16/flash_attention-16              	    6063	    188172 ns/op	 348.28 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f16/multi_head_attention-16         	    1321	    844393 ns/op	 310.45 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f16/grouped_query_attention-16      	    1429	    841759 ns/op	 194.64 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunTransformerDTypes/f16/sliding_window_attention-16     	    2485	    471775 ns/op	 555.66 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunTransformerDTypes/bf16/attention-16                   	    9985	    119047 ns/op	 550.50 MB/s	    1792 B/op	      13 allocs/op
+BenchmarkKernel_RunTransformerDTypes/bf16/flash_attention-16             	    6141	    181569 ns/op	 360.94 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunTransformerDTypes/bf16/multi_head_attention-16        	    1310	    871938 ns/op	 300.65 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunTransformerDTypes/bf16/grouped_query_attention-16     	    1389	    857270 ns/op	 191.12 MB/s	    1400 B/op	       9 allocs/op
+BenchmarkKernel_RunTransformerDTypes/bf16/sliding_window_attention-16    	    2594	    461746 ns/op	 567.72 MB/s	    1400 B/op	       9 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	18.902s
+```
+
+Full Metal package command on the current dirty tree:
+
+```
+go test ./pkg/backend/device/metal -count=1
+--- FAIL: TestKernelRegistry_MetalLayerNormDTypes (0.01s)
+    --- FAIL: TestKernelRegistry_MetalLayerNormDTypes/f32 (0.01s)
+        --- FAIL: TestKernelRegistry_MetalLayerNormDTypes/f32/N=1 (0.00s)
+            normalization_test.go:99: normalization float32 max ULP mismatch at 0: got bd600000 (-0.0546875), want 00000000 (0), distance 1029701632 > 32
+        --- FAIL: TestKernelRegistry_MetalLayerNormDTypes/f32/N=7 (0.00s)
+            normalization_test.go:99: normalization float32 max ULP mismatch at 5: got 3fc5c946 (1.5452049), want 00000000 (0), distance 1069926726 > 32
+        --- FAIL: TestKernelRegistry_MetalLayerNormDTypes/f32/N=1024 (0.00s)
+            normalization_test.go:99: normalization float32 max ULP mismatch at 6902: got bb249e48 (-0.0025118757), want bb249f40 (-0.0025119334), distance 248 > 32
+        --- FAIL: TestKernelRegistry_MetalLayerNormDTypes/f32/N=8192 (0.00s)
+            normalization_test.go:99: normalization float32 max ULP mismatch at 14118: got bb7752e0 (-0.0037738606), want bb774c40 (-0.0037734658), distance 1696 > 32
+FAIL
+FAIL	github.com/theapemachine/caramba/pkg/backend/device/metal	7.014s
+```
+
 ### 2026-05-18 Metal math utility kernel expansion
 
 This adds real Metal device kernels across `float32`, `float16`, and
@@ -1845,7 +1975,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 288 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer embedding/masking + vision + optimizer + quantization + loss + reduction + math utility signatures |
+| 4     | Metal device backend          | 303 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer attention/embedding/masking + vision + optimizer + quantization + loss + reduction + math utility signatures |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
@@ -1956,6 +2086,7 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_shape_private.h` | verified          |
 | `pkg/backend/device/metal/bridge_softmax_darwin.m` | verified       |
 | `pkg/backend/device/metal/bridge_transformer_darwin.m` | verified |
+| `pkg/backend/device/metal/bridge_transformer_attention_darwin.m` | verified |
 | `pkg/backend/device/metal/bridge_transformer_masking_darwin.m` | verified |
 | `pkg/backend/device/metal/bridge_transformer_private.h` | verified |
 | `pkg/backend/device/metal/bridge_unary_darwin.m` | verified           |
@@ -2040,6 +2171,8 @@ invalidation works.
 | `pkg/backend/device/metal/reduction_expected_test.go` | verified     |
 | `pkg/backend/device/metal/reduction_bench_test.go` | verified       |
 | `pkg/backend/device/metal/transformer.go`     | verified              |
+| `pkg/backend/device/metal/transformer_attention_darwin.go` | verified |
+| `pkg/backend/device/metal/transformer_attention_test.go` | verified |
 | `pkg/backend/device/metal/transformer_darwin.go` | verified           |
 | `pkg/backend/device/metal/transformer_validate_darwin.go` | verified |
 | `pkg/backend/device/metal/transformer_embedding_test.go` | verified |
@@ -2117,10 +2250,9 @@ transformer math stack.
 | `pkg/backend/compute/kernels/kernels_test.go`     | verified  |
 | `pkg/backend/compute/kernels/matmul_test.go`      | verified  |
 
-Still pending: attention variants (flash-attention, rope,
-sliding window), optimizer states (Adam/AdamW/Lion/Sophia), quantized
-inference kernels (GPTQ, AWQ, SmoothQuant), FP8 paths, and SIMD `.s`
-bodies for every kernel shipped today.
+Still pending: rope, optimizer states (Adam/AdamW/Lion/Sophia),
+quantized inference kernels (GPTQ, AWQ, SmoothQuant), FP8 paths, and
+SIMD `.s` bodies for every kernel shipped today.
 
 ## Phase 9: sparse
 

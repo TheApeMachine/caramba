@@ -129,6 +129,24 @@ export const Navigation = ({
 							/>
 						</Button>
 					</Link>
+					<Link to={"/research/new"} onClick={onNavigate}>
+						<Button
+							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
+							variant="outline"
+						>
+							<MicroscopeIcon className="shrink-0" />
+							<Flex.Column gap={1} className="text-left" fullWidth>
+								<h3>New research project</h3>
+								<p className="whitespace-break-spaces font-normal text-muted-foreground">
+									Spin up a board, paper, and team in one flow
+								</p>
+							</Flex.Column>
+							<ChevronRightIcon
+								aria-hidden="true"
+								className="in-[[data-slot=button]:hover]:translate-x-0.5 transition-transform"
+							/>
+						</Button>
+					</Link>
 				</AccordionPanel>
 			</AccordionItem>
 			<AccordionItem value="item-3">

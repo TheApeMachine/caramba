@@ -53,11 +53,13 @@ func unaryFloat32(op unaryOp) func(args ...tensor.Tensor) error {
 // the bf16/fp16 auto-registrations still fire and widen-route-narrow
 // through the NEON f32 backend.
 var neonSliceUnaryOverrides = map[string]bool{
-	"exp":     true,
-	"sigmoid": true,
-	"silu":    true,
-	"swish":   true,
-	"tanh":    true,
+	"exp":       true,
+	"sigmoid":   true,
+	"silu":      true,
+	"swish":     true,
+	"tanh":      true,
+	"log":       true,
+	"gelu_tanh": true,
 }
 
 func registerUnary(name string, op unaryOp) {

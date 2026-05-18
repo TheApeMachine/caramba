@@ -125,6 +125,16 @@ export function useResearchPaperCollectionSync({
 		[],
 	);
 
+	const projectPapers = useMemo(() => {
+		const list = papersQuery.data as ResearchPaperRowType[] | undefined;
+
+		if (!bootstrapProjectId || !list) {
+			return [];
+		}
+
+		return list.filter((row) => row.research_project_id === bootstrapProjectId);
+	}, [papersQuery.data, bootstrapProjectId]);
+
 	const remoteRow = useMemo(() => {
 		const list = papersQuery.data as ResearchPaperRowType[] | undefined;
 
@@ -139,6 +149,14 @@ export function useResearchPaperCollectionSync({
 		const hasPaperIdInUrl = Boolean(paperIdProp?.trim());
 
 		if (hasPaperIdInUrl || bootstrappedId || !bootstrapProjectId) {
+			return;
+		}
+
+		if (projectPapers.length > 0) {
+			if (projectPapers.length === 1) {
+				onPaperBootstrapped?.(projectPapers[0].id);
+			}
+
 			return;
 		}
 
@@ -212,7 +230,13 @@ export function useResearchPaperCollectionSync({
 		return () => {
 			cancelled = true;
 		};
-	}, [paperIdProp, bootstrappedId, bootstrapProjectId, onPaperBootstrapped]);
+	}, [
+		paperIdProp,
+		bootstrappedId,
+		bootstrapProjectId,
+		onPaperBootstrapped,
+		projectPapers,
+	]);
 
 	const hydrateFromRemote = useCallback(
 		(row: ResearchPaperRowType) => {

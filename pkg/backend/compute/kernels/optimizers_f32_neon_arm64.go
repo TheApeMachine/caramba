@@ -15,3 +15,10 @@ func sgdStepFloat32NEONAsm(
 	n int,
 	lr, momentumFactor, weightDecay float32,
 )
+
+//go:noescape
+func adamwStepFloat32NEONAsm(
+	params, grad, first, second, output *float32,
+	n int,
+	lr, beta1, beta2, eps, beta1Corr, beta2Corr, weightDecay float32,
+)

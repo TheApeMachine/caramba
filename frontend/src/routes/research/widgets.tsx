@@ -5,7 +5,6 @@ import { useLiveQuery } from "@tanstack/react-db";
 import { Link } from "@tanstack/react-router";
 import {
 	CalendarIcon,
-	FileTextIcon,
 	FolderIcon,
 	ListChecksIcon,
 	PlusIcon,
@@ -13,14 +12,12 @@ import {
 import { useMemo } from "react";
 import { researchProjectCollection } from "#/collections/research_project";
 import type { WidgetDescriptor } from "#/components/dashboard/registry";
-import { Avatar, AvatarFallback } from "#/components/ui/avatar";
+import { PRIORITY_COLORS, type Priority } from "#/components/kanban/model";
+import { QuickActionsWidget } from "#/components/research/quick-actions-widget";
+import { ResearcherProfileWidget } from "#/components/research/researcher-profile-widget";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { kanbanCardsCollection } from "#/lib/kanban-cards-collection";
-import {
-	PRIORITY_COLORS,
-	type Priority,
-} from "#/components/kanban/model";
 
 /*
 parseAssignees mirrors lib/kanban-board-from-rows.ts but returns just the
@@ -285,54 +282,14 @@ const StatsWidget = () => {
 	);
 };
 
-const QuickActionsWidget = () => (
-	<div className="flex h-full flex-col gap-2 p-2">
-		<Button render={<Link to="/research/new" />} className="justify-start">
-			<PlusIcon /> New project
-		</Button>
-		<Button
-			render={<Link to="/research/paper" />}
-			variant="outline"
-			className="justify-start"
-		>
-			<FileTextIcon /> Open paper editor
-		</Button>
-		<Button
-			render={<Link to="/kanban" />}
-			variant="outline"
-			className="justify-start"
-		>
-			<ListChecksIcon /> Open kanban board
-		</Button>
-	</div>
-);
-
-const WhoAmIWidget = () => {
-	const { user, isLoaded } = useUser();
-
-	if (!isLoaded) return <Empty>Loading…</Empty>;
-	if (!user) return <Empty>Not signed in.</Empty>;
-
-	const display =
-		user.fullName ?? user.username ?? user.primaryEmailAddress?.emailAddress;
-	const initials = (display ?? "??").slice(0, 2).toUpperCase();
-
-	return (
-		<div className="flex h-full items-center gap-3 p-3">
-			<Avatar className="size-12">
-				<AvatarFallback>{initials}</AvatarFallback>
-			</Avatar>
-			<div className="flex min-w-0 flex-col">
-				<span className="truncate font-semibold text-sm">{display}</span>
-				<span className="truncate text-muted-foreground text-xs">
-					{user.primaryEmailAddress?.emailAddress}
-				</span>
-			</div>
-		</div>
-	);
-};
-
 export const researchWidgets: WidgetDescriptor[] = [
+	{
+		kind: "research-actions",
+		title: "",
+		description: "",
+		hideHeader: true,
+		render: () => <QuickActionsWidget />,
+	},
 	{
 		kind: "research-stats",
 		title: "At a glance",
@@ -358,16 +315,11 @@ export const researchWidgets: WidgetDescriptor[] = [
 		render: () => <RecentActivityWidget />,
 	},
 	{
-		kind: "research-actions",
-		title: "Quick actions",
-		description: "Jump to common destinations",
-		render: () => <QuickActionsWidget />,
-	},
-	{
-		kind: "research-me",
-		title: "Signed in",
-		description: "Your account",
-		render: () => <WhoAmIWidget />,
+		kind: "research-profile",
+		title: "",
+		description: "",
+		hideHeader: true,
+		render: () => <ResearcherProfileWidget />,
 	},
 ];
 
@@ -377,24 +329,24 @@ the user touches anything. The grid is 4 cols x 2 rows.
 */
 export const defaultResearchLayout = [
 	{
+		id: "r-actions",
+		kind: "research-actions",
+		col: 0,
+		row: 0,
+		colSpan: 1,
+		rowSpan: 2,
+	},
+	{
 		id: "r-stats",
 		kind: "research-stats",
-		col: 0,
+		col: 1,
 		row: 0,
 		colSpan: 2,
 		rowSpan: 1,
 	},
 	{
-		id: "r-me",
-		kind: "research-me",
-		col: 2,
-		row: 0,
-		colSpan: 1,
-		rowSpan: 1,
-	},
-	{
-		id: "r-actions",
-		kind: "research-actions",
+		id: "r-profile",
+		kind: "research-profile",
 		col: 3,
 		row: 0,
 		colSpan: 1,
@@ -403,7 +355,7 @@ export const defaultResearchLayout = [
 	{
 		id: "r-projects",
 		kind: "research-projects",
-		col: 0,
+		col: 1,
 		row: 1,
 		colSpan: 1,
 		rowSpan: 1,
@@ -411,17 +363,9 @@ export const defaultResearchLayout = [
 	{
 		id: "r-todos",
 		kind: "research-todos",
-		col: 1,
+		col: 2,
 		row: 1,
 		colSpan: 2,
-		rowSpan: 1,
-	},
-	{
-		id: "r-activity",
-		kind: "research-activity",
-		col: 3,
-		row: 1,
-		colSpan: 1,
 		rowSpan: 1,
 	},
 ];

@@ -320,6 +320,62 @@ func runMetalAttention(
 	return tensor.ErrNeedsPlatformSetup
 }
 
+func runMetalFlashAttention(
+	query tensor.Tensor,
+	key tensor.Tensor,
+	value tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = query
+	_ = key
+	_ = value
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalMultiHeadAttention(
+	query tensor.Tensor,
+	key tensor.Tensor,
+	value tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = query
+	_ = key
+	_ = value
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalGroupedQueryAttention(
+	query tensor.Tensor,
+	key tensor.Tensor,
+	value tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = query
+	_ = key
+	_ = value
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalSlidingWindowAttention(
+	query tensor.Tensor,
+	key tensor.Tensor,
+	value tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = query
+	_ = key
+	_ = value
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
 func runMetalRoPE(input tensor.Tensor, out tensor.Tensor) error {
 	_ = input
 	_ = out

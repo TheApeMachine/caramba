@@ -14,4 +14,10 @@ docker compose exec postgres psql -U postgres -d electric -v ON_ERROR_STOP=1 \
 docker compose exec postgres psql -U postgres -d electric -v ON_ERROR_STOP=1 \
 	-f /docker-entrypoint-initdb.d/03-research-papers.sql
 
-echo "Schema applied on database 'electric' (research_projects, kanban, research_papers)."
+docker compose exec postgres psql -U postgres -d electric -v ON_ERROR_STOP=1 \
+	-f /docker-entrypoint-initdb.d/05-research-project-members.sql
+
+docker compose exec postgres psql -U postgres -d electric -v ON_ERROR_STOP=1 \
+	-f /docker-entrypoint-initdb.d/06-researcher-profiles.sql
+
+echo "Schema applied on database 'electric' (research_projects, kanban, research_papers, project_members, researcher_profiles)."

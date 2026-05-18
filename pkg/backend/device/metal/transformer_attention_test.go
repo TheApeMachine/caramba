@@ -10,7 +10,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
-func TestKernelRegistry_MetalAttentionAndRoPEDTypes(testingObject *testing.T) {
+func TestKernelRegistry_MetalAttentionAndFlashDTypes(testingObject *testing.T) {
 	backend := newBackendForDeviceTest(testingObject)
 	defer func() {
 		if err := backend.Close(); err != nil {
@@ -22,12 +22,29 @@ func TestKernelRegistry_MetalAttentionAndRoPEDTypes(testingObject *testing.T) {
 		storageDType := storageDType
 
 		testingObject.Run(storageDType.Name(), func(testingObject *testing.T) {
-			testMetalAttentionAndRoPEDType(testingObject, backend, storageDType)
+			testMetalAttentionDType(testingObject, backend, storageDType)
 		})
 	}
 }
 
-func testMetalAttentionAndRoPEDType(
+func TestKernelRegistry_MetalAttentionVariantDTypes(testingObject *testing.T) {
+	backend := newBackendForDeviceTest(testingObject)
+	defer func() {
+		if err := backend.Close(); err != nil {
+			testingObject.Fatalf("Close failed: %v", err)
+		}
+	}()
+
+	for _, storageDType := range metalTransformerDTypes {
+		storageDType := storageDType
+
+		testingObject.Run(storageDType.Name(), func(testingObject *testing.T) {
+			testMetalAttentionVariantDType(testingObject, backend, storageDType)
+		})
+	}
+}
+
+func testMetalAttentionDType(
 	testingObject *testing.T,
 	backend *Backend,
 	storageDType dtype.DType,
@@ -38,7 +55,40 @@ func testMetalAttentionAndRoPEDType(
 		testingObject.Run(testNameForElementCount(elementCount), func(testingObject *testing.T) {
 			convey.Convey("Given Metal "+storageDType.Name()+" transformer tensors", testingObject, func() {
 				runAttentionParityCase(testingObject, backend, storageDType, elementCount)
-				runRoPEParityCase(testingObject, backend, storageDType, elementCount)
+				runFlashAttentionParityCase(testingObject, backend, storageDType, elementCount)
+			})
+		})
+	}
+}
+
+func testMetalAttentionVariantDType(
+	testingObject *testing.T,
+	backend *Backend,
+	storageDType dtype.DType,
+) {
+	for _, variant := range metalAttentionVariantCases() {
+		variant := variant
+
+		testingObject.Run(variant.name, func(testingObject *testing.T) {
+			runMetalAttentionVariantDType(testingObject, backend, storageDType, variant)
+		})
+	}
+}
+
+func runMetalAttentionVariantDType(
+	testingObject *testing.T,
+	backend *Backend,
+	storageDType dtype.DType,
+	variant metalAttentionVariantCase,
+) {
+	for _, elementCount := range parityElementCounts {
+		elementCount := elementCount
+
+		testingObject.Run(testNameForElementCount(elementCount), func(testingObject *testing.T) {
+			convey.Convey("Given Metal "+storageDType.Name()+" "+variant.name+" tensors", testingObject, func() {
+				runAttentionVariantParityCase(
+					testingObject, backend, storageDType, variant, elementCount,
+				)
 			})
 		})
 	}
@@ -62,22 +112,44 @@ func runAttentionParityCase(
 	assertAttentionBytesForTest(testingObject, backend, out, storageDType, fixture)
 }
 
-func runRoPEParityCase(
+func runFlashAttentionParityCase(
 	testingObject testing.TB,
 	backend *Backend,
 	storageDType dtype.DType,
-	seqLen int,
+	depth int,
 ) {
-	numHeads, headDim := 3, 8
-	fixture := ropeFixtureForTest(seqLen, numHeads, headDim, storageDType)
-	input, out := ropeTensorsForTest(
-		testingObject, backend, seqLen, numHeads, headDim, storageDType, fixture.inputBytes,
+	seqQ, seqK, valueDim := 5, 7, 11
+	fixture := flashAttentionFixtureForTest(seqQ, seqK, depth, valueDim, storageDType)
+	query, key, value, out := attentionTensorsForTest(
+		testingObject, backend, seqQ, seqK, depth, valueDim, storageDType, fixture,
 	)
-	defer closeBenchmarkTensors(input, out)
+	defer closeBenchmarkTensors(query, key, value, out)
 
-	err := lookupRoPEKernel(testingObject, storageDType).Run(input, out)
+	err := lookupFlashAttentionKernel(testingObject, storageDType).Run(query, key, value, out)
 	convey.So(err, convey.ShouldBeNil)
-	assertRoPEBytesForTest(testingObject, backend, out, storageDType, fixture)
+	assertAttentionBytesForTest(testingObject, backend, out, storageDType, fixture)
+}
+
+func runAttentionVariantParityCase(
+	testingObject testing.TB,
+	backend *Backend,
+	storageDType dtype.DType,
+	variant metalAttentionVariantCase,
+	seqK int,
+) {
+	seqQ, numHeads, headDim := 3, 8, 64
+	fixture := attentionVariantFixtureForTest(
+		seqQ, seqK, numHeads, headDim, storageDType, variant,
+	)
+	query, key, value, out := attentionVariantTensorsForTest(
+		testingObject, backend, seqQ, seqK, numHeads, headDim,
+		storageDType, variant, fixture,
+	)
+	defer closeBenchmarkTensors(query, key, value, out)
+
+	err := lookupAttentionVariantKernel(testingObject, storageDType, variant).Run(query, key, value, out)
+	convey.So(err, convey.ShouldBeNil)
+	assertAttentionVariantBytesForTest(testingObject, backend, out, storageDType, fixture)
 }
 
 func lookupAttentionKernel(testingObject testing.TB, storageDType dtype.DType) kernels.Kernel {
@@ -99,16 +171,43 @@ func lookupAttentionKernel(testingObject testing.TB, storageDType dtype.DType) k
 	return kernel
 }
 
-func lookupRoPEKernel(testingObject testing.TB, storageDType dtype.DType) kernels.Kernel {
+func lookupAttentionVariantKernel(
+	testingObject testing.TB,
+	storageDType dtype.DType,
+	variant metalAttentionVariantCase,
+) kernels.Kernel {
 	testingObject.Helper()
 
-	kernel, ok := kernels.Default.LookupLocation("rope", kernels.Signature{
-		Layout:  tensor.LayoutDense,
-		Inputs:  []dtype.DType{storageDType},
+	kernel, ok := kernels.Default.LookupLocation(variant.name, kernels.Signature{
+		Layout: tensor.LayoutDense,
+		Inputs: []dtype.DType{
+			storageDType,
+			storageDType,
+			storageDType,
+		},
 		Outputs: []dtype.DType{storageDType},
 	}, tensor.Metal)
 	if !ok {
-		testingObject.Fatalf("missing Metal %s rope kernel", storageDType.Name())
+		testingObject.Fatalf("missing Metal %s %s kernel", storageDType.Name(), variant.name)
+	}
+
+	return kernel
+}
+
+func lookupFlashAttentionKernel(testingObject testing.TB, storageDType dtype.DType) kernels.Kernel {
+	testingObject.Helper()
+
+	kernel, ok := kernels.Default.LookupLocation("flash_attention", kernels.Signature{
+		Layout: tensor.LayoutDense,
+		Inputs: []dtype.DType{
+			storageDType,
+			storageDType,
+			storageDType,
+		},
+		Outputs: []dtype.DType{storageDType},
+	}, tensor.Metal)
+	if !ok {
+		testingObject.Fatalf("missing Metal %s flash_attention kernel", storageDType.Name())
 	}
 
 	return kernel
@@ -122,10 +221,19 @@ type attentionFixture struct {
 	expectedFloat32 []float32
 }
 
-type ropeFixture struct {
-	inputBytes      []byte
-	expectedBytes   []byte
-	expectedFloat32 []float32
+type metalAttentionVariantCase struct {
+	name       string
+	kvHeads    int
+	causal     bool
+	windowSize int
+}
+
+func metalAttentionVariantCases() []metalAttentionVariantCase {
+	return []metalAttentionVariantCase{
+		{name: "multi_head_attention", kvHeads: 8},
+		{name: "grouped_query_attention", kvHeads: 2},
+		{name: "sliding_window_attention", kvHeads: 8, causal: true, windowSize: 128},
+	}
 }
 
 func attentionTensorsForTest(
@@ -160,21 +268,39 @@ func attentionTensorsForTest(
 	return query, key, value, out
 }
 
-func ropeTensorsForTest(
+func attentionVariantTensorsForTest(
 	testingObject testing.TB,
 	backend *Backend,
-	seqLen int,
+	seqQ int,
+	seqK int,
 	numHeads int,
 	headDim int,
 	storageDType dtype.DType,
-	inputBytes []byte,
-) (tensor.Tensor, tensor.Tensor) {
+	variant metalAttentionVariantCase,
+	fixture attentionFixture,
+) (tensor.Tensor, tensor.Tensor, tensor.Tensor, tensor.Tensor) {
 	testingObject.Helper()
 
-	shape := mustShapeForTest(testingObject, []int{seqLen, numHeads, headDim})
-	input := uploadDTypeTensorForTest(testingObject, backend, shape, storageDType, inputBytes)
-	out := emptyTensorForTest(testingObject, backend, shape, storageDType)
-	return input, out
+	queryFeatures := numHeads * headDim
+	kvFeatures := variant.kvHeads * headDim
+	query := uploadDTypeTensorForTest(
+		testingObject, backend, mustShapeForTest(testingObject, []int{seqQ, queryFeatures}),
+		storageDType, fixture.queryBytes,
+	)
+	key := uploadDTypeTensorForTest(
+		testingObject, backend, mustShapeForTest(testingObject, []int{seqK, kvFeatures}),
+		storageDType, fixture.keyBytes,
+	)
+	value := uploadDTypeTensorForTest(
+		testingObject, backend, mustShapeForTest(testingObject, []int{seqK, kvFeatures}),
+		storageDType, fixture.valueBytes,
+	)
+	out := emptyTensorForTest(
+		testingObject, backend, mustShapeForTest(testingObject, []int{seqQ, queryFeatures}),
+		storageDType,
+	)
+
+	return query, key, value, out
 }
 
 func attentionFixtureForTest(
@@ -201,18 +327,57 @@ func attentionFixtureForTest(
 	}
 }
 
-func ropeFixtureForTest(
-	seqLen int,
+func attentionVariantFixtureForTest(
+	seqQ int,
+	seqK int,
 	numHeads int,
 	headDim int,
 	storageDType dtype.DType,
-) ropeFixture {
-	inputBytes := encodeLossValuesAsDType(attentionValues(seqLen*numHeads*headDim, 11), storageDType)
-	inputStored := decodeDTypeBytesToFloat32(inputBytes, storageDType)
-	expected := ropeExpected(inputStored, seqLen, numHeads, headDim)
+	variant metalAttentionVariantCase,
+) attentionFixture {
+	queryFeatures := numHeads * headDim
+	kvFeatures := variant.kvHeads * headDim
+	queryBytes := encodeLossValuesAsDType(attentionValues(seqQ*queryFeatures, 17), storageDType)
+	keyBytes := encodeLossValuesAsDType(attentionValues(seqK*kvFeatures, 19), storageDType)
+	valueBytes := encodeLossValuesAsDType(attentionVariantValues(seqK*kvFeatures, 23), storageDType)
+	queryStored := decodeDTypeBytesToFloat32(queryBytes, storageDType)
+	keyStored := decodeDTypeBytesToFloat32(keyBytes, storageDType)
+	valueStored := decodeDTypeBytesToFloat32(valueBytes, storageDType)
+	expected := attentionVariantExpected(
+		queryStored, keyStored, valueStored,
+		seqQ, seqK, numHeads, variant.kvHeads, headDim, variant,
+	)
 
-	return ropeFixture{
-		inputBytes:      inputBytes,
+	return attentionFixture{
+		queryBytes:      queryBytes,
+		keyBytes:        keyBytes,
+		valueBytes:      valueBytes,
+		expectedBytes:   encodeLossValuesAsDType(expected, storageDType),
+		expectedFloat32: expected,
+	}
+}
+
+func flashAttentionFixtureForTest(
+	seqQ int,
+	seqK int,
+	depth int,
+	valueDim int,
+	storageDType dtype.DType,
+) attentionFixture {
+	queryBytes := encodeLossValuesAsDType(attentionValues(seqQ*depth, 3), storageDType)
+	keyBytes := encodeLossValuesAsDType(attentionValues(seqK*depth, 5), storageDType)
+	valueBytes := encodeLossValuesAsDType(attentionValues(seqK*valueDim, 7), storageDType)
+	queryStored := decodeDTypeBytesToFloat32(queryBytes, storageDType)
+	keyStored := decodeDTypeBytesToFloat32(keyBytes, storageDType)
+	valueStored := decodeDTypeBytesToFloat32(valueBytes, storageDType)
+	expected := flashAttentionExpected(
+		queryStored, keyStored, valueStored, seqQ, seqK, depth, valueDim,
+	)
+
+	return attentionFixture{
+		queryBytes:      queryBytes,
+		keyBytes:        keyBytes,
+		valueBytes:      valueBytes,
 		expectedBytes:   encodeLossValuesAsDType(expected, storageDType),
 		expectedFloat32: expected,
 	}
@@ -223,6 +388,16 @@ func attentionValues(elementCount int, salt int) []float32 {
 
 	for index := range values {
 		values[index] = centeredPowerOfTwoValue(index*salt+13, 67, 32)
+	}
+
+	return values
+}
+
+func attentionVariantValues(elementCount int, salt int) []float32 {
+	values := make([]float32, elementCount)
+
+	for index := range values {
+		values[index] = 0.125 + float32((index*salt+7)%53)/128
 	}
 
 	return values
@@ -311,6 +486,170 @@ func attentionWeightedExpected(
 	return out
 }
 
+func attentionVariantExpected(
+	query []float32,
+	key []float32,
+	value []float32,
+	seqQ int,
+	seqK int,
+	numHeads int,
+	kvHeads int,
+	headDim int,
+	variant metalAttentionVariantCase,
+) []float32 {
+	out := make([]float32, seqQ*numHeads*headDim)
+
+	for rowIndex := range seqQ {
+		for headIndex := range numHeads {
+			for dimIndex := range headDim {
+				out[(rowIndex*numHeads+headIndex)*headDim+dimIndex] =
+					attentionVariantCell(
+						query, key, value, rowIndex, headIndex, dimIndex,
+						seqK, numHeads, kvHeads, headDim, variant,
+					)
+			}
+		}
+	}
+
+	return out
+}
+
+func attentionVariantCell(
+	query []float32,
+	key []float32,
+	value []float32,
+	rowIndex int,
+	headIndex int,
+	dimIndex int,
+	seqK int,
+	numHeads int,
+	kvHeads int,
+	headDim int,
+	variant metalAttentionVariantCase,
+) float32 {
+	maxScore := float32(math.Inf(-1))
+	normalizer := float32(0)
+	accumulator := float32(0)
+	scale := float32(1.0 / math.Sqrt(float64(headDim)))
+	headsPerKVHead := numHeads / kvHeads
+	kvHeadIndex := headIndex / headsPerKVHead
+
+	for keyIndex := range seqK {
+		if !attentionVariantKeepsKey(rowIndex, keyIndex, variant) {
+			continue
+		}
+
+		score := attentionVariantScore(
+			query, key, rowIndex, keyIndex, headIndex, kvHeadIndex, numHeads, kvHeads, headDim,
+		) * scale
+		oldMax := maxScore
+		maxScore = max(maxScore, score)
+		alpha := float32(math.Exp(float64(oldMax - maxScore)))
+		shifted := float32(math.Exp(float64(score - maxScore)))
+		normalizer = normalizer*alpha + shifted
+		accumulator = accumulator*alpha + shifted*
+			value[(keyIndex*kvHeads+kvHeadIndex)*headDim+dimIndex]
+	}
+
+	if normalizer == 0 {
+		return 0
+	}
+
+	return accumulator / normalizer
+}
+
+func attentionVariantKeepsKey(
+	rowIndex int,
+	keyIndex int,
+	variant metalAttentionVariantCase,
+) bool {
+	if variant.causal && keyIndex > rowIndex {
+		return false
+	}
+
+	if variant.windowSize > 0 && rowIndex >= keyIndex && rowIndex-keyIndex >= variant.windowSize {
+		return false
+	}
+
+	return true
+}
+
+func attentionVariantScore(
+	query []float32,
+	key []float32,
+	rowIndex int,
+	keyIndex int,
+	headIndex int,
+	kvHeadIndex int,
+	numHeads int,
+	kvHeads int,
+	headDim int,
+) float32 {
+	accumulator := float32(0)
+	queryOffset := (rowIndex*numHeads + headIndex) * headDim
+	keyOffset := (keyIndex*kvHeads + kvHeadIndex) * headDim
+
+	for depthIndex := range headDim {
+		accumulator += query[queryOffset+depthIndex] * key[keyOffset+depthIndex]
+	}
+
+	return accumulator
+}
+
+func flashAttentionExpected(
+	query []float32,
+	key []float32,
+	value []float32,
+	seqQ int,
+	seqK int,
+	depth int,
+	valueDim int,
+) []float32 {
+	out := make([]float32, seqQ*valueDim)
+
+	for rowIndex := range seqQ {
+		for colIndex := range valueDim {
+			out[rowIndex*valueDim+colIndex] = flashAttentionCell(
+				query, key, value, rowIndex, colIndex, seqK, depth, valueDim,
+			)
+		}
+	}
+
+	return out
+}
+
+func flashAttentionCell(
+	query []float32,
+	key []float32,
+	value []float32,
+	rowIndex int,
+	colIndex int,
+	seqK int,
+	depth int,
+	valueDim int,
+) float32 {
+	maxScore := float32(math.Inf(-1))
+	normalizer := float32(0)
+	accumulator := float32(0)
+	scale := float32(1.0 / math.Sqrt(float64(depth)))
+
+	for keyIndex := range seqK {
+		score := attentionScoreCell(query, key, rowIndex, keyIndex, depth) * scale
+		oldMax := maxScore
+		maxScore = max(maxScore, score)
+		alpha := float32(math.Exp(float64(oldMax - maxScore)))
+		shifted := float32(math.Exp(float64(score - maxScore)))
+		normalizer = normalizer*alpha + shifted
+		accumulator = accumulator*alpha + shifted*value[keyIndex*valueDim+colIndex]
+	}
+
+	if normalizer == 0 {
+		return 0
+	}
+
+	return accumulator / normalizer
+}
+
 func attentionWeightedCell(
 	scores []float32,
 	value []float32,
@@ -328,42 +667,6 @@ func attentionWeightedCell(
 	return accumulator
 }
 
-func ropeExpected(input []float32, seqLen int, numHeads int, headDim int) []float32 {
-	out := make([]float32, len(input))
-	halfDim := headDim / 2
-
-	for seqIndex := range seqLen {
-		for headIndex := range numHeads {
-			rowOffset := (seqIndex*numHeads + headIndex) * headDim
-
-			for pairIndex := range halfDim {
-				ropeExpectedPair(input, out, rowOffset, seqIndex, pairIndex, headDim)
-			}
-		}
-	}
-
-	return out
-}
-
-func ropeExpectedPair(
-	input []float32,
-	out []float32,
-	rowOffset int,
-	seqIndex int,
-	pairIndex int,
-	headDim int,
-) {
-	exponent := -float64(2*pairIndex) / float64(headDim)
-	theta := float32(float64(float32(seqIndex)) * math.Pow(10000.0, exponent))
-	cosTheta := float32(math.Cos(float64(theta)))
-	sinTheta := float32(math.Sin(float64(theta)))
-	even := input[rowOffset+2*pairIndex]
-	odd := input[rowOffset+2*pairIndex+1]
-
-	out[rowOffset+2*pairIndex] = even*cosTheta - odd*sinTheta
-	out[rowOffset+2*pairIndex+1] = even*sinTheta + odd*cosTheta
-}
-
 func assertAttentionBytesForTest(
 	testingObject testing.TB,
 	backend *Backend,
@@ -378,15 +681,15 @@ func assertAttentionBytesForTest(
 		return
 	}
 
-	assertFloat32TensorForTest(testingObject, backend, input, fixture.expectedFloat32, 256)
+	assertFloat32TensorForTest(testingObject, backend, input, fixture.expectedFloat32, 512)
 }
 
-func assertRoPEBytesForTest(
+func assertAttentionVariantBytesForTest(
 	testingObject testing.TB,
 	backend *Backend,
 	input tensor.Tensor,
 	storageDType dtype.DType,
-	fixture ropeFixture,
+	fixture attentionFixture,
 ) {
 	testingObject.Helper()
 
@@ -395,5 +698,5 @@ func assertRoPEBytesForTest(
 		return
 	}
 
-	assertFloat32TensorForTest(testingObject, backend, input, fixture.expectedFloat32, 1024)
+	assertFloat32TensorForTest(testingObject, backend, input, fixture.expectedFloat32, 512)
 }

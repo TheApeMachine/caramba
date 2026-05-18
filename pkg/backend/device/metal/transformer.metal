@@ -313,6 +313,172 @@ static inline void attention_weighted_tiled(
 }
 
 template <typename Storage, typename Scalar>
+static inline void flash_attention_online(
+    device const Scalar* query,
+    device const Scalar* key,
+    device const Scalar* value,
+    device Scalar* out,
+    constant uint& seqQ,
+    constant uint& seqK,
+    constant uint& depth,
+    constant uint& valueDim,
+    threadgroup float* reduction,
+    uint2 groupPosition,
+    uint2 localPosition
+) {
+    if (groupPosition.x >= seqQ) {
+        return;
+    }
+
+    uint threadIndex = localPosition.x;
+    uint row = groupPosition.x;
+    uint valueColumn = groupPosition.y * 64 + threadIndex;
+    float maxScore = -3.4028234663852886e38f;
+    float normalizer = 0.0f;
+    float accumulator = 0.0f;
+    float scale = rsqrt(float(depth));
+
+    for (uint keyIndex = 0; keyIndex < seqK; keyIndex++) {
+        float localDot = 0.0f;
+
+        for (uint depthIndex = threadIndex; depthIndex < depth; depthIndex += 256) {
+            localDot += Storage::load(query, row * depth + depthIndex) *
+                Storage::load(key, keyIndex * depth + depthIndex);
+        }
+
+        reduction[threadIndex] = localDot;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        for (uint stride = 128; stride > 0; stride >>= 1) {
+            if (threadIndex < stride) {
+                reduction[threadIndex] += reduction[threadIndex + stride];
+            }
+
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+        }
+
+        float dot = reduction[0];
+        float score = dot * scale;
+        float oldMax = maxScore;
+        maxScore = max(maxScore, score);
+        float alpha = exp(oldMax - maxScore);
+        float shifted = exp(score - maxScore);
+        normalizer = normalizer * alpha + shifted;
+
+        if (threadIndex < 64 && valueColumn < valueDim) {
+            accumulator = accumulator * alpha +
+                shifted * Storage::load(value, keyIndex * valueDim + valueColumn);
+        }
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (threadIndex < 64 && valueColumn < valueDim) {
+        float outputValue = normalizer == 0.0f ? 0.0f : accumulator / normalizer;
+        Storage::store(out, row * valueDim + valueColumn, outputValue);
+    }
+}
+
+static inline bool attention_variant_keeps_key(
+    uint row,
+    uint keyIndex,
+    uint causal,
+    uint windowSize
+) {
+    if (causal != 0 && keyIndex > row) {
+        return false;
+    }
+
+    if (windowSize != 0 && row >= keyIndex && row - keyIndex >= windowSize) {
+        return false;
+    }
+
+    return true;
+}
+
+template <typename Storage, typename Scalar>
+static inline void multi_head_attention_online(
+    device const Scalar* query,
+    device const Scalar* key,
+    device const Scalar* value,
+    device Scalar* out,
+    constant uint& seqQ,
+    constant uint& seqK,
+    constant uint& numHeads,
+    constant uint& kvHeads,
+    constant uint& headDim,
+    constant uint& windowSize,
+    constant uint& causal,
+    threadgroup float* reduction,
+    uint3 groupPosition,
+    uint3 localPosition
+) {
+    if (groupPosition.x >= seqQ || groupPosition.y >= numHeads) {
+        return;
+    }
+
+    uint threadIndex = localPosition.x;
+    uint dimIndex = groupPosition.z * 64 + threadIndex;
+
+    uint row = groupPosition.x;
+    uint headIndex = groupPosition.y;
+    uint headsPerKVHead = numHeads / kvHeads;
+    uint kvHeadIndex = headIndex / headsPerKVHead;
+    uint queryStride = numHeads * headDim;
+    uint kvStride = kvHeads * headDim;
+    uint queryHeadOffset = headIndex * headDim;
+    uint kvHeadOffset = kvHeadIndex * headDim;
+    float maxScore = -3.4028234663852886e38f;
+    float normalizer = 0.0f;
+    float accumulator = 0.0f;
+    float scale = rsqrt(float(headDim));
+
+    for (uint keyIndex = 0; keyIndex < seqK; keyIndex++) {
+        bool keepKey = attention_variant_keeps_key(row, keyIndex, causal, windowSize);
+
+        if (threadIndex == 0) {
+            float dot = 0.0f;
+
+            if (keepKey) {
+                for (uint depthIndex = 0; depthIndex < headDim; depthIndex++) {
+                    dot += Storage::load(
+                    query, row * queryStride + queryHeadOffset + depthIndex
+                    ) * Storage::load(
+                    key, keyIndex * kvStride + kvHeadOffset + depthIndex
+                    );
+                }
+            }
+
+            reduction[0] = dot;
+        }
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        if (keepKey) {
+            float score = reduction[0] * scale;
+            float oldMax = maxScore;
+            maxScore = max(maxScore, score);
+            float alpha = exp(oldMax - maxScore);
+            float shifted = exp(score - maxScore);
+            normalizer = normalizer * alpha + shifted;
+
+            if (threadIndex < 64 && dimIndex < headDim) {
+                accumulator = accumulator * alpha + shifted * Storage::load(
+                    value, keyIndex * kvStride + kvHeadOffset + dimIndex
+                );
+            }
+        }
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (threadIndex < 64 && dimIndex < headDim) {
+        float outputValue = normalizer == 0.0f ? 0.0f : accumulator / normalizer;
+        Storage::store(out, row * queryStride + queryHeadOffset + dimIndex, outputValue);
+    }
+}
+
+template <typename Storage, typename Scalar>
 static inline void rope_kernel(
     device const Scalar* input,
     device Scalar* out,
@@ -447,6 +613,49 @@ kernel void name( \
     ); \
 }
 
+#define FLASH_ATTENTION_KERNEL(name, storage, scalar) \
+kernel void name( \
+    device const scalar* query [[buffer(0)]], \
+    device const scalar* key [[buffer(1)]], \
+    device const scalar* value [[buffer(2)]], \
+    device scalar* out [[buffer(3)]], \
+    constant uint& seqQ [[buffer(4)]], \
+    constant uint& seqK [[buffer(5)]], \
+    constant uint& depth [[buffer(6)]], \
+    constant uint& valueDim [[buffer(7)]], \
+    uint2 groupPosition [[threadgroup_position_in_grid]], \
+    uint2 localPosition [[thread_position_in_threadgroup]] \
+) { \
+    threadgroup float reduction[256]; \
+    flash_attention_online<storage, scalar>( \
+        query, key, value, out, seqQ, seqK, depth, valueDim, \
+        reduction, groupPosition, localPosition \
+    ); \
+}
+
+#define MULTI_HEAD_ATTENTION_KERNEL(name, storage, scalar) \
+kernel void name( \
+    device const scalar* query [[buffer(0)]], \
+    device const scalar* key [[buffer(1)]], \
+    device const scalar* value [[buffer(2)]], \
+    device scalar* out [[buffer(3)]], \
+    constant uint& seqQ [[buffer(4)]], \
+    constant uint& seqK [[buffer(5)]], \
+    constant uint& numHeads [[buffer(6)]], \
+    constant uint& kvHeads [[buffer(7)]], \
+    constant uint& headDim [[buffer(8)]], \
+    constant uint& windowSize [[buffer(9)]], \
+    constant uint& causal [[buffer(10)]], \
+    uint3 groupPosition [[threadgroup_position_in_grid]], \
+    uint3 localPosition [[thread_position_in_threadgroup]] \
+) { \
+    threadgroup float reduction[256]; \
+    multi_head_attention_online<storage, scalar>( \
+        query, key, value, out, seqQ, seqK, numHeads, kvHeads, headDim, \
+        windowSize, causal, reduction, groupPosition, localPosition \
+    ); \
+}
+
 #define ROPE_KERNEL(name, storage, scalar) \
 kernel void name( \
     device const scalar* input [[buffer(0)]], \
@@ -497,6 +706,22 @@ kernel void attention_softmax(
 ATTENTION_WEIGHTED_KERNEL(attention_weighted_float32, Float32TransformerStorage, float)
 ATTENTION_WEIGHTED_KERNEL(attention_weighted_float16, Float16TransformerStorage, half)
 ATTENTION_WEIGHTED_KERNEL(attention_weighted_bfloat16, BFloat16TransformerStorage, ushort)
+
+FLASH_ATTENTION_KERNEL(flash_attention_float32, Float32TransformerStorage, float)
+FLASH_ATTENTION_KERNEL(flash_attention_float16, Float16TransformerStorage, half)
+FLASH_ATTENTION_KERNEL(flash_attention_bfloat16, BFloat16TransformerStorage, ushort)
+
+MULTI_HEAD_ATTENTION_KERNEL(multi_head_attention_float32, Float32TransformerStorage, float)
+MULTI_HEAD_ATTENTION_KERNEL(multi_head_attention_float16, Float16TransformerStorage, half)
+MULTI_HEAD_ATTENTION_KERNEL(multi_head_attention_bfloat16, BFloat16TransformerStorage, ushort)
+
+MULTI_HEAD_ATTENTION_KERNEL(grouped_query_attention_float32, Float32TransformerStorage, float)
+MULTI_HEAD_ATTENTION_KERNEL(grouped_query_attention_float16, Float16TransformerStorage, half)
+MULTI_HEAD_ATTENTION_KERNEL(grouped_query_attention_bfloat16, BFloat16TransformerStorage, ushort)
+
+MULTI_HEAD_ATTENTION_KERNEL(sliding_window_attention_float32, Float32TransformerStorage, float)
+MULTI_HEAD_ATTENTION_KERNEL(sliding_window_attention_float16, Float16TransformerStorage, half)
+MULTI_HEAD_ATTENTION_KERNEL(sliding_window_attention_bfloat16, BFloat16TransformerStorage, ushort)
 
 ROPE_KERNEL(rope_float32, Float32TransformerStorage, float)
 ROPE_KERNEL(rope_float16, Float16TransformerStorage, half)

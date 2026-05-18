@@ -19,6 +19,8 @@ func init() {
 	registerNEONUnary("silu", siluFloat32Native)
 	registerNEONUnary("swish", siluFloat32Native) // swish = silu with β=1
 	registerNEONUnary("tanh", tanhFloat32Native)
+	registerNEONUnary("log", logFloat32Native)
+	registerNEONUnary("gelu_tanh", geluTanhFloat32Native)
 }
 
 func registerNEONUnary(name string, native func(dst, src []float32)) {

@@ -113,34 +113,21 @@ func layerNormViews(args []tensor.Tensor) (input, scale, bias, out []float32, la
 }
 
 func computeRowMean(row []float32) float64 {
-	var sum float64
-
-	for _, value := range row {
-		sum += float64(value)
-	}
-
-	return sum / float64(len(row))
+	// Use NEON f64-accumulator sum (existing sumFloat32Native) for
+	// precision; divide by n on the scalar side.
+	return float64(sumFloat32Native(row)) / float64(len(row))
 }
 
 func computeRowVariance(row []float32, mean float64) float64 {
-	var variance float64
-
-	for _, value := range row {
-		delta := float64(value) - mean
-		variance += delta * delta
-	}
-
-	return variance / float64(len(row))
+	// NEON squared-diff sum, then divide by n.
+	return float64(layerNormSquaredDiffSumNative(row, float32(mean))) / float64(len(row))
 }
 
 func applyRowNormalization(
 	row, outRow, scale, bias []float32,
 	mean, invStdDev float64,
 ) {
-	for index, value := range row {
-		normalized := (float64(value) - mean) * invStdDev
-		outRow[index] = float32(normalized)*scale[index] + bias[index]
-	}
+	layerNormApplyRowNative(outRow, row, scale, bias, float32(mean), float32(invStdDev))
 }
 
 func runRMSNormFloat32(args ...tensor.Tensor) error {

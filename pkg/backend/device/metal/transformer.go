@@ -20,6 +20,10 @@ func init() {
 
 func registerMetalTransformerKernels(storageDType dtype.DType) {
 	registerMetalAttentionKernel(storageDType)
+	registerMetalFlashAttentionKernel(storageDType)
+	registerMetalMultiHeadAttentionKernel(storageDType)
+	registerMetalGroupedQueryAttentionKernel(storageDType)
+	registerMetalSlidingWindowAttentionKernel(storageDType)
 	registerMetalEmbeddingLookupKernel(storageDType)
 	registerMetalEmbeddingBagKernel(storageDType)
 	registerMetalApplyMaskKernel(storageDType)
@@ -41,6 +45,74 @@ func registerMetalAttentionKernel(storageDType dtype.DType) {
 		},
 		Locations: []tensor.Location{tensor.Metal},
 		Run:       runMetalAttentionKernel,
+	})
+}
+
+func registerMetalFlashAttentionKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "flash_attention",
+		Signature: kernels.Signature{
+			Layout: tensor.LayoutDense,
+			Inputs: []dtype.DType{
+				storageDType,
+				storageDType,
+				storageDType,
+			},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runMetalFlashAttentionKernel,
+	})
+}
+
+func registerMetalMultiHeadAttentionKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "multi_head_attention",
+		Signature: kernels.Signature{
+			Layout: tensor.LayoutDense,
+			Inputs: []dtype.DType{
+				storageDType,
+				storageDType,
+				storageDType,
+			},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runMetalMultiHeadAttentionKernel,
+	})
+}
+
+func registerMetalGroupedQueryAttentionKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "grouped_query_attention",
+		Signature: kernels.Signature{
+			Layout: tensor.LayoutDense,
+			Inputs: []dtype.DType{
+				storageDType,
+				storageDType,
+				storageDType,
+			},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runMetalGroupedQueryAttentionKernel,
+	})
+}
+
+func registerMetalSlidingWindowAttentionKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "sliding_window_attention",
+		Signature: kernels.Signature{
+			Layout: tensor.LayoutDense,
+			Inputs: []dtype.DType{
+				storageDType,
+				storageDType,
+				storageDType,
+			},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runMetalSlidingWindowAttentionKernel,
 	})
 }
 
@@ -115,6 +187,38 @@ func runMetalAttentionKernel(args ...tensor.Tensor) error {
 	}
 
 	return runMetalAttention(args[0], args[1], args[2], args[3])
+}
+
+func runMetalFlashAttentionKernel(args ...tensor.Tensor) error {
+	if len(args) != 4 {
+		return tensor.ErrShapeMismatch
+	}
+
+	return runMetalFlashAttention(args[0], args[1], args[2], args[3])
+}
+
+func runMetalMultiHeadAttentionKernel(args ...tensor.Tensor) error {
+	if len(args) != 4 {
+		return tensor.ErrShapeMismatch
+	}
+
+	return runMetalMultiHeadAttention(args[0], args[1], args[2], args[3])
+}
+
+func runMetalGroupedQueryAttentionKernel(args ...tensor.Tensor) error {
+	if len(args) != 4 {
+		return tensor.ErrShapeMismatch
+	}
+
+	return runMetalGroupedQueryAttention(args[0], args[1], args[2], args[3])
+}
+
+func runMetalSlidingWindowAttentionKernel(args ...tensor.Tensor) error {
+	if len(args) != 4 {
+		return tensor.ErrShapeMismatch
+	}
+
+	return runMetalSlidingWindowAttention(args[0], args[1], args[2], args[3])
 }
 
 func runMetalEmbeddingLookupKernel(args ...tensor.Tensor) error {

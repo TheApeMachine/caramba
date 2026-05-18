@@ -19,7 +19,8 @@ func BenchmarkKernel_RunTransformerDTypes(benchmark *testing.B) {
 
 		benchmark.Run(storageDType.Name(), func(benchmark *testing.B) {
 			benchmarkAttentionDType(benchmark, backend, storageDType)
-			benchmarkRoPEDType(benchmark, backend, storageDType)
+			benchmarkFlashAttentionDType(benchmark, backend, storageDType)
+			benchmarkAttentionVariantsDType(benchmark, backend, storageDType)
 			benchmarkEmbeddingLookupDType(benchmark, backend, storageDType)
 			benchmarkEmbeddingBagDType(benchmark, backend, storageDType)
 			benchmarkApplyMaskDType(benchmark, backend, storageDType)
@@ -56,23 +57,23 @@ func benchmarkAttentionDType(
 	})
 }
 
-func benchmarkRoPEDType(
+func benchmarkFlashAttentionDType(
 	benchmark *testing.B,
 	backend *Backend,
 	storageDType dtype.DType,
 ) {
-	benchmark.Run("rope", func(benchmark *testing.B) {
-		seqLen, numHeads, headDim := 512, 8, 64
-		input, out := benchmarkRoPETensors(
-			benchmark, backend, seqLen, numHeads, headDim, storageDType,
+	benchmark.Run("flash_attention", func(benchmark *testing.B) {
+		seqQ, seqK, depth, valueDim := 64, 64, 128, 64
+		query, key, value, out := benchmarkFlashAttentionTensors(
+			benchmark, backend, seqQ, seqK, depth, valueDim, storageDType,
 		)
-		defer closeBenchmarkTensors(input, out)
+		defer closeBenchmarkTensors(query, key, value, out)
 
-		benchmark.SetBytes(int64(seqLen * numHeads * headDim * dtypeBytesForBenchmark(storageDType) * 2))
+		benchmark.SetBytes(attentionBenchmarkBytes(seqQ, seqK, depth, valueDim, storageDType))
 		benchmark.ResetTimer()
 
 		for benchmark.Loop() {
-			if err := runMetalRoPE(input, out); err != nil {
+			if err := runMetalFlashAttention(query, key, value, out); err != nil {
 				benchmark.Fatal(err)
 			}
 
@@ -229,19 +230,20 @@ func benchmarkAttentionTensors(
 	)
 }
 
-func benchmarkRoPETensors(
+func benchmarkFlashAttentionTensors(
 	testingObject testing.TB,
 	backend *Backend,
-	seqLen int,
-	numHeads int,
-	headDim int,
+	seqQ int,
+	seqK int,
+	depth int,
+	valueDim int,
 	storageDType dtype.DType,
-) (tensor.Tensor, tensor.Tensor) {
+) (tensor.Tensor, tensor.Tensor, tensor.Tensor, tensor.Tensor) {
 	testingObject.Helper()
 
-	fixture := ropeFixtureForTest(seqLen, numHeads, headDim, storageDType)
-	return ropeTensorsForTest(
-		testingObject, backend, seqLen, numHeads, headDim, storageDType, fixture.inputBytes,
+	fixture := flashAttentionFixtureForTest(seqQ, seqK, depth, valueDim, storageDType)
+	return attentionTensorsForTest(
+		testingObject, backend, seqQ, seqK, depth, valueDim, storageDType, fixture,
 	)
 }
 

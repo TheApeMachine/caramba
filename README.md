@@ -132,9 +132,17 @@ and model kernels cover `linear`, `fused_qkv`, `lora_merge`, and
 `lora_apply` for the same storage dtypes; the LoRA apply path stages
 the rank-space intermediate in device scratch storage and submits the
 two GPU stages in one command buffer. Metal transformer support covers
+`attention`, `flash_attention`, `multi_head_attention`,
+`grouped_query_attention`, `sliding_window_attention`,
 `embedding_lookup`, `embedding_bag`, `apply_mask`, `causal_mask`, and
-`alibi_bias` for the same storage dtypes; embedding kernels report
-invalid index data through the asynchronous command completion path.
+`alibi_bias` for the same storage dtypes; attention uses tiled GPU
+stages for score construction and weighted output with a
+device-resident float32 score buffer, flash attention uses a
+row/value-tile online softmax kernel with threadgroup dot-product
+reduction, and the multi-head variants use row/head/value-tile kernels
+with GQA KV-head sharing and causal sliding-window masks. Embedding
+kernels report invalid index data through the asynchronous command
+completion path.
 Metal vision kernels cover `conv1d`, `conv2d`, `conv3d`,
 `conv_transpose2d`, `max_pool2d`, `avg_pool2d`,
 `adaptive_avg_pool2d`, and `adaptive_max_pool2d` for the same storage

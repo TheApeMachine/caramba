@@ -19,6 +19,7 @@ export interface WidgetDescriptor {
 	kind: string;
 	title: string;
 	description: string;
+	hideHeader?: boolean;
 	build?: () => Spec;
 	render?: () => ReactNode;
 }

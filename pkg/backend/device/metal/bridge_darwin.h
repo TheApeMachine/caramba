@@ -335,6 +335,38 @@ int metal_dispatch_attention(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_flash_attention(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef queryRef,
+    MetalBufferRef keyRef,
+    MetalBufferRef valueRef,
+    MetalBufferRef outRef,
+    uint32_t seqQ,
+    uint32_t seqK,
+    uint32_t depth,
+    uint32_t valueDim,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_multi_head_attention(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    int variant,
+    MetalBufferRef queryRef,
+    MetalBufferRef keyRef,
+    MetalBufferRef valueRef,
+    MetalBufferRef outRef,
+    uint32_t seqQ,
+    uint32_t seqK,
+    uint32_t numHeads,
+    uint32_t kvHeads,
+    uint32_t headDim,
+    uint32_t windowSize,
+    uint32_t causal,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 int metal_dispatch_rope(
     MetalDeviceRef contextRef,
     int elementDType,
