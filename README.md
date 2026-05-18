@@ -184,9 +184,18 @@ belief normalization. Metal Hawkes and Markov-blanket kernels cover
 `markov_blanket_partition`, `markov_flow_active`, and
 `markov_flow_internal` for the same storage dtypes, with fp32 scratch
 reductions for scalar objectives and dtype-native writes for vector
-outputs. These families run through the device command queue with
-async completion, pooled `MTLBuffer` storage, and per-kernel pipeline
-caching.
+outputs. Metal causal-inference kernels cover `backdoor_adjustment`,
+`frontdoor_adjustment`, `do_intervene`, `cate`, `counterfactual`,
+`iv_estimate`, and `dag_markov_factorization` for the same storage
+dtypes; IV and DAG factorization use device scratch reductions and a
+device finalize stage. Metal quantum-hydro physics kernels cover
+`laplacian`, `laplacian4`, `grad1d`, `divergence1d`, `fft1d`,
+`ifft1d`, `quantum_potential`, `bohmian_velocity`, and
+`madelung_continuity` for the same storage dtypes; FFT uses staged
+device Cooley-Tukey passes for power-of-two lengths and direct device
+DFT for other lengths. These families run through the device command
+queue with async completion, pooled `MTLBuffer` storage, and per-kernel
+pipeline caching.
 
 Every backend implements the same interface, and the optimizer does the same math everywhere:
 

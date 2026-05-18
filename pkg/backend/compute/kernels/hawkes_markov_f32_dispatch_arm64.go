@@ -2,7 +2,9 @@
 
 package kernels
 
-import "math"
+import (
+	"math"
+)
 
 func hawkesLogLikelihoodNative(
 	eventTimes []float32,
@@ -92,9 +94,22 @@ func markovMutualInformationNative(joint []float32, xCount, yCount int, out []fl
 			weightScratch[yIndex] = jointValue
 		}
 
-		logFloat32Native(ratioScratch, ratioScratch)
-		mulFloat32Native(weightScratch, rowView, ratioScratch)
-		mutualInformation += float64(sumFloat32Native(weightScratch))
+		blockCount := yCount &^ 3
+
+		if blockCount > 0 {
+			logFloat32Native(ratioScratch[:blockCount], ratioScratch[:blockCount])
+			mulFloat32Native(weightScratch[:blockCount], rowView[:blockCount], ratioScratch[:blockCount])
+			mutualInformation += float64(sumFloat32Native(weightScratch[:blockCount]))
+		}
+
+		for yIndex := blockCount; yIndex < yCount; yIndex++ {
+			if rowView[yIndex] <= epsilon {
+				continue
+			}
+
+			mutualInformation += float64(rowView[yIndex]) *
+				math.Log(float64(ratioScratch[yIndex]))
+		}
 	}
 
 	out[0] = float32(mutualInformation)

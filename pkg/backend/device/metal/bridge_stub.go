@@ -883,3 +883,59 @@ func runMetalDAGMarkovFactorization(
 
 	return tensor.ErrNeedsPlatformSetup
 }
+
+func runMetalPhysicsBinary(
+	operation metalPhysicsBinaryOp,
+	input tensor.Tensor,
+	spacing tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = operation
+	_ = input
+	_ = spacing
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalFFT1D(
+	realIn tensor.Tensor,
+	imagIn tensor.Tensor,
+	realOut tensor.Tensor,
+	imagOut tensor.Tensor,
+) error {
+	_ = realIn
+	_ = imagIn
+	_ = realOut
+	_ = imagOut
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalIFFT1D(
+	realIn tensor.Tensor,
+	imagIn tensor.Tensor,
+	realOut tensor.Tensor,
+	imagOut tensor.Tensor,
+) error {
+	_ = realIn
+	_ = imagIn
+	_ = realOut
+	_ = imagOut
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalMadelungContinuity(
+	density tensor.Tensor,
+	velocity tensor.Tensor,
+	spacing tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = density
+	_ = velocity
+	_ = spacing
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}

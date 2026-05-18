@@ -411,6 +411,169 @@ func assertFloat32SlicesNear(t *testing.T, got, want []float32, tolerance float6
 	}
 }
 
+func TestPoolWindowMaxFloat32NativeParity(t *testing.T) {
+	channel := []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9}
+	got := poolWindowMaxFloat32Native(channel, 3, 0, 2, 0, 2)
+	want := poolWindowMaxScalar(channel, 3, 0, 2, 0, 2)
+
+	assertFloat32SlicesNear(t, []float32{got}, []float32{want}, 1e-6)
+}
+
+func TestConvTranspose2dStride1RowNEONAsmDirect(t *testing.T) {
+	t.Run("asm_params_direct", func(t *testing.T) {
+		input := []float32{1, 2, 3, 4}
+		got := []float32{0, 0, 0, 0}
+
+		convTranspose2dTapNEONAsm(
+			&got[0],
+			2,
+			&input[0],
+			4,
+		)
+
+		assertFloat32SlicesNear(t, got, []float32{2, 4, 6, 8}, 1e-6)
+	})
+
+	t.Run("single_tap", func(t *testing.T) {
+		input := []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+		weight := []float32{2}
+		got := []float32{0.25, 0.5, 0.75, 1.0}
+		want := []float32{2.25, 4.5, 6.75, 9.0}
+
+		convTranspose2dStride1RowNEON(
+			got,
+			input,
+			weight,
+			4,
+			1, 1, 1, 4,
+			0, 0,
+		)
+
+		assertFloat32SlicesNear(t, got, want, 1e-6)
+	})
+}
+
+func TestConvTranspose2DFloat32NEONParity(t *testing.T) {
+	config := DefaultConv2DConfig()
+	batch, inC, inH, inW := 1, 2, 8, 8
+	outC, kH, kW := 2, 3, 3
+	outH := (inH-1)*config.StrideH + kH
+	outW := (inW-1)*config.StrideW + kW
+	input := randFloat32Slice(batch*inC*inH*inW, 0x720)
+	weight := randFloat32Slice(inC*outC*kH*kW, 0x721)
+	bias := randFloat32Slice(outC, 0x722)
+	got := make([]float32, batch*outC*outH*outW)
+	want := make([]float32, len(got))
+
+	convTranspose2DFloat32Native(
+		config, input, weight, bias, got,
+		batch, inC, inH, inW, outC, kH, kW, outH, outW,
+	)
+	convTranspose2DFloat32Scalar(
+		config, input, weight, bias, want,
+		batch, inC, inH, inW, outC, kH, kW, outH, outW,
+	)
+
+	assertFloat32SlicesNear(t, got, want, 1e-4)
+}
+
+func TestAdaptivePool2DFloat32NEONParity(t *testing.T) {
+	batch, channels, inH, inW := 1, 2, 7, 9
+	outH, outW := 3, 4
+	input := randFloat32Slice(batch*channels*inH*inW, 0xAD0)
+	got := make([]float32, batch*channels*outH*outW)
+	want := make([]float32, len(got))
+
+	for _, useMax := range []bool{true, false} {
+		label := "max"
+
+		if !useMax {
+			label = "avg"
+		}
+
+		t.Run(label, func(t *testing.T) {
+			adaptivePool2DFloat32Native(
+				input, got,
+				batch, channels, inH, inW, outH, outW,
+				useMax,
+			)
+			adaptivePool2DFloat32Scalar(
+				input, want,
+				batch, channels, inH, inW, outH, outW,
+				useMax,
+			)
+
+			assertFloat32SlicesNear(t, got, want, 1e-5)
+		})
+	}
+}
+
+func TestConv2DGeneralFloat32NEONParity(t *testing.T) {
+	config := Conv2DConfig{
+		StrideH: 2, StrideW: 2,
+		PaddingH: 1, PaddingW: 1,
+		DilationH: 1, DilationW: 1,
+	}
+	batch, inC, inH, inW := 1, 2, 8, 8
+	outC, kH, kW := 2, 3, 3
+	outH := (inH+2*config.PaddingH-kH)/config.StrideH + 1
+	outW := (inW+2*config.PaddingW-kW)/config.StrideW + 1
+	input := randFloat32Slice(batch*inC*inH*inW, 0x2D0)
+	weight := randFloat32Slice(outC*inC*kH*kW, 0x2D1)
+	bias := randFloat32Slice(outC, 0x2D2)
+	got := make([]float32, batch*outC*outH*outW)
+	want := make([]float32, len(got))
+
+	conv2DFloat32Native(
+		config, input, weight, bias, got,
+		batch, inC, inH, inW, outC, kH, kW, outH, outW,
+	)
+	conv2DFloat32Scalar(
+		config, input, weight, bias, want,
+		batch, inC, inH, inW, outC, kH, kW, outH, outW,
+	)
+
+	assertFloat32SlicesNear(t, got, want, 1e-4)
+}
+
+func TestPool2DGeneralFloat32NEONParity(t *testing.T) {
+	config := PoolConfig{
+		KernelH: 3, KernelW: 3,
+		StrideH: 2, StrideW: 2,
+		PaddingH: 1, PaddingW: 1,
+	}
+	inH, inW := 8, 8
+	outH := (inH+2*config.PaddingH-config.KernelH)/config.StrideH + 1
+	outW := (inW+2*config.PaddingW-config.KernelW)/config.StrideW + 1
+	input := randFloat32Slice(inH*inW, 0x520)
+
+	for _, useMax := range []bool{true, false} {
+		label := "max"
+
+		if !useMax {
+			label = "avg"
+		}
+
+		t.Run(label, func(t *testing.T) {
+			got := make([]float32, outH*outW)
+			want := make([]float32, outH*outW)
+
+			pool2DFloat32Native(
+				config, input, got,
+				1, 1, inH, inW, outH, outW,
+				useMax,
+			)
+			pool2DFloat32Scalar(
+				config, input, want,
+				1, 1, inH, inW, outH, outW,
+				useMax,
+			)
+
+			assertFloat32SlicesNear(t, got, want, 1e-5)
+		})
+	}
+}
+
 func BenchmarkConv2DFloat32Native(b *testing.B) {
 	config := DefaultConv2DConfig()
 	input := randFloat32Slice(1*16*32*32, 0xBC0)
@@ -451,5 +614,62 @@ func BenchmarkSparseCSRMatMulFloat32Native(b *testing.B) {
 
 	for b.Loop() {
 		sparseCSRMatMulFloat32Native(output, values, right, rowPtr, colIdx, rows, cols)
+	}
+}
+
+func BenchmarkConvTranspose2DFloat32Native(b *testing.B) {
+	config := DefaultConv2DConfig()
+	batch, inC, inH, inW := 1, 8, 64, 64
+	outC, kH, kW := 8, 3, 3
+	outH := (inH-1)*config.StrideH + kH
+	outW := (inW-1)*config.StrideW + kW
+	input := randFloat32Slice(batch*inC*inH*inW, 0xB720)
+	weight := randFloat32Slice(inC*outC*kH*kW, 0xB721)
+	bias := randFloat32Slice(outC, 0xB722)
+	output := make([]float32, batch*outC*outH*outW)
+
+	b.ResetTimer()
+
+	for b.Loop() {
+		convTranspose2DFloat32Native(
+			config, input, weight, bias, output,
+			batch, inC, inH, inW, outC, kH, kW, outH, outW,
+		)
+	}
+}
+
+func BenchmarkAdaptivePool2DFloat32Native(b *testing.B) {
+	batch, channels, inH, inW := 1, 16, 64, 64
+	outH, outW := 8, 8
+	input := randFloat32Slice(batch*channels*inH*inW, 0xBAD0)
+	output := make([]float32, batch*channels*outH*outW)
+
+	b.ResetTimer()
+
+	for b.Loop() {
+		adaptivePool2DFloat32Native(
+			input, output,
+			batch, channels, inH, inW, outH, outW,
+			true,
+		)
+	}
+}
+
+func BenchmarkPool2DGeneralFloat32Native(b *testing.B) {
+	config := PoolConfig{KernelH: 3, KernelW: 3, StrideH: 2, StrideW: 2, PaddingH: 1, PaddingW: 1}
+	batch, channels, inH, inW := 1, 16, 64, 64
+	outH := (inH+2*config.PaddingH-config.KernelH)/config.StrideH + 1
+	outW := (inW+2*config.PaddingW-config.KernelW)/config.StrideW + 1
+	input := randFloat32Slice(batch*channels*inH*inW, 0xB0D0)
+	output := make([]float32, batch*channels*outH*outW)
+
+	b.ResetTimer()
+
+	for b.Loop() {
+		pool2DFloat32Native(
+			config, input, output,
+			batch, channels, inH, inW, outH, outW,
+			true,
+		)
 	}
 }

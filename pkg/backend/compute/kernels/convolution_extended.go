@@ -21,9 +21,9 @@ func DefaultConv1DConfig() Conv1DConfig {
 }
 
 type Conv3DConfig struct {
-	StrideD, StrideH, StrideW         int
-	PaddingD, PaddingH, PaddingW      int
-	DilationD, DilationH, DilationW   int
+	StrideD, StrideH, StrideW       int
+	PaddingD, PaddingH, PaddingW    int
+	DilationD, DilationH, DilationW int
 }
 
 func DefaultConv3DConfig() Conv3DConfig {
@@ -215,46 +215,13 @@ func ConvTranspose2DFloat32(config Conv2DConfig, input, weight, bias, output ten
 	outHeight := outDims[2]
 	outWidth := outDims[3]
 
-	// Initialize output with bias.
-	for batchIndex := 0; batchIndex < batch; batchIndex++ {
-		for outChIndex := 0; outChIndex < outChannels; outChIndex++ {
-			for outRow := 0; outRow < outHeight; outRow++ {
-				for outCol := 0; outCol < outWidth; outCol++ {
-					idx := ((batchIndex*outChannels+outChIndex)*outHeight+outRow)*outWidth + outCol
-					outputView[idx] = biasView[outChIndex]
-				}
-			}
-		}
-	}
-
-	// Transposed conv: scatter input values into output via weights.
-	for batchIndex := 0; batchIndex < batch; batchIndex++ {
-		for inChIndex := 0; inChIndex < inChannels; inChIndex++ {
-			for inRow := 0; inRow < inHeight; inRow++ {
-				for inCol := 0; inCol < inWidth; inCol++ {
-					inputValue := inputView[((batchIndex*inChannels+inChIndex)*inHeight+inRow)*inWidth+inCol]
-
-					for outChIndex := 0; outChIndex < outChannels; outChIndex++ {
-						for kRow := 0; kRow < kernelHeight; kRow++ {
-							for kCol := 0; kCol < kernelWidth; kCol++ {
-								outRow := inRow*config.StrideH + kRow*config.DilationH - config.PaddingH
-								outCol := inCol*config.StrideW + kCol*config.DilationW - config.PaddingW
-
-								if outRow < 0 || outRow >= outHeight || outCol < 0 || outCol >= outWidth {
-									continue
-								}
-
-								weightIdx := ((inChIndex*outChannels+outChIndex)*kernelHeight+kRow)*kernelWidth + kCol
-								outIdx := ((batchIndex*outChannels+outChIndex)*outHeight+outRow)*outWidth + outCol
-
-								outputView[outIdx] += inputValue * weightView[weightIdx]
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+	convTranspose2DFloat32Native(
+		config,
+		inputView, weightView, biasView, outputView,
+		batch, inChannels, inHeight, inWidth,
+		outChannels, kernelHeight, kernelWidth,
+		outHeight, outWidth,
+	)
 
 	return nil
 }
@@ -293,26 +260,11 @@ func adaptivePool2D(args []tensor.Tensor, useMax bool) error {
 	outH := outDims[2]
 	outW := outDims[3]
 
-	for batchIndex := 0; batchIndex < batch; batchIndex++ {
-		for chIndex := 0; chIndex < channels; chIndex++ {
-			for outRow := 0; outRow < outH; outRow++ {
-				startRow := (outRow * inH) / outH
-				endRow := ((outRow + 1) * inH) / outH
-
-				for outCol := 0; outCol < outW; outCol++ {
-					startCol := (outCol * inW) / outW
-					endCol := ((outCol + 1) * inW) / outW
-
-					value := outputAdaptivePoolValue(
-						inputView, batchIndex, chIndex, channels,
-						inH, inW, startRow, endRow, startCol, endCol, useMax,
-					)
-
-					outputView[((batchIndex*channels+chIndex)*outH+outRow)*outW+outCol] = value
-				}
-			}
-		}
-	}
+	adaptivePool2DFloat32Native(
+		inputView, outputView,
+		batch, channels, inH, inW, outH, outW,
+		useMax,
+	)
 
 	return nil
 }

@@ -24,6 +24,212 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-18 Metal quantum-hydro physics expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `laplacian`
+- `laplacian4`
+- `grad1d`
+- `divergence1d`
+- `fft1d`
+- `ifft1d`
+- `quantum_potential`
+- `bohmian_velocity`
+- `madelung_continuity`
+
+`laplacian` supports rank-1, rank-2, and rank-3 periodic grids.
+`laplacian4`, `grad1d`, and `divergence1d` run 1-D periodic stencils.
+`quantum_potential`, `bohmian_velocity`, and `madelung_continuity`
+use the same boundary policy as the scalar physics reference. `fft1d`
+and `ifft1d` encode bit reversal, one staged Cooley-Tukey pass per
+length, and inverse scaling into one Metal command buffer for
+power-of-two lengths; non-power lengths run direct device DFT. The
+parity fixtures check all three storage dtypes at
+`N ∈ {1, 7, 64, 1024, 8192}`.
+
+The Metal dense registry now has 411 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 33 transformer attention/embedding/masking/positional,
+24 vision, 30 optimizer, 3 quantization, 18 loss, 33 reduction, 9 math
+utility, 24 research VSA/predictive-coding signatures, 12 active
+inference signatures, 21 Hawkes/Markov signatures, 21 causal inference
+signatures, and 27 physics signatures.
+
+Focused parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalPhysicsDTypes' -count=1 -v
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f32
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f32/N=1
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f32/N=7
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f32/N=64
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f32/N=1024
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f32/N=8192
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f16
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f16/N=1
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f16/N=7
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f16/N=64
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f16/N=1024
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/f16/N=8192
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/bf16
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/bf16/N=1
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/bf16/N=7
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/bf16/N=64
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/bf16/N=1024
+=== RUN   TestKernelRegistry_MetalPhysicsDTypes/bf16/N=8192
+--- PASS: TestKernelRegistry_MetalPhysicsDTypes (0.07s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.427s
+```
+
+Metal physics benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunPhysicsDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunPhysicsDTypes/f32/laplacian-16         	   10620	    107867 ns/op	 607.60 MB/s	    1345 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f32/laplacian4-16        	   10000	    108194 ns/op	 605.76 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f32/grad1d-16            	   10000	    102766 ns/op	 637.76 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f32/divergence1d-16      	   10000	    104035 ns/op	 629.98 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f32/fft1d-16             	    8120	    139983 ns/op	 117.04 MB/s	    1456 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f32/ifft1d-16            	    8076	    149197 ns/op	 109.81 MB/s	    1456 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f32/quantum_potential-16 	   10000	    103047 ns/op	 636.02 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f32/bohmian_velocity-16  	   10000	    102173 ns/op	 641.46 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f32/madelung_continuity-16         	   10000	    103941 ns/op	 945.81 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f16/laplacian-16                   	   10000	    105584 ns/op	 310.37 MB/s	    1344 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f16/laplacian4-16                  	   10000	    103080 ns/op	 317.91 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f16/grad1d-16                      	   10000	    106167 ns/op	 308.66 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f16/divergence1d-16                	   10000	    104320 ns/op	 314.13 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f16/fft1d-16                       	    7773	    141780 ns/op	  57.78 MB/s	    1456 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f16/ifft1d-16                      	    8691	    145188 ns/op	  56.42 MB/s	    1456 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f16/quantum_potential-16           	   10000	    102113 ns/op	 320.92 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f16/bohmian_velocity-16            	   10000	    105709 ns/op	 310.00 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/f16/madelung_continuity-16         	   10000	    100517 ns/op	 489.01 MB/s	    1336 B/op	       5 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/bf16/laplacian-16                  	   10000	    103976 ns/op	 315.17 MB/s	    1344 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/bf16/laplacian4-16                 	   10000	    103419 ns/op	 316.87 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/bf16/grad1d-16                     	   10000	    106198 ns/op	 308.58 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/bf16/divergence1d-16               	   10000	    106047 ns/op	 309.01 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/bf16/fft1d-16                      	    8319	    145565 ns/op	  56.28 MB/s	    1456 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/bf16/ifft1d-16                     	    8472	    141977 ns/op	  57.70 MB/s	    1456 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/bf16/quantum_potential-16          	   10000	    102691 ns/op	 319.11 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/bf16/bohmian_velocity-16           	   10000	    103048 ns/op	 318.01 MB/s	    1328 B/op	       6 allocs/op
+BenchmarkKernel_RunPhysicsDTypes/bf16/madelung_continuity-16        	   10000	    107624 ns/op	 456.72 MB/s	    1336 B/op	       5 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	29.756s
+```
+
+Full Metal package sweep:
+
+```
+go test ./pkg/backend/device/metal/... -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	11.624s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.489s
+```
+
+### 2026-05-18 Metal causal-inference expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `backdoor_adjustment`
+- `frontdoor_adjustment`
+- `do_intervene`
+- `cate`
+- `counterfactual`
+- `iv_estimate`
+- `dag_markov_factorization`
+
+`backdoor_adjustment`, `frontdoor_adjustment`, `do_intervene`, `cate`,
+and `counterfactual` run one Metal thread per output element.
+`iv_estimate` uses fp32 scratch groups for sums and covariance terms,
+then finishes with a device finalize stage. `dag_markov_factorization`
+uses product scratch groups and a device finalize stage. The parity
+oracle mirrors the Metal reduction order for scalar reductions and
+checks all three storage dtypes at `N ∈ {1, 7, 64, 1024, 8192}`.
+
+The Metal dense registry now has 384 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 33 transformer attention/embedding/masking/positional,
+24 vision, 30 optimizer, 3 quantization, 18 loss, 33 reduction, 9 math
+utility, 24 research VSA/predictive-coding signatures, 12 active
+inference signatures, 21 Hawkes/Markov signatures, and 21 causal
+inference signatures.
+
+Focused parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalCausalDTypes' -count=1 -v
+=== RUN   TestKernelRegistry_MetalCausalDTypes
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f32
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f32/N=1
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f32/N=7
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f32/N=64
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f32/N=1024
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f32/N=8192
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f16
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f16/N=1
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f16/N=7
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f16/N=64
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f16/N=1024
+=== RUN   TestKernelRegistry_MetalCausalDTypes/f16/N=8192
+=== RUN   TestKernelRegistry_MetalCausalDTypes/bf16
+=== RUN   TestKernelRegistry_MetalCausalDTypes/bf16/N=1
+=== RUN   TestKernelRegistry_MetalCausalDTypes/bf16/N=7
+=== RUN   TestKernelRegistry_MetalCausalDTypes/bf16/N=64
+=== RUN   TestKernelRegistry_MetalCausalDTypes/bf16/N=1024
+=== RUN   TestKernelRegistry_MetalCausalDTypes/bf16/N=8192
+--- PASS: TestKernelRegistry_MetalCausalDTypes (0.29s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.645s
+```
+
+Metal causal benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunCausalDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunCausalDTypes/f32/backdoor_adjustment-16         	    4761	    240020 ns/op	 290.38 MB/s	    1362 B/op	       7 allocs/op
+BenchmarkKernel_RunCausalDTypes/f32/frontdoor_adjustment-16        	    3156	    411510 ns/op	  99.73 MB/s	    1392 B/op	       8 allocs/op
+BenchmarkKernel_RunCausalDTypes/f32/do_intervene-16                	   11658	    101929 ns/op	1286.07 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunCausalDTypes/f32/cate-16                        	   10000	    100274 ns/op	 980.35 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunCausalDTypes/f32/counterfactual-16              	   10000	    101251 ns/op	1294.56 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunCausalDTypes/f32/iv_estimate-16                 	   10000	    117252 ns/op	 838.43 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunCausalDTypes/f32/dag_markov_factorization-16    	   10000	    106670 ns/op	 614.42 MB/s	    1696 B/op	       9 allocs/op
+BenchmarkKernel_RunCausalDTypes/f16/backdoor_adjustment-16         	    6362	    184843 ns/op	 188.53 MB/s	    1360 B/op	       7 allocs/op
+BenchmarkKernel_RunCausalDTypes/f16/frontdoor_adjustment-16        	    3756	    344792 ns/op	  59.51 MB/s	    1392 B/op	       8 allocs/op
+BenchmarkKernel_RunCausalDTypes/f16/do_intervene-16                	   11772	    101721 ns/op	 644.43 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunCausalDTypes/f16/cate-16                        	   10000	    102630 ns/op	 478.92 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunCausalDTypes/f16/counterfactual-16              	   10000	    101442 ns/op	 646.07 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunCausalDTypes/f16/iv_estimate-16                 	   10000	    118362 ns/op	 415.29 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunCausalDTypes/f16/dag_markov_factorization-16    	   10000	    104772 ns/op	 469.15 MB/s	    1696 B/op	       9 allocs/op
+BenchmarkKernel_RunCausalDTypes/bf16/backdoor_adjustment-16        	    6574	    183298 ns/op	 190.12 MB/s	    1360 B/op	       7 allocs/op
+BenchmarkKernel_RunCausalDTypes/bf16/frontdoor_adjustment-16       	    3774	    342619 ns/op	  59.89 MB/s	    1392 B/op	       8 allocs/op
+BenchmarkKernel_RunCausalDTypes/bf16/do_intervene-16               	   11733	    102177 ns/op	 641.56 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunCausalDTypes/bf16/cate-16                       	   10000	    100413 ns/op	 489.50 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunCausalDTypes/bf16/counterfactual-16             	   10000	    100911 ns/op	 649.46 MB/s	    1368 B/op	       5 allocs/op
+BenchmarkKernel_RunCausalDTypes/bf16/iv_estimate-16                	    9582	    117309 ns/op	 419.01 MB/s	    1720 B/op	       9 allocs/op
+BenchmarkKernel_RunCausalDTypes/bf16/dag_markov_factorization-16   	   10000	    103483 ns/op	 475.00 MB/s	    1696 B/op	       9 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	24.307s
+```
+
+Full Metal package sweep:
+
+```
+go test ./pkg/backend/device/metal/... -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	9.408s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.825s
+```
+
 ### 2026-05-18 Metal RoPE registry completion
 
 This wires the existing Metal RoPE shader and Obj-C bridge into the
@@ -2319,7 +2525,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 360 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer attention/embedding/masking + vision + optimizer + quantization + loss + reduction + math utility + research VSA/predictive-coding + active-inference + Hawkes/Markov signatures |
+| 4     | Metal device backend          | 411 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer attention/embedding/masking/positional + vision + optimizer + quantization + loss + reduction + math utility + research VSA/predictive-coding + active-inference + Hawkes/Markov + causal + physics signatures |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |

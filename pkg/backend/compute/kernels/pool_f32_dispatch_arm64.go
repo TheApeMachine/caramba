@@ -8,10 +8,9 @@ func pool2DFloat32Native(
 	batch, channels, inHeight, inWidth, outHeight, outWidth int,
 	useMax bool,
 ) {
-	if !poolConfigNEONEligible(config) {
-		pool2DFloat32Scalar(
-			config,
-			inputView, outputView,
+	if poolConfigNEONEligible(config) {
+		pool2DFloat32FastRowNative(
+			config, inputView, outputView,
 			batch, channels, inHeight, inWidth, outHeight, outWidth,
 			useMax,
 		)
@@ -19,6 +18,19 @@ func pool2DFloat32Native(
 		return
 	}
 
+	pool2DFloat32WindowNative(
+		config, inputView, outputView,
+		batch, channels, inHeight, inWidth, outHeight, outWidth,
+		useMax,
+	)
+}
+
+func pool2DFloat32FastRowNative(
+	config PoolConfig,
+	inputView, outputView []float32,
+	batch, channels, inHeight, inWidth, outHeight, outWidth int,
+	useMax bool,
+) {
 	strideTwo := config.StrideH == 2 && config.StrideW == 2
 
 	for batchIndex := range batch {
@@ -76,6 +88,74 @@ func pool2DFloat32Native(
 			}
 		}
 	}
+}
+
+func pool2DFloat32WindowNative(
+	config PoolConfig,
+	inputView, outputView []float32,
+	batch, channels, inHeight, inWidth, outHeight, outWidth int,
+	useMax bool,
+) {
+	for batchIndex := range batch {
+		for channelIndex := range channels {
+			channelOffsetIn := (batchIndex*channels + channelIndex) * inHeight * inWidth
+			channelOffsetOut := (batchIndex*channels + channelIndex) * outHeight * outWidth
+			channel := inputView[channelOffsetIn : channelOffsetIn+inHeight*inWidth]
+
+			for outRow := range outHeight {
+				for outCol := range outWidth {
+					outputIndex := channelOffsetOut + outRow*outWidth + outCol
+
+					if !poolWindowFullyInBounds(
+						inHeight, inWidth, outRow, outCol, config,
+					) {
+						outputView[outputIndex] = poolWindow(
+							channel, inHeight, inWidth,
+							outRow, outCol, config, useMax,
+						)
+
+						continue
+					}
+
+					startRow := outRow*config.StrideH - config.PaddingH
+					startCol := outCol*config.StrideW - config.PaddingW
+					endRow := startRow + config.KernelH
+					endCol := startCol + config.KernelW
+
+					if useMax {
+						outputView[outputIndex] = poolWindowMaxFloat32Native(
+							channel, inWidth,
+							startRow, endRow, startCol, endCol,
+						)
+
+						continue
+					}
+
+					outputView[outputIndex] = poolWindowAvgFloat32Native(
+						channel, inWidth,
+						startRow, endRow, startCol, endCol,
+					)
+				}
+			}
+		}
+	}
+}
+
+func poolWindowFullyInBounds(
+	inHeight, inWidth, outRow, outCol int,
+	config PoolConfig,
+) bool {
+	startRow := outRow*config.StrideH - config.PaddingH
+	startCol := outCol*config.StrideW - config.PaddingW
+
+	if startRow < 0 || startCol < 0 {
+		return false
+	}
+
+	endRow := startRow + config.KernelH
+	endCol := startCol + config.KernelW
+
+	return endRow <= inHeight && endCol <= inWidth
 }
 
 func poolConfigNEONEligible(config PoolConfig) bool {

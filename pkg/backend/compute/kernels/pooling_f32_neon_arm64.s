@@ -17,6 +17,11 @@
 #define VFMAX_S4(m, n, d) WORD $(0x4E20F400 | ((m) << 16) | ((n) << 5) | (d))
 #define VFMUL_S4(m, n, d) WORD $(0x6E20DC00 | ((m) << 16) | ((n) << 5) | (d))
 
+DATA poolNegInf<>+0(SB)/4, $0xFF800000
+DATA poolZero32<>+0(SB)/4, $0
+GLOBL poolNegInf<>(SB), 8, $4
+GLOBL poolZero32<>(SB), 8, $4
+
 // func maxPool2DStride1RowNEONAsm(
 //     outRow *float32, input *float32,
 //     outCols, kH, kW int,
@@ -173,10 +178,10 @@ mp22_col_loop:
     CMP  $4, R2
     BLT  mp22_done
     VLD2 (R1), [V0.S4, V1.S4]
-    VMAXP V2.S4, V0.S4, V1.S4
+    VFMAX_S4(1, 0, 2)
     VLD2 (R7), [V0.S4, V1.S4]
-    VMAXP V3.S4, V0.S4, V1.S4
-    VMAX V4.S4, V2.S4, V3.S4
+    VFMAX_S4(1, 0, 3)
+    VFMAX_S4(3, 2, 4)
     VST1 [V4.S4], (R0)
     ADD  $32, R1
     ADD  $32, R7
@@ -211,10 +216,10 @@ ap22_col_loop:
     CMP  $4, R2
     BLT  ap22_done
     VLD2 (R1), [V0.S4, V1.S4]
-    VADD V2.S4, V0.S4, V1.S4
+    VFADD_S4(1, 0, 2)
     VLD2 (R7), [V0.S4, V1.S4]
-    VADD V3.S4, V0.S4, V1.S4
-    VADD V4.S4, V2.S4, V3.S4
+    VFADD_S4(1, 0, 3)
+    VFADD_S4(3, 2, 4)
     VFMUL_S4(31, 4, 4)
     VST1 [V4.S4], (R0)
     ADD  $32, R1

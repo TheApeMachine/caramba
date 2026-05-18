@@ -903,6 +903,93 @@ int metal_dispatch_markov_flow(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_laplacian(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef spacingRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint32_t rank,
+    uint32_t dim0,
+    uint32_t dim1,
+    uint32_t dim2,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_laplacian4(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef spacingRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_grad1d(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef spacingRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_divergence1d(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef spacingRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_quantum_potential(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef densityRef,
+    MetalBufferRef spacingRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_bohmian_velocity(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef phaseRef,
+    MetalBufferRef spacingRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_madelung_continuity(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef densityRef,
+    MetalBufferRef velocityRef,
+    MetalBufferRef spacingRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_fft1d(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef realInRef,
+    MetalBufferRef imagInRef,
+    MetalBufferRef realOutRef,
+    MetalBufferRef imagOutRef,
+    uint32_t count,
+    bool inverse,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 void metal_device_release(MetalDeviceRef contextRef);
 
 #ifdef __cplusplus
