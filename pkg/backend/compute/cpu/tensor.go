@@ -2,6 +2,7 @@ package cpu
 
 import (
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 var _ computetensor.Backend = (*TensorBackend)(nil)
@@ -29,33 +30,48 @@ func (tensorBackend *TensorBackend) Location() computetensor.Location {
 	return computetensor.Host
 }
 
-/*
-UploadFloat64 copies host values into resident host storage.
-*/
-func (tensorBackend *TensorBackend) UploadFloat64(
-	shape computetensor.Shape, values []float64,
-) (computetensor.Float64Tensor, error) {
-	return tensorBackend.storage.UploadFloat64(shape, values)
+func (tensorBackend *TensorBackend) SupportedDTypes() []dtype.DType {
+	return tensorBackend.storage.SupportedDTypes()
 }
 
-/*
-AdoptFloat64 takes ownership of a freshly produced host slice without copying.
-*/
-func (tensorBackend *TensorBackend) AdoptFloat64(
-	shape computetensor.Shape, values []float64,
-) (computetensor.Float64Tensor, error) {
-	return tensorBackend.storage.AdoptFloat64(shape, values)
+func (tensorBackend *TensorBackend) SupportedLayouts() []computetensor.Layout {
+	return tensorBackend.storage.SupportedLayouts()
 }
 
-/*
-DownloadFloat64 returns resident host tensor data via HostBackend (zero-copy slice alias).
+func (tensorBackend *TensorBackend) Capabilities() computetensor.Capabilities {
+	return tensorBackend.storage.Capabilities()
+}
 
-Independent buffers require CloneFloat64 on the tensor.
-*/
-func (tensorBackend *TensorBackend) DownloadFloat64(
-	tensor computetensor.Float64Tensor,
-) ([]float64, error) {
-	return tensorBackend.storage.DownloadFloat64(tensor)
+func (tensorBackend *TensorBackend) Upload(
+	shape computetensor.Shape,
+	sourceDType dtype.DType,
+	bytes []byte,
+) (computetensor.Tensor, error) {
+	return tensorBackend.storage.Upload(shape, sourceDType, bytes)
+}
+
+func (tensorBackend *TensorBackend) UploadAsync(
+	shape computetensor.Shape,
+	sourceDType dtype.DType,
+	bytes []byte,
+) (computetensor.Tensor, error) {
+	return tensorBackend.storage.UploadAsync(shape, sourceDType, bytes)
+}
+
+func (tensorBackend *TensorBackend) UploadSparse(
+	shape computetensor.Shape,
+	valueDType dtype.DType,
+	layout computetensor.Layout,
+	values []byte,
+	indices []computetensor.SparseIndex,
+) (computetensor.SparseTensor, error) {
+	return tensorBackend.storage.UploadSparse(shape, valueDType, layout, values, indices)
+}
+
+func (tensorBackend *TensorBackend) Download(
+	input computetensor.Tensor,
+) (dtype.DType, []byte, error) {
+	return tensorBackend.storage.Download(input)
 }
 
 /*

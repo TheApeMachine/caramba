@@ -12,10 +12,10 @@ import (
 )
 
 func (poolingOps *PoolingOps) MaxPool2dTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	params MaxPool2dParams,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, spec, err := requireMetalPool2dInput(input, outputShape)
 	if err != nil {
 		return nil, err
@@ -50,10 +50,10 @@ func (poolingOps *PoolingOps) MaxPool2dTensor(
 }
 
 func (poolingOps *PoolingOps) AvgPool2dTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	params AvgPool2dParams,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, spec, err := requireMetalPool2dInput(input, outputShape)
 	if err != nil {
 		return nil, err
@@ -94,24 +94,24 @@ func (poolingOps *PoolingOps) AvgPool2dTensor(
 }
 
 func (poolingOps *PoolingOps) AdaptiveAvgPool2dTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return poolingOps.adaptivePool2dTensor(input, outputShape, true)
 }
 
 func (poolingOps *PoolingOps) AdaptiveMaxPool2dTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return poolingOps.adaptivePool2dTensor(input, outputShape, false)
 }
 
 func (poolingOps *PoolingOps) adaptivePool2dTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	average bool,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, spec, err := requireMetalPool2dInput(input, outputShape)
 	if err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ type metalPool2dSpec struct {
 }
 
 func requireMetalPool2dInput(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 ) (*Tensor, metalPool2dSpec, error) {
 	metalInput, err := requireMetalTensor(input)

@@ -6,6 +6,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 func TestCSEOptimizer(t *testing.T) {
@@ -59,7 +60,7 @@ func TestCSEOptimizer(t *testing.T) {
 			nodeBranchA.SetOperationID("custom.relu")
 			nodeBranchA.SetValueType(ir.ValueType{
 				Shape:       shape,
-				DType:       tensor.Float64,
+				DType:       dtype.Float64,
 				Layout:      ir.LayoutRowMajor,
 				MemoryClass: ir.MemoryDevice,
 			})

@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 type Layout string
@@ -50,10 +51,10 @@ type Alias struct {
 
 type ValueType struct {
 	Shape       tensor.Shape
-	DType       tensor.DType
+	DType       dtype.DType
 	Layout      Layout
 	MemoryClass MemoryClass
-	Precision   tensor.DType
+	Precision   dtype.DType
 }
 
 type AttributeKind string

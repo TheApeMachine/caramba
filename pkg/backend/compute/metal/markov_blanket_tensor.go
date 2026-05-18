@@ -15,14 +15,14 @@ import (
 PartitionTensor extracts resident Markov blanket partitions from concatenated masks.
 */
 func (op *MetalMarkovBlanket) PartitionTensor(
-	state computetensor.Float64Tensor,
-	masks computetensor.Float64Tensor,
+	state computetensor.Tensor,
+	masks computetensor.Tensor,
 	outputShape computetensor.Shape,
 	sensoryCount int,
 	activeCount int,
 	internalCount int,
 	externalCount int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	stateTensor, maskTensor, err := markovTwo(state, masks)
 	if err != nil {
 		return nil, err
@@ -62,11 +62,11 @@ func (op *MetalMarkovBlanket) PartitionTensor(
 FlowInternalTensor computes resident internal-state flow.
 */
 func (op *MetalMarkovBlanket) FlowInternalTensor(
-	sensory computetensor.Float64Tensor,
-	weights computetensor.Float64Tensor,
-	bias computetensor.Float64Tensor,
+	sensory computetensor.Tensor,
+	weights computetensor.Tensor,
+	bias computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	sensoryTensor, weightTensor, biasTensor, err := markovThree(sensory, weights, bias)
 	if err != nil {
 		return nil, err
@@ -106,11 +106,11 @@ func (op *MetalMarkovBlanket) FlowInternalTensor(
 FlowActiveTensor computes resident active-state flow.
 */
 func (op *MetalMarkovBlanket) FlowActiveTensor(
-	internal computetensor.Float64Tensor,
-	weights computetensor.Float64Tensor,
-	bias computetensor.Float64Tensor,
+	internal computetensor.Tensor,
+	weights computetensor.Tensor,
+	bias computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	internalTensor, weightTensor, biasTensor, err := markovThree(internal, weights, bias)
 	if err != nil {
 		return nil, err
@@ -150,12 +150,12 @@ func (op *MetalMarkovBlanket) FlowActiveTensor(
 MutualInformationTensor computes the resident Gaussian mutual information estimate.
 */
 func (op *MetalMarkovBlanket) MutualInformationTensor(
-	x computetensor.Float64Tensor,
-	y computetensor.Float64Tensor,
+	x computetensor.Tensor,
+	y computetensor.Tensor,
 	outputShape computetensor.Shape,
 	xDimensions int,
 	yDimensions int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	xTensor, yTensor, err := markovTwo(x, y)
 	if err != nil {
 		return nil, err
@@ -194,8 +194,8 @@ func (op *MetalMarkovBlanket) MutualInformationTensor(
 }
 
 func markovTwo(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
 ) (*Tensor, *Tensor, error) {
 	firstTensor, err := requireMetalTensor(first)
 	if err != nil {
@@ -211,9 +211,9 @@ func markovTwo(
 }
 
 func markovThree(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
-	third computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
+	third computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, error) {
 	firstTensor, secondTensor, err := markovTwo(first, second)
 	if err != nil {

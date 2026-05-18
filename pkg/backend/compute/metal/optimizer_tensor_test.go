@@ -35,7 +35,7 @@ func TestTensorBackend_applyOptimizerGraph(test *testing.T) {
 
 					output := results[target.ID()]
 					So(output.Location(), ShouldEqual, computetensor.Metal)
-					values, err := output.CloneFloat64()
+					values, err := tensorFloat64Values(output)
 					So(err, ShouldBeNil)
 					assertMetalMaxDiff(values, expected, 8e-4)
 					So(output.Close(), ShouldBeNil)
@@ -71,28 +71,28 @@ func TestTensorBackend_applyOptimizerGraph(test *testing.T) {
 			firstOutput, err := tensorBackend.Apply(
 				context.Background(),
 				node,
-				[]computetensor.Float64Tensor{paramTensor, gradTensor},
+				[]computetensor.Tensor{paramTensor, gradTensor},
 			)
 			So(err, ShouldBeNil)
 			defer func() {
 				So(firstOutput.Close(), ShouldBeNil)
 			}()
 
-			firstValues, err := firstOutput.CloneFloat64()
+			firstValues, err := tensorFloat64Values(firstOutput)
 			So(err, ShouldBeNil)
 			assertMetalMaxDiff(firstValues, firstExpected, 8e-4)
 
 			secondOutput, err := tensorBackend.Apply(
 				context.Background(),
 				node,
-				[]computetensor.Float64Tensor{firstOutput, gradTensor},
+				[]computetensor.Tensor{firstOutput, gradTensor},
 			)
 			So(err, ShouldBeNil)
 			defer func() {
 				So(secondOutput.Close(), ShouldBeNil)
 			}()
 
-			secondValues, err := secondOutput.CloneFloat64()
+			secondValues, err := tensorFloat64Values(secondOutput)
 			So(err, ShouldBeNil)
 			assertMetalMaxDiff(secondValues, secondExpected, 8e-4)
 		})
@@ -258,7 +258,7 @@ func benchmarkOptimizerTensor(benchmark *testing.B, operation string) {
 		output, err := tensorBackend.Apply(
 			context.Background(),
 			node,
-			[]computetensor.Float64Tensor{paramTensor, gradTensor},
+			[]computetensor.Tensor{paramTensor, gradTensor},
 		)
 		closeBenchmarkOutput(benchmark, output, err)
 	}

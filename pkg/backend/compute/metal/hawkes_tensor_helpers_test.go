@@ -350,16 +350,16 @@ func hawkesNode(
 }
 
 func assertHawkesGraphOutputs(
-	results map[string]computetensor.Float64Tensor,
+	results map[string]computetensor.Tensor,
 	expected map[string][]float64,
 ) {
 	for name, output := range results {
 		SoMsg(name+" location", output.Location(), ShouldEqual, computetensor.Metal)
-		defer func(value computetensor.Float64Tensor) {
+		defer func(value computetensor.Tensor) {
 			So(value.Close(), ShouldBeNil)
 		}(output)
 
-		values, err := output.CloneFloat64()
+		values, err := tensorFloat64Values(output)
 		SoMsg(
 			fmt.Sprintf("%s clone shape_len=%d", name, output.Shape().Len()),
 			err,

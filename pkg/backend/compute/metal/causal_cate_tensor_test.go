@@ -36,7 +36,7 @@ func TestMetalCausalOps_CATETensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalCATEMaxDiff(test, values, expected, 2e-2)
@@ -64,7 +64,7 @@ func TestTensorBackend_applyCausalCATEGraph(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertMetalCATEMaxDiff(test, values, expected, 2e-2)
 		})

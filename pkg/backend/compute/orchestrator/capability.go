@@ -5,6 +5,7 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 type Cost struct {
@@ -16,7 +17,7 @@ type Cost struct {
 type Capabilities interface {
 	Location() tensor.Location
 	Supports(op ir.OpType) bool
-	Precision(op ir.OpType) tensor.DType
+	Precision(op ir.OpType) dtype.DType
 	CanFuse(pattern string, fused ir.OpType) bool
 	Cost(node *ir.Node) Cost
 }
@@ -28,7 +29,7 @@ type CapabilityProvider interface {
 type StaticCapabilities struct {
 	location  tensor.Location
 	ops       map[ir.OpType]bool
-	precision map[ir.OpType]tensor.DType
+	precision map[ir.OpType]dtype.DType
 	fusions   map[string]map[ir.OpType]bool
 	shapes    map[ir.OpType][]string
 }
@@ -37,7 +38,7 @@ func NewStaticCapabilities(location tensor.Location) *StaticCapabilities {
 	return &StaticCapabilities{
 		location:  location,
 		ops:       make(map[ir.OpType]bool),
-		precision: make(map[ir.OpType]tensor.DType),
+		precision: make(map[ir.OpType]dtype.DType),
 		fusions:   make(map[string]map[ir.OpType]bool),
 		shapes:    make(map[ir.OpType][]string),
 	}
@@ -77,19 +78,19 @@ func (capabilities *StaticCapabilities) Supports(op ir.OpType) bool {
 	return capabilities.ops["*"] || capabilities.ops[op]
 }
 
-func (capabilities *StaticCapabilities) Precision(op ir.OpType) tensor.DType {
-	if precision := capabilities.precision[op]; precision != "" {
+func (capabilities *StaticCapabilities) Precision(op ir.OpType) dtype.DType {
+	if precision := capabilities.precision[op]; precision != dtype.Invalid {
 		return precision
 	}
 
-	if precision := capabilities.precision["*"]; precision != "" {
+	if precision := capabilities.precision["*"]; precision != dtype.Invalid {
 		return precision
 	}
 
-	return tensor.Float64
+	return dtype.Float64
 }
 
-func (capabilities *StaticCapabilities) SetPrecision(precision tensor.DType, ops ...ir.OpType) {
+func (capabilities *StaticCapabilities) SetPrecision(precision dtype.DType, ops ...ir.OpType) {
 	if len(ops) == 0 {
 		capabilities.precision["*"] = precision
 

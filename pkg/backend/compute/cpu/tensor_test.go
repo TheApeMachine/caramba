@@ -5,6 +5,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
+	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 )
 
 func TestNewTensorBackend(t *testing.T) {
@@ -17,7 +19,7 @@ func TestNewTensorBackend(t *testing.T) {
 	})
 }
 
-func TestTensorBackend_UploadFloat64(t *testing.T) {
+func TestTensorBackend_Upload(t *testing.T) {
 	Convey("Given a CPU tensor backend", t, func() {
 		tensorBackend := NewTensorBackend()
 
@@ -32,14 +34,14 @@ func TestTensorBackend_UploadFloat64(t *testing.T) {
 	})
 }
 
-func TestTensorBackend_DownloadFloat64(t *testing.T) {
+func TestTensorBackend_Download(t *testing.T) {
 	Convey("Given a resident CPU tensor", t, func() {
 		tensorBackend := NewTensorBackend()
 		tensorValue := uploadTestTensor(tensorBackend, []int{3}, []float64{1, 2, 3})
 		defer func() { So(tensorValue.Close(), ShouldBeNil) }()
 
 		Convey("It should download the stored values", func() {
-			values, err := tensorBackend.DownloadFloat64(tensorValue)
+			values, err := tensorFloat64Values(tensorValue)
 
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{1, 2, 3})
@@ -57,7 +59,11 @@ func TestTensorBackend_Close(t *testing.T) {
 			shape, err := computetensor.NewShape([]int{1})
 			So(err, ShouldBeNil)
 
-			output, err := tensorBackend.UploadFloat64(shape, []float64{1})
+			output, err := tensorBackend.Upload(
+				shape,
+				dtype.Float64,
+				dtypeconvert.Float64ToBytes([]float64{1}),
+			)
 
 			So(err, ShouldNotBeNil)
 			So(output, ShouldBeNil)
@@ -65,7 +71,7 @@ func TestTensorBackend_Close(t *testing.T) {
 	})
 }
 
-func BenchmarkTensorBackend_UploadFloat64(benchmark *testing.B) {
+func BenchmarkTensorBackend_Upload(benchmark *testing.B) {
 	tensorBackend := NewTensorBackend()
 	values := make([]float64, 64*64)
 
@@ -79,8 +85,10 @@ func BenchmarkTensorBackend_UploadFloat64(benchmark *testing.B) {
 		benchmark.Fatal(err)
 	}
 
+	bytes := dtypeconvert.Float64ToBytes(values)
+
 	for benchmark.Loop() {
-		output, err := tensorBackend.UploadFloat64(shape, values)
+		output, err := tensorBackend.Upload(shape, dtype.Float64, bytes)
 
 		if err != nil {
 			benchmark.Fatal(err)
@@ -94,11 +102,15 @@ func BenchmarkTensorBackend_UploadFloat64(benchmark *testing.B) {
 
 func uploadTestTensor(
 	tensorBackend *TensorBackend, dims []int, values []float64,
-) computetensor.Float64Tensor {
+) computetensor.Tensor {
 	shape, err := computetensor.NewShape(dims)
 	So(err, ShouldBeNil)
 
-	input, err := tensorBackend.UploadFloat64(shape, values)
+	input, err := tensorBackend.Upload(
+		shape,
+		dtype.Float64,
+		dtypeconvert.Float64ToBytes(values),
+	)
 	So(err, ShouldBeNil)
 
 	return input
@@ -109,18 +121,32 @@ func uploadBenchmarkTensor(
 	tensorBackend *TensorBackend,
 	dims []int,
 	values []float64,
-) computetensor.Float64Tensor {
+) computetensor.Tensor {
 	shape, err := computetensor.NewShape(dims)
 
 	if err != nil {
 		benchmark.Fatal(err)
 	}
 
-	input, err := tensorBackend.UploadFloat64(shape, values)
+	input, err := tensorBackend.Upload(
+		shape,
+		dtype.Float64,
+		dtypeconvert.Float64ToBytes(values),
+	)
 
 	if err != nil {
 		benchmark.Fatal(err)
 	}
 
 	return input
+}
+
+func tensorFloat64Values(value computetensor.Tensor) ([]float64, error) {
+	sourceDType, bytes, err := value.RawBytes()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return dtypeconvert.BytesToFloat64(sourceDType, bytes)
 }

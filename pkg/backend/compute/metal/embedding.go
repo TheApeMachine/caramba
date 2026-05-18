@@ -127,10 +127,10 @@ func (e *EmbeddingOps) TokenEmbedding(tokens []float64, weight []float64) ([]flo
 ForwardTensor performs token embedding lookup against resident Metal buffers.
 */
 func (e *EmbeddingOps) ForwardTensor(
-	tokens computetensor.Float64Tensor,
-	weight computetensor.Float64Tensor,
+	tokens computetensor.Tensor,
+	weight computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalTokens, err := requireMetalTensor(tokens)
 
 	if err != nil {

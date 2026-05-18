@@ -15,13 +15,13 @@ import (
 IntensityTensor computes resident Hawkes intensities.
 */
 func (metalHawkes *MetalHawkes) IntensityTensor(
-	times computetensor.Float64Tensor,
-	alpha computetensor.Float64Tensor,
-	beta computetensor.Float64Tensor,
-	mu computetensor.Float64Tensor,
-	currentTime computetensor.Float64Tensor,
+	times computetensor.Tensor,
+	alpha computetensor.Tensor,
+	beta computetensor.Tensor,
+	mu computetensor.Tensor,
+	currentTime computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	timesTensor, alphaTensor, betaTensor, muTensor, timeTensor, err := hawkesFive(
 		times,
 		alpha,
@@ -69,11 +69,11 @@ func (metalHawkes *MetalHawkes) IntensityTensor(
 KernelMatrixTensor builds the resident Hawkes excitation matrix.
 */
 func (metalHawkes *MetalHawkes) KernelMatrixTensor(
-	times computetensor.Float64Tensor,
-	alpha computetensor.Float64Tensor,
-	beta computetensor.Float64Tensor,
+	times computetensor.Tensor,
+	alpha computetensor.Tensor,
+	beta computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	timesTensor, alphaTensor, betaTensor, err := hawkesThree(times, alpha, beta)
 	if err != nil {
 		return nil, err
@@ -110,10 +110,10 @@ func (metalHawkes *MetalHawkes) KernelMatrixTensor(
 LogLikelihoodTensor computes resident Hawkes log-likelihood.
 */
 func (metalHawkes *MetalHawkes) LogLikelihoodTensor(
-	intensities computetensor.Float64Tensor,
-	integral computetensor.Float64Tensor,
+	intensities computetensor.Tensor,
+	integral computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	intensityTensor, integralTensor, err := hawkesTwo(intensities, integral)
 	if err != nil {
 		return nil, err
@@ -148,12 +148,12 @@ func (metalHawkes *MetalHawkes) LogLikelihoodTensor(
 SimulateTensor runs resident Hawkes simulation into Metal storage.
 */
 func (metalHawkes *MetalHawkes) SimulateTensor(
-	mu computetensor.Float64Tensor,
-	alpha computetensor.Float64Tensor,
-	beta computetensor.Float64Tensor,
-	tMax computetensor.Float64Tensor,
+	mu computetensor.Tensor,
+	alpha computetensor.Tensor,
+	beta computetensor.Tensor,
+	tMax computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	muTensor, alphaTensor, betaTensor, tMaxTensor, err := hawkesFour(mu, alpha, beta, tMax)
 	if err != nil {
 		return nil, err
@@ -190,8 +190,8 @@ func (metalHawkes *MetalHawkes) SimulateTensor(
 }
 
 func hawkesTwo(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
 ) (*Tensor, *Tensor, error) {
 	firstTensor, err := requireMetalTensor(first)
 	if err != nil {
@@ -207,9 +207,9 @@ func hawkesTwo(
 }
 
 func hawkesThree(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
-	third computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
+	third computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, error) {
 	firstTensor, secondTensor, err := hawkesTwo(first, second)
 	if err != nil {
@@ -225,10 +225,10 @@ func hawkesThree(
 }
 
 func hawkesFour(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
-	third computetensor.Float64Tensor,
-	fourth computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
+	third computetensor.Tensor,
+	fourth computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, *Tensor, error) {
 	firstTensor, secondTensor, thirdTensor, err := hawkesThree(first, second, third)
 	if err != nil {
@@ -244,11 +244,11 @@ func hawkesFour(
 }
 
 func hawkesFive(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
-	third computetensor.Float64Tensor,
-	fourth computetensor.Float64Tensor,
-	fifth computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
+	third computetensor.Tensor,
+	fourth computetensor.Tensor,
+	fifth computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, *Tensor, *Tensor, error) {
 	firstTensor, secondTensor, thirdTensor, fourthTensor, err := hawkesFour(
 		first,

@@ -16,8 +16,8 @@ import (
 ApplyMaskTensor performs resident Metal additive masking.
 */
 func (masking *MetalMasking) ApplyMaskTensor(
-	scores, mask computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	scores, mask computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	metalScores, err := requireMetalTensor(scores)
 	if err != nil {
 		return nil, err
@@ -58,7 +58,7 @@ CausalMaskTensor generates a resident Metal causal attention mask.
 func (masking *MetalMasking) CausalMaskTensor(
 	outputShape computetensor.Shape,
 	seqLen int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	if seqLen < 0 {
 		return nil, fmt.Errorf("metal tensor: masking.causal sequence length must be non-negative")
 	}

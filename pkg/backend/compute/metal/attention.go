@@ -144,11 +144,11 @@ func (m *MetalAttention) SDPA(
 SDPATensor computes scaled dot-product attention without leaving Metal storage.
 */
 func (m *MetalAttention) SDPATensor(
-	q, k, v computetensor.Float64Tensor,
+	q, k, v computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch, numHeads, queryLen, keyValueLen, keyValueStride, headDim int,
 	causal bool,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalQ, err := requireMetalTensor(q)
 
 	if err != nil {
@@ -225,10 +225,10 @@ func (m *MetalAttention) SDPATensor(
 RepackKVTensor copies live cache tokens into a larger capacity buffer.
 */
 func (m *MetalAttention) RepackKVTensor(
-	previousKey computetensor.Float64Tensor,
-	previousValue computetensor.Float64Tensor,
-	outputKey computetensor.Float64Tensor,
-	outputValue computetensor.Float64Tensor,
+	previousKey computetensor.Tensor,
+	previousValue computetensor.Tensor,
+	outputKey computetensor.Tensor,
+	outputValue computetensor.Tensor,
 	batch, numHeads, currentLen, headDim, previousCapacity, outputCapacity int,
 ) error {
 	metalPreviousKey, err := requireMetalTensor(previousKey)
@@ -291,10 +291,10 @@ func (m *MetalAttention) RepackKVTensor(
 WriteKVTensor writes a K/V chunk into an existing capacity-backed cache.
 */
 func (m *MetalAttention) WriteKVTensor(
-	cacheKey computetensor.Float64Tensor,
-	cacheValue computetensor.Float64Tensor,
-	keyChunk computetensor.Float64Tensor,
-	valueChunk computetensor.Float64Tensor,
+	cacheKey computetensor.Tensor,
+	cacheValue computetensor.Tensor,
+	keyChunk computetensor.Tensor,
+	valueChunk computetensor.Tensor,
 	batch, numHeads, startLen, chunkLen, headDim, capacity int,
 ) error {
 	metalCacheKey, err := requireMetalTensor(cacheKey)
@@ -357,13 +357,13 @@ func (m *MetalAttention) WriteKVTensor(
 AppendKVTensor appends a K/V chunk along the token dimension in resident Metal storage.
 */
 func (m *MetalAttention) AppendKVTensor(
-	previousKey computetensor.Float64Tensor,
-	previousValue computetensor.Float64Tensor,
-	keyChunk computetensor.Float64Tensor,
-	valueChunk computetensor.Float64Tensor,
+	previousKey computetensor.Tensor,
+	previousValue computetensor.Tensor,
+	keyChunk computetensor.Tensor,
+	valueChunk computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch, numHeads, previousLen, chunkLen, headDim int,
-) (computetensor.Float64Tensor, computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, computetensor.Tensor, error) {
 	metalChunkKey, err := requireMetalTensor(keyChunk)
 
 	if err != nil {
@@ -487,10 +487,10 @@ func (m *MetalAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim
 MQATensor computes multi-query attention without leaving Metal storage.
 */
 func (m *MetalAttention) MQATensor(
-	q, k, v computetensor.Float64Tensor,
+	q, k, v computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch, numHeads, seqLen, headDim int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalQ, metalK, metalV, err := requireAttentionQKV(q, k, v)
 	if err != nil {
 		return nil, err
@@ -573,11 +573,11 @@ func (m *MetalAttention) GQA(
 GQATensor computes grouped-query attention without leaving Metal storage.
 */
 func (m *MetalAttention) GQATensor(
-	q, k, v computetensor.Float64Tensor,
+	q, k, v computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch, numHeads, numKVHeads, queryLen, keyValueLen, keyValueStride, headDim int,
 	causal bool,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalQ, err := requireMetalTensor(q)
 
 	if err != nil {
@@ -694,10 +694,10 @@ func (m *MetalAttention) SlidingWindow(q, k, v []float64, batch, numHeads, seqLe
 SlidingWindowTensor computes resident sliding-window attention.
 */
 func (m *MetalAttention) SlidingWindowTensor(
-	q, k, v computetensor.Float64Tensor,
+	q, k, v computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch, numHeads, seqLen, headDim, window int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalQ, metalK, metalV, err := requireAttentionQKV(q, k, v)
 	if err != nil {
 		return nil, err
@@ -743,9 +743,9 @@ func (m *MetalAttention) SlidingWindowTensor(
 }
 
 func requireAttentionQKV(
-	q computetensor.Float64Tensor,
-	k computetensor.Float64Tensor,
-	v computetensor.Float64Tensor,
+	q computetensor.Tensor,
+	k computetensor.Tensor,
+	v computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, error) {
 	metalQ, err := requireMetalTensor(q)
 	if err != nil {

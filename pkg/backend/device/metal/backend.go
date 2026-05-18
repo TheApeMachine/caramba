@@ -81,9 +81,8 @@ func (backend *Backend) SupportedLayouts() []tensor.Layout {
 
 /*
 Capabilities reports the Metal backend's properties. MaxBytes is the
-device's reported recommended working set; SupportsAsync is true when
-the bridge is wired up; NativeAlignment is 256 bytes (Apple's
-recommended buffer alignment for vector loads).
+device's reported recommended working set. NativeAlignment is 256
+bytes (Apple's recommended buffer alignment for vector loads).
 */
 func (backend *Backend) Capabilities() tensor.Capabilities {
 	maxBytes := int64(0)
@@ -94,7 +93,7 @@ func (backend *Backend) Capabilities() tensor.Capabilities {
 
 	return tensor.Capabilities{
 		MaxBytes:         maxBytes,
-		SupportsAsync:    backend.bridge != nil,
+		SupportsAsync:    false,
 		SupportsSparse:   false,
 		SupportsAutograd: false,
 		NativeAlignment:  256,
@@ -126,9 +125,9 @@ func (backend *Backend) Upload(
 }
 
 /*
-UploadAsync hands the upload off to a dedicated Metal command queue
-and returns a tensor in StatePending. The host caller observes
-StateReady via Sync or Ready when the command buffer completes.
+UploadAsync follows the Backend contract for synchronous upload paths:
+it returns a ready tensor, and Capabilities reports SupportsAsync
+false until this backend has a genuinely non-blocking transfer path.
 */
 func (backend *Backend) UploadAsync(
 	shape tensor.Shape,

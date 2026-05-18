@@ -34,7 +34,7 @@ func TestMetalCausalOps_DAGMarkovFactorizationTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, expected, 2e-2)
@@ -62,7 +62,7 @@ func TestTensorBackend_applyCausalDAGMarkovFactorizationGraph(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertMetalMaxDiff(values, expected, 2e-2)
 		})

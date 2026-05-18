@@ -19,9 +19,9 @@ type Runner interface {
 		If circular dependencies are detected, an error is returned.
 		Context cancellation/timeouts should be respected to abort execution promptly.
 		Execute implementations should be safe for concurrent use on the same Runner instance.
-		It returns a map of node IDs to their computed tensor.Float64Tensor outputs.
+		It returns a map of node IDs to their computed tensor outputs.
 	*/
-	Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Float64Tensor, error)
+	Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Tensor, error)
 
 	/*
 		Location returns the location string denoting the runner's hardware context.

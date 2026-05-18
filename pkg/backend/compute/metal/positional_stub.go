@@ -49,34 +49,34 @@ func (m *MetalPositional) RoPEForwardAtModeConfig(
 }
 
 func (m *MetalPositional) RoPETensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	base float64,
 	positionStart int,
 	batch, numHeads, seqLen, headDim int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (m *MetalPositional) RoPETensorMode(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	base float64,
 	positionStart int,
 	mode string,
 	batch, numHeads, seqLen, headDim int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (m *MetalPositional) RoPETensorModeConfig(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	config rotary.Config,
 	positionStart int,
 	mode string,
 	batch, numHeads, seqLen, headDim int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -91,6 +91,6 @@ func (m *MetalPositional) ALiBiForwardCausal(shape []int, causal bool) ([]float6
 func (m *MetalPositional) ALiBiTensor(
 	outputShape computetensor.Shape,
 	causal bool,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }

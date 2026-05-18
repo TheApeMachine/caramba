@@ -38,7 +38,7 @@ func TestMetalHawkes_IntensityTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(
@@ -74,7 +74,7 @@ func TestMetalHawkes_KernelMatrixTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, referenceHawkesKernelMatrix(times, alpha[0], beta[0]), 1e-5)
@@ -103,7 +103,7 @@ func TestMetalHawkes_LogLikelihoodTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(
@@ -142,7 +142,7 @@ func TestMetalHawkes_SimulateTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(

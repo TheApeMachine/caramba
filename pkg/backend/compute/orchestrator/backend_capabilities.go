@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/dispatch"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
-	metalbackend "github.com/theapemachine/caramba/pkg/backend/compute/metal"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -55,7 +54,7 @@ func cudaCapabilities(location tensor.Location) *StaticCapabilities {
 func metalCapabilities(location tensor.Location) *StaticCapabilities {
 	capabilities := NewStaticCapabilities(location)
 
-	for _, operation := range metalbackend.ResidentOperationTable() {
+	for _, operation := range ResidentMetalOperationTable() {
 		capabilities.Register(operation.ID)
 
 		if len(operation.DTypes) > 0 {

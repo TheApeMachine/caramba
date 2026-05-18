@@ -13,10 +13,10 @@ import (
 )
 
 func (predictiveOps *MetalPredictiveCodingOps) PredictionTensor(
-	weights computetensor.Float64Tensor,
-	representation computetensor.Float64Tensor,
+	weights computetensor.Tensor,
+	representation computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	weightTensor, representationTensor, err := predictiveTwo(weights, representation)
 	if err != nil {
 		return nil, err
@@ -50,10 +50,10 @@ func (predictiveOps *MetalPredictiveCodingOps) PredictionTensor(
 }
 
 func (predictiveOps *MetalPredictiveCodingOps) PredictionErrorTensor(
-	observation computetensor.Float64Tensor,
-	prediction computetensor.Float64Tensor,
-	precision computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	observation computetensor.Tensor,
+	prediction computetensor.Tensor,
+	precision computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	observationTensor, predictionTensor, err := predictiveTwo(observation, prediction)
 	if err != nil {
 		return nil, err
@@ -95,12 +95,12 @@ func (predictiveOps *MetalPredictiveCodingOps) PredictionErrorTensor(
 }
 
 func (predictiveOps *MetalPredictiveCodingOps) UpdateRepresentationTensor(
-	representation computetensor.Float64Tensor,
-	weights computetensor.Float64Tensor,
-	lowerError computetensor.Float64Tensor,
-	selfError computetensor.Float64Tensor,
-	learningRate computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	representation computetensor.Tensor,
+	weights computetensor.Tensor,
+	lowerError computetensor.Tensor,
+	selfError computetensor.Tensor,
+	learningRate computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	representationTensor, weightTensor, lowerErrorTensor, selfErrorTensor, err := predictiveFour(
 		representation,
 		weights,
@@ -149,12 +149,12 @@ func (predictiveOps *MetalPredictiveCodingOps) UpdateRepresentationTensor(
 }
 
 func (predictiveOps *MetalPredictiveCodingOps) UpdateWeightsTensor(
-	weights computetensor.Float64Tensor,
-	predictionError computetensor.Float64Tensor,
-	representation computetensor.Float64Tensor,
+	weights computetensor.Tensor,
+	predictionError computetensor.Tensor,
+	representation computetensor.Tensor,
 	outputShape computetensor.Shape,
-	learningRate computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	learningRate computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	weightTensor, errorTensor, representationTensor, err := predictiveThree(
 		weights,
 		predictionError,
@@ -201,8 +201,8 @@ func (predictiveOps *MetalPredictiveCodingOps) UpdateWeightsTensor(
 }
 
 func predictiveTwo(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
 ) (*Tensor, *Tensor, error) {
 	firstTensor, err := requireMetalTensor(first)
 	if err != nil {
@@ -218,9 +218,9 @@ func predictiveTwo(
 }
 
 func predictiveThree(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
-	third computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
+	third computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, error) {
 	firstTensor, secondTensor, err := predictiveTwo(first, second)
 	if err != nil {
@@ -236,10 +236,10 @@ func predictiveThree(
 }
 
 func predictiveFour(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
-	third computetensor.Float64Tensor,
-	fourth computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
+	third computetensor.Tensor,
+	fourth computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, *Tensor, error) {
 	firstTensor, secondTensor, thirdTensor, err := predictiveThree(first, second, third)
 	if err != nil {

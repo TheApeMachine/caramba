@@ -7,6 +7,7 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 func TestApplyDefaultPrecision(t *testing.T) {
@@ -19,23 +20,23 @@ func TestApplyDefaultPrecision(t *testing.T) {
 		relu := ir.NewNode("relu", ir.OpReLU, shape)
 		relu.SetValueType(ir.ValueType{
 			Shape:     shape,
-			DType:     tensor.Float64,
-			Precision: tensor.Float64,
+			DType:     dtype.Float64,
+			Precision: dtype.Float64,
 		})
 		graph.AddNode(input)
 		graph.AddNode(relu)
 
 		Convey("Applying float32 default should rewrite every node's precision", func() {
-			applyDefaultPrecision(graph, tensor.Float32)
+			applyDefaultPrecision(graph, dtype.Float32)
 
-			So(input.ValueType().Precision, ShouldEqual, tensor.Float32)
-			So(relu.ValueType().Precision, ShouldEqual, tensor.Float32)
+			So(input.ValueType().Precision, ShouldEqual, dtype.Float32)
+			So(relu.ValueType().Precision, ShouldEqual, dtype.Float32)
 		})
 
 		Convey("Empty default should be a no-op", func() {
 			initialPrecision := input.ValueType().Precision
 
-			applyDefaultPrecision(graph, "")
+			applyDefaultPrecision(graph, dtype.Invalid)
 
 			So(input.ValueType().Precision, ShouldEqual, initialPrecision)
 		})

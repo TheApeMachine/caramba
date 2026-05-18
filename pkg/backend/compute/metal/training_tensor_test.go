@@ -29,7 +29,7 @@ func TestMetalTraining_MSELossTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, []float64{referenceMSELoss(predictions, targets)}, 2e-5)
@@ -55,7 +55,7 @@ func TestMetalTraining_CrossEntropyLossTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, []float64{referenceCrossEntropyLoss(logits, targets)}, 2e-5)
@@ -81,7 +81,7 @@ func TestMetalTraining_MSEGradTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, referenceMSEGrad(predictions, targets), 2e-6)
@@ -107,7 +107,7 @@ func TestMetalTraining_CrossEntropyGradTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, referenceCrossEntropyGrad(logits, targets), 2e-5)
@@ -132,7 +132,7 @@ func TestTensorBackend_applyTrainingGraph(test *testing.T) {
 
 				output := results[target.ID()]
 				So(output.Location(), ShouldEqual, computetensor.Metal)
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				assertMetalMaxDiff(values, scenario.expected, scenario.tolerance)
 				So(output.Close(), ShouldBeNil)
@@ -234,7 +234,7 @@ func benchmarkTrainingTensor(benchmark *testing.B, operation string) {
 
 	benchmark.ResetTimer()
 	for benchmark.Loop() {
-		var output computetensor.Float64Tensor
+		var output computetensor.Tensor
 		switch operation {
 		case "mse_loss":
 			output, err = mathOps.MSELossTensor(leftTensor, rightTensor)

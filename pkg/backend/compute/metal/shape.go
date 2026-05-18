@@ -450,10 +450,10 @@ func lastTokenShapeParts(shape []int) (int, int, int, error) {
 }
 
 func (m *MetalShapeOps) ViewAsHeadsTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	B, T, H, headDim int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -489,9 +489,9 @@ func (m *MetalShapeOps) ViewAsHeadsTensor(
 }
 
 func (m *MetalShapeOps) CopyTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -528,9 +528,9 @@ func (m *MetalShapeOps) CopyTensor(
 }
 
 func (m *MetalShapeOps) ReshapeTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -573,11 +573,11 @@ func (m *MetalShapeOps) ReshapeTensor(
 }
 
 func (m *MetalShapeOps) TransposeTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	dim0 int,
 	dim1 int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -657,9 +657,9 @@ manifest needs it; until then operation_executor.applySlice rejects
 those shapes with a clear error rather than silently miscopying.
 */
 func (m *MetalShapeOps) SlicePrefixTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -699,10 +699,10 @@ func (m *MetalShapeOps) SlicePrefixTensor(
 }
 
 func (m *MetalShapeOps) ConcatTensor(
-	left computetensor.Float64Tensor,
-	right computetensor.Float64Tensor,
+	left computetensor.Tensor,
+	right computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalLeft, err := requireMetalTensor(left)
 
 	if err != nil {
@@ -751,13 +751,13 @@ func (m *MetalShapeOps) ConcatTensor(
 }
 
 func (m *MetalShapeOps) SplitTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	outer int,
 	dimSize int,
 	splitSize int,
 	inner int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -795,10 +795,10 @@ func (m *MetalShapeOps) SplitTensor(
 }
 
 func (m *MetalShapeOps) MergeHeadsTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	B, H, T, headDim int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -834,10 +834,10 @@ func (m *MetalShapeOps) MergeHeadsTensor(
 }
 
 func (m *MetalShapeOps) LastTokenTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	outer, sequenceLength, featureLength int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -873,7 +873,7 @@ func (m *MetalShapeOps) LastTokenTensor(
 }
 
 func (m *MetalShapeOps) UpsampleNearest2DTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch int,
 	channels int,
@@ -881,7 +881,7 @@ func (m *MetalShapeOps) UpsampleNearest2DTensor(
 	width int,
 	scaleH int,
 	scaleW int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {

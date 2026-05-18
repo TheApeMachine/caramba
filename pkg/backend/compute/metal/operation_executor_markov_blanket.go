@@ -13,8 +13,8 @@ import (
 func (tensorBackend *TensorBackend) applyMarkovPartition(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -57,8 +57,8 @@ func (tensorBackend *TensorBackend) applyMarkovPartition(
 func (tensorBackend *TensorBackend) applyMarkovFlowInternal(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -83,8 +83,8 @@ func (tensorBackend *TensorBackend) applyMarkovFlowInternal(
 func (tensorBackend *TensorBackend) applyMarkovFlowActive(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -109,8 +109,8 @@ func (tensorBackend *TensorBackend) applyMarkovFlowActive(
 func (tensorBackend *TensorBackend) applyMarkovMutualInformation(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -206,8 +206,8 @@ func markovPartitionShape(node executor.NodeSpec, stateCount int) (markovPartiti
 
 func (tensorBackend *TensorBackend) markovPartitionMasks(
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, bool, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, bool, error) {
 	if len(inputs) == 2 {
 		return inputs[1], false, nil
 	}
@@ -227,15 +227,15 @@ func (tensorBackend *TensorBackend) markovPartitionMasks(
 }
 
 func (tensorBackend *TensorBackend) concatMarkovMasks(
-	masks []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, bool, error) {
+	masks []computetensor.Tensor,
+) (computetensor.Tensor, bool, error) {
 	shapeOps, err := tensorBackend.shape()
 	if err != nil {
 		return nil, false, err
 	}
 
 	current := masks[0]
-	var temporary computetensor.Float64Tensor
+	var temporary computetensor.Tensor
 
 	for maskIndex := 1; maskIndex < len(masks); maskIndex++ {
 		nextShape, shapeErr := computetensor.NewShape(

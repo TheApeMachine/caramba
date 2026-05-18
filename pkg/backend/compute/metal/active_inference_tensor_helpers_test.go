@@ -186,16 +186,16 @@ func activeNode(
 }
 
 func assertActiveInferenceGraphOutputs(
-	results map[string]computetensor.Float64Tensor,
+	results map[string]computetensor.Tensor,
 	expected map[string][]float64,
 ) {
 	for name, output := range results {
 		So(output.Location(), ShouldEqual, computetensor.Metal)
-		defer func(value computetensor.Float64Tensor) {
+		defer func(value computetensor.Tensor) {
 			So(value.Close(), ShouldBeNil)
 		}(output)
 
-		values, err := output.CloneFloat64()
+		values, err := tensorFloat64Values(output)
 		So(err, ShouldBeNil)
 		assertMetalMaxDiff(values, expected[name], activeGraphTolerance(name))
 	}

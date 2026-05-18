@@ -13,8 +13,8 @@ import (
 func (tensorBackend *TensorBackend) applyCausalCounterfactual(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -39,8 +39,8 @@ func (tensorBackend *TensorBackend) applyCausalCounterfactual(
 func (tensorBackend *TensorBackend) applyCausalFrontdoorAdjustment(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -73,8 +73,8 @@ func (tensorBackend *TensorBackend) applyCausalFrontdoorAdjustment(
 func (tensorBackend *TensorBackend) applyCausalBackdoorAdjustment(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -108,8 +108,8 @@ func (tensorBackend *TensorBackend) applyCausalBackdoorAdjustment(
 func (tensorBackend *TensorBackend) applyCausalCATE(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -141,8 +141,8 @@ func (tensorBackend *TensorBackend) applyCausalCATE(
 func (tensorBackend *TensorBackend) applyCausalIVEstimate(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -176,8 +176,8 @@ func (tensorBackend *TensorBackend) applyCausalIVEstimate(
 func (tensorBackend *TensorBackend) applyCausalDAGMarkovFactorization(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -208,8 +208,8 @@ func (tensorBackend *TensorBackend) applyCausalDAGMarkovFactorization(
 func (tensorBackend *TensorBackend) applyCausalDoCalculus(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -263,8 +263,8 @@ func (tensorBackend *TensorBackend) causal() (*MetalCausalOps, error) {
 
 func causalCounterfactualOutputShape(
 	node executor.NodeSpec,
-	observed computetensor.Float64Tensor,
-	counterfactual computetensor.Float64Tensor,
+	observed computetensor.Tensor,
+	counterfactual computetensor.Tensor,
 ) (computetensor.Shape, error) {
 	observedCount := observed.Shape().Len()
 	counterfactualCount := counterfactual.Shape().Len()
@@ -293,7 +293,7 @@ type causalFrontdoor struct {
 
 func causalFrontdoorConfig(
 	node executor.NodeSpec,
-	treatment computetensor.Float64Tensor,
+	treatment computetensor.Tensor,
 ) (causalFrontdoor, error) {
 	treatmentBins := intConfigAny(node, -1, "treatment_bins", "x_bins", "N_x")
 	mediatorBins := intConfigAny(node, -1, "mediator_bins", "m_bins", "N_m")

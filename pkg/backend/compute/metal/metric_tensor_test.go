@@ -29,7 +29,7 @@ func TestMetalMetric_AccuracyTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, []float64{referenceAccuracy(predictions, targets)}, 0)
@@ -55,7 +55,7 @@ func TestMetalMetric_PerplexityTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, []float64{referencePerplexity(probabilities, targets)}, 2e-6)
@@ -81,7 +81,7 @@ func TestMetalMetric_F1Tensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, []float64{referenceF1(predictions, targets)}, 2e-6)
@@ -106,7 +106,7 @@ func TestTensorBackend_applyMetricGraph(test *testing.T) {
 
 				output := results[target.ID()]
 				So(output.Location(), ShouldEqual, computetensor.Metal)
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				assertMetalMaxDiff(values, scenario.expected, scenario.tolerance)
 				So(output.Close(), ShouldBeNil)
@@ -210,7 +210,7 @@ func benchmarkMetricTensor(benchmark *testing.B, operation string) {
 
 	benchmark.ResetTimer()
 	for benchmark.Loop() {
-		var output computetensor.Float64Tensor
+		var output computetensor.Tensor
 		switch operation {
 		case "accuracy":
 			output, err = mathOps.AccuracyTensor(leftTensor, rightTensor)

@@ -4,7 +4,7 @@ import (
 	"slices"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 /*
@@ -13,7 +13,7 @@ tests, benchmarks, and startup validation.
 */
 type OperationCoverage struct {
 	ID               ir.OpType
-	DTypes           []tensor.DType
+	DTypes           []dtype.DType
 	ShapeConstraints []string
 	ResidentSymbol   string
 	FusionGroups     []string
@@ -190,7 +190,7 @@ func residentOperation(
 ) OperationCoverage {
 	return OperationCoverage{
 		ID:             operationID,
-		DTypes:         []tensor.DType{tensor.Float32},
+		DTypes:         []dtype.DType{dtype.Float32},
 		ResidentSymbol: symbol,
 		BenchmarkName:  benchmarkName,
 		ParityTestName: parityTestName,

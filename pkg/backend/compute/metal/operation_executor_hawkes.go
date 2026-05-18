@@ -13,8 +13,8 @@ import (
 func (tensorBackend *TensorBackend) applyHawkesIntensity(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -46,8 +46,8 @@ func (tensorBackend *TensorBackend) applyHawkesIntensity(
 func (tensorBackend *TensorBackend) applyHawkesKernelMatrix(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -72,8 +72,8 @@ func (tensorBackend *TensorBackend) applyHawkesKernelMatrix(
 func (tensorBackend *TensorBackend) applyHawkesLogLikelihood(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -98,8 +98,8 @@ func (tensorBackend *TensorBackend) applyHawkesLogLikelihood(
 func (tensorBackend *TensorBackend) applyHawkesSimulate(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

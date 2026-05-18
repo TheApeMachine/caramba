@@ -96,7 +96,7 @@ func TestMathOps_InvSqrtDimScaleTensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertMetalMaxDiff(values, expected, 1e-6)
 		})
@@ -120,7 +120,7 @@ func TestMathOps_SoftmaxTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, expected, 2e-5)
@@ -146,7 +146,7 @@ func TestMathOps_LogSumExpTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				So(output.Shape().Dims(), ShouldResemble, []int{len(expected)})
@@ -192,7 +192,7 @@ func BenchmarkMathOps_LogSumExpTensor(benchmark *testing.B) {
 	})
 }
 
-type mathTensorUnary func(computetensor.Float64Tensor) (computetensor.Float64Tensor, error)
+type mathTensorUnary func(computetensor.Tensor) (computetensor.Tensor, error)
 
 func metalMathOpsForTest(test testing.TB, tensorBackend *TensorBackend) *MathOps {
 	test.Helper()
@@ -221,7 +221,7 @@ func runUnaryMathTensorForTest(
 		So(output.Close(), ShouldBeNil)
 	}()
 
-	values, err := output.CloneFloat64()
+	values, err := tensorFloat64Values(output)
 	So(err, ShouldBeNil)
 	So(output.Location(), ShouldEqual, computetensor.Metal)
 

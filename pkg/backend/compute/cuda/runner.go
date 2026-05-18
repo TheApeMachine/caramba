@@ -7,6 +7,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 /*
@@ -37,7 +38,7 @@ func NewRunnerWithBackend(backend *TensorBackend) *Runner {
 /*
 Execute traverses the intermediate representation graph and executes operations on CUDA.
 */
-func (runner *Runner) Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Float64Tensor, error) {
+func (runner *Runner) Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -171,7 +172,7 @@ func inputTensorSpec(node *ir.Node, metadata map[string]any) (executor.TensorSpe
 		ID:    node.ID(),
 		Shape: shape,
 		Data:  data,
-		DType: tensor.Float64,
+		DType: dtype.Float64,
 	}, nil
 }
 

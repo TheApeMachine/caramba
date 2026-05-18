@@ -46,7 +46,7 @@ func (m *MetalShapeOps) LastToken(input []float64, outer, sequenceLength, featur
 }
 
 func (m *MetalShapeOps) UpsampleNearest2DTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch int,
 	channels int,
@@ -54,6 +54,6 @@ func (m *MetalShapeOps) UpsampleNearest2DTensor(
 	width int,
 	scaleH int,
 	scaleW int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }

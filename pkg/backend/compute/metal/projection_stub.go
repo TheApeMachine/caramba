@@ -23,10 +23,10 @@ func (p *ProjectionOps) FusedQKV(shape []int, weight, bias []float64, data ...[]
 }
 
 func (p *ProjectionOps) FusedQKVTensor(
-	input, weight, bias computetensor.Float64Tensor,
+	input, weight, bias computetensor.Tensor,
 	outputShape computetensor.Shape,
 	rows, inFeatures, outFeatures int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 

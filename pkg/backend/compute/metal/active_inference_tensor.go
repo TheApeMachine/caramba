@@ -15,10 +15,10 @@ import (
 FreeEnergyTensor computes resident variational free energy.
 */
 func (activeInferenceOps *ActiveInferenceOps) FreeEnergyTensor(
-	mu computetensor.Float64Tensor,
-	logSigma computetensor.Float64Tensor,
+	mu computetensor.Tensor,
+	logSigma computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	muTensor, logSigmaTensor, err := requireActiveInferenceBinary(mu, logSigma)
 	if err != nil {
 		return nil, err
@@ -52,12 +52,12 @@ func (activeInferenceOps *ActiveInferenceOps) FreeEnergyTensor(
 BeliefUpdateTensor computes one resident active-inference belief update.
 */
 func (activeInferenceOps *ActiveInferenceOps) BeliefUpdateTensor(
-	mu computetensor.Float64Tensor,
-	logSigma computetensor.Float64Tensor,
-	predictionError computetensor.Float64Tensor,
+	mu computetensor.Tensor,
+	logSigma computetensor.Tensor,
+	predictionError computetensor.Tensor,
 	outputShape computetensor.Shape,
 	learningRate float32,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	muTensor, logSigmaTensor, predictionErrorTensor, err := activeInferenceTriple(
 		mu,
 		logSigma,
@@ -97,9 +97,9 @@ func (activeInferenceOps *ActiveInferenceOps) BeliefUpdateTensor(
 PrecisionWeightTensor computes resident precision-weighted error.
 */
 func (activeInferenceOps *ActiveInferenceOps) PrecisionWeightTensor(
-	errTensor computetensor.Float64Tensor,
-	logPrecision computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	errTensor computetensor.Tensor,
+	logPrecision computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	metalError, metalLogPrecision, err := requireActiveInferenceBinary(errTensor, logPrecision)
 	if err != nil {
 		return nil, err
@@ -129,11 +129,11 @@ func (activeInferenceOps *ActiveInferenceOps) PrecisionWeightTensor(
 ExpectedFreeEnergyTensor computes resident expected free energy by policy column.
 */
 func (activeInferenceOps *ActiveInferenceOps) ExpectedFreeEnergyTensor(
-	qOutcomes computetensor.Float64Tensor,
+	qOutcomes computetensor.Tensor,
 	outputShape computetensor.Shape,
 	outcomeCount int,
 	policyCount int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	qTensor, err := requireMetalTensor(qOutcomes)
 	if err != nil {
 		return nil, err
@@ -166,8 +166,8 @@ func (activeInferenceOps *ActiveInferenceOps) ExpectedFreeEnergyTensor(
 }
 
 func requireActiveInferenceBinary(
-	left computetensor.Float64Tensor,
-	right computetensor.Float64Tensor,
+	left computetensor.Tensor,
+	right computetensor.Tensor,
 ) (*Tensor, *Tensor, error) {
 	metalLeft, err := requireMetalTensor(left)
 	if err != nil {
@@ -187,9 +187,9 @@ func requireActiveInferenceBinary(
 }
 
 func activeInferenceTriple(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
-	third computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
+	third computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, error) {
 	firstTensor, secondTensor, err := requireActiveInferenceBinary(first, second)
 	if err != nil {

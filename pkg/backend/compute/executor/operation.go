@@ -10,15 +10,17 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/kv"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
+	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 )
 
 func RunOperation(
 	ctx context.Context,
 	backend Backend,
 	node NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 	operation state.Operation,
-) (tensor.Float64Tensor, error) {
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -46,9 +48,9 @@ func RunOptimizer(
 	ctx context.Context,
 	backend Backend,
 	node NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 	optimizer state.Optimizer,
-) (tensor.Float64Tensor, error) {
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -82,7 +84,7 @@ func RunOptimizer(
 
 func OperationState(
 	node NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 	values [][]float64,
 ) *state.Dict {
 	node = WithDerivedMetadata(node, inputs)
@@ -103,7 +105,7 @@ func OperationState(
 	return stateDict
 }
 
-func WithDerivedMetadata(node NodeSpec, inputs []tensor.Float64Tensor) NodeSpec {
+func WithDerivedMetadata(node NodeSpec, inputs []tensor.Tensor) NodeSpec {
 	if !strings.EqualFold(string(node.Op), "math.rmsnorm") {
 		return node
 	}
@@ -318,9 +320,9 @@ func RunErrorOperation(
 	ctx context.Context,
 	backend Backend,
 	node NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 	operation func(shape []int, data ...[]float64) ([]float64, error),
-) (tensor.Float64Tensor, error) {
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -346,11 +348,11 @@ func RunForwardErrorOperation(
 	ctx context.Context,
 	backend Backend,
 	node NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 	operation interface {
 		Forward(shape []int, data ...[]float64) ([]float64, error)
 	},
-) (tensor.Float64Tensor, error) {
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -375,29 +377,21 @@ func RunForwardErrorOperation(
 func UploadOutput(
 	backend Backend,
 	node NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 	output []float64,
-) (tensor.Float64Tensor, error) {
+) (tensor.Tensor, error) {
 	shape, err := OutputTensorShape(node, inputs, output)
 
 	if err != nil {
 		return nil, err
 	}
 
-	adopter, ok := backend.(interface {
-		AdoptFloat64(tensor.Shape, []float64) (tensor.Float64Tensor, error)
-	})
-
-	if ok {
-		return adopter.AdoptFloat64(shape, output)
-	}
-
-	return backend.UploadFloat64(shape, output)
+	return backend.Upload(shape, dtype.Float64, dtypeconvert.Float64ToBytes(output))
 }
 
 func InputValues(
 	backend Backend,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 ) ([][]float64, error) {
 	if backend == nil {
 		return nil, fmt.Errorf("executor: backend is required for input values")
@@ -406,7 +400,13 @@ func InputValues(
 	values := make([][]float64, len(inputs))
 
 	for index, input := range inputs {
-		value, err := backend.DownloadFloat64(input)
+		sourceDType, bytes, err := input.RawBytes()
+
+		if err != nil {
+			return nil, err
+		}
+
+		value, err := dtypeconvert.BytesToFloat64(sourceDType, bytes)
 
 		if err != nil {
 			return nil, err
@@ -437,7 +437,7 @@ func requireHostStagedBackend(backend Backend, node NodeSpec) error {
 	)
 }
 
-func OutputShape(node NodeSpec, inputs []tensor.Float64Tensor) []int {
+func OutputShape(node NodeSpec, inputs []tensor.Tensor) []int {
 	if len(node.Shape) > 0 {
 		return append([]int(nil), node.Shape...)
 	}
@@ -449,7 +449,7 @@ func OutputShape(node NodeSpec, inputs []tensor.Float64Tensor) []int {
 	return inputs[0].Shape().Dims()
 }
 
-func OperationShape(node NodeSpec, inputs []tensor.Float64Tensor) []int {
+func OperationShape(node NodeSpec, inputs []tensor.Tensor) []int {
 	if shape := intSliceConfig(node, "op_shape"); len(shape) > 0 {
 		return shape
 	}
@@ -463,7 +463,7 @@ func OperationShape(node NodeSpec, inputs []tensor.Float64Tensor) []int {
 
 func OutputTensorShape(
 	node NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 	output []float64,
 ) (tensor.Shape, error) {
 	shapeData := OutputShape(node, inputs)

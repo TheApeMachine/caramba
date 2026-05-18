@@ -11,6 +11,7 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 	"github.com/theapemachine/caramba/pkg/network/dht"
 	"github.com/theapemachine/caramba/pkg/network/schema"
 	"github.com/theapemachine/caramba/pkg/network/transport"
@@ -79,7 +80,7 @@ the required credits via the Notary ledger, connects to the peer via Cap'n Proto
 RPC, streams the graph nodes, triggers execution, and settles the payment upon
 successful verification.
 */
-func (runner *NetworkRunner) Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Float64Tensor, error) {
+func (runner *NetworkRunner) Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Tensor, error) {
 	if graph == nil {
 		return nil, fmt.Errorf("network_runner: nil graph")
 	}
@@ -250,7 +251,7 @@ func (runner *NetworkRunner) streamInputTensor(
 			return err
 		}
 
-		return msgTensor.SetDtype(string(tensor.Float64))
+		return msgTensor.SetDtype(dtype.Float64.String())
 	})
 
 	if err != nil {
@@ -342,9 +343,9 @@ func workerIdentityFromResults(res schema.ComputeStream_execute_Results) (*notar
 	return &notary.Identity{PublicKey: ed25519.PublicKey(publicKey)}, nil
 }
 
-func tensorsFromResults(outputs schema.Tensor_List) (map[string]tensor.Float64Tensor, error) {
+func tensorsFromResults(outputs schema.Tensor_List) (map[string]tensor.Tensor, error) {
 	hostBackend := tensor.NewHostBackend()
-	results := make(map[string]tensor.Float64Tensor, outputs.Len())
+	results := make(map[string]tensor.Tensor, outputs.Len())
 
 	for index := 0; index < outputs.Len(); index++ {
 		output := outputs.At(index)
@@ -352,13 +353,15 @@ func tensorsFromResults(outputs schema.Tensor_List) (map[string]tensor.Float64Te
 		if err != nil {
 			return nil, err
 		}
-		dtype, err := output.Dtype()
+		rawDType, err := output.Dtype()
 		if err != nil {
 			return nil, err
 		}
-		if dtype != string(tensor.Float64) {
-			return nil, fmt.Errorf("network_runner: unsupported output dtype %q", dtype)
+		sourceDType, err := dtype.Parse(rawDType)
+		if err != nil {
+			return nil, err
 		}
+
 		shapeList, err := output.Shape()
 		if err != nil {
 			return nil, err
@@ -375,11 +378,7 @@ func tensorsFromResults(outputs schema.Tensor_List) (map[string]tensor.Float64Te
 		if err != nil {
 			return nil, err
 		}
-		values, err := decodeFloat64Values(data)
-		if err != nil {
-			return nil, err
-		}
-		uploaded, err := hostBackend.UploadFloat64(shape, values)
+		uploaded, err := hostBackend.Upload(shape, sourceDType, data)
 		if err != nil {
 			return nil, err
 		}

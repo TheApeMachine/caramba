@@ -10,6 +10,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 	"github.com/theapemachine/caramba/pkg/network/dht"
 	"github.com/theapemachine/caramba/pkg/network/transport"
 	"github.com/theapemachine/caramba/pkg/notary"
@@ -27,16 +28,48 @@ func (backend *fakeCUDAStreamBackend) Location() tensor.Location {
 	return tensor.CUDA
 }
 
-func (backend *fakeCUDAStreamBackend) UploadFloat64(
-	shape tensor.Shape, values []float64,
-) (tensor.Float64Tensor, error) {
-	return backend.backend.UploadFloat64(shape, values)
+func (backend *fakeCUDAStreamBackend) SupportedDTypes() []dtype.DType {
+	return backend.backend.SupportedDTypes()
 }
 
-func (backend *fakeCUDAStreamBackend) DownloadFloat64(
-	input tensor.Float64Tensor,
-) ([]float64, error) {
-	return backend.backend.DownloadFloat64(input)
+func (backend *fakeCUDAStreamBackend) SupportedLayouts() []tensor.Layout {
+	return backend.backend.SupportedLayouts()
+}
+
+func (backend *fakeCUDAStreamBackend) Capabilities() tensor.Capabilities {
+	return backend.backend.Capabilities()
+}
+
+func (backend *fakeCUDAStreamBackend) Upload(
+	shape tensor.Shape,
+	sourceDType dtype.DType,
+	bytes []byte,
+) (tensor.Tensor, error) {
+	return backend.backend.Upload(shape, sourceDType, bytes)
+}
+
+func (backend *fakeCUDAStreamBackend) UploadAsync(
+	shape tensor.Shape,
+	sourceDType dtype.DType,
+	bytes []byte,
+) (tensor.Tensor, error) {
+	return backend.backend.UploadAsync(shape, sourceDType, bytes)
+}
+
+func (backend *fakeCUDAStreamBackend) UploadSparse(
+	shape tensor.Shape,
+	valueDType dtype.DType,
+	layout tensor.Layout,
+	values []byte,
+	indices []tensor.SparseIndex,
+) (tensor.SparseTensor, error) {
+	return backend.backend.UploadSparse(shape, valueDType, layout, values, indices)
+}
+
+func (backend *fakeCUDAStreamBackend) Download(
+	input tensor.Tensor,
+) (dtype.DType, []byte, error) {
+	return backend.backend.Download(input)
 }
 
 func (backend *fakeCUDAStreamBackend) Close() error {
@@ -46,8 +79,8 @@ func (backend *fakeCUDAStreamBackend) Close() error {
 func (backend *fakeCUDAStreamBackend) Apply(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	return backend.backend.Apply(ctx, node, inputs)
 }
 
@@ -125,7 +158,7 @@ func TestNetworkRunner(t *testing.T) {
 			So(results, ShouldNotBeNil)
 			So(len(results), ShouldEqual, 1)
 
-			values, err := results["test"].CloneFloat64()
+			values, err := tensorFloat64Values(results["test"])
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{42})
 			So(ntry.Ledger().BalanceOf(localId.Address()), ShouldEqual, 900)

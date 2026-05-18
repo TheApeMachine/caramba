@@ -8,6 +8,7 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 /*
@@ -20,15 +21,15 @@ type Backend interface {
 	Apply(
 		ctx context.Context,
 		node NodeSpec,
-		inputs []tensor.Float64Tensor,
-	) (tensor.Float64Tensor, error)
+		inputs []tensor.Tensor,
+	) (tensor.Tensor, error)
 }
 
 type TensorSpec struct {
 	ID    string
 	Shape []int64
 	Data  []byte
-	DType tensor.DType
+	DType dtype.DType
 }
 
 type NodeSpec struct {
@@ -42,7 +43,7 @@ type NodeSpec struct {
 
 type Executor struct {
 	backend   Backend
-	values    map[string]tensor.Float64Tensor
+	values    map[string]tensor.Tensor
 	nodes     map[string]NodeSpec
 	states    map[string]int
 	owned     map[string]bool
@@ -53,7 +54,7 @@ type Executor struct {
 func New(backend Backend) *Executor {
 	return &Executor{
 		backend:   backend,
-		values:    make(map[string]tensor.Float64Tensor),
+		values:    make(map[string]tensor.Tensor),
 		nodes:     make(map[string]NodeSpec),
 		states:    make(map[string]int),
 		owned:     make(map[string]bool),
@@ -64,7 +65,7 @@ func New(backend Backend) *Executor {
 
 func (executor *Executor) Execute(
 	ctx context.Context, nodes []NodeSpec, tensors []TensorSpec,
-) (map[string]tensor.Float64Tensor, error) {
+) (map[string]tensor.Tensor, error) {
 	if err := executor.reset(); err != nil {
 		return nil, err
 	}
@@ -73,7 +74,7 @@ func (executor *Executor) Execute(
 		return nil, fmt.Errorf("executor: backend is required")
 	}
 
-	var callerOwnedOutputs map[string]tensor.Float64Tensor
+	var callerOwnedOutputs map[string]tensor.Tensor
 	defer func() {
 		if callerOwnedOutputs == nil {
 			_ = executor.closeOwnedExcept(nil)
@@ -98,7 +99,7 @@ func (executor *Executor) Execute(
 		executor.owned[tensorSpec.ID] = true
 	}
 
-	outputs := make(map[string]tensor.Float64Tensor, len(targetSpecs))
+	outputs := make(map[string]tensor.Tensor, len(targetSpecs))
 	outputIDs := make(map[string]bool, len(targetSpecs))
 
 	for _, target := range targetSpecs {
@@ -133,7 +134,7 @@ func (executor *Executor) reset() error {
 		}
 	}
 
-	executor.values = make(map[string]tensor.Float64Tensor)
+	executor.values = make(map[string]tensor.Tensor)
 	executor.nodes = make(map[string]NodeSpec)
 	executor.states = make(map[string]int)
 	executor.owned = make(map[string]bool)
@@ -214,27 +215,17 @@ func (executor *Executor) detach(ids map[string]bool) {
 	}
 }
 
-func (executor *Executor) upload(tensorSpec TensorSpec) (tensor.Float64Tensor, error) {
-	if tensorSpec.DType != tensor.Float64 {
-		return nil, fmt.Errorf("executor: unsupported tensor dtype %q", tensorSpec.DType)
-	}
-
-	values, err := DecodeFloat64(tensorSpec.Data)
-
-	if err != nil {
-		return nil, err
-	}
-
+func (executor *Executor) upload(tensorSpec TensorSpec) (tensor.Tensor, error) {
 	shape, err := shapeFromInt64(tensorSpec.Shape)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return executor.backend.UploadFloat64(shape, values)
+	return executor.backend.Upload(shape, tensorSpec.DType, tensorSpec.Data)
 }
 
-func (executor *Executor) evaluate(ctx context.Context, id string) (tensor.Float64Tensor, error) {
+func (executor *Executor) evaluate(ctx context.Context, id string) (tensor.Tensor, error) {
 	if value, ok := executor.values[id]; ok {
 		return value, nil
 	}
@@ -263,7 +254,7 @@ func (executor *Executor) evaluate(ctx context.Context, id string) (tensor.Float
 	}
 
 	executor.states[id] = 1
-	inputs := make([]tensor.Float64Tensor, len(node.Inputs))
+	inputs := make([]tensor.Tensor, len(node.Inputs))
 
 	for index, inputID := range node.Inputs {
 		input, err := executor.evaluate(ctx, inputID)
@@ -329,23 +320,17 @@ func (executor *Executor) releaseAfterUse(id string) error {
 }
 
 func (executor *Executor) apply(
-	ctx context.Context, node NodeSpec, inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	ctx context.Context, node NodeSpec, inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	node = WithDerivedMetadata(node, inputs)
 
 	return executor.backend.Apply(ctx, node, inputs)
 }
 
 func (executor *Executor) download(
-	id string, value tensor.Float64Tensor,
+	id string, value tensor.Tensor,
 ) (TensorSpec, error) {
-	values, err := value.CloneFloat64()
-
-	if err != nil {
-		return TensorSpec{}, err
-	}
-
-	data, err := EncodeFloat64(values)
+	sourceDType, data, err := value.RawBytes()
 
 	if err != nil {
 		return TensorSpec{}, err
@@ -362,7 +347,7 @@ func (executor *Executor) download(
 		ID:    id,
 		Shape: shape,
 		Data:  data,
-		DType: tensor.Float64,
+		DType: sourceDType,
 	}, nil
 }
 

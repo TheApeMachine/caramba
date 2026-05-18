@@ -70,7 +70,7 @@ func runMaskingGraphForTest(
 	expectedUploadBytes := maskGraphUploadBytes(nodes)
 	So(after.TransferBytes-before.TransferBytes, ShouldEqual, expectedUploadBytes)
 
-	values, err := results[output.ID()].CloneFloat64()
+	values, err := results[output.ID()tensorFloat64Values(])
 	So(err, ShouldBeNil)
 	defer func() {
 		So(results[output.ID()].Close(), ShouldBeNil)

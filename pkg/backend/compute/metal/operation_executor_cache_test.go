@@ -31,7 +31,7 @@ func TestTensorBackend_cachedTensor(test *testing.T) {
 
 			So(second, ShouldNotEqual, first)
 
-			values, err := second.CloneFloat64()
+			values, err := tensorFloat64Values(second)
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{3, 4})
 		})

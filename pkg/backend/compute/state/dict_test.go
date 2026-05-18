@@ -4,7 +4,36 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
+	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 )
+
+func TestDict_float64Values(test *testing.T) {
+	Convey("Given a state dictionary receiving dtype-aware tensors", test, func() {
+		backend := tensor.NewHostBackend()
+		shape, err := tensor.NewShape([]int{3})
+		So(err, ShouldBeNil)
+
+		input, err := backend.Upload(
+			shape,
+			dtype.Float32,
+			dtypeconvert.Float32ToBytes([]float32{1.25, -2.5, 3.75}),
+		)
+		So(err, ShouldBeNil)
+		defer input.Close()
+
+		dict := NewDict(backend)
+
+		Convey("It should convert through explicit raw bytes", func() {
+			values, outputShape, err := dict.float64Values(input)
+
+			So(err, ShouldBeNil)
+			So(outputShape.Equal(shape), ShouldBeTrue)
+			So(values, ShouldResemble, []float64{1.25, -2.5, 3.75})
+		})
+	})
+}
 
 func TestDict_RoPELayout(test *testing.T) {
 	Convey("Given a RoPE state dictionary", test, func() {

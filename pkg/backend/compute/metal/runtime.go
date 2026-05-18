@@ -11,6 +11,8 @@ import (
 	"unsafe"
 
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
+	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 )
 
 /*
@@ -46,15 +48,16 @@ func (runtime *MetalRuntime) NewFloat32Tensor(
 	shape computetensor.Shape,
 	allocation MetalAllocationKind,
 ) (*Tensor, error) {
-	return runtime.newTensor(shape, computetensor.Float32, runtime.config.DefaultStorageMode, allocation)
+	return runtime.newTensor(shape, dtype.Float32, runtime.config.DefaultStorageMode, allocation)
 }
 
 /*
-UploadFloat64 uploads host values into dtype-aware resident float32 storage.
+Upload uploads host values into dtype-aware resident float32 storage.
 */
-func (runtime *MetalRuntime) UploadFloat64(
+func (runtime *MetalRuntime) Upload(
 	shape computetensor.Shape,
-	values []float64,
+	sourceDType dtype.DType,
+	bytesIn []byte,
 ) (*Tensor, error) {
 	if runtime.closed.Load() != 0 {
 		return nil, errors.New("metal runtime: runtime is closed")
@@ -64,19 +67,25 @@ func (runtime *MetalRuntime) UploadFloat64(
 		return nil, errors.New("metal runtime: invalid upload shape")
 	}
 
-	if shape.Len() != len(values) {
-		return nil, fmt.Errorf(
-			"metal runtime: shape has %d elements but upload received %d values",
-			shape.Len(), len(values),
-		)
-	}
-
-	bytes, err := shape.Bytes(computetensor.Float32)
+	expected, err := shape.Bytes(sourceDType)
 	if err != nil {
 		return nil, err
 	}
 
-	float32Values := toFloat32(values)
+	if expected != len(bytesIn) {
+		return nil, computetensor.ErrShapeMismatch
+	}
+
+	bytes, err := shape.Bytes(dtype.Float32)
+	if err != nil {
+		return nil, err
+	}
+
+	float32Values, err := dtypeconvert.BytesToFloat32(sourceDType, bytesIn)
+	if err != nil {
+		return nil, err
+	}
+
 	var buffer unsafe.Pointer
 
 	if len(float32Values) > 0 {
@@ -96,7 +105,7 @@ func (runtime *MetalRuntime) UploadFloat64(
 
 	return runtime.wrapTensor(
 		shape,
-		computetensor.Float32,
+		dtype.Float32,
 		runtime.config.DefaultStorageMode,
 		buffer,
 		bytes,
@@ -148,7 +157,7 @@ func (runtime *MetalRuntime) Close() error {
 
 func (runtime *MetalRuntime) newTensor(
 	shape computetensor.Shape,
-	dtype computetensor.DType,
+	storageDType dtype.DType,
 	storageMode MetalStorageMode,
 	allocation MetalAllocationKind,
 ) (*Tensor, error) {
@@ -160,11 +169,11 @@ func (runtime *MetalRuntime) newTensor(
 		return nil, errors.New("metal runtime: invalid shape")
 	}
 
-	if dtype != computetensor.Float32 {
-		return nil, fmt.Errorf("metal runtime: unsupported resident dtype %q", dtype)
+	if storageDType != dtype.Float32 {
+		return nil, fmt.Errorf("metal runtime: unsupported resident dtype %q", storageDType)
 	}
 
-	bytes, err := shape.Bytes(dtype)
+	bytes, err := shape.Bytes(storageDType)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +190,7 @@ func (runtime *MetalRuntime) newTensor(
 				actualBytes = metalSizeClass(bytes)
 			}
 
-			elementCount := actualBytes / mustDTypeSize(dtype)
+			elementCount := actualBytes / mustDTypeSize(storageDType)
 			buffer = C.metal_tensor_empty_float32_mode(
 				C.size_t(elementCount),
 				C.int(storageMode),
@@ -195,11 +204,11 @@ func (runtime *MetalRuntime) newTensor(
 
 	runtime.recordAllocate(bytes, actualBytes)
 
-	return runtime.wrapTensor(shape, dtype, storageMode, buffer, bytes, allocation), nil
+	return runtime.wrapTensor(shape, storageDType, storageMode, buffer, bytes, allocation), nil
 }
 
-func mustDTypeSize(dtype computetensor.DType) int {
-	size, err := dtype.Size()
+func mustDTypeSize(storageDType dtype.DType) int {
+	size, err := storageDType.Size()
 
 	if err != nil {
 		panic(err)
@@ -210,7 +219,7 @@ func mustDTypeSize(dtype computetensor.DType) int {
 
 func (runtime *MetalRuntime) wrapTensor(
 	shape computetensor.Shape,
-	dtype computetensor.DType,
+	storageDType dtype.DType,
 	storageMode MetalStorageMode,
 	buffer unsafe.Pointer,
 	bytes int,
@@ -223,7 +232,7 @@ func (runtime *MetalRuntime) wrapTensor(
 		runtime:   runtime,
 		accounted: true,
 		metadata: MetalTensorMetadata{
-			DType:       dtype,
+			DType:       storageDType,
 			Shape:       shape,
 			Strides:     contiguousStrides(shape.Dims()),
 			ByteSize:    bytes,

@@ -5,8 +5,8 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
-	metalbackend "github.com/theapemachine/caramba/pkg/backend/compute/metal"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 func TestBackendCapabilityParity(test *testing.T) {
@@ -50,9 +50,9 @@ func TestBackendCapabilityParity(test *testing.T) {
 		Convey("It should generate Metal capabilities from the resident operation table", func() {
 			capabilities := CapabilitiesForLocation(tensor.Metal)
 
-			for _, operation := range metalbackend.ResidentOperationTable() {
+			for _, operation := range ResidentMetalOperationTable() {
 				So(capabilities.Supports(operation.ID), ShouldBeTrue)
-				So(capabilities.Precision(operation.ID), ShouldEqual, tensor.Float32)
+				So(capabilities.Precision(operation.ID), ShouldEqual, dtype.Float32)
 			}
 
 			So(capabilities.CanFuse("matmul.activation", ir.OpFused), ShouldBeTrue)

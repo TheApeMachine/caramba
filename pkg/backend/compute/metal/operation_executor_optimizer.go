@@ -20,8 +20,8 @@ import (
 func (tensorBackend *TensorBackend) applyOptimizerStep(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

@@ -45,7 +45,7 @@ func TestMetalActivation_GELU(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertAlmostEqualSlice(values, expectedState.Out, 1e-4)
 		})
@@ -89,7 +89,7 @@ func TestMetalActivation_SwiGLU(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertAlmostEqualSlice(values, expectedState.Out, 1e-5)
 		})
@@ -116,7 +116,7 @@ func TestMetalActivation_SwiGLU(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertAlmostEqualSlice(values, expectedState.Out, 1e-4)
 		})

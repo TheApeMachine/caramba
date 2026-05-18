@@ -34,7 +34,7 @@ func TestMetalCausalOps_DoCalculusTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				actual, err := output.CloneFloat64()
+				actual, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(actual, expected, 2e-3)
@@ -62,7 +62,7 @@ func TestTensorBackend_applyCausalDoCalculusGraph(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			actual, err := output.CloneFloat64()
+			actual, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertMetalMaxDiff(actual, expected, 2e-3)
 		})

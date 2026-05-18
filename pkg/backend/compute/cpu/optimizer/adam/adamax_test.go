@@ -6,7 +6,6 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
 func TestAdaMax_Step(t *testing.T) {
@@ -39,7 +38,7 @@ func TestAdaMax_Step(t *testing.T) {
 					params := cloneFloat64(updated.Out)
 					stateDict.
 						WithParams(updated.Out).
-						WithGrads(tensor.MustFloat64From([]float64{2 * params[0]}))
+						WithGrads([]float64{2 * params[0]})
 				}
 
 				params := cloneFloat64(stateDict.Out)
@@ -105,8 +104,8 @@ func adaMaxState(params, grads []float64) *state.Dict {
 		WithBeta1(0.9).
 		WithBeta2(0.999).
 		WithEps(1e-8).
-		WithParams(tensor.MustFloat64From(params)).
-		WithGrads(tensor.MustFloat64From(grads))
+		WithParams(params).
+		WithGrads(grads)
 }
 
 func adaMaxExpectedParams(params, grads []float64) []float64 {

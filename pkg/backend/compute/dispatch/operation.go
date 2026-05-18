@@ -132,10 +132,10 @@ func RunOperation(
 	ctx context.Context,
 	backend executor.Backend,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 	operations OperationRegistry,
 	optimizers OptimizerRegistry,
-) (tensor.Float64Tensor, error) {
+) (tensor.Tensor, error) {
 	optimizer, optimizerErr := BuildOptimizer(optimizers, node)
 
 	if optimizerErr == nil {

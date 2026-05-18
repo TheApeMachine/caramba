@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 const graphCodecVersion = 1
@@ -18,7 +19,8 @@ type nodeDocument struct {
 	Op         OpType               `json:"op"`
 	Operation  OpID                 `json:"operation"`
 	Shape      []int                `json:"shape"`
-	DType      tensor.DType         `json:"dtype"`
+	DType      dtype.DType          `json:"dtype"`
+	Precision  dtype.DType          `json:"precision"`
 	Layout     Layout               `json:"layout"`
 	Memory     MemoryClass          `json:"memory"`
 	Effect     Effect               `json:"effect"`
@@ -54,6 +56,7 @@ func EncodeGraph(graph *Graph) ([]byte, error) {
 			Operation:  node.OperationID(),
 			Shape:      node.Shape().Dims(),
 			DType:      valueType.DType,
+			Precision:  valueType.Precision,
 			Layout:     valueType.Layout,
 			Memory:     valueType.MemoryClass,
 			Effect:     node.Effect(),
@@ -90,6 +93,7 @@ func DecodeGraph(data []byte) (*Graph, error) {
 		node.SetValueType(ValueType{
 			Shape:       shape,
 			DType:       nodeData.DType,
+			Precision:   nodeData.Precision,
 			Layout:      nodeData.Layout,
 			MemoryClass: nodeData.Memory,
 		})

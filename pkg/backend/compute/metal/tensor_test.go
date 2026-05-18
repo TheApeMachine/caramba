@@ -131,7 +131,7 @@ func TestTensorBackend_Add(t *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{4, 6})
@@ -160,7 +160,7 @@ func TestTensorBackend_GELU(t *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 
 			So(err, ShouldBeNil)
 			So(values[0], ShouldAlmostEqual, 0, 1e-6)

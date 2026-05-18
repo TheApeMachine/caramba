@@ -161,10 +161,10 @@ func (p *ProjectionOps) FusedQKV(shape []int, weight, bias []float64, data ...[]
 FusedQKVTensor computes resident fused QKV projection.
 */
 func (projectionOps *ProjectionOps) FusedQKVTensor(
-	input, weight, bias computetensor.Float64Tensor,
+	input, weight, bias computetensor.Tensor,
 	outputShape computetensor.Shape,
 	rows, inFeatures, outFeatures int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 	if err != nil {
 		return nil, err

@@ -78,7 +78,7 @@ func TestMetalRuntime_UploadFloat64(test *testing.T) {
 			}()
 
 			So(runtime.Metrics().ReusedBytes, ShouldEqual, int64(0))
-			_, err = output.CloneFloat64()
+			_, err = tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 		})
 	})

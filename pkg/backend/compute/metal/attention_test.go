@@ -50,7 +50,7 @@ func TestMetalAttention_SDPATensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{3, 4})
@@ -110,7 +110,7 @@ func TestMetalAttention_SDPATensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertAlmostEqualSlice(values, expectedState.Out, 1e-5)
 		})
@@ -195,7 +195,7 @@ func TestMetalAttention_SDPATensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertAlmostEqualSlice(values, expectedState.Out, 1e-5)
 		})
@@ -262,9 +262,9 @@ func TestMetalAttention_AppendKVTensor(test *testing.T) {
 				So(appendedValue.Close(), ShouldBeNil)
 			}()
 
-			keyValues, err := appendedKey.CloneFloat64()
+			keyValues, err := tensorFloat64Values(appendedKey)
 			So(err, ShouldBeNil)
-			valueValues, err := appendedValue.CloneFloat64()
+			valueValues, err := tensorFloat64Values(appendedValue)
 			So(err, ShouldBeNil)
 
 			So(keyValues, ShouldResemble, []float64{1, 2, 5, 6, 3, 4, 7, 8})
@@ -321,7 +321,7 @@ func TestMetalAttention_GQATensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertAlmostEqualSlice(values, expectedState.Out, 1e-5)
 		})
@@ -349,7 +349,7 @@ func TestTensorBackend_applySDPA(test *testing.T) {
 			output, err := tensorBackend.applySDPA(
 				context.Background(),
 				node,
-				[]computetensor.Float64Tensor{
+				[]computetensor.Tensor{
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{1, 0}),
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{1, 0}),
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{3, 4}),
@@ -363,7 +363,7 @@ func TestTensorBackend_applySDPA(test *testing.T) {
 			output, err = tensorBackend.applySDPA(
 				context.Background(),
 				node,
-				[]computetensor.Float64Tensor{
+				[]computetensor.Tensor{
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{0, 1}),
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{0, 1}),
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{5, 6}),
@@ -379,7 +379,7 @@ func TestTensorBackend_applySDPA(test *testing.T) {
 			output, err = tensorBackend.applySDPA(
 				context.Background(),
 				node,
-				[]computetensor.Float64Tensor{
+				[]computetensor.Tensor{
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{1, 0}),
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{1, 0}),
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{7, 8}),
@@ -398,7 +398,7 @@ func TestTensorBackend_applySDPA(test *testing.T) {
 			output, err := tensorBackend.applySDPA(
 				context.Background(),
 				node,
-				[]computetensor.Float64Tensor{
+				[]computetensor.Tensor{
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{1, 0}),
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{1, 0}),
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{3, 4}),
@@ -411,7 +411,7 @@ func TestTensorBackend_applySDPA(test *testing.T) {
 			output, err = tensorBackend.applySDPA(
 				context.Background(),
 				node,
-				[]computetensor.Float64Tensor{
+				[]computetensor.Tensor{
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{0, 1}),
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{0, 1}),
 					uploadMetalTensorForTest(test, tensorBackend, shape, []float64{5, 6}),
@@ -422,7 +422,7 @@ func TestTensorBackend_applySDPA(test *testing.T) {
 			So(tensorBackend.kvEntries["attention"].shape, ShouldResemble, []int{1, 1, 2, 2})
 			So(tensorBackend.kvEntries["attention"].capacity, ShouldEqual, 2)
 
-			keyValues, err := tensorBackend.kvEntries["attention"].key.CloneFloat64()
+			keyValues, err := tensorFloat64Values(tensorBackend.kvEntries["attention"].key)
 			So(err, ShouldBeNil)
 			So(keyValues, ShouldResemble, []float64{1, 0, 0, 1})
 		})
@@ -453,7 +453,7 @@ func TestTensorBackend_applyGQA(test *testing.T) {
 			output, err := tensorBackend.applyGQA(
 				context.Background(),
 				node,
-				[]computetensor.Float64Tensor{
+				[]computetensor.Tensor{
 					uploadMetalTensorForTest(test, tensorBackend, queryShape, []float64{1, 0, 0, 1}),
 					uploadMetalTensorForTest(test, tensorBackend, keyValueShape, []float64{1, 0}),
 					uploadMetalTensorForTest(test, tensorBackend, keyValueShape, []float64{2, 3}),
@@ -466,7 +466,7 @@ func TestTensorBackend_applyGQA(test *testing.T) {
 			output, err = tensorBackend.applyGQA(
 				context.Background(),
 				node,
-				[]computetensor.Float64Tensor{
+				[]computetensor.Tensor{
 					uploadMetalTensorForTest(test, tensorBackend, queryShape, []float64{0, 1, 1, 0}),
 					uploadMetalTensorForTest(test, tensorBackend, keyValueShape, []float64{0, 1}),
 					uploadMetalTensorForTest(test, tensorBackend, keyValueShape, []float64{5, 7}),
@@ -609,7 +609,7 @@ func uploadMetalTensor(
 	tensorBackend *TensorBackend,
 	shape computetensor.Shape,
 	values []float64,
-) computetensor.Float64Tensor {
+) computetensor.Tensor {
 	tensor, err := tensorBackend.UploadFloat64(shape, values)
 
 	if err != nil {
@@ -624,7 +624,7 @@ func uploadMetalTensorForTest(
 	tensorBackend *TensorBackend,
 	shape computetensor.Shape,
 	values []float64,
-) computetensor.Float64Tensor {
+) computetensor.Tensor {
 	test.Helper()
 
 	tensor := uploadMetalTensor(tensorBackend, shape, values)

@@ -17,6 +17,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 	"github.com/theapemachine/caramba/pkg/network/dht"
 	"github.com/theapemachine/caramba/pkg/network/schema"
 	"github.com/theapemachine/caramba/pkg/notary"
@@ -371,7 +372,12 @@ func (s *ComputeStreamServer) execute(ctx context.Context) ([]streamTensor, erro
 		return nil, err
 	}
 
-	outputs, err := executor.New(backend).Execute(ctx, nodeSpecs(nodes), tensorSpecs(tensors))
+	specs, err := tensorSpecs(tensors)
+	if err != nil {
+		return nil, err
+	}
+
+	outputs, err := executor.New(backend).Execute(ctx, nodeSpecs(nodes), specs)
 
 	if err != nil {
 		return nil, err
@@ -426,32 +432,31 @@ func nodeSpecs(nodes []streamNode) []executor.NodeSpec {
 	return specs
 }
 
-func tensorSpecs(tensors []streamTensor) []executor.TensorSpec {
+func tensorSpecs(tensors []streamTensor) ([]executor.TensorSpec, error) {
 	specs := make([]executor.TensorSpec, len(tensors))
 
 	for index, tensor := range tensors {
-		specs[index] = executor.TensorSpec{
-			ID:    tensor.ID,
-			Shape: append([]int64(nil), tensor.Shape...),
-			Data:  append([]byte(nil), tensor.Data...),
-			DType: computetensor.DType(tensor.Dtype),
-		}
-	}
-
-	return specs
-}
-
-func streamTensorsFromOutputs(outputs map[string]computetensor.Float64Tensor) ([]streamTensor, error) {
-	tensors := make([]streamTensor, 0, len(outputs))
-
-	for id, output := range outputs {
-		values, err := output.CloneFloat64()
-
+		sourceDType, err := dtype.Parse(tensor.Dtype)
 		if err != nil {
 			return nil, err
 		}
 
-		data, err := executor.EncodeFloat64(values)
+		specs[index] = executor.TensorSpec{
+			ID:    tensor.ID,
+			Shape: append([]int64(nil), tensor.Shape...),
+			Data:  append([]byte(nil), tensor.Data...),
+			DType: sourceDType,
+		}
+	}
+
+	return specs, nil
+}
+
+func streamTensorsFromOutputs(outputs map[string]computetensor.Tensor) ([]streamTensor, error) {
+	tensors := make([]streamTensor, 0, len(outputs))
+
+	for id, output := range outputs {
+		sourceDType, data, err := output.RawBytes()
 
 		if err != nil {
 			return nil, err
@@ -468,7 +473,7 @@ func streamTensorsFromOutputs(outputs map[string]computetensor.Float64Tensor) ([
 			ID:    id,
 			Shape: shape,
 			Data:  data,
-			Dtype: string(output.DType()),
+			Dtype: sourceDType.String(),
 		})
 	}
 

@@ -12,9 +12,9 @@ import (
 )
 
 type metalConv1DTensorConfig struct {
-	input       computetensor.Float64Tensor
-	weight      computetensor.Float64Tensor
-	bias        computetensor.Float64Tensor
+	input       computetensor.Tensor
+	weight      computetensor.Tensor
+	bias        computetensor.Tensor
 	outputShape computetensor.Shape
 	batch       int
 	inChannels  int
@@ -28,9 +28,9 @@ type metalConv1DTensorConfig struct {
 }
 
 type metalConv2DTensorConfig struct {
-	input          computetensor.Float64Tensor
-	weight         computetensor.Float64Tensor
-	bias           computetensor.Float64Tensor
+	input          computetensor.Tensor
+	weight         computetensor.Tensor
+	bias           computetensor.Tensor
 	outputShape    computetensor.Shape
 	batch          int
 	inChannels     int
@@ -49,9 +49,9 @@ type metalConv2DTensorConfig struct {
 }
 
 func (m *ConvolutionOps) Conv1dTensor(
-	input computetensor.Float64Tensor,
-	weight computetensor.Float64Tensor,
-	bias computetensor.Float64Tensor,
+	input computetensor.Tensor,
+	weight computetensor.Tensor,
+	bias computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch int,
 	inChannels int,
@@ -62,7 +62,7 @@ func (m *ConvolutionOps) Conv1dTensor(
 	padding int,
 	dilation int,
 	groups int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return m.conv1dTensor(metalConv1DTensorConfig{
 		input:       input,
 		weight:      weight,
@@ -82,7 +82,7 @@ func (m *ConvolutionOps) Conv1dTensor(
 
 func (m *ConvolutionOps) conv1dTensor(
 	config metalConv1DTensorConfig,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, metalWeight, metalBias, err := requireMetalConvolutionInputs(
 		config.input, config.weight, config.bias,
 	)
@@ -130,7 +130,7 @@ func (m *ConvolutionOps) dispatchConv1dTensor(
 	output *Tensor,
 	config metalConv1DTensorConfig,
 	lengthOut int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	rc := C.metal_conv1d_tensor(
 		metalInput.buffer,
 		output.buffer,
@@ -157,9 +157,9 @@ func (m *ConvolutionOps) dispatchConv1dTensor(
 }
 
 func (m *ConvolutionOps) Conv2dTensor(
-	input computetensor.Float64Tensor,
-	weight computetensor.Float64Tensor,
-	bias computetensor.Float64Tensor,
+	input computetensor.Tensor,
+	weight computetensor.Tensor,
+	bias computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch int,
 	inChannels int,
@@ -175,7 +175,7 @@ func (m *ConvolutionOps) Conv2dTensor(
 	dilationHeight int,
 	dilationWidth int,
 	groups int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return m.conv2dTensor(metalConv2DTensorConfig{
 		input:          input,
 		weight:         weight,
@@ -200,7 +200,7 @@ func (m *ConvolutionOps) Conv2dTensor(
 
 func (m *ConvolutionOps) conv2dTensor(
 	config metalConv2DTensorConfig,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, metalWeight, metalBias, err := requireMetalConvolutionInputs(
 		config.input, config.weight, config.bias,
 	)
@@ -254,7 +254,7 @@ func (m *ConvolutionOps) dispatchConv2dTensor(
 	output *Tensor,
 	config metalConv2DTensorConfig,
 	outputDims []int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	rc := C.metal_conv2d_tensor(
 		metalInput.buffer,
 		output.buffer,
@@ -287,9 +287,9 @@ func (m *ConvolutionOps) dispatchConv2dTensor(
 }
 
 func requireMetalConvolutionInputs(
-	input computetensor.Float64Tensor,
-	weight computetensor.Float64Tensor,
-	bias computetensor.Float64Tensor,
+	input computetensor.Tensor,
+	weight computetensor.Tensor,
+	bias computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 	if err != nil {

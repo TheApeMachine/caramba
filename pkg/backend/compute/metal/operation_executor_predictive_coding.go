@@ -13,8 +13,8 @@ import (
 func (tensorBackend *TensorBackend) applyPredictivePrediction(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -39,8 +39,8 @@ func (tensorBackend *TensorBackend) applyPredictivePrediction(
 func (tensorBackend *TensorBackend) applyPredictivePredictionError(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (tensorBackend *TensorBackend) applyPredictivePredictionError(
 		return nil, fmt.Errorf("metal tensor: predictive_coding.prediction_error node %q requires 2 or 3 inputs", node.ID)
 	}
 
-	var precision computetensor.Float64Tensor
+	var precision computetensor.Tensor
 	if len(inputs) == 3 {
 		precision = inputs[2]
 	}
@@ -65,8 +65,8 @@ func (tensorBackend *TensorBackend) applyPredictivePredictionError(
 func (tensorBackend *TensorBackend) applyPredictiveUpdateRepresentation(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -92,8 +92,8 @@ func (tensorBackend *TensorBackend) applyPredictiveUpdateRepresentation(
 func (tensorBackend *TensorBackend) applyPredictiveUpdateWeights(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

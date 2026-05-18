@@ -12,9 +12,9 @@ import (
 )
 
 func (mathOps *MathOps) MSELossTensor(
-	predictions computetensor.Float64Tensor,
-	targets computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	predictions computetensor.Tensor,
+	targets computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	predictionTensor, targetTensor, err := trainingPair(predictions, targets)
 	if err != nil {
 		return nil, err
@@ -46,9 +46,9 @@ func (mathOps *MathOps) MSELossTensor(
 }
 
 func (mathOps *MathOps) CrossEntropyLossTensor(
-	logits computetensor.Float64Tensor,
-	targets computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	logits computetensor.Tensor,
+	targets computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	logitTensor, targetTensor, err := trainingPair(logits, targets)
 	if err != nil {
 		return nil, err
@@ -84,9 +84,9 @@ func (mathOps *MathOps) CrossEntropyLossTensor(
 }
 
 func (mathOps *MathOps) MSEGradTensor(
-	predictions computetensor.Float64Tensor,
-	targets computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	predictions computetensor.Tensor,
+	targets computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	predictionTensor, targetTensor, err := trainingPair(predictions, targets)
 	if err != nil {
 		return nil, err
@@ -113,9 +113,9 @@ func (mathOps *MathOps) MSEGradTensor(
 }
 
 func (mathOps *MathOps) CrossEntropyGradTensor(
-	logits computetensor.Float64Tensor,
-	targets computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	logits computetensor.Tensor,
+	targets computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	logitTensor, targetTensor, err := trainingPair(logits, targets)
 	if err != nil {
 		return nil, err
@@ -142,8 +142,8 @@ func (mathOps *MathOps) CrossEntropyGradTensor(
 }
 
 func trainingPair(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
 ) (*Tensor, *Tensor, error) {
 	firstTensor, err := requireMetalTensor(first)
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 var _ computetensor.Backend = (*TensorBackend)(nil)
@@ -45,14 +46,14 @@ type residentKVEntry struct {
 	epoch    uint64
 	capacity int
 	shape    []int
-	key      computetensor.Float64Tensor
-	value    computetensor.Float64Tensor
+	key      computetensor.Tensor
+	value    computetensor.Tensor
 }
 
 type residentTensorEntry struct {
 	shape       []int
 	fingerprint uint64
-	value       computetensor.Float64Tensor
+	value       computetensor.Tensor
 }
 
 /*
@@ -81,49 +82,89 @@ func (tensorBackend *TensorBackend) Location() computetensor.Location {
 	return computetensor.Metal
 }
 
-/*
-UploadFloat64 converts host float64 values into resident Metal float32 storage.
-*/
-func (tensorBackend *TensorBackend) UploadFloat64(
-	shape computetensor.Shape, values []float64,
-) (computetensor.Float64Tensor, error) {
+func (tensorBackend *TensorBackend) SupportedDTypes() []dtype.DType {
+	return []dtype.DType{dtype.Float32, dtype.Float64}
+}
+
+func (tensorBackend *TensorBackend) SupportedLayouts() []computetensor.Layout {
+	return []computetensor.Layout{computetensor.LayoutDense}
+}
+
+func (tensorBackend *TensorBackend) Capabilities() computetensor.Capabilities {
+	return computetensor.Capabilities{
+		MaxBytes:        computetensor.MaxBytesUnlimited,
+		SupportsAsync:   false,
+		SupportsSparse:  false,
+		NativeAlignment: 128,
+		NUMANodes:       1,
+	}
+}
+
+func (tensorBackend *TensorBackend) Upload(
+	shape computetensor.Shape,
+	sourceDType dtype.DType,
+	bytes []byte,
+) (computetensor.Tensor, error) {
 	if tensorBackend.closed.Load() != 0 {
-		return nil, errors.New("metal tensor: backend is closed")
+		return nil, computetensor.ErrBackendClosed
 	}
 
 	if !shape.Valid() {
-		return nil, errors.New("metal tensor: invalid shape")
+		return nil, computetensor.ErrShapeInvalid
 	}
 
-	if shape.Len() != len(values) {
-		return nil, fmt.Errorf(
-			"metal tensor: shape has %d elements but upload received %d values",
-			shape.Len(), len(values),
-		)
+	expected, err := shape.Bytes(sourceDType)
+	if err != nil {
+		return nil, err
 	}
 
-	return tensorBackend.runtime.UploadFloat64(shape, values)
+	if expected != len(bytes) {
+		return nil, computetensor.ErrShapeMismatch
+	}
+
+	return tensorBackend.runtime.Upload(shape, sourceDType, bytes)
 }
 
-/*
-DownloadFloat64 copies resident Metal storage back to host float64 values.
-*/
-func (tensorBackend *TensorBackend) DownloadFloat64(
-	input computetensor.Float64Tensor,
-) ([]float64, error) {
+func (tensorBackend *TensorBackend) UploadAsync(
+	shape computetensor.Shape,
+	sourceDType dtype.DType,
+	bytes []byte,
+) (computetensor.Tensor, error) {
+	return tensorBackend.Upload(shape, sourceDType, bytes)
+}
+
+func (tensorBackend *TensorBackend) UploadSparse(
+	shape computetensor.Shape,
+	valueDType dtype.DType,
+	layout computetensor.Layout,
+	values []byte,
+	indices []computetensor.SparseIndex,
+) (computetensor.SparseTensor, error) {
+	_ = shape
+	_ = valueDType
+	_ = layout
+	_ = values
+	_ = indices
+
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensorBackend *TensorBackend) Download(
+	input computetensor.Tensor,
+) (dtype.DType, []byte, error) {
 	if tensorBackend.closed.Load() != 0 {
-		return nil, errors.New("metal tensor: backend is closed")
+		return dtype.Invalid, nil, computetensor.ErrBackendClosed
 	}
 
 	if input == nil {
-		return nil, errors.New("metal tensor: nil input")
+		return dtype.Invalid, nil, errors.New("metal tensor: nil input")
 	}
 
 	if input.Location() != computetensor.Metal {
-		return nil, fmt.Errorf("metal tensor: cannot download %s tensor", input.Location())
+		return dtype.Invalid, nil, fmt.Errorf("metal tensor: cannot download %s tensor", input.Location())
 	}
 
-	return input.CloneFloat64()
+	return input.RawBytes()
 }
 
 /*

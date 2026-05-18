@@ -7,7 +7,6 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
 func TestAdam_Step(t *testing.T) {
@@ -59,7 +58,7 @@ func TestAdam_Step(t *testing.T) {
 					params := cloneFloat64(updated.Out)
 					stateDict.
 						WithParams(updated.Out).
-						WithGrads(tensor.MustFloat64From([]float64{2 * params[0]}))
+						WithGrads([]float64{2 * params[0]})
 				}
 
 				params := cloneFloat64(stateDict.Out)
@@ -155,7 +154,7 @@ func TestAdamW_Step(t *testing.T) {
 					params := cloneFloat64(updated.Out)
 					stateDict.
 						WithParams(updated.Out).
-						WithGrads(tensor.MustFloat64From([]float64{2 * params[0]}))
+						WithGrads([]float64{2 * params[0]})
 				}
 
 				params := cloneFloat64(stateDict.Out)
@@ -303,8 +302,8 @@ func adamState(params, grads []float64, wd float64) *state.Dict {
 		WithBeta2(0.999).
 		WithEps(1e-8).
 		WithWD(wd).
-		WithParams(tensor.MustFloat64From(params)).
-		WithGrads(tensor.MustFloat64From(grads))
+		WithParams(params).
+		WithGrads(grads)
 }
 
 func adamExpectedParams(params, grads []float64, wd float64) []float64 {

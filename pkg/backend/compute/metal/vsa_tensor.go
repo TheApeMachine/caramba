@@ -15,8 +15,8 @@ import (
 BindTensor computes resident elementwise VSA binding.
 */
 func (metalVSAOps *MetalVSAOps) BindTensor(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	metalLeft, metalRight, err := requireVSABinary(left, right)
 	if err != nil {
 		return nil, err
@@ -46,10 +46,10 @@ func (metalVSAOps *MetalVSAOps) BindTensor(
 BundleTensor sums count resident vectors and normalises the result.
 */
 func (metalVSAOps *MetalVSAOps) BundleTensor(
-	vectors computetensor.Float64Tensor,
+	vectors computetensor.Tensor,
 	outputShape computetensor.Shape,
 	count int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalVectors, err := requireMetalTensor(vectors)
 	if err != nil {
 		return nil, err
@@ -83,9 +83,9 @@ func (metalVSAOps *MetalVSAOps) BundleTensor(
 SimilarityTensor computes resident dot-product similarity.
 */
 func (metalVSAOps *MetalVSAOps) SimilarityTensor(
-	left, right computetensor.Float64Tensor,
+	left, right computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalLeft, metalRight, err := requireVSABinary(left, right)
 	if err != nil {
 		return nil, err
@@ -119,9 +119,9 @@ func (metalVSAOps *MetalVSAOps) SimilarityTensor(
 PermuteTensor cyclically shifts a resident vector.
 */
 func (metalVSAOps *MetalVSAOps) PermuteTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	shift int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return metalVSAOps.permuteTensor(input, shift, false)
 }
 
@@ -129,17 +129,17 @@ func (metalVSAOps *MetalVSAOps) PermuteTensor(
 InversePermuteTensor applies the inverse resident VSA permutation.
 */
 func (metalVSAOps *MetalVSAOps) InversePermuteTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	shift int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return metalVSAOps.permuteTensor(input, shift, true)
 }
 
 func (metalVSAOps *MetalVSAOps) permuteTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	shift int,
 	inverse bool,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 	if err != nil {
 		return nil, err
@@ -180,8 +180,8 @@ func (metalVSAOps *MetalVSAOps) permuteTensor(
 }
 
 func requireVSABinary(
-	left computetensor.Float64Tensor,
-	right computetensor.Float64Tensor,
+	left computetensor.Tensor,
+	right computetensor.Tensor,
 ) (*Tensor, *Tensor, error) {
 	metalLeft, err := requireMetalTensor(left)
 	if err != nil {

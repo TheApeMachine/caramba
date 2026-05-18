@@ -25,13 +25,13 @@ func TestPoolingOps_MaxPool2dTensor(test *testing.T) {
 				shape,
 				outputShape,
 				input,
-				func(inputTensor computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+				func(inputTensor computetensor.Tensor) (computetensor.Tensor, error) {
 					return poolingOps.MaxPool2dTensor(inputTensor, outputShape, params)
 				},
 			)
 
 			So(output.Location(), ShouldEqual, computetensor.Metal)
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			defer func() {
 				So(output.Close(), ShouldBeNil)
@@ -56,12 +56,12 @@ func TestPoolingOps_AvgPool2dTensor(test *testing.T) {
 				shape,
 				outputShape,
 				input,
-				func(inputTensor computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+				func(inputTensor computetensor.Tensor) (computetensor.Tensor, error) {
 					return poolingOps.AvgPool2dTensor(inputTensor, outputShape, params)
 				},
 			)
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			defer func() {
 				So(output.Close(), ShouldBeNil)
@@ -85,12 +85,12 @@ func TestPoolingOps_AdaptiveAvgPool2dTensor(test *testing.T) {
 				shape,
 				outputShape,
 				input,
-				func(inputTensor computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+				func(inputTensor computetensor.Tensor) (computetensor.Tensor, error) {
 					return poolingOps.AdaptiveAvgPool2dTensor(inputTensor, outputShape)
 				},
 			)
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			defer func() {
 				So(output.Close(), ShouldBeNil)
@@ -114,12 +114,12 @@ func TestPoolingOps_AdaptiveMaxPool2dTensor(test *testing.T) {
 				shape,
 				outputShape,
 				input,
-				func(inputTensor computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+				func(inputTensor computetensor.Tensor) (computetensor.Tensor, error) {
 					return poolingOps.AdaptiveMaxPool2dTensor(inputTensor, outputShape)
 				},
 			)
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			defer func() {
 				So(output.Close(), ShouldBeNil)
@@ -129,7 +129,7 @@ func TestPoolingOps_AdaptiveMaxPool2dTensor(test *testing.T) {
 	})
 }
 
-type poolTensorOperation func(computetensor.Float64Tensor) (computetensor.Float64Tensor, error)
+type poolTensorOperation func(computetensor.Tensor) (computetensor.Tensor, error)
 
 func metalPoolingOpsForTest(test testing.TB, tensorBackend *TensorBackend) *PoolingOps {
 	test.Helper()
@@ -147,7 +147,7 @@ func runPool2dTensorForTest(
 	outputShape computetensor.Shape,
 	input []float64,
 	operation poolTensorOperation,
-) computetensor.Float64Tensor {
+) computetensor.Tensor {
 	test.Helper()
 	So(outputShape.Valid(), ShouldBeTrue)
 

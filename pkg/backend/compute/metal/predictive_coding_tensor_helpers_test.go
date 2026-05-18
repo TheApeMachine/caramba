@@ -180,14 +180,14 @@ func predictiveNode(name string, operation ir.OpType, shape computetensor.Shape,
 	return node
 }
 
-func assertPredictiveGraphOutputs(results map[string]computetensor.Float64Tensor, expected map[string][]float64) {
+func assertPredictiveGraphOutputs(results map[string]computetensor.Tensor, expected map[string][]float64) {
 	for name, output := range results {
 		So(output.Location(), ShouldEqual, computetensor.Metal)
-		defer func(value computetensor.Float64Tensor) {
+		defer func(value computetensor.Tensor) {
 			So(value.Close(), ShouldBeNil)
 		}(output)
 
-		values, err := output.CloneFloat64()
+		values, err := tensorFloat64Values(output)
 		So(err, ShouldBeNil)
 		assertMetalMaxDiff(values, expected[name], 1e-4)
 	}
@@ -250,16 +250,16 @@ func predictiveBenchmarkLoop(
 func predictiveBenchmarkOutput(
 	predictiveOps *MetalPredictiveCodingOps,
 	operation string,
-	weights computetensor.Float64Tensor,
-	representation computetensor.Float64Tensor,
-	observation computetensor.Float64Tensor,
-	prediction computetensor.Float64Tensor,
-	precision computetensor.Float64Tensor,
-	lowerError computetensor.Float64Tensor,
-	selfError computetensor.Float64Tensor,
-	learningRate computetensor.Float64Tensor,
+	weights computetensor.Tensor,
+	representation computetensor.Tensor,
+	observation computetensor.Tensor,
+	prediction computetensor.Tensor,
+	precision computetensor.Tensor,
+	lowerError computetensor.Tensor,
+	selfError computetensor.Tensor,
+	learningRate computetensor.Tensor,
 	predictionShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	switch operation {
 	case "prediction":
 		return predictiveOps.PredictionTensor(weights, representation, predictionShape)

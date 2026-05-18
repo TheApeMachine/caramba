@@ -15,8 +15,8 @@ import (
 ReLUTensor launches a Metal ReLU kernel directly against resident buffers.
 */
 func (metalActivation *MetalActivation) ReLUTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return metalActivation.unaryTensor(input, "relu", 0)
 }
 
@@ -24,8 +24,8 @@ func (metalActivation *MetalActivation) ReLUTensor(
 LeakyReLUTensor launches a Metal leaky ReLU kernel directly against resident buffers.
 */
 func (metalActivation *MetalActivation) LeakyReLUTensor(
-	input computetensor.Float64Tensor, alpha float64,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor, alpha float64,
+) (computetensor.Tensor, error) {
 	return metalActivation.unaryTensor(input, "leaky_relu", alpha)
 }
 
@@ -33,8 +33,8 @@ func (metalActivation *MetalActivation) LeakyReLUTensor(
 GELUTensor launches a Metal GELU kernel directly against resident buffers.
 */
 func (metalActivation *MetalActivation) GELUTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return metalActivation.unaryTensor(input, "gelu", 0)
 }
 
@@ -42,8 +42,8 @@ func (metalActivation *MetalActivation) GELUTensor(
 TanhTensor launches a Metal tanh kernel directly against resident buffers.
 */
 func (metalActivation *MetalActivation) TanhTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return metalActivation.unaryTensor(input, "tanh", 0)
 }
 
@@ -51,8 +51,8 @@ func (metalActivation *MetalActivation) TanhTensor(
 SigmoidTensor launches a Metal sigmoid kernel directly against resident buffers.
 */
 func (metalActivation *MetalActivation) SigmoidTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return metalActivation.unaryTensor(input, "sigmoid", 0)
 }
 
@@ -60,8 +60,8 @@ func (metalActivation *MetalActivation) SigmoidTensor(
 SwishTensor launches a Metal Swish kernel directly against resident buffers.
 */
 func (metalActivation *MetalActivation) SwishTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return metalActivation.unaryTensor(input, "swish", 0)
 }
 
@@ -69,8 +69,8 @@ func (metalActivation *MetalActivation) SwishTensor(
 SELUTensor launches a Metal SELU kernel directly against resident buffers.
 */
 func (metalActivation *MetalActivation) SELUTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return metalActivation.unaryTensor(input, "selu", 0)
 }
 
@@ -78,8 +78,8 @@ func (metalActivation *MetalActivation) SELUTensor(
 SwiGLUTensor launches a Metal SwiGLU kernel directly against resident buffers.
 */
 func (metalActivation *MetalActivation) SwiGLUTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -129,8 +129,8 @@ func (metalActivation *MetalActivation) SwiGLUTensor(
 }
 
 func (metalActivation *MetalActivation) unaryTensor(
-	input computetensor.Float64Tensor, name string, alpha float64,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor, name string, alpha float64,
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {

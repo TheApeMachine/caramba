@@ -8,16 +8,14 @@ import (
 	computecpu "github.com/theapemachine/caramba/pkg/backend/compute/cpu"
 	cpuoperation "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
 	cpuoptimizer "github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer"
-	"github.com/theapemachine/caramba/pkg/backend/compute/cuda"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
-	"github.com/theapemachine/caramba/pkg/backend/compute/metal"
 	"github.com/theapemachine/caramba/pkg/backend/compute/orchestrator"
 	"github.com/theapemachine/caramba/pkg/backend/compute/runner"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/backend/compute/xla"
 )
 
 var ErrBackendRunnerRequired = errors.New("compute: backend runner is required")
+var ErrDeviceRunnerUnavailable = errors.New("compute: dtype-native device graph runner is unavailable")
 
 type BackendType uint
 
@@ -51,29 +49,11 @@ func NewBackend(backendType BackendType) (*Backend, error) {
 			Runner:     computecpu.NewRunner(),
 		}, nil
 	case CUDA:
-		backend := &Backend{
-			Optimizers: NewOptimizerRegistry(cuda.NewOptimizerRegistry()),
-			Operations: NewOperationRegistry(cuda.NewOperationRegistry()),
-			Runner:     cuda.NewRunner(),
-		}
-
-		return backend, backend.Available()
+		return nil, fmt.Errorf("compute: cuda: %w", ErrDeviceRunnerUnavailable)
 	case METAL:
-		backend := &Backend{
-			Optimizers: NewOptimizerRegistry(metal.NewOptimizerRegistry()),
-			Operations: NewOperationRegistry(metal.NewOperationRegistry()),
-			Runner:     metal.NewRunner(),
-		}
-
-		return backend, backend.Available()
+		return nil, fmt.Errorf("compute: metal: %w", ErrDeviceRunnerUnavailable)
 	case XLA:
-		backend := &Backend{
-			Optimizers: NewOptimizerRegistry(xla.NewOptimizerRegistry()),
-			Operations: NewOperationRegistry(xla.NewOperationRegistry()),
-			Runner:     xla.NewRunner(),
-		}
-
-		return backend, backend.Available()
+		return nil, fmt.Errorf("compute: xla: %w", ErrDeviceRunnerUnavailable)
 	}
 
 	return nil, fmt.Errorf("compute: unsupported backend type %d", backendType)
@@ -97,7 +77,7 @@ func (backend *Backend) Available() error {
 
 func (backend *Backend) Execute(
 	ctx context.Context, graph *ir.Graph, targets []*ir.Node,
-) (map[string]tensor.Float64Tensor, error) {
+) (map[string]tensor.Tensor, error) {
 	if backend == nil || backend.Runner == nil {
 		return nil, ErrBackendRunnerRequired
 	}

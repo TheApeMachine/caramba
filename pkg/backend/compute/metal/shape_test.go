@@ -54,7 +54,7 @@ func TestMetalShapeOps_CopyTensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			So(output.Shape().Dims(), ShouldResemble, []int{3, 2})
 			So(values, ShouldResemble, []float64{1, 2, 3, 4, 5, 6})
@@ -91,7 +91,7 @@ func TestMetalShapeOps_ReshapeTensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			So(output.Shape().Dims(), ShouldResemble, []int{3, 2})
 			So(values, ShouldResemble, []float64{1, 2, 3, 4, 5, 6})
@@ -126,7 +126,7 @@ func TestMetalShapeOps_TransposeTensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			So(output.Shape().Dims(), ShouldResemble, []int{3, 2})
 			So(values, ShouldResemble, []float64{1, 4, 2, 5, 3, 6})
@@ -196,7 +196,7 @@ func TestMetalShapeOps_ConcatTensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{1, 2, 3, 4, 5})
 		})
@@ -229,7 +229,7 @@ func TestMetalShapeOps_SplitTensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{1, 2, 5, 6, 3, 4, 7, 8})
 		})

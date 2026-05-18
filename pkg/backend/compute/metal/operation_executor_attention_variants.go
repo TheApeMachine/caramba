@@ -13,8 +13,8 @@ import (
 func (tensorBackend *TensorBackend) applyMQA(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -54,8 +54,8 @@ func (tensorBackend *TensorBackend) applyMQA(
 func (tensorBackend *TensorBackend) applySlidingWindowAttention(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (tensorBackend *TensorBackend) applySlidingWindowAttention(
 
 func attentionVariantShapes(
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
+	inputs []computetensor.Tensor,
 	operation string,
 ) ([]int, []int, error) {
 	if len(inputs) != 3 {

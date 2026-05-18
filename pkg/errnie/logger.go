@@ -116,12 +116,11 @@ func NewLogger() *Logger {
 }
 
 /*
-LogErr logs err at error level with optional alternating key/value fields.
-
-The error is returned unmodified, which allows it to wrap and log the error
+Error logs error at error level with optional alternating key/value fields.
+It explicitly returns the error, which allows it to wrap and log the error
 directly, preventing yet more repetitive error handling code.
 
-Example:
+Examples:
 
 ```
 

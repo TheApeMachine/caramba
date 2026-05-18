@@ -75,7 +75,7 @@ func runPoolingGraphForTest(
 	So(results["pool"].Location(), ShouldEqual, computetensor.Metal)
 	So(after.TransferBytes-before.TransferBytes, ShouldEqual, int64(inputShape.Len()*4))
 
-	values, err := results["pool"].CloneFloat64()
+	values, err := tensorFloat64Values(results["pool"])
 	So(err, ShouldBeNil)
 	defer func() {
 		So(results["pool"].Close(), ShouldBeNil)

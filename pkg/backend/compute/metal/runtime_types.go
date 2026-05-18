@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 /*
@@ -62,7 +63,7 @@ const (
 MetalTensorMetadata is the dtype-aware physical metadata carried by Metal tensors.
 */
 type MetalTensorMetadata struct {
-	DType         computetensor.DType
+	DType         dtype.DType
 	Shape         computetensor.Shape
 	Strides       []int
 	ByteSize      int

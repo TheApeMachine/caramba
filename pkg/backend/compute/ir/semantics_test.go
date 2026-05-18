@@ -5,6 +5,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 func TestNodeSemantics(t *testing.T) {
@@ -15,7 +16,7 @@ func TestNodeSemantics(t *testing.T) {
 		node := NewNode("projection", OpMatmul, shape)
 		node.SetOperationID("math.matmul")
 		node.SetValueType(ValueType{
-			DType:       tensor.Float64,
+			DType:       dtype.Float64,
 			Shape:       shape,
 			Layout:      LayoutRowMajor,
 			MemoryClass: MemoryDevice,
@@ -31,7 +32,7 @@ func TestNodeSemantics(t *testing.T) {
 
 		Convey("It should expose deterministic operation, type, effect, alias, and attributes", func() {
 			So(node.OperationID(), ShouldEqual, OpID("math.matmul"))
-			So(node.ValueType().DType, ShouldEqual, tensor.Float64)
+			So(node.ValueType().DType, ShouldEqual, dtype.Float64)
 			So(node.ValueType().Layout, ShouldEqual, LayoutRowMajor)
 			So(node.ValueType().MemoryClass, ShouldEqual, MemoryDevice)
 			So(node.Effect(), ShouldEqual, EffectPure)

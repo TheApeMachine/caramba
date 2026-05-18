@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 /*
@@ -63,7 +64,7 @@ func NewNode(id string, opType OpType, shape tensor.Shape) *Node {
 		shape:       shape,
 		valueType: ValueType{
 			Shape:       shape,
-			DType:       tensor.Float64,
+			DType:       dtype.Float64,
 			Layout:      LayoutDense,
 			MemoryClass: MemoryHost,
 		},
@@ -137,11 +138,11 @@ func (node *Node) SetValueType(valueType ValueType) {
 		valueType.Shape = node.shape
 	}
 
-	if valueType.DType == "" {
-		valueType.DType = tensor.Float64
+	if valueType.DType == dtype.Invalid {
+		valueType.DType = dtype.Float64
 	}
 
-	if valueType.Precision == "" {
+	if valueType.Precision == dtype.Invalid {
 		valueType.Precision = valueType.DType
 	}
 

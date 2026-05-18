@@ -25,12 +25,12 @@ func TestTensorBackend_Apply(t *testing.T) {
 				ID:    "add",
 				Op:    ir.OpAdd,
 				Shape: []int{3},
-			}, []tensor.Float64Tensor{left, right})
+			}, []tensor.Tensor{left, right})
 
 			So(err, ShouldBeNil)
 			defer func() { So(output.Close(), ShouldBeNil) }()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{5, 7, 9})
 		})
@@ -43,12 +43,12 @@ func TestTensorBackend_Apply(t *testing.T) {
 				ID:    "swish",
 				Op:    ir.OpSwish,
 				Shape: []int{3},
-			}, []tensor.Float64Tensor{input})
+			}, []tensor.Tensor{input})
 
 			So(err, ShouldBeNil)
 			defer func() { So(output.Close(), ShouldBeNil) }()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 
 			So(values[0], ShouldAlmostEqual, swishApplyReference(-1), 1e-9)
@@ -64,12 +64,12 @@ func TestTensorBackend_Apply(t *testing.T) {
 				ID:    "selu",
 				Op:    ir.OpSELU,
 				Shape: []int{3},
-			}, []tensor.Float64Tensor{input})
+			}, []tensor.Tensor{input})
 
 			So(err, ShouldBeNil)
 			defer func() { So(output.Close(), ShouldBeNil) }()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 
 			So(values[0], ShouldAlmostEqual, seluApplyReference(-1), 1e-9)
@@ -94,13 +94,13 @@ func TestTensorBackend_Apply(t *testing.T) {
 				ID:    "matmul",
 				Op:    ir.OpMatmul,
 				Shape: []int{2, 2},
-			}, []tensor.Float64Tensor{left, right})
+			}, []tensor.Tensor{left, right})
 
 			So(err, ShouldBeNil)
 			defer func() { So(output.Close(), ShouldBeNil) }()
 			So(output.Shape().Dims(), ShouldResemble, []int{2, 2})
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{58, 64, 139, 154})
 		})
@@ -123,12 +123,12 @@ func TestTensorBackend_Apply(t *testing.T) {
 				Metadata: map[string]any{
 					"activation": string(ir.OpGELU),
 				},
-			}, []tensor.Float64Tensor{left, right, bias})
+			}, []tensor.Tensor{left, right, bias})
 
 			So(err, ShouldBeNil)
 			defer func() { So(output.Close(), ShouldBeNil) }()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			So(values[0], ShouldAlmostEqual, geluApplyReference(-2), 1e-9)
 			So(values[1], ShouldAlmostEqual, geluApplyReference(-1), 1e-9)
@@ -158,7 +158,7 @@ func BenchmarkTensorBackend_ApplyMatmul(benchmark *testing.B) {
 	}
 
 	for benchmark.Loop() {
-		output, err := tensorBackend.Apply(context.Background(), node, []tensor.Float64Tensor{left, right})
+		output, err := tensorBackend.Apply(context.Background(), node, []tensor.Tensor{left, right})
 
 		if err != nil {
 			benchmark.Fatal(err)

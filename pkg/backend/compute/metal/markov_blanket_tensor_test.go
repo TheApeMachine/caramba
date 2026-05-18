@@ -33,7 +33,7 @@ func TestMetalMarkovBlanket_PartitionTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, referenceMarkovPartition(state, masks, counts), 1e-6)
@@ -64,7 +64,7 @@ func TestMetalMarkovBlanket_FlowInternalTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, referenceMarkovFlow(sensory, weights, bias, internalCount, sensoryCount), 1e-5)
@@ -95,7 +95,7 @@ func TestMetalMarkovBlanket_FlowActiveTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, referenceMarkovFlow(internal, weights, bias, activeCount, internalCount), 1e-5)
@@ -125,7 +125,7 @@ func TestMetalMarkovBlanket_MutualInformationTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				expected := referenceMarkovMutualInformation(xValues, yValues, samples, xDimensions, yDimensions)
@@ -216,18 +216,18 @@ func markovBenchmarkOutput(
 	benchmark *testing.B,
 	markovOps *MetalMarkovBlanket,
 	operation string,
-	partitionState computetensor.Float64Tensor,
-	partitionMasks computetensor.Float64Tensor,
+	partitionState computetensor.Tensor,
+	partitionMasks computetensor.Tensor,
 	counts []int,
-	sensory computetensor.Float64Tensor,
-	internalWeights computetensor.Float64Tensor,
-	internalBias computetensor.Float64Tensor,
-	internal computetensor.Float64Tensor,
-	activeWeights computetensor.Float64Tensor,
-	activeBias computetensor.Float64Tensor,
-	miX computetensor.Float64Tensor,
-	miY computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	sensory computetensor.Tensor,
+	internalWeights computetensor.Tensor,
+	internalBias computetensor.Tensor,
+	internal computetensor.Tensor,
+	activeWeights computetensor.Tensor,
+	activeBias computetensor.Tensor,
+	miX computetensor.Tensor,
+	miY computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	switch operation {
 	case "partition":
 		return markovOps.PartitionTensor(

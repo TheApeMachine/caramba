@@ -188,9 +188,9 @@ func metalConvolutionBenchmarkTensors(
 	weightDims []int,
 	outputDims []int,
 ) (
-	inputTensor computetensor.Float64Tensor,
-	weightTensor computetensor.Float64Tensor,
-	biasTensor computetensor.Float64Tensor,
+	inputTensor computetensor.Tensor,
+	weightTensor computetensor.Tensor,
+	biasTensor computetensor.Tensor,
 	outputShape computetensor.Shape,
 	convolutionOps *ConvolutionOps,
 	closeBackend func(),

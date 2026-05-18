@@ -66,15 +66,17 @@ func NewRegistry() *Registry {
 
 /*
 Register adds a kernel to the registry. Duplicate (name, signature)
-pairs panic — kernel-table conflicts are programmer errors caught at
-init time.
+pairs for the same location panic — kernel-table conflicts are
+programmer errors caught at init time. The same signature may be
+registered by multiple locations, e.g. Host and Metal.
 */
 func (registry *Registry) Register(kernel Kernel) {
 	registry.mu.Lock()
 	defer registry.mu.Unlock()
 
 	for _, existing := range registry.kernels[kernel.Name] {
-		if signaturesEqual(existing.Signature, kernel.Signature) {
+		if signaturesEqual(existing.Signature, kernel.Signature) &&
+			locationsOverlap(existing.Locations, kernel.Locations) {
 			panic(fmt.Sprintf(
 				"kernels: duplicate registration for %q with signature %v",
 				kernel.Name, kernel.Signature,
@@ -106,10 +108,61 @@ func (registry *Registry) Lookup(name string, signature Signature) (Kernel, bool
 }
 
 /*
+LookupLocation returns the kernel registered for a specific execution
+location. It is the device backend entry point: callers that already
+own Metal/CUDA/XLA tensors should not receive a Host kernel with the
+same dtype signature.
+*/
+func (registry *Registry) LookupLocation(
+	name string,
+	signature Signature,
+	location tensor.Location,
+) (Kernel, bool) {
+	registry.mu.RLock()
+	defer registry.mu.RUnlock()
+
+	for _, kernel := range registry.kernels[name] {
+		if !signaturesEqual(kernel.Signature, signature) {
+			continue
+		}
+
+		if hasLocation(kernel.Locations, location) {
+			return kernel, true
+		}
+	}
+
+	return Kernel{}, false
+}
+
+/*
 Default is the package-level registry. Forward kernels register here
 at init time; callers look up by name.
 */
 var Default = NewRegistry()
+
+func locationsOverlap(left, right []tensor.Location) bool {
+	if len(left) == 0 || len(right) == 0 {
+		return true
+	}
+
+	for _, leftLocation := range left {
+		if hasLocation(right, leftLocation) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasLocation(locations []tensor.Location, target tensor.Location) bool {
+	for _, location := range locations {
+		if location == target {
+			return true
+		}
+	}
+
+	return false
+}
 
 func signaturesEqual(left, right Signature) bool {
 	if left.Layout != right.Layout {

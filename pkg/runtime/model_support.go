@@ -9,6 +9,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/asset"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 	"github.com/theapemachine/caramba/pkg/manifest"
 	modelweights "github.com/theapemachine/caramba/pkg/model/weights"
 	runtimebackend "github.com/theapemachine/caramba/pkg/runtime/backend"
@@ -19,13 +20,13 @@ import (
 	"github.com/theapemachine/caramba/pkg/tokenizer"
 )
 
-func backendComputePrecision(location tensor.Location) tensor.DType {
+func backendComputePrecision(location tensor.Location) dtype.DType {
 	switch location {
 	case tensor.Metal, tensor.CUDA, tensor.XLA:
-		return tensor.Float32
+		return dtype.Float32
 	}
 
-	return ""
+	return dtype.Invalid
 }
 
 func NewWeightBinder(store *modelweights.Store) runtimebackend.WeightBinder {

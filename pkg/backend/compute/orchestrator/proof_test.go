@@ -29,9 +29,9 @@ func TestOptimizerNumericalEquivalence(t *testing.T) {
 			actual, err := scheduler.Execute(ctx, graph, []*ir.Node{target}, tensor.Host)
 			So(err, ShouldBeNil)
 
-			expectedValues, err := expected[target.ID()].CloneFloat64()
+			expectedValues, err := tensorFloat64Values(expected[target.ID()])
 			So(err, ShouldBeNil)
-			actualValues, err := actual["matmul_fused_activation"].CloneFloat64()
+			actualValues, err := tensorFloat64Values(actual["matmul_fused_activation"])
 			So(err, ShouldBeNil)
 			So(actualValues, ShouldResemble, expectedValues)
 		})

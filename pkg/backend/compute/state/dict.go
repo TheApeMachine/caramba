@@ -7,6 +7,7 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/kv"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 )
 
 type StateKeyType uint
@@ -640,8 +641,13 @@ func (dict *Dict) EnsureHistory() {
 
 func (dict *Dict) float64Values(value any) ([]float64, tensor.Shape, error) {
 	switch typedValue := value.(type) {
-	case tensor.Float64Tensor:
-		values, err := dict.tensorBackend.DownloadFloat64(typedValue)
+	case tensor.Tensor:
+		sourceDType, bytes, err := typedValue.RawBytes()
+		if err != nil {
+			return nil, tensor.Shape{}, err
+		}
+
+		values, err := dtypeconvert.BytesToFloat64(sourceDType, bytes)
 
 		return values, typedValue.Shape(), err
 	case []float64:
@@ -649,6 +655,6 @@ func (dict *Dict) float64Values(value any) ([]float64, tensor.Shape, error) {
 
 		return typedValue, shape, err
 	default:
-		return nil, tensor.Shape{}, fmt.Errorf("state: expected float64 tensor or []float64, got %T", value)
+		return nil, tensor.Shape{}, fmt.Errorf("state: expected tensor or []float64, got %T", value)
 	}
 }

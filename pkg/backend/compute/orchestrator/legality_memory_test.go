@@ -7,6 +7,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 func TestLegalityAwareFusion(t *testing.T) {
@@ -108,7 +109,7 @@ func TestBackendCapabilities(t *testing.T) {
 			So(metal.Supports("train.optimizer.adagrad"), ShouldBeTrue)
 			So(metal.Supports("train.optimizer.adadelta"), ShouldBeTrue)
 			So(metal.Supports("train.optimizer.lbfgs"), ShouldBeTrue)
-			So(metal.Precision("attention.sdpa"), ShouldEqual, tensor.Float32)
+			So(metal.Precision("attention.sdpa"), ShouldEqual, dtype.Float32)
 		})
 	})
 }
@@ -133,11 +134,11 @@ func TestLoweringPass_Precision(t *testing.T) {
 			_, err := NewLoweringPass(CapabilitiesForLocation(tensor.Metal)).Run(context.Background(), input)
 
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "requires float64 precision")
+			So(err.Error(), ShouldContainSubstring, "requires F64 precision")
 		})
 
 		Convey("It should allow explicit f32 precision opt-in", func() {
-			node.SetValueType(ir.ValueType{Shape: shape, DType: tensor.Float64, Precision: tensor.Float32})
+			node.SetValueType(ir.ValueType{Shape: shape, DType: dtype.Float64, Precision: dtype.Float32})
 
 			_, err := NewLoweringPass(CapabilitiesForLocation(tensor.Metal)).Run(context.Background(), input)
 
@@ -153,15 +154,15 @@ func TestLoweringPass_Precision(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			valueType := ir.ValueType{
-				DType:     tensor.Float64,
-				Precision: tensor.Float32,
+				DType:     dtype.Float64,
+				Precision: dtype.Float32,
 			}
 
 			graph := ir.NewGraph()
 			left := ir.NewNode("left", ir.OpInput, leftShape)
-			left.SetValueType(ir.ValueType{Shape: leftShape, DType: tensor.Float64, Precision: tensor.Float32})
+			left.SetValueType(ir.ValueType{Shape: leftShape, DType: dtype.Float64, Precision: dtype.Float32})
 			right := ir.NewNode("right", ir.OpInput, rightShape)
-			right.SetValueType(ir.ValueType{Shape: rightShape, DType: tensor.Float64, Precision: tensor.Float32})
+			right.SetValueType(ir.ValueType{Shape: rightShape, DType: dtype.Float64, Precision: dtype.Float32})
 			output := ir.NewNode("output", "math.matmul", outputShape)
 			valueType.Shape = outputShape
 			output.SetValueType(valueType)

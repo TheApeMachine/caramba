@@ -24,8 +24,8 @@ var _ executor.Backend = (*TensorBackend)(nil)
 func (tensorBackend *TensorBackend) Apply(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -41,50 +41,50 @@ func (tensorBackend *TensorBackend) Apply(
 		return requireMetalInputs(node, inputs, 2, tensorBackend.Matmul)
 	case ir.OpReLU:
 		return requireMetalInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
+			input, _ tensor.Tensor,
+		) (tensor.Tensor, error) {
 			return tensorBackend.ReLU(input)
 		})
 	case ir.OpLeakyReLU:
 		return requireMetalInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
+			input, _ tensor.Tensor,
+		) (tensor.Tensor, error) {
 			return tensorBackend.LeakyReLU(input, 0.01)
 		})
 	case ir.OpGELU:
 		return requireMetalInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
+			input, _ tensor.Tensor,
+		) (tensor.Tensor, error) {
 			return tensorBackend.GELU(input)
 		})
 	case ir.OpTanh:
 		return requireMetalInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
+			input, _ tensor.Tensor,
+		) (tensor.Tensor, error) {
 			return tensorBackend.Tanh(input)
 		})
 	case ir.OpSigmoid:
 		return requireMetalInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
+			input, _ tensor.Tensor,
+		) (tensor.Tensor, error) {
 			return tensorBackend.Sigmoid(input)
 		})
 	case ir.OpSwish:
 		return requireMetalInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
+			input, _ tensor.Tensor,
+		) (tensor.Tensor, error) {
 			return tensorBackend.Swish(input)
 		})
 	case ir.OpSELU:
 		return requireMetalInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
+			input, _ tensor.Tensor,
+		) (tensor.Tensor, error) {
 			return tensorBackend.SELU(input)
 		})
 	case ir.OpSwiGLU:
 		return requireMetalInputs(node, inputs, 1, func(
-			input, _ tensor.Float64Tensor,
-		) (tensor.Float64Tensor, error) {
+			input, _ tensor.Tensor,
+		) (tensor.Tensor, error) {
 			return tensorBackend.SwiGLU(input)
 		})
 	case ir.OpFused:
@@ -104,8 +104,8 @@ func (tensorBackend *TensorBackend) Apply(
 }
 
 func (tensorBackend *TensorBackend) ReLU(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	activationOps, err := tensorBackend.activation()
 
 	if err != nil {
@@ -116,8 +116,8 @@ func (tensorBackend *TensorBackend) ReLU(
 }
 
 func (tensorBackend *TensorBackend) LeakyReLU(
-	input tensor.Float64Tensor, alpha float64,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor, alpha float64,
+) (tensor.Tensor, error) {
 	activationOps, err := tensorBackend.activation()
 
 	if err != nil {
@@ -128,8 +128,8 @@ func (tensorBackend *TensorBackend) LeakyReLU(
 }
 
 func (tensorBackend *TensorBackend) GELU(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	activationOps, err := tensorBackend.activation()
 
 	if err != nil {
@@ -140,8 +140,8 @@ func (tensorBackend *TensorBackend) GELU(
 }
 
 func (tensorBackend *TensorBackend) Tanh(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	activationOps, err := tensorBackend.activation()
 
 	if err != nil {
@@ -152,8 +152,8 @@ func (tensorBackend *TensorBackend) Tanh(
 }
 
 func (tensorBackend *TensorBackend) Sigmoid(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	activationOps, err := tensorBackend.activation()
 
 	if err != nil {
@@ -164,8 +164,8 @@ func (tensorBackend *TensorBackend) Sigmoid(
 }
 
 func (tensorBackend *TensorBackend) Swish(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	activationOps, err := tensorBackend.activation()
 
 	if err != nil {
@@ -176,8 +176,8 @@ func (tensorBackend *TensorBackend) Swish(
 }
 
 func (tensorBackend *TensorBackend) SELU(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	activationOps, err := tensorBackend.activation()
 
 	if err != nil {
@@ -188,8 +188,8 @@ func (tensorBackend *TensorBackend) SELU(
 }
 
 func (tensorBackend *TensorBackend) SwiGLU(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	activationOps, err := tensorBackend.activation()
 
 	if err != nil {
@@ -200,8 +200,8 @@ func (tensorBackend *TensorBackend) SwiGLU(
 }
 
 func (tensorBackend *TensorBackend) Add(
-	left, right tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	left, right tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 
 	if err != nil {
@@ -212,8 +212,8 @@ func (tensorBackend *TensorBackend) Add(
 }
 
 func (tensorBackend *TensorBackend) Mul(
-	left, right tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	left, right tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 
 	if err != nil {
@@ -224,8 +224,8 @@ func (tensorBackend *TensorBackend) Mul(
 }
 
 func (tensorBackend *TensorBackend) Matmul(
-	left, right tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	left, right tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 
 	if err != nil {
@@ -236,8 +236,8 @@ func (tensorBackend *TensorBackend) Matmul(
 }
 
 func (tensorBackend *TensorBackend) MatmulAdd(
-	left, right, bias tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	left, right, bias tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 
 	if err != nil {
@@ -248,8 +248,8 @@ func (tensorBackend *TensorBackend) MatmulAdd(
 }
 
 func (tensorBackend *TensorBackend) MatmulAddGELU(
-	left, right, bias tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	left, right, bias tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 
 	if err != nil {
@@ -261,15 +261,15 @@ func (tensorBackend *TensorBackend) MatmulAddGELU(
 
 func requireMetalInputs(
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 	count int,
-	apply func(tensor.Float64Tensor, tensor.Float64Tensor) (tensor.Float64Tensor, error),
-) (tensor.Float64Tensor, error) {
+	apply func(tensor.Tensor, tensor.Tensor) (tensor.Tensor, error),
+) (tensor.Tensor, error) {
 	if len(inputs) != count {
 		return nil, fmt.Errorf("metal tensor: %s node %q requires %d inputs", node.Op, node.ID, count)
 	}
 
-	var second tensor.Float64Tensor
+	var second tensor.Tensor
 	if len(inputs) > 1 {
 		second = inputs[1]
 	}
@@ -280,8 +280,8 @@ func requireMetalInputs(
 func (tensorBackend *TensorBackend) applyModelOperation(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	switch strings.ToLower(string(node.Op)) {
 	case "embedding.token":
 		return tensorBackend.applyTokenEmbedding(ctx, node, inputs)
@@ -460,8 +460,8 @@ func (tensorBackend *TensorBackend) applyModelOperation(
 func (tensorBackend *TensorBackend) applyReshape(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -488,8 +488,8 @@ func (tensorBackend *TensorBackend) applyReshape(
 func (tensorBackend *TensorBackend) applyTranspose(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -521,8 +521,8 @@ func (tensorBackend *TensorBackend) applyTranspose(
 func (tensorBackend *TensorBackend) applyConcat(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -548,7 +548,7 @@ func (tensorBackend *TensorBackend) applyConcat(
 	}
 
 	current := inputs[0]
-	var temporary tensor.Float64Tensor
+	var temporary tensor.Tensor
 
 	for inputIndex := 1; inputIndex < len(inputs); inputIndex++ {
 		nextLength := current.Shape().Len() + inputs[inputIndex].Shape().Len()
@@ -586,8 +586,8 @@ func (tensorBackend *TensorBackend) applyConcat(
 func (tensorBackend *TensorBackend) applySplit(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -642,8 +642,8 @@ non-leading dims is the next thing to wire when a manifest needs it.
 func (tensorBackend *TensorBackend) applySlice(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -711,8 +711,8 @@ func (tensorBackend *TensorBackend) applySlice(
 func (tensorBackend *TensorBackend) applyTokenEmbedding(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -762,8 +762,8 @@ func (tensorBackend *TensorBackend) applyTokenEmbedding(
 func (tensorBackend *TensorBackend) applyRMSNorm(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -803,8 +803,8 @@ func (tensorBackend *TensorBackend) applyRMSNorm(
 func (tensorBackend *TensorBackend) applyLayerNorm(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -856,8 +856,8 @@ func (tensorBackend *TensorBackend) applyLayerNorm(
 func (tensorBackend *TensorBackend) applyGroupNorm(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -918,8 +918,8 @@ func (tensorBackend *TensorBackend) applyGroupNorm(
 func (tensorBackend *TensorBackend) applyViewAsHeads(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -965,8 +965,8 @@ func (tensorBackend *TensorBackend) applyViewAsHeads(
 func (tensorBackend *TensorBackend) applyUpsampleNearest2D(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1017,8 +1017,8 @@ func (tensorBackend *TensorBackend) applyUpsampleNearest2D(
 func (tensorBackend *TensorBackend) applyMergeHeads(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1058,8 +1058,8 @@ func (tensorBackend *TensorBackend) applyMergeHeads(
 func (tensorBackend *TensorBackend) applyLastToken(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1104,8 +1104,8 @@ func (tensorBackend *TensorBackend) applyLastToken(
 func (tensorBackend *TensorBackend) applyLinear(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1178,8 +1178,8 @@ func (tensorBackend *TensorBackend) applyLinear(
 func (tensorBackend *TensorBackend) applyConv2D(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1284,8 +1284,8 @@ func (tensorBackend *TensorBackend) applyConv2D(
 func (tensorBackend *TensorBackend) applyConvTranspose2D(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1440,8 +1440,8 @@ func validateMetalConvNode(
 func (tensorBackend *TensorBackend) applySDPA(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1526,8 +1526,8 @@ func (tensorBackend *TensorBackend) applySDPA(
 func (tensorBackend *TensorBackend) applyGQA(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1624,8 +1624,8 @@ func (tensorBackend *TensorBackend) applyGQA(
 func (tensorBackend *TensorBackend) applyRoPE(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1679,8 +1679,8 @@ func (tensorBackend *TensorBackend) applyRoPE(
 func (tensorBackend *TensorBackend) applyALiBi(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -1708,8 +1708,8 @@ func (tensorBackend *TensorBackend) appendResidentKV(
 	attentionOps *MetalAttention,
 	cache *kv.Cache,
 	nodeID string,
-	keyChunk tensor.Float64Tensor,
-	valueChunk tensor.Float64Tensor,
+	keyChunk tensor.Tensor,
+	valueChunk tensor.Tensor,
 ) (*residentKVEntry, error) {
 	if cache == nil {
 		return nil, fmt.Errorf("metal tensor: KV cache is required")
@@ -2177,7 +2177,7 @@ func (tensorBackend *TensorBackend) cachedTensor(
 	key string,
 	shapeData []int,
 	values []float64,
-) (tensor.Float64Tensor, error) {
+) (tensor.Tensor, error) {
 	if len(values) == 0 {
 		return nil, fmt.Errorf("metal tensor: cached tensor %q has no values", key)
 	}
@@ -2285,7 +2285,7 @@ func (tensorBackend *TensorBackend) convolutionTensors(
 	name string,
 	weightShape []int,
 	biasShape []int,
-) (tensor.Float64Tensor, tensor.Float64Tensor, error) {
+) (tensor.Tensor, tensor.Tensor, error) {
 	weight, err := floatSliceConfigRequired(node, "weight")
 
 	if err != nil {

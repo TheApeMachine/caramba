@@ -37,7 +37,7 @@ func TestMathOps_OuterTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, expected, 1e-6)
@@ -59,7 +59,7 @@ func TestMathOps_DropoutTensor(test *testing.T) {
 				output := runUnaryMathTensorForTest(
 					test,
 					tensorBackend,
-					func(inputTensor computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+					func(inputTensor computetensor.Tensor) (computetensor.Tensor, error) {
 						return mathOps.DropoutTensor(inputTensor, 0.25, true, 17)
 					},
 					input,
@@ -74,7 +74,7 @@ func TestMathOps_DropoutTensor(test *testing.T) {
 			output := runUnaryMathTensorForTest(
 				test,
 				tensorBackend,
-				func(inputTensor computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+				func(inputTensor computetensor.Tensor) (computetensor.Tensor, error) {
 					return mathOps.DropoutTensor(inputTensor, 0.5, false, 17)
 				},
 				input,
@@ -124,7 +124,7 @@ func BenchmarkMathOps_OuterTensor(benchmark *testing.B) {
 
 func BenchmarkMathOps_DropoutTensor(benchmark *testing.B) {
 	benchmarkUnaryMathTensor(benchmark, func(mathOps *MathOps) mathTensorUnary {
-		return func(input computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+		return func(input computetensor.Tensor) (computetensor.Tensor, error) {
 			return mathOps.DropoutTensor(input, 0.25, true, 17)
 		}
 	})

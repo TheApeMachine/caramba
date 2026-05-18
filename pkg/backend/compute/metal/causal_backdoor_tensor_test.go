@@ -46,7 +46,7 @@ func TestMetalCausalOps_BackdoorAdjustmentTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, expected, 3e-3)
@@ -74,7 +74,7 @@ func TestTensorBackend_applyCausalBackdoorGraph(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertMetalMaxDiff(values, expected, 3e-3)
 		})

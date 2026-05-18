@@ -331,7 +331,7 @@ func TestClient_DownloadXet(test *testing.T) {
 			case "/api/models/org/repo/xet-read-token/main":
 				writeJSON(writer, map[string]any{
 					"accessToken": "xet_read",
-					"exp":         9999999999,
+					"exp":         int64(9999999999),
 					"casUrl":      serverURL + "/cas",
 				})
 			case "/cas/v1/reconstructions/" + fileID:

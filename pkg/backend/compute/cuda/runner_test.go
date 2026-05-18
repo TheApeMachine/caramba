@@ -7,6 +7,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 )
 
 func TestRunner(t *testing.T) {
@@ -42,11 +43,20 @@ func TestRunner(t *testing.T) {
 				return
 			}
 
-			values, err := results["in"].CloneFloat64()
+			values, err := tensorFloat64Values(results["in"])
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{1, 2, 3, 4})
 		})
 	})
+}
+
+func tensorFloat64Values(input tensor.Tensor) ([]float64, error) {
+	sourceDType, bytes, err := input.RawBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	return dtypeconvert.BytesToFloat64(sourceDType, bytes)
 }
 
 func BenchmarkRunner(b *testing.B) {

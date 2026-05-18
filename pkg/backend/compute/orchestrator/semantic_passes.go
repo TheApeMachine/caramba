@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 type CanonicalizePass struct{}
@@ -246,21 +247,20 @@ func validatePrecision(capabilities Capabilities, node *ir.Node) error {
 	// OpInput is a data source, not a compute step. Storage precision
 	// (DType) drives upload conversions; compute precision is only
 	// meaningful for actual math kernels. Validating Input here would
-	// reject any manifest that authors values as float64 even though
-	// the backend's UploadFloat64 path converts to its native dtype
-	// faithfully before any kernel runs.
+	// reject manifests that author values in a storage dtype different
+	// from the backend's compute dtype before any kernel runs.
 	if node.OpType() == ir.OpInput {
 		return nil
 	}
 
 	required := node.ValueType().Precision
 
-	if required == "" {
+	if required == dtype.Invalid {
 		required = node.ValueType().DType
 	}
 
-	if required == "" {
-		required = "float64"
+	if required == dtype.Invalid {
+		required = dtype.Float64
 	}
 
 	actual := capabilities.Precision(node.OpType())

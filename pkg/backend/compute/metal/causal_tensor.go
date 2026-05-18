@@ -15,12 +15,12 @@ import (
 CounterfactualTensor evaluates resident linear SCM counterfactuals.
 */
 func (metalCausalOps *MetalCausalOps) CounterfactualTensor(
-	observedX computetensor.Float64Tensor,
-	observedY computetensor.Float64Tensor,
-	beta computetensor.Float64Tensor,
-	counterfactualX computetensor.Float64Tensor,
+	observedX computetensor.Tensor,
+	observedY computetensor.Tensor,
+	beta computetensor.Tensor,
+	counterfactualX computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	xTensor, yTensor, betaTensor, cfTensor, err := causalFour(
 		observedX,
 		observedY,
@@ -66,14 +66,14 @@ func (metalCausalOps *MetalCausalOps) CounterfactualTensor(
 FrontdoorAdjustmentTensor computes resident frontdoor causal effects.
 */
 func (metalCausalOps *MetalCausalOps) FrontdoorAdjustmentTensor(
-	treatment computetensor.Float64Tensor,
-	mediator computetensor.Float64Tensor,
-	outcome computetensor.Float64Tensor,
+	treatment computetensor.Tensor,
+	mediator computetensor.Tensor,
+	outcome computetensor.Tensor,
 	outputShape computetensor.Shape,
 	samples int,
 	treatmentBins int,
 	mediatorBins int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	treatmentTensor, mediatorTensor, outcomeTensor, err := causalThree(treatment, mediator, outcome)
 	if err != nil {
 		return nil, err
@@ -112,15 +112,15 @@ func (metalCausalOps *MetalCausalOps) FrontdoorAdjustmentTensor(
 BackdoorAdjustmentTensor computes resident backdoor-adjusted causal effects.
 */
 func (metalCausalOps *MetalCausalOps) BackdoorAdjustmentTensor(
-	outcome computetensor.Float64Tensor,
-	treatment computetensor.Float64Tensor,
-	confounder computetensor.Float64Tensor,
+	outcome computetensor.Tensor,
+	treatment computetensor.Tensor,
+	confounder computetensor.Tensor,
 	outputShape computetensor.Shape,
 	samples int,
 	outcomeDimensions int,
 	treatmentDimensions int,
 	confounderDimensions int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	outcomeTensor, treatmentTensor, confounderTensor, err := causalThree(outcome, treatment, confounder)
 	if err != nil {
 		return nil, err
@@ -162,13 +162,13 @@ func (metalCausalOps *MetalCausalOps) BackdoorAdjustmentTensor(
 CATETensor computes resident conditional average treatment effects.
 */
 func (metalCausalOps *MetalCausalOps) CATETensor(
-	covariates computetensor.Float64Tensor,
-	treatment computetensor.Float64Tensor,
-	outcome computetensor.Float64Tensor,
+	covariates computetensor.Tensor,
+	treatment computetensor.Tensor,
+	outcome computetensor.Tensor,
 	outputShape computetensor.Shape,
 	samples int,
 	covariateDimensions int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	covariateTensor, treatmentTensor, outcomeTensor, err := causalThree(covariates, treatment, outcome)
 	if err != nil {
 		return nil, err
@@ -207,15 +207,15 @@ func (metalCausalOps *MetalCausalOps) CATETensor(
 IVEstimateTensor computes resident two-stage least-squares estimates.
 */
 func (metalCausalOps *MetalCausalOps) IVEstimateTensor(
-	instrument computetensor.Float64Tensor,
-	treatment computetensor.Float64Tensor,
-	outcome computetensor.Float64Tensor,
+	instrument computetensor.Tensor,
+	treatment computetensor.Tensor,
+	outcome computetensor.Tensor,
 	outputShape computetensor.Shape,
 	samples int,
 	instrumentDimensions int,
 	treatmentDimensions int,
 	outcomeDimensions int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	instrumentTensor, treatmentTensor, outcomeTensor, err := causalThree(instrument, treatment, outcome)
 	if err != nil {
 		return nil, err
@@ -257,12 +257,12 @@ func (metalCausalOps *MetalCausalOps) IVEstimateTensor(
 DAGMarkovFactorizationTensor computes resident DAG Markov log probabilities.
 */
 func (metalCausalOps *MetalCausalOps) DAGMarkovFactorizationTensor(
-	observations computetensor.Float64Tensor,
-	adjacency computetensor.Float64Tensor,
+	observations computetensor.Tensor,
+	adjacency computetensor.Tensor,
 	outputShape computetensor.Shape,
 	nodeCount int,
 	samples int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	observationTensor, adjacencyTensor, err := causalTwo(observations, adjacency)
 	if err != nil {
 		return nil, err
@@ -300,12 +300,12 @@ func (metalCausalOps *MetalCausalOps) DAGMarkovFactorizationTensor(
 DoCalculusTensor computes resident Gaussian do-calculus graph surgery.
 */
 func (metalCausalOps *MetalCausalOps) DoCalculusTensor(
-	covariance computetensor.Float64Tensor,
-	interventionMask computetensor.Float64Tensor,
-	interventionValues computetensor.Float64Tensor,
+	covariance computetensor.Tensor,
+	interventionMask computetensor.Tensor,
+	interventionValues computetensor.Tensor,
 	outputShape computetensor.Shape,
 	nodeCount int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	covarianceTensor, maskTensor, valueTensor, err := causalThree(
 		covariance,
 		interventionMask,
@@ -345,8 +345,8 @@ func (metalCausalOps *MetalCausalOps) DoCalculusTensor(
 }
 
 func causalTwo(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
 ) (*Tensor, *Tensor, error) {
 	firstTensor, err := requireMetalTensor(first)
 	if err != nil {
@@ -362,9 +362,9 @@ func causalTwo(
 }
 
 func causalThree(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
-	third computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
+	third computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, error) {
 	firstTensor, secondTensor, err := causalTwo(first, second)
 	if err != nil {
@@ -380,10 +380,10 @@ func causalThree(
 }
 
 func causalFour(
-	first computetensor.Float64Tensor,
-	second computetensor.Float64Tensor,
-	third computetensor.Float64Tensor,
-	fourth computetensor.Float64Tensor,
+	first computetensor.Tensor,
+	second computetensor.Tensor,
+	third computetensor.Tensor,
+	fourth computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, *Tensor, error) {
 	firstTensor, secondTensor, thirdTensor, err := causalThree(first, second, third)
 	if err != nil {

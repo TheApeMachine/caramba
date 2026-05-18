@@ -13,7 +13,7 @@ func BenchmarkPoolingOps_MaxPool2dTensor(benchmark *testing.B) {
 		poolingOps *PoolingOps,
 		outputShape computetensor.Shape,
 	) poolTensorOperation {
-		return func(input computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+		return func(input computetensor.Tensor) (computetensor.Tensor, error) {
 			return poolingOps.MaxPool2dTensor(input, outputShape, maxPoolTestParams())
 		}
 	})
@@ -24,7 +24,7 @@ func BenchmarkPoolingOps_AvgPool2dTensor(benchmark *testing.B) {
 		poolingOps *PoolingOps,
 		outputShape computetensor.Shape,
 	) poolTensorOperation {
-		return func(input computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+		return func(input computetensor.Tensor) (computetensor.Tensor, error) {
 			return poolingOps.AvgPool2dTensor(input, outputShape, avgPoolTestParams())
 		}
 	})
@@ -35,7 +35,7 @@ func BenchmarkPoolingOps_AdaptiveAvgPool2dTensor(benchmark *testing.B) {
 		poolingOps *PoolingOps,
 		outputShape computetensor.Shape,
 	) poolTensorOperation {
-		return func(input computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+		return func(input computetensor.Tensor) (computetensor.Tensor, error) {
 			return poolingOps.AdaptiveAvgPool2dTensor(input, outputShape)
 		}
 	})
@@ -46,7 +46,7 @@ func BenchmarkPoolingOps_AdaptiveMaxPool2dTensor(benchmark *testing.B) {
 		poolingOps *PoolingOps,
 		outputShape computetensor.Shape,
 	) poolTensorOperation {
-		return func(input computetensor.Float64Tensor) (computetensor.Float64Tensor, error) {
+		return func(input computetensor.Tensor) (computetensor.Tensor, error) {
 			return poolingOps.AdaptiveMaxPool2dTensor(input, outputShape)
 		}
 	})

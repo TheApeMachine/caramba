@@ -45,31 +45,31 @@ func (m *PoolingOps) AdaptiveMaxPool2d(shape []int, outH, outW int, data []float
 }
 
 func (m *PoolingOps) MaxPool2dTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	params MaxPool2dParams,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (m *PoolingOps) AvgPool2dTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	params AvgPool2dParams,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (m *PoolingOps) AdaptiveAvgPool2dTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (m *PoolingOps) AdaptiveMaxPool2dTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }

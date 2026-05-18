@@ -23,10 +23,10 @@ func (m *MetalAttention) MQA(q, k, v []float64, batch, numHeads, seqLen, headDim
 }
 
 func (m *MetalAttention) MQATensor(
-	q, k, v computetensor.Float64Tensor,
+	q, k, v computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch, numHeads, seqLen, headDim int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -39,11 +39,11 @@ func (m *MetalAttention) GQA(
 }
 
 func (m *MetalAttention) GQATensor(
-	q, k, v computetensor.Float64Tensor,
+	q, k, v computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch, numHeads, numKVHeads, queryLen, keyValueLen, keyValueStride, headDim int,
 	causal bool,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -52,9 +52,9 @@ func (m *MetalAttention) SlidingWindow(q, k, v []float64, batch, numHeads, seqLe
 }
 
 func (m *MetalAttention) SlidingWindowTensor(
-	q, k, v computetensor.Float64Tensor,
+	q, k, v computetensor.Tensor,
 	outputShape computetensor.Shape,
 	batch, numHeads, seqLen, headDim, window int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }

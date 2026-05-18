@@ -6,15 +6,18 @@ package metal
 import "C"
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync/atomic"
 	"unsafe"
 
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
+	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 )
 
-func requireMetalTensor(input computetensor.Float64Tensor) (*Tensor, error) {
+func requireMetalTensor(input computetensor.Tensor) (*Tensor, error) {
 	if input == nil {
 		return nil, errors.New("metal tensor: nil input")
 	}
@@ -59,7 +62,7 @@ func (tensor *Tensor) Shape() computetensor.Shape {
 /*
 DType reports float32 Metal storage.
 */
-func (tensor *Tensor) DType() computetensor.DType {
+func (tensor *Tensor) DType() dtype.DType {
 	return tensor.metadata.DType
 }
 
@@ -108,14 +111,21 @@ func (tensor *Tensor) Strides() []int {
 /*
 Layout reports the physical layout family.
 */
-func (tensor *Tensor) Layout() MetalLayout {
+func (tensor *Tensor) Layout() computetensor.Layout {
+	return computetensor.LayoutDense
+}
+
+/*
+MetalLayout reports the backend-specific Metal layout metadata.
+*/
+func (tensor *Tensor) MetalLayout() MetalLayout {
 	return tensor.metadata.Layout
 }
 
 /*
-CloneFloat64 downloads Metal float32 storage into host float64 values.
+downloadFloat32 copies resident float32 storage to host.
 */
-func (tensor *Tensor) CloneFloat64() ([]float64, error) {
+func (tensor *Tensor) downloadFloat32() ([]float32, error) {
 	if tensor.closed.Load() != 0 {
 		return nil, errors.New("metal tensor: tensor is closed")
 	}
@@ -123,7 +133,7 @@ func (tensor *Tensor) CloneFloat64() ([]float64, error) {
 	values := make([]float32, tensor.Len())
 
 	if len(values) == 0 {
-		return []float64{}, nil
+		return []float32{}, nil
 	}
 
 	rc := C.metal_tensor_download_float32(
@@ -138,7 +148,130 @@ func (tensor *Tensor) CloneFloat64() ([]float64, error) {
 
 	tensor.runtime.recordTransfer(tensor.bytes)
 
-	return toFloat64(values), nil
+	return values, nil
+}
+
+func (tensor *Tensor) Slice(start, length int) (computetensor.Tensor, error) {
+	_ = start
+	_ = length
+
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Reshape(dims []int) (computetensor.Tensor, error) {
+	_ = dims
+
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Float64Native() ([]float64, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Float32Native() ([]float32, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Float16Native() ([]dtype.F16, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) BFloat16Native() ([]dtype.BF16, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Float8E4M3Native() ([]dtype.F8E4M3, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Float8E5M2Native() ([]dtype.F8E5M2, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Int64Native() ([]int64, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Int32Native() ([]int32, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Int16Native() ([]int16, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Int8Native() ([]int8, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Uint64Native() ([]uint64, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Uint32Native() ([]uint32, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Uint16Native() ([]uint16, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Uint8Native() ([]uint8, error) {
+	return nil, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) BoolNative() (computetensor.BitVector, error) {
+	return computetensor.BitVector{}, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) Int4Native() (computetensor.Int4Vector, error) {
+	return computetensor.Int4Vector{}, computetensor.ErrLayoutUnsupported
+}
+
+func (tensor *Tensor) RawBytes() (dtype.DType, []byte, error) {
+	values, err := tensor.downloadFloat32()
+	if err != nil {
+		return dtype.Invalid, nil, err
+	}
+
+	return dtype.Float32, dtypeconvert.Float32ToBytes(values), nil
+}
+
+func (tensor *Tensor) State() computetensor.State {
+	if tensor.closed.Load() != 0 {
+		return computetensor.StateClosed
+	}
+
+	return computetensor.StateReady
+}
+
+func (tensor *Tensor) Sync(ctx context.Context) error {
+	return ctx.Err()
+}
+
+func (tensor *Tensor) Ready() <-chan struct{} {
+	ready := make(chan struct{})
+	close(ready)
+
+	return ready
+}
+
+func (tensor *Tensor) RequiresGrad() bool {
+	return false
+}
+
+func (tensor *Tensor) SetRequiresGrad(yes bool) error {
+	_ = yes
+
+	return computetensor.ErrBackwardNotImplemented
+}
+
+func (tensor *Tensor) Grad() (computetensor.Tensor, error) {
+	return nil, computetensor.ErrNoAutograd
+}
+
+func (tensor *Tensor) GradFn() computetensor.GradFn {
+	return nil
 }
 
 /*

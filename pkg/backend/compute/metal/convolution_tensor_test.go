@@ -48,7 +48,7 @@ func TestConvolutionOps_Conv1dTensor(test *testing.T) {
 			So(err, ShouldBeNil)
 			defer func() { So(output.Close(), ShouldBeNil) }()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertMetalConvolutionSlice(
 				"conv1d_tensor",
@@ -105,7 +105,7 @@ func TestConvolutionOps_Conv2dTensor(test *testing.T) {
 			So(err, ShouldBeNil)
 			defer func() { So(output.Close(), ShouldBeNil) }()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertMetalConvolutionSlice(
 				"conv2d_tensor",
@@ -167,7 +167,7 @@ func TestConvolutionOps_Conv3dTensor(test *testing.T) {
 			So(err, ShouldBeNil)
 			defer func() { So(output.Close(), ShouldBeNil) }()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertMetalConvolutionSlice(
 				"conv3d_tensor",
@@ -221,7 +221,7 @@ func TestConvolutionOps_ConvTranspose2dTensor(test *testing.T) {
 			So(err, ShouldBeNil)
 			defer func() { So(output.Close(), ShouldBeNil) }()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertMetalConvolutionSlice(
 				"conv_transpose2d_tensor",

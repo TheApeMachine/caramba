@@ -29,7 +29,7 @@ func TestMetalPositional_ALiBiTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, referenceALiBi(shape.Dims(), causal), 1e-6)
@@ -62,7 +62,7 @@ func TestTensorBackend_applyALiBiGraph(test *testing.T) {
 			So(results["alibi"].Location(), ShouldEqual, computetensor.Metal)
 			So(after.TransferBytes-before.TransferBytes, ShouldEqual, int64(0))
 
-			values, err := results["alibi"].CloneFloat64()
+			values, err := tensorFloat64Values(results["alibi"])
 			So(err, ShouldBeNil)
 			defer func() {
 				So(results["alibi"].Close(), ShouldBeNil)

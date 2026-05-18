@@ -11,6 +11,8 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
+	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 )
 
 func TestExecutor(t *testing.T) {
@@ -43,7 +45,7 @@ func TestExecutor(t *testing.T) {
 				ID:    "input",
 				Shape: []int64{2},
 				Data:  data,
-				DType: tensor.Float64,
+				DType: dtype.Float64,
 			},
 		}
 
@@ -54,7 +56,7 @@ func TestExecutor(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(outputs, ShouldHaveLength, 1)
 
-				values, err := outputs["relu"].CloneFloat64()
+				values, err := tensorFloat64Values(outputs["relu"])
 				So(err, ShouldBeNil)
 				So(values, ShouldResemble, []float64{0, 2})
 			})
@@ -80,7 +82,7 @@ func TestExecutor(t *testing.T) {
 			defer func() { So(firstOutputs["relu"].Close(), ShouldBeNil) }()
 
 			Convey("It should leave caller-owned outputs alive", func() {
-				values, err := firstOutputs["relu"].CloneFloat64()
+				values, err := tensorFloat64Values(firstOutputs["relu"])
 
 				So(err, ShouldBeNil)
 				So(values, ShouldResemble, []float64{0, 2})
@@ -109,7 +111,7 @@ func TestExecutor(t *testing.T) {
 			},
 		}
 		tensors := []executor.TensorSpec{
-			{ID: "input", Shape: []int64{2}, Data: data, DType: tensor.Float64},
+			{ID: "input", Shape: []int64{2}, Data: data, DType: dtype.Float64},
 		}
 
 		outputs, err := graphExecutor.Execute(context.Background(), nodes, tensors)
@@ -147,7 +149,7 @@ func TestWithDerivedMetadata(t *testing.T) {
 		Convey("It should materialize the unit affine vector from input shape", func() {
 			derived := executor.WithDerivedMetadata(
 				node,
-				[]tensor.Float64Tensor{input},
+				[]tensor.Tensor{input},
 			)
 
 			So(derived.Metadata["weight"], ShouldResemble, []float64{1, 1, 1})
@@ -181,7 +183,7 @@ func TestRunOperation(test *testing.T) {
 				context.Background(),
 				backend,
 				node,
-				[]tensor.Float64Tensor{input},
+				[]tensor.Tensor{input},
 				hostStagedOperation{},
 			)
 
@@ -222,21 +224,53 @@ func (recordingBackend *recordingBackend) Location() tensor.Location {
 	return recordingBackend.location
 }
 
-func (recordingBackend *recordingBackend) UploadFloat64(
-	shape tensor.Shape, values []float64,
-) (tensor.Float64Tensor, error) {
+func (recordingBackend *recordingBackend) SupportedDTypes() []dtype.DType {
+	return tensor.NewHostBackend().SupportedDTypes()
+}
+
+func (recordingBackend *recordingBackend) SupportedLayouts() []tensor.Layout {
+	return tensor.NewHostBackend().SupportedLayouts()
+}
+
+func (recordingBackend *recordingBackend) Capabilities() tensor.Capabilities {
+	return tensor.NewHostBackend().Capabilities()
+}
+
+func (recordingBackend *recordingBackend) Upload(
+	shape tensor.Shape,
+	sourceDType dtype.DType,
+	bytes []byte,
+) (tensor.Tensor, error) {
 	id := fmt.Sprintf("upload:%d", recordingBackend.uploads)
 	recordingBackend.uploads++
 
-	return newRecordingTensor(id, shape, values, recordingBackend.closed), nil
+	return newRecordingTensorFromBytes(id, shape, sourceDType, bytes, recordingBackend.closed)
 }
 
-func (recordingBackend *recordingBackend) DownloadFloat64(
-	value tensor.Float64Tensor,
-) ([]float64, error) {
+func (recordingBackend *recordingBackend) UploadAsync(
+	shape tensor.Shape,
+	sourceDType dtype.DType,
+	bytes []byte,
+) (tensor.Tensor, error) {
+	return recordingBackend.Upload(shape, sourceDType, bytes)
+}
+
+func (recordingBackend *recordingBackend) UploadSparse(
+	shape tensor.Shape,
+	valueDType dtype.DType,
+	layout tensor.Layout,
+	values []byte,
+	indices []tensor.SparseIndex,
+) (tensor.SparseTensor, error) {
+	return nil, tensor.ErrLayoutUnsupported
+}
+
+func (recordingBackend *recordingBackend) Download(
+	value tensor.Tensor,
+) (dtype.DType, []byte, error) {
 	recordingBackend.downloads++
 
-	return value.CloneFloat64()
+	return value.RawBytes()
 }
 
 func (recordingBackend *recordingBackend) Close() error {
@@ -246,14 +280,14 @@ func (recordingBackend *recordingBackend) Close() error {
 func (recordingBackend *recordingBackend) Apply(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
 	for _, input := range inputs {
-		if _, err := input.CloneFloat64(); err != nil {
+		if _, _, err := input.RawBytes(); err != nil {
 			return nil, err
 		}
 	}
@@ -273,7 +307,7 @@ func (recordingBackend *recordingBackend) Apply(
 }
 
 func recordingOutputShape(
-	node executor.NodeSpec, inputs []tensor.Float64Tensor,
+	node executor.NodeSpec, inputs []tensor.Tensor,
 ) (tensor.Shape, error) {
 	if len(node.Shape) > 0 {
 		return tensor.NewShape(node.Shape)
@@ -287,9 +321,8 @@ func recordingOutputShape(
 }
 
 type recordingTensor struct {
+	tensor.Tensor
 	id     string
-	shape  tensor.Shape
-	values []float64
 	closed map[string]int
 	done   bool
 }
@@ -300,38 +333,40 @@ func newRecordingTensor(
 	values []float64,
 	closed map[string]int,
 ) *recordingTensor {
-	return &recordingTensor{
-		id:     id,
-		shape:  shape,
-		values: append([]float64(nil), values...),
-		closed: closed,
-	}
-}
-
-func (recordingTensor *recordingTensor) Shape() tensor.Shape {
-	return recordingTensor.shape
-}
-
-func (recordingTensor *recordingTensor) DType() tensor.DType {
-	return tensor.Float64
-}
-
-func (recordingTensor *recordingTensor) Location() tensor.Location {
-	return tensor.Host
-}
-
-func (recordingTensor *recordingTensor) Len() int {
-	return recordingTensor.shape.Len()
-}
-
-func (recordingTensor *recordingTensor) Bytes() int {
-	bytes, err := recordingTensor.shape.Bytes(tensor.Float64)
+	recordingTensor, err := newRecordingTensorFromBytes(
+		id,
+		shape,
+		dtype.Float64,
+		dtypeconvert.Float64ToBytes(values),
+		closed,
+	)
 
 	if err != nil {
-		return 0
+		panic(err)
 	}
 
-	return bytes
+	return recordingTensor
+}
+
+func newRecordingTensorFromBytes(
+	id string,
+	shape tensor.Shape,
+	sourceDType dtype.DType,
+	bytes []byte,
+	closed map[string]int,
+) (*recordingTensor, error) {
+	backend := tensor.NewHostBackend()
+	inner, err := backend.Upload(shape, sourceDType, bytes)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &recordingTensor{
+		Tensor: inner,
+		id:     id,
+		closed: closed,
+	}, nil
 }
 
 func (recordingTensor *recordingTensor) Close() error {
@@ -342,15 +377,7 @@ func (recordingTensor *recordingTensor) Close() error {
 	recordingTensor.done = true
 	recordingTensor.closed[recordingTensor.id]++
 
-	return nil
-}
-
-func (recordingTensor *recordingTensor) CloneFloat64() ([]float64, error) {
-	if recordingTensor.done {
-		return nil, fmt.Errorf("recording tensor %q is closed", recordingTensor.id)
-	}
-
-	return append([]float64(nil), recordingTensor.values...), nil
+	return recordingTensor.Tensor.Close()
 }
 
 func BenchmarkExecutor_Execute(benchmark *testing.B) {
@@ -366,7 +393,7 @@ func BenchmarkExecutor_Execute(benchmark *testing.B) {
 	}
 
 	tensors := []executor.TensorSpec{
-		{ID: "input", Shape: []int64{2}, Data: data, DType: tensor.Float64},
+		{ID: "input", Shape: []int64{2}, Data: data, DType: dtype.Float64},
 	}
 
 	benchmark.ResetTimer()
@@ -407,6 +434,16 @@ func BenchmarkWithDerivedMetadata(benchmark *testing.B) {
 	benchmark.ResetTimer()
 
 	for benchmark.Loop() {
-		_ = executor.WithDerivedMetadata(node, []tensor.Float64Tensor{input})
+		_ = executor.WithDerivedMetadata(node, []tensor.Tensor{input})
 	}
+}
+
+func tensorFloat64Values(value tensor.Tensor) ([]float64, error) {
+	sourceDType, bytes, err := value.RawBytes()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return dtypeconvert.BytesToFloat64(sourceDType, bytes)
 }

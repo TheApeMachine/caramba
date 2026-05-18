@@ -13,8 +13,8 @@ import (
 func (tensorBackend *TensorBackend) applyMaxPool2D(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	outputShape, poolingOps, err := tensorBackend.poolingInputs(ctx, node, inputs)
 	if err != nil {
 		return nil, err
@@ -26,8 +26,8 @@ func (tensorBackend *TensorBackend) applyMaxPool2D(
 func (tensorBackend *TensorBackend) applyAvgPool2D(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	outputShape, poolingOps, err := tensorBackend.poolingInputs(ctx, node, inputs)
 	if err != nil {
 		return nil, err
@@ -39,8 +39,8 @@ func (tensorBackend *TensorBackend) applyAvgPool2D(
 func (tensorBackend *TensorBackend) applyAdaptiveAvgPool2D(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	outputShape, poolingOps, err := tensorBackend.poolingInputs(ctx, node, inputs)
 	if err != nil {
 		return nil, err
@@ -52,8 +52,8 @@ func (tensorBackend *TensorBackend) applyAdaptiveAvgPool2D(
 func (tensorBackend *TensorBackend) applyAdaptiveMaxPool2D(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	outputShape, poolingOps, err := tensorBackend.poolingInputs(ctx, node, inputs)
 	if err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func (tensorBackend *TensorBackend) applyAdaptiveMaxPool2D(
 func (tensorBackend *TensorBackend) poolingInputs(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 ) (tensor.Shape, *PoolingOps, error) {
 	if err := ctx.Err(); err != nil {
 		return tensor.Shape{}, nil, err

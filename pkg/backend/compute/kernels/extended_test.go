@@ -16,9 +16,7 @@ func TestUnaryAbsAndExp(t *testing.T) {
 		out, _ := tensor.NewZeroed(shape, dtype.Float32)
 
 		inputView, _ := input.Float32Native()
-		for index, value := range []float32{-1, 0, 1, 2} {
-			inputView[index] = value
-		}
+		copy(inputView, []float32{-1, 0, 1, 2})
 
 		absKernel, ok := Default.Lookup("abs", Signature{
 			Layout:  tensor.LayoutDense,
@@ -55,9 +53,7 @@ func TestReductionSum(t *testing.T) {
 		out, _ := tensor.NewZeroed(shape, dtype.Float32)
 
 		inputView, _ := input.Float32Native()
-		for index, value := range []float32{1, 2, 3, 4} {
-			inputView[index] = value
-		}
+		copy(inputView, []float32{1, 2, 3, 4})
 
 		kernel, _ := Default.Lookup("sum", Signature{
 			Layout:  tensor.LayoutDense,
@@ -81,15 +77,11 @@ func TestMSELoss(t *testing.T) {
 		out, _ := tensor.NewZeroed(shape, dtype.Float32)
 
 		predView, _ := predictions.Float32Native()
-		for index, value := range []float32{1, 2, 3} {
-			predView[index] = value
-		}
+		copy(predView, []float32{1, 2, 3})
 
 		// (1-1)^2 + (2-3)^2 + (3-5)^2 = 0 + 1 + 4 = 5; mean = 5/3.
 		targetView, _ := targets.Float32Native()
-		for index, value := range []float32{1, 3, 5} {
-			targetView[index] = value
-		}
+		copy(targetView, []float32{1, 3, 5})
 
 		err := runMSELoss(predictions, targets, out)
 		convey.So(err, convey.ShouldBeNil)
@@ -109,9 +101,7 @@ func TestGreedySample(t *testing.T) {
 		outTensor, _ := tensor.NewZeroed(outShape, dtype.Int32)
 
 		logitView, _ := logits.Float32Native()
-		for index, value := range []float32{0.1, 0.2, 0.9, 0.3, 0.4} {
-			logitView[index] = value
-		}
+		copy(logitView, []float32{0.1, 0.2, 0.9, 0.3, 0.4})
 
 		err := runGreedySample(logits, outTensor)
 		convey.So(err, convey.ShouldBeNil)
@@ -126,9 +116,7 @@ func TestEmbeddingLookup(t *testing.T) {
 		tableShape, _ := tensor.NewShape([]int{3, 2})
 		table, _ := tensor.NewZeroed(tableShape, dtype.Float32)
 		tableView, _ := table.Float32Native()
-		for index, value := range []float32{1, 2, 3, 4, 5, 6} {
-			tableView[index] = value
-		}
+		copy(tableView, []float32{1, 2, 3, 4, 5, 6})
 
 		indicesShape, _ := tensor.NewShape([]int{2})
 		indices, _ := tensor.NewZeroed(indicesShape, dtype.Int32)
@@ -155,9 +143,7 @@ func TestMaxPool2D(t *testing.T) {
 		out, _ := tensor.NewZeroed(outShape, dtype.Float32)
 
 		inputView, _ := input.Float32Native()
-		for index, value := range []float32{1, 2, 3, 4} {
-			inputView[index] = value
-		}
+		copy(inputView, []float32{1, 2, 3, 4})
 
 		err := MaxPool2DFloat32(PoolConfig{KernelH: 2, KernelW: 2, StrideH: 2, StrideW: 2}, input, out)
 		convey.So(err, convey.ShouldBeNil)

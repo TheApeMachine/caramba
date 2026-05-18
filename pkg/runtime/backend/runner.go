@@ -8,6 +8,8 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/compute"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
+	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 	"github.com/theapemachine/caramba/pkg/manifest"
 	"github.com/theapemachine/caramba/pkg/runtime/program"
 )
@@ -34,7 +36,7 @@ type GraphRunner struct {
 	defaultManifest  string
 	weightBinder     WeightBinder
 	preExecute       PreExecuteHook
-	defaultPrecision tensor.DType
+	defaultPrecision dtype.DType
 
 	mu    sync.Mutex
 	cache map[string]*manifest.Graph
@@ -74,7 +76,7 @@ type Options struct {
 	WeightBinder     WeightBinder
 	PreExecute       PreExecuteHook
 	Preloaded        map[string]*manifest.Graph
-	DefaultPrecision tensor.DType
+	DefaultPrecision dtype.DType
 }
 
 func New(options Options) (*GraphRunner, error) {
@@ -159,7 +161,7 @@ func (graphRunner *GraphRunner) Call(
 		return nil, fmt.Errorf("graph %q: binding inputs: %w", module.ID, err)
 	}
 
-	if graphRunner.defaultPrecision != "" {
+	if graphRunner.defaultPrecision != dtype.Invalid {
 		applyDefaultPrecision(irGraph, graphRunner.defaultPrecision)
 	}
 
@@ -248,7 +250,7 @@ func (graphRunner *GraphRunner) resolveGraph(
 }
 
 func collectOutputs(
-	targets []*ir.Node, outputNames []string, executionOutputs map[string]tensor.Float64Tensor,
+	targets []*ir.Node, outputNames []string, executionOutputs map[string]tensor.Tensor,
 ) (map[string]any, error) {
 	results := make(map[string]any, len(targets))
 
@@ -267,7 +269,13 @@ func collectOutputs(
 			return nil, fmt.Errorf("target %q produced no output", target.ID())
 		}
 
-		values, err := outputTensor.CloneFloat64()
+		sourceDType, bytes, err := outputTensor.RawBytes()
+
+		if err != nil {
+			return nil, fmt.Errorf("target %q clone: %w", target.ID(), err)
+		}
+
+		values, err := dtypeconvert.BytesToFloat64(sourceDType, bytes)
 
 		if err != nil {
 			return nil, fmt.Errorf("target %q clone: %w", target.ID(), err)

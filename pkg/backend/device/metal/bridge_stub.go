@@ -38,10 +38,28 @@ func (bridge *metalBridge) uploadAsync(
 	return nil, tensor.ErrNeedsPlatformSetup
 }
 
+func (bridge *metalBridge) empty(
+	shape tensor.Shape,
+	storageDType dtype.DType,
+) (tensor.Tensor, error) {
+	_ = shape
+	_ = storageDType
+
+	return nil, tensor.ErrNeedsPlatformSetup
+}
+
 func (bridge *metalBridge) download(input tensor.Tensor) (dtype.DType, []byte, error) {
 	return dtype.Invalid, nil, tensor.ErrNeedsPlatformSetup
 }
 
 func (bridge *metalBridge) close() error {
 	return nil
+}
+
+func runMetalAddFloat32(left, right, out tensor.Tensor) error {
+	_ = left
+	_ = right
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
 }

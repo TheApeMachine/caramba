@@ -42,7 +42,7 @@ func TestMetalAttention_MQATensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			So(output.Location(), ShouldEqual, computetensor.Metal)
 			assertMetalMaxDiff(values, referenceMQA(query, key, value, queryShape.Dims()), 1e-4)
@@ -82,7 +82,7 @@ func TestMetalAttention_SlidingWindowTensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			So(output.Location(), ShouldEqual, computetensor.Metal)
 			assertMetalMaxDiff(values, referenceSlidingWindow(query, key, value, shape.Dims(), 1), 1e-4)
@@ -208,7 +208,7 @@ func runAttentionVariantGraphForTest(
 	So(results["output"].Location(), ShouldEqual, computetensor.Metal)
 	So(after.TransferBytes-before.TransferBytes, ShouldEqual, int64((len(query)+len(key)+len(value))*4))
 
-	values, err := results["output"].CloneFloat64()
+	values, err := tensorFloat64Values(results["output"])
 	So(err, ShouldBeNil)
 	defer func() {
 		So(results["output"].Close(), ShouldBeNil)
@@ -315,11 +315,11 @@ func benchmarkAttentionVariantTensor(benchmark *testing.B, variant string) {
 func benchmarkAttentionVariant(
 	attentionOps *MetalAttention,
 	variant string,
-	queryTensor computetensor.Float64Tensor,
-	keyTensor computetensor.Float64Tensor,
-	valueTensor computetensor.Float64Tensor,
+	queryTensor computetensor.Tensor,
+	keyTensor computetensor.Tensor,
+	valueTensor computetensor.Tensor,
 	queryShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	if variant == "mqa" {
 		return attentionOps.MQATensor(
 			queryTensor,

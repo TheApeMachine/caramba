@@ -13,8 +13,8 @@ import (
 func (tensorBackend *TensorBackend) applyFusedQKV(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (tensorBackend *TensorBackend) applyFusedQKV(
 
 func fusedQKVDimensions(
 	node executor.NodeSpec,
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 ) (int, int, int, error) {
 	inFeatures := intConfig(node, "d_in", 0)
@@ -102,10 +102,10 @@ func fusedQKVDimensions(
 
 func (tensorBackend *TensorBackend) fusedQKVWeight(
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
+	inputs []computetensor.Tensor,
 	inFeatures int,
 	outFeatures int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	weight := floatSliceConfig(node, "weight")
 
 	if len(weight) == 0 {
@@ -125,9 +125,9 @@ func (tensorBackend *TensorBackend) fusedQKVWeight(
 
 func (tensorBackend *TensorBackend) fusedQKVBias(
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
+	inputs []computetensor.Tensor,
 	outFeatures int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	bias := floatSliceConfig(node, "bias")
 
 	if len(bias) == 0 {

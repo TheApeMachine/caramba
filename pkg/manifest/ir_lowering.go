@@ -5,6 +5,7 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 func LowerGraphToIR(graph *Graph, defaultShape tensor.Shape) (*ir.Graph, error) {
@@ -87,10 +88,15 @@ func LowerGraphToIRWithInputShapes(
 		}
 
 		if precision, ok := manifestNode.Config["precision"].(string); ok {
+			parsedPrecision, err := dtype.Parse(precision)
+			if err != nil {
+				return nil, err
+			}
+
 			node.SetValueType(ir.ValueType{
 				Shape:     outputShape,
-				DType:     tensor.Float64,
-				Precision: tensor.DType(precision),
+				DType:     dtype.Float64,
+				Precision: parsedPrecision,
 			})
 		}
 

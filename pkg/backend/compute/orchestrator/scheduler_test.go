@@ -15,11 +15,11 @@ type MockRunner struct {
 	targets  atomic.Pointer[[]*ir.Node]
 }
 
-func (m *MockRunner) Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Float64Tensor, error) {
+func (m *MockRunner) Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Tensor, error) {
 	m.executed.Store(true)
 	m.targets.Store(&targets)
 
-	return make(map[string]tensor.Float64Tensor), nil
+	return make(map[string]tensor.Tensor), nil
 }
 
 func (m *MockRunner) Location() tensor.Location {

@@ -60,7 +60,7 @@ func TestRunner(t *testing.T) {
 			results, err := runner.Execute(ctx, graph, []*ir.Node{node})
 			So(err, ShouldBeNil)
 			So(results, ShouldNotBeNil)
-			values, err := results["in"].CloneFloat64()
+			values, err := tensorFloat64Values(results["in"])
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{1, 2, 3, 4})
 		})
@@ -88,7 +88,7 @@ func TestRunner(t *testing.T) {
 			results, err := runner.Execute(ctx, graph, []*ir.Node{relu})
 			So(err, ShouldBeNil)
 
-			values, err := results["relu"].CloneFloat64()
+			values, err := tensorFloat64Values(results["relu"])
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{5, 12, 21, 32})
 		})

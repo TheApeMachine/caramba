@@ -2,7 +2,10 @@
 
 package metal
 
-import computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import (
+	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
+)
 
 type MetalStorageMode int
 
@@ -40,7 +43,7 @@ const (
 )
 
 type MetalTensorMetadata struct {
-	DType         computetensor.DType
+	DType         dtype.DType
 	Shape         computetensor.Shape
 	Strides       []int
 	ByteSize      int
@@ -89,10 +92,14 @@ func (*MetalRuntime) NewFloat32Tensor(
 	return nil, metalUnavailable()
 }
 
-func (*MetalRuntime) UploadFloat64(
+func (*MetalRuntime) Upload(
 	shape computetensor.Shape,
-	values []float64,
+	sourceDType dtype.DType,
+	bytes []byte,
 ) (*Tensor, error) {
+	_ = sourceDType
+	_ = bytes
+
 	return nil, metalUnavailable()
 }
 

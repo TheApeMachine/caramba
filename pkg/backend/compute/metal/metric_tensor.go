@@ -12,9 +12,9 @@ import (
 )
 
 func (mathOps *MathOps) AccuracyTensor(
-	predictions computetensor.Float64Tensor,
-	targets computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	predictions computetensor.Tensor,
+	targets computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	predictionTensor, targetTensor, err := trainingPair(predictions, targets)
 	if err != nil {
 		return nil, err
@@ -45,9 +45,9 @@ func (mathOps *MathOps) AccuracyTensor(
 }
 
 func (mathOps *MathOps) PerplexityTensor(
-	probabilities computetensor.Float64Tensor,
-	targets computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	probabilities computetensor.Tensor,
+	targets computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	probabilityTensor, targetTensor, err := trainingPair(probabilities, targets)
 	if err != nil {
 		return nil, err
@@ -78,9 +78,9 @@ func (mathOps *MathOps) PerplexityTensor(
 }
 
 func (mathOps *MathOps) F1Tensor(
-	predictions computetensor.Float64Tensor,
-	targets computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	predictions computetensor.Tensor,
+	targets computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	predictionTensor, targetTensor, err := trainingPair(predictions, targets)
 	if err != nil {
 		return nil, err

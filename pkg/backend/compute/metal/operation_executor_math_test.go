@@ -46,7 +46,7 @@ func TestTensorBackend_applyMathGraph(test *testing.T) {
 			So(results["logsumexp"].Location(), ShouldEqual, computetensor.Metal)
 			So(after.TransferBytes-before.TransferBytes, ShouldEqual, int64(inputShape.Len()*4))
 
-			output, err := results["logsumexp"].CloneFloat64()
+			output, err := tensorFloat64Values(results["logsumexp"])
 			So(err, ShouldBeNil)
 			defer func() {
 				So(results["logsumexp"].Close(), ShouldBeNil)
@@ -88,7 +88,7 @@ func TestTensorBackend_applyDropoutGraph(test *testing.T) {
 			So(results["dropout"].Location(), ShouldEqual, computetensor.Metal)
 			So(after.TransferBytes-before.TransferBytes, ShouldEqual, int64(shape.Len()*4))
 
-			output, err := results["dropout"].CloneFloat64()
+			output, err := tensorFloat64Values(results["dropout"])
 			So(err, ShouldBeNil)
 			defer func() {
 				So(results["dropout"].Close(), ShouldBeNil)
@@ -142,7 +142,7 @@ func TestTensorBackend_applyOuterGraph(test *testing.T) {
 				int64((leftShape.Len()+rightShape.Len())*4),
 			)
 
-			output, err := results["outer"].CloneFloat64()
+			output, err := tensorFloat64Values(results["outer"])
 			So(err, ShouldBeNil)
 			defer func() {
 				So(results["outer"].Close(), ShouldBeNil)

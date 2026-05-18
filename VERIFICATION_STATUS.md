@@ -19,10 +19,159 @@ the spray-and-pray contract agreed with the maintainer:
   surface matches the contract so callers compile.
 
 A file moves from "attempted" to "verified" by adding parity tests
-that pass at the four corners of `N` and pasting benchmark output to
-the commit message that promotes it.
+that pass at the five required `N` sizes and pasting benchmark output
+to the commit message that promotes it.
 
 ## Session test output
+
+### 2026-05-18 Metal device kernel slice
+
+Focused Metal device tests:
+
+```
+=== RUN   TestNewBackend
+
+  Given the Metal backend constructor ✔✔
+
+
+2 total assertions
+
+--- PASS: TestNewBackend (0.05s)
+=== RUN   TestBackend_UploadDownloadFloat32
+
+  Given a Metal float32 tensor upload ✔✔✔✔✔✔✔
+
+
+9 total assertions
+
+--- PASS: TestBackend_UploadDownloadFloat32 (0.00s)
+=== RUN   TestBackend_AddFloat32
+
+  Given two Metal float32 tensors ✔✔✔✔✔✔✔✔✔✔✔✔✔✔
+
+
+23 total assertions
+
+--- PASS: TestBackend_AddFloat32 (0.00s)
+=== RUN   TestKernelRegistry_MetalAddFloat32
+
+  Given the device kernel registry ✔✔✔✔✔✔✔✔✔✔
+
+
+33 total assertions
+
+--- PASS: TestKernelRegistry_MetalAddFloat32 (0.01s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.392s
+```
+
+Focused package sweep:
+
+```
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.748s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/cuda	0.223s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/xla	0.409s
+ok  	github.com/theapemachine/caramba/pkg/backend/compute/kernels	1.018s
+```
+
+Metal benchmark output:
+
+```
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkNewBackend-16            	    6978	    177969 ns/op	      24 B/op	       2 allocs/op
+BenchmarkBackend_AddFloat32-16    	    9154	    126715 ns/op	     224 B/op	       4 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	2.787s
+```
+
+This slice adds a real `MTLBuffer` upload/download path in
+`pkg/backend/device/metal/bridge_darwin.go`, a real Metal command
+submission path for float32 elementwise add, and a Metal-specific
+kernel registry entry resolved through `LookupLocation`. Metal
+capabilities report `SupportsAsync: false` because upload currently
+returns a ready tensor.
+
+### 2026-05-18 Phase 7 slice
+
+```
+ok   github.com/theapemachine/caramba/pkg/dtype
+ok   github.com/theapemachine/caramba/pkg/dtype/convert
+ok   github.com/theapemachine/caramba/pkg/backend/compute/tensor
+ok   github.com/theapemachine/caramba/pkg/backend/compute/kernels
+ok   github.com/theapemachine/caramba/pkg/backend/compute/ir
+ok   github.com/theapemachine/caramba/pkg/backend/compute/state
+?    github.com/theapemachine/caramba/pkg/backend/compute/runner [no test files]
+ok   github.com/theapemachine/caramba/pkg/backend/compute/executor
+ok   github.com/theapemachine/caramba/pkg/backend/compute/cpu
+ok   github.com/theapemachine/caramba/pkg/backend/compute/dispatch
+ok   github.com/theapemachine/caramba/pkg/backend/compute/orchestrator
+ok   github.com/theapemachine/caramba/pkg/backend/compute
+ok   github.com/theapemachine/caramba/pkg/network/transport
+ok   github.com/theapemachine/caramba/pkg/model/weights
+ok   github.com/theapemachine/caramba/pkg/runtime/state
+ok   github.com/theapemachine/caramba/pkg/manifest
+ok   github.com/theapemachine/caramba/pkg/runtime/backend
+```
+
+Focused benchmark output:
+
+```
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/compute/executor
+cpu: Apple M4 Max
+BenchmarkExecutor_Execute-16        589704      2032 ns/op    5768 B/op    48 allocs/op
+PASS
+ok   github.com/theapemachine/caramba/pkg/backend/compute/executor 1.432s
+
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/compute/cpu
+cpu: Apple M4 Max
+BenchmarkTensorBackend_ApplyMatmul-16 10846   109519 ns/op  240080 B/op   31 allocs/op
+PASS
+ok   github.com/theapemachine/caramba/pkg/backend/compute/cpu 1.546s
+
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/compute/orchestrator
+cpu: Apple M4 Max
+BenchmarkScheduler/SimpleGraph-16   60033     19686 ns/op   33878 B/op   132 allocs/op
+PASS
+ok   github.com/theapemachine/caramba/pkg/backend/compute/orchestrator 4.181s
+
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/compute
+cpu: Apple M4 Max
+BenchmarkBackend_Execute-16         57862     20970 ns/op   41754 B/op   194 allocs/op
+PASS
+ok   github.com/theapemachine/caramba/pkg/backend/compute 1.562s
+```
+
+Phase 7 moved these packages from the legacy float64 tensor API to
+`tensor.Tensor` / `dtype.DType`: `pkg/backend/compute/ir`,
+`pkg/backend/compute/state`, `pkg/backend/compute/runner`,
+`pkg/backend/compute/executor`, `pkg/backend/compute/cpu`,
+`pkg/backend/compute/dispatch`, `pkg/backend/compute/orchestrator`,
+`pkg/backend/compute`, `pkg/network/transport`, `pkg/manifest`, and
+`pkg/runtime/backend`.
+
+Remaining legacy references:
+
+```
+rg -l "Float64Tensor|UploadFloat64|DownloadFloat64|CloneFloat64|Float64From|MustFloat64From|MustCloneFloat64|tensor\\.DType|tensor\\.Float64|tensor\\.Float32" pkg README.md docs | wc -l
+113
+```
+
+The remaining references are not complete. The largest surfaces are
+the old `pkg/backend/compute/{cuda,metal,xla}` packages, runtime
+network/output paths outside the touched slice, and documentation.
+
+### Previous session
 
 ```
 ok  github.com/theapemachine/caramba/pkg/dtype                       0.004s
@@ -71,7 +220,7 @@ the regression bar.
 | 4     | Metal device backend          | skeleton + stub returning ErrNeedsPlatformSetup |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
-| 7     | legacy kill                   | pending — ~98 broken downstream files |
+| 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
 | 8     | per-kernel rollouts           | dispatch + add/matmul/mul/sub/gelu/relu/softmax/layernorm/rmsnorm registered scalar bodies |
 | 9     | sparse tensor support         | CSR implemented host-side; CSC/COO/BSR pending |
 | 10    | distributed / sharded         | HostDistributedTensor + collective AllReduce/Broadcast/AllGather/ReduceScatter |
@@ -164,7 +313,8 @@ invalidation works.
 | --------------------------------------------- | --------------------- |
 | `pkg/backend/device/metal/backend.go`         | verified              |
 | `pkg/backend/device/metal/bridge_stub.go`     | verified              |
-| `pkg/backend/device/metal/bridge_darwin.go`   | needs-platform-setup  |
+| `pkg/backend/device/metal/bridge_darwin.go`   | verified              |
+| `pkg/backend/device/metal/kernels.go`         | verified              |
 | `pkg/backend/device/metal/backend_test.go`    | verified              |
 | `pkg/backend/device/cuda/backend.go`          | verified              |
 | `pkg/backend/device/cuda/bridge_stub.go`      | verified              |
@@ -176,14 +326,13 @@ invalidation works.
 
 ## Phase 7: legacy kill
 
-Pending. ~98 downstream files in
-`pkg/backend/compute/{metal,cuda,xla,cpu}/`,
-`pkg/backend/compute/orchestrator/*`,
-`pkg/backend/compute/executor/*`,
-`pkg/manifest/*`,
-`pkg/runtime/backend/*`,
-`pkg/runtime/state/*`,
-`pkg/network/transport/*`,
+In progress. The 2026-05-18 slice migrated IR, executor, CPU runner,
+dispatch, orchestrator, network transport, manifest lowering, and
+runtime backend output collection to `tensor.Tensor` / `dtype.DType`.
+
+Still pending: legacy downstream files in
+`pkg/backend/compute/{metal,cuda,xla}/`,
+runtime network/output paths outside the touched slice, documentation,
 and the Metal `operation_executor_*.go` family still reference the
 removed `tensor.Float64Tensor`. Phase 7 deletes or rewrites them
 against the new contract. The new device backends at

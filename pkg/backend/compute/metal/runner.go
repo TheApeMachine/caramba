@@ -37,7 +37,7 @@ func NewRunnerWithBackend(backend *TensorBackend) *Runner {
 /*
 Execute traverses the intermediate representation graph and executes operations on Metal.
 */
-func (runner *Runner) Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Float64Tensor, error) {
+func (runner *Runner) Execute(ctx context.Context, graph *ir.Graph, targets []*ir.Node) (map[string]tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

@@ -13,9 +13,9 @@ import (
 func (tensorBackend *TensorBackend) applyTrainingPair(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-	operation func(computetensor.Float64Tensor, computetensor.Float64Tensor) (computetensor.Float64Tensor, error),
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+	operation func(computetensor.Tensor, computetensor.Tensor) (computetensor.Tensor, error),
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -30,8 +30,8 @@ func (tensorBackend *TensorBackend) applyTrainingPair(
 func (tensorBackend *TensorBackend) applyMSELoss(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -43,8 +43,8 @@ func (tensorBackend *TensorBackend) applyMSELoss(
 func (tensorBackend *TensorBackend) applyCrossEntropyLoss(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -56,8 +56,8 @@ func (tensorBackend *TensorBackend) applyCrossEntropyLoss(
 func (tensorBackend *TensorBackend) applyMSEGrad(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -69,8 +69,8 @@ func (tensorBackend *TensorBackend) applyMSEGrad(
 func (tensorBackend *TensorBackend) applyCrossEntropyGrad(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -82,8 +82,8 @@ func (tensorBackend *TensorBackend) applyCrossEntropyGrad(
 func (tensorBackend *TensorBackend) applyAccuracy(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -95,8 +95,8 @@ func (tensorBackend *TensorBackend) applyAccuracy(
 func (tensorBackend *TensorBackend) applyPerplexity(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -108,8 +108,8 @@ func (tensorBackend *TensorBackend) applyPerplexity(
 func (tensorBackend *TensorBackend) applyF1(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err

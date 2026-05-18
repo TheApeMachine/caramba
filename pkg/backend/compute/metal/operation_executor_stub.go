@@ -14,8 +14,8 @@ var _ executor.Backend = (*TensorBackend)(nil)
 func (tensorBackend *TensorBackend) Apply(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -24,67 +24,67 @@ func (tensorBackend *TensorBackend) Apply(
 }
 
 func (tensorBackend *TensorBackend) ReLU(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (tensorBackend *TensorBackend) LeakyReLU(
-	input computetensor.Float64Tensor, alpha float64,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor, alpha float64,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (tensorBackend *TensorBackend) GELU(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (tensorBackend *TensorBackend) Tanh(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (tensorBackend *TensorBackend) Sigmoid(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (tensorBackend *TensorBackend) SwiGLU(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (tensorBackend *TensorBackend) Add(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (tensorBackend *TensorBackend) Mul(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (tensorBackend *TensorBackend) Matmul(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (tensorBackend *TensorBackend) MatmulAdd(
-	left, right, bias computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right, bias computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (tensorBackend *TensorBackend) MatmulAddGELU(
-	left, right, bias computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right, bias computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }

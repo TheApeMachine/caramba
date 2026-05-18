@@ -12,8 +12,8 @@ import (
 )
 
 func (m *MathOps) InvSqrtDimScaleTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 	if err != nil {
 		return nil, err
@@ -28,41 +28,41 @@ func (m *MathOps) InvSqrtDimScaleTensor(
 }
 
 func (m *MathOps) ExpTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return m.unaryTensor(input, "exp")
 }
 
 func (m *MathOps) SinTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return m.unaryTensor(input, "sin")
 }
 
 func (m *MathOps) CosTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return m.unaryTensor(input, "cos")
 }
 
 func (m *MathOps) LogTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return m.unaryTensor(input, "log")
 }
 
 func (m *MathOps) SignTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return m.unaryTensor(input, "sign")
 }
 
 func (m *MathOps) DropoutTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	probability float64,
 	training bool,
 	seed int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 	if err != nil {
 		return nil, err
@@ -100,10 +100,10 @@ func (m *MathOps) DropoutTensor(
 }
 
 func (m *MathOps) OuterTensor(
-	left computetensor.Float64Tensor,
-	right computetensor.Float64Tensor,
+	left computetensor.Tensor,
+	right computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalLeft, metalRight, rows, columns, err := requireMetalOuterInputs(
 		left, right, outputShape,
 	)
@@ -133,8 +133,8 @@ func (m *MathOps) OuterTensor(
 }
 
 func (m *MathOps) SoftmaxTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	metalInput, numRows, dimSize, err := requireMetalRowReduction(input, "softmax")
 	if err != nil {
 		return nil, err
@@ -161,8 +161,8 @@ func (m *MathOps) SoftmaxTensor(
 }
 
 func (m *MathOps) LogSumExpTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	metalInput, numRows, dimSize, err := requireMetalRowReduction(input, "logsumexp")
 	if err != nil {
 		return nil, err
@@ -194,9 +194,9 @@ func (m *MathOps) LogSumExpTensor(
 }
 
 func (m *MathOps) unaryTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	name string,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 	if err != nil {
 		return nil, err
@@ -241,7 +241,7 @@ func (m *MathOps) dispatchUnaryTensor(
 func (m *MathOps) dispatchScaleTensor(
 	input *Tensor,
 	dimSize int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	if dimSize <= 0 {
 		return nil, fmt.Errorf("metal tensor: inv_sqrt_dim_scale final dimension must be positive")
 	}
@@ -267,7 +267,7 @@ func (m *MathOps) dispatchScaleTensor(
 }
 
 func requireMetalRowReduction(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	operation string,
 ) (*Tensor, int, int, error) {
 	metalInput, err := requireMetalTensor(input)
@@ -314,8 +314,8 @@ func metalLogSumExpOutputShape(
 }
 
 func requireMetalOuterInputs(
-	left computetensor.Float64Tensor,
-	right computetensor.Float64Tensor,
+	left computetensor.Tensor,
+	right computetensor.Tensor,
 	outputShape computetensor.Shape,
 ) (*Tensor, *Tensor, int, int, error) {
 	metalLeft, err := requireMetalTensor(left)

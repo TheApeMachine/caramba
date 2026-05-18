@@ -52,7 +52,7 @@ func (scheduler *Scheduler) Execute(
 	graph *ir.Graph,
 	targets []*ir.Node,
 	location tensor.Location,
-) (map[string]tensor.Float64Tensor, error) {
+) (map[string]tensor.Tensor, error) {
 	if graph == nil {
 		return nil, fmt.Errorf("scheduler: nil graph")
 	}

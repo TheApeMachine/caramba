@@ -162,8 +162,8 @@ func (operationDispatchContract OperationDispatchContract) SupportedIDSet() map[
 func (tensorBackend *TensorBackend) Apply(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -203,8 +203,8 @@ func (tensorBackend *TensorBackend) Apply(
 func (tensorBackend *TensorBackend) applyFused(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -247,8 +247,8 @@ func (tensorBackend *TensorBackend) applyFused(
 func (tensorBackend *TensorBackend) applyOperation(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	switch strings.ToLower(string(node.Op)) {
 	case "activation.swish":
 		return executor.RunOperation(ctx, tensorBackend, node, inputs, activation.NewSwish())
@@ -574,8 +574,8 @@ func (tensorBackend *TensorBackend) applyOperation(
 func (tensorBackend *TensorBackend) applyMatmul(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -596,8 +596,8 @@ func (tensorBackend *TensorBackend) applyMatmul(
 func (tensorBackend *TensorBackend) applyMatmulAdd(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -618,12 +618,12 @@ func (tensorBackend *TensorBackend) applyMatmulAdd(
 func (tensorBackend *TensorBackend) applyActivation(
 	ctx context.Context,
 	node executor.NodeSpec,
-	input tensor.Float64Tensor,
+	input tensor.Tensor,
 	operation interface {
 		Forward(*state.Dict) (*state.Dict, error)
 	},
-) (tensor.Float64Tensor, error) {
-	output, err := executor.RunOperation(ctx, tensorBackend, node, []tensor.Float64Tensor{input}, operation)
+) (tensor.Tensor, error) {
+	output, err := executor.RunOperation(ctx, tensorBackend, node, []tensor.Tensor{input}, operation)
 
 	if err != nil {
 		_ = input.Close()
@@ -640,7 +640,7 @@ func (tensorBackend *TensorBackend) applyActivation(
 
 func withMatmulOperationShape(
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 ) (executor.NodeSpec, error) {
 	if len(inputs) < 2 {
 		return executor.NodeSpec{}, fmt.Errorf("cpu tensor: %s node %q requires at least 2 inputs", node.Op, node.ID)
@@ -675,8 +675,8 @@ func withMatmulOperationShape(
 func (tensorBackend *TensorBackend) applySDPA(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	cache, _ := node.Metadata["kv_cache"].(*kv.Cache)
 
 	if cache == nil {
@@ -693,9 +693,9 @@ func (tensorBackend *TensorBackend) applySDPA(
 func (tensorBackend *TensorBackend) applyCachedSDPA(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
+	inputs []tensor.Tensor,
 	cache *kv.Cache,
-) (tensor.Float64Tensor, error) {
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

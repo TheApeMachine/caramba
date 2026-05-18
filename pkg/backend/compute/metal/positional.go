@@ -186,12 +186,12 @@ func (m *MetalPositional) RoPEForwardAtModeConfig(
 RoPETensor applies rotary position embeddings without leaving Metal storage.
 */
 func (m *MetalPositional) RoPETensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	base float64,
 	positionStart int,
 	batch, numHeads, seqLen, headDim int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return m.RoPETensorMode(
 		input,
 		outputShape,
@@ -206,13 +206,13 @@ func (m *MetalPositional) RoPETensor(
 RoPETensorMode applies rotary position embeddings with an explicit pair layout.
 */
 func (m *MetalPositional) RoPETensorMode(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	base float64,
 	positionStart int,
 	mode string,
 	batch, numHeads, seqLen, headDim int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return m.RoPETensorModeConfig(
 		input,
 		outputShape,
@@ -227,13 +227,13 @@ func (m *MetalPositional) RoPETensorMode(
 RoPETensorModeConfig applies RoPE in resident Metal storage using a frequency schedule.
 */
 func (m *MetalPositional) RoPETensorModeConfig(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 	config rotary.Config,
 	positionStart int,
 	mode string,
 	batch, numHeads, seqLen, headDim int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -383,7 +383,7 @@ ALiBiTensor computes the ALiBi bias tensor in resident Metal storage.
 func (m *MetalPositional) ALiBiTensor(
 	outputShape computetensor.Shape,
 	causal bool,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	dimensions := outputShape.Dims()
 	if len(dimensions) != 3 {
 		return nil, fmt.Errorf("metal_alibi_tensor: expected rank 3, got %d", len(dimensions))

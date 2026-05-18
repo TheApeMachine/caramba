@@ -23,32 +23,32 @@ func (m *MathOps) Mul(shape []int, data ...[]float64) ([]float64, error) {
 }
 
 func (m *MathOps) AddTensor(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (m *MathOps) MulTensor(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (m *MathOps) MatmulTensor(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (m *MathOps) MatmulAddTensor(
-	left, right, bias computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right, bias computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (m *MathOps) MatmulAddGELUTensor(
-	left, right, bias computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right, bias computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -57,8 +57,8 @@ func (m *MathOps) InvSqrtDimScale(shape []int, data ...[]float64) ([]float64, er
 }
 
 func (m *MathOps) InvSqrtDimScaleTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -67,8 +67,8 @@ func (m *MathOps) Exp(shape []int, data ...[]float64) ([]float64, error) {
 }
 
 func (m *MathOps) ExpTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -77,8 +77,8 @@ func (m *MathOps) Log(shape []int, data ...[]float64) ([]float64, error) {
 }
 
 func (m *MathOps) LogTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -87,14 +87,14 @@ func (m *MathOps) Softmax(shape []int, data ...[]float64) ([]float64, error) {
 }
 
 func (m *MathOps) SoftmaxTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (m *MathOps) LogSumExpTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -118,10 +118,10 @@ func (m *MathOps) GroupNorm(
 }
 
 func (m *MathOps) GroupNormTensor(
-	input, weight, bias computetensor.Float64Tensor,
+	input, weight, bias computetensor.Tensor,
 	groups int,
 	eps float64,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -130,17 +130,17 @@ func (m *MathOps) Sign(shape []int, data ...[]float64) ([]float64, error) {
 }
 
 func (m *MathOps) SignTensor(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	input computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
 func (m *MathOps) DropoutTensor(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	probability float64,
 	training bool,
 	seed int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -149,9 +149,9 @@ func (m *MathOps) Outer(shape []int, data ...[]float64) ([]float64, error) {
 }
 
 func (m *MathOps) OuterTensor(
-	left computetensor.Float64Tensor,
-	right computetensor.Float64Tensor,
+	left computetensor.Tensor,
+	right computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }

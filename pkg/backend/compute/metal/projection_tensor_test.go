@@ -40,7 +40,7 @@ func TestProjectionOps_FusedQKVTensor(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			So(output.Location(), ShouldEqual, computetensor.Metal)
 			assertMetalMaxDiff(
@@ -88,7 +88,7 @@ func TestTensorBackend_applyFusedQKVGraph(test *testing.T) {
 			So(results["qkv"].Location(), ShouldEqual, computetensor.Metal)
 			So(after.TransferBytes-before.TransferBytes, ShouldEqual, int64((len(input)+len(weight)+len(bias))*4))
 
-			values, err := results["qkv"].CloneFloat64()
+			values, err := tensorFloat64Values(results["qkv"])
 			So(err, ShouldBeNil)
 			defer func() {
 				So(results["qkv"].Close(), ShouldBeNil)

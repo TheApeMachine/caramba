@@ -11,8 +11,8 @@ import (
 )
 
 func (tensorBackend *TensorBackend) Exp(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -22,8 +22,8 @@ func (tensorBackend *TensorBackend) Exp(
 }
 
 func (tensorBackend *TensorBackend) Sin(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -33,8 +33,8 @@ func (tensorBackend *TensorBackend) Sin(
 }
 
 func (tensorBackend *TensorBackend) Cos(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -44,8 +44,8 @@ func (tensorBackend *TensorBackend) Cos(
 }
 
 func (tensorBackend *TensorBackend) Log(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -55,8 +55,8 @@ func (tensorBackend *TensorBackend) Log(
 }
 
 func (tensorBackend *TensorBackend) Sign(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -66,8 +66,8 @@ func (tensorBackend *TensorBackend) Sign(
 }
 
 func (tensorBackend *TensorBackend) Softmax(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -77,8 +77,8 @@ func (tensorBackend *TensorBackend) Softmax(
 }
 
 func (tensorBackend *TensorBackend) LogSumExp(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -88,8 +88,8 @@ func (tensorBackend *TensorBackend) LogSumExp(
 }
 
 func (tensorBackend *TensorBackend) InvSqrtDimScale(
-	input tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	input tensor.Tensor,
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -99,11 +99,11 @@ func (tensorBackend *TensorBackend) InvSqrtDimScale(
 }
 
 func (tensorBackend *TensorBackend) Dropout(
-	input tensor.Float64Tensor,
+	input tensor.Tensor,
 	probability float64,
 	training bool,
 	seed int,
-) (tensor.Float64Tensor, error) {
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -113,10 +113,10 @@ func (tensorBackend *TensorBackend) Dropout(
 }
 
 func (tensorBackend *TensorBackend) Outer(
-	left tensor.Float64Tensor,
-	right tensor.Float64Tensor,
+	left tensor.Tensor,
+	right tensor.Tensor,
 	outputShape tensor.Shape,
-) (tensor.Float64Tensor, error) {
+) (tensor.Tensor, error) {
 	mathOps, err := tensorBackend.math()
 	if err != nil {
 		return nil, err
@@ -128,48 +128,48 @@ func (tensorBackend *TensorBackend) Outer(
 func (tensorBackend *TensorBackend) applyExp(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	return tensorBackend.applyUnaryMath(ctx, node, inputs, tensorBackend.Exp)
 }
 
 func (tensorBackend *TensorBackend) applySin(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	return tensorBackend.applyUnaryMath(ctx, node, inputs, tensorBackend.Sin)
 }
 
 func (tensorBackend *TensorBackend) applyCos(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	return tensorBackend.applyUnaryMath(ctx, node, inputs, tensorBackend.Cos)
 }
 
 func (tensorBackend *TensorBackend) applyLog(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	return tensorBackend.applyUnaryMath(ctx, node, inputs, tensorBackend.Log)
 }
 
 func (tensorBackend *TensorBackend) applySign(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	return tensorBackend.applyUnaryMath(ctx, node, inputs, tensorBackend.Sign)
 }
 
 func (tensorBackend *TensorBackend) applyOuter(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -189,29 +189,29 @@ func (tensorBackend *TensorBackend) applyOuter(
 func (tensorBackend *TensorBackend) applySoftmax(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	return tensorBackend.applyUnaryMath(ctx, node, inputs, tensorBackend.Softmax)
 }
 
 func (tensorBackend *TensorBackend) applyInvSqrtDimScale(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	return tensorBackend.applyUnaryMath(ctx, node, inputs, tensorBackend.InvSqrtDimScale)
 }
 
 func (tensorBackend *TensorBackend) applyDropout(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	return tensorBackend.applyUnaryMath(
 		ctx,
 		node,
 		inputs,
-		func(input tensor.Float64Tensor) (tensor.Float64Tensor, error) {
+		func(input tensor.Tensor) (tensor.Tensor, error) {
 			return tensorBackend.Dropout(
 				input,
 				floatConfig(node, "p", 0),
@@ -225,8 +225,8 @@ func (tensorBackend *TensorBackend) applyDropout(
 func (tensorBackend *TensorBackend) applyLogSumExp(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	output, err := tensorBackend.applyUnaryMath(ctx, node, inputs, tensorBackend.LogSumExp)
 	if err != nil {
 		return nil, err
@@ -238,9 +238,9 @@ func (tensorBackend *TensorBackend) applyLogSumExp(
 func (tensorBackend *TensorBackend) applyUnaryMath(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-	apply func(tensor.Float64Tensor) (tensor.Float64Tensor, error),
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+	apply func(tensor.Tensor) (tensor.Tensor, error),
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -254,8 +254,8 @@ func (tensorBackend *TensorBackend) applyUnaryMath(
 
 func requireNodeOutputShape(
 	node executor.NodeSpec,
-	output tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	output tensor.Tensor,
+) (tensor.Tensor, error) {
 	expected, err := tensor.NewShape(node.Shape)
 	if err != nil {
 		_ = output.Close()

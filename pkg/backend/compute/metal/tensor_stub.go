@@ -30,7 +30,7 @@ UploadFloat64 rejects uploads when Metal support is not built in.
 */
 func (*TensorBackend) UploadFloat64(
 	shape computetensor.Shape, values []float64,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	return nil, metalUnavailable()
 }
 
@@ -38,7 +38,7 @@ func (*TensorBackend) UploadFloat64(
 DownloadFloat64 rejects downloads when Metal support is not built in.
 */
 func (*TensorBackend) DownloadFloat64(
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 ) ([]float64, error) {
 	return nil, metalUnavailable()
 }

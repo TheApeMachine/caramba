@@ -128,8 +128,8 @@ AddTensor performs resident Metal elementwise addition.
 Left and right must have identical shapes; broadcasting is not supported.
 */
 func (m *MathOps) AddTensor(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return m.binaryTensor(left, right, "add")
 }
 
@@ -138,8 +138,8 @@ MulTensor performs resident Metal elementwise multiplication.
 Left and right must have identical shapes; broadcasting is not supported.
 */
 func (m *MathOps) MulTensor(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return m.binaryTensor(left, right, "mul")
 }
 
@@ -147,8 +147,8 @@ func (m *MathOps) MulTensor(
 MatmulTensor performs resident Metal row-major matrix multiplication.
 */
 func (m *MathOps) MatmulTensor(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	metalLeft, err := requireMetalTensor(left)
 
 	if err != nil {
@@ -209,8 +209,8 @@ func (m *MathOps) MatmulTensor(
 MatmulAddTensor performs resident Metal matrix multiplication with broadcast bias.
 */
 func (m *MathOps) MatmulAddTensor(
-	left, right, bias computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right, bias computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return m.matmulAddTensor(left, right, bias, false)
 }
 
@@ -218,16 +218,16 @@ func (m *MathOps) MatmulAddTensor(
 MatmulAddGELUTensor performs resident Metal matrix multiplication, bias, and GELU.
 */
 func (m *MathOps) MatmulAddGELUTensor(
-	left, right, bias computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	left, right, bias computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return m.matmulAddTensor(left, right, bias, true)
 }
 
 func (m *MathOps) MatmulFlatTensor(
-	left, right computetensor.Float64Tensor,
+	left, right computetensor.Tensor,
 	outputShape computetensor.Shape,
 	M, K, N int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalLeft, err := requireMetalTensor(left)
 
 	if err != nil {
@@ -287,10 +287,10 @@ func (m *MathOps) MatmulFlatTensor(
 }
 
 func (m *MathOps) MatmulAddFlatTensor(
-	left, right, bias computetensor.Float64Tensor,
+	left, right, bias computetensor.Tensor,
 	outputShape computetensor.Shape,
 	M, K, N int,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalLeft, err := requireMetalTensor(left)
 
 	if err != nil {
@@ -368,9 +368,9 @@ func (m *MathOps) MatmulAddFlatTensor(
 }
 
 func (m *MathOps) LayerNormTensor(
-	input, weight, bias computetensor.Float64Tensor,
+	input, weight, bias computetensor.Tensor,
 	eps float64,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -434,9 +434,9 @@ func (m *MathOps) LayerNormTensor(
 }
 
 func (m *MathOps) RMSNormTensor(
-	input, weight computetensor.Float64Tensor,
+	input, weight computetensor.Tensor,
 	eps float64,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -490,10 +490,10 @@ func (m *MathOps) RMSNormTensor(
 }
 
 func (m *MathOps) GroupNormTensor(
-	input, weight, bias computetensor.Float64Tensor,
+	input, weight, bias computetensor.Tensor,
 	groups int,
 	eps float64,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	metalInput, err := requireMetalTensor(input)
 
 	if err != nil {
@@ -568,8 +568,8 @@ func (m *MathOps) GroupNormTensor(
 }
 
 func (m *MathOps) binaryTensor(
-	left, right computetensor.Float64Tensor, name string,
-) (computetensor.Float64Tensor, error) {
+	left, right computetensor.Tensor, name string,
+) (computetensor.Tensor, error) {
 	metalLeft, err := requireMetalTensor(left)
 
 	if err != nil {
@@ -615,8 +615,8 @@ func (m *MathOps) binaryTensor(
 }
 
 func (m *MathOps) matmulAddTensor(
-	left, right, bias computetensor.Float64Tensor, gelu bool,
-) (computetensor.Float64Tensor, error) {
+	left, right, bias computetensor.Tensor, gelu bool,
+) (computetensor.Tensor, error) {
 	metalLeft, metalRight, metalBias, outputShape, err := metalMatmulAddInputs(
 		left, right, bias,
 	)
@@ -661,7 +661,7 @@ func (m *MathOps) matmulAddTensor(
 }
 
 func metalMatmulAddInputs(
-	left, right, bias computetensor.Float64Tensor,
+	left, right, bias computetensor.Tensor,
 ) (*Tensor, *Tensor, *Tensor, computetensor.Shape, error) {
 	metalLeft, err := requireMetalTensor(left)
 

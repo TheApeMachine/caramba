@@ -7,6 +7,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
+	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 )
 
 func TestNewBackend(test *testing.T) {
@@ -29,7 +31,7 @@ func TestNewBackend(test *testing.T) {
 			outputs, err := backend.Execute(context.Background(), graph, []*ir.Node{input})
 			So(err, ShouldBeNil)
 
-			values, err := outputs["input"].CloneFloat64()
+			values, err := tensorFloat64Values(outputs["input"])
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{1, 2})
 			So(outputs["input"].Close(), ShouldBeNil)
@@ -54,7 +56,7 @@ func TestNewBackend(test *testing.T) {
 
 			So(outputs, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "requires float64 precision")
+			So(err.Error(), ShouldContainSubstring, "requires F64 precision")
 			So(testRunner.called, ShouldBeFalse)
 		})
 
@@ -64,8 +66,8 @@ func TestNewBackend(test *testing.T) {
 
 			valueType := ir.ValueType{
 				Shape:     shape,
-				DType:     tensor.Float64,
-				Precision: tensor.Float32,
+				DType:     dtype.Float64,
+				Precision: dtype.Float32,
 			}
 			graph := ir.NewGraph()
 			input := ir.NewNode("input", ir.OpInput, shape)
@@ -152,16 +154,21 @@ func (testRunner *backendTestRunner) Execute(
 	ctx context.Context,
 	graph *ir.Graph,
 	targets []*ir.Node,
-) (map[string]tensor.Float64Tensor, error) {
+) (map[string]tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
 	testRunner.called = true
-	outputs := make(map[string]tensor.Float64Tensor, len(targets))
+	outputs := make(map[string]tensor.Tensor, len(targets))
+	hostBackend := tensor.NewHostBackend()
 
 	for _, target := range targets {
-		value, err := tensor.Float64From(make([]float64, target.Shape().Len()))
+		value, err := hostBackend.Upload(
+			target.Shape(),
+			dtype.Float64,
+			dtypeconvert.Float64ToBytes(make([]float64, target.Shape().Len())),
+		)
 
 		if err != nil {
 			return nil, err
@@ -171,6 +178,16 @@ func (testRunner *backendTestRunner) Execute(
 	}
 
 	return outputs, nil
+}
+
+func tensorFloat64Values(value tensor.Tensor) ([]float64, error) {
+	sourceDType, bytes, err := value.RawBytes()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return dtypeconvert.BytesToFloat64(sourceDType, bytes)
 }
 
 func (testRunner *backendTestRunner) Location() tensor.Location {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/executor"
 	computetensor "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 const cudaTensorUnavailableMsg = "CUDA tensor unavailable: rebuild on Linux with CGO enabled and build tags linux,cgo,cuda"
@@ -34,22 +35,64 @@ func (tensorBackend *TensorBackend) Location() computetensor.Location {
 	return computetensor.CUDA
 }
 
-/*
-UploadFloat64 rejects uploads when CUDA support is not built in.
-*/
-func (tensorBackend *TensorBackend) UploadFloat64(
-	shape computetensor.Shape, values []float64,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
+func (tensorBackend *TensorBackend) SupportedDTypes() []dtype.DType {
+	return []dtype.DType{dtype.Float32}
 }
 
-/*
-DownloadFloat64 rejects downloads when CUDA support is not built in.
-*/
-func (tensorBackend *TensorBackend) DownloadFloat64(
-	input computetensor.Float64Tensor,
-) ([]float64, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
+func (tensorBackend *TensorBackend) SupportedLayouts() []computetensor.Layout {
+	return []computetensor.Layout{computetensor.LayoutDense}
+}
+
+func (tensorBackend *TensorBackend) Capabilities() computetensor.Capabilities {
+	return computetensor.Capabilities{
+		MaxBytes:        computetensor.MaxBytesUnlimited,
+		NativeAlignment: 128,
+		NUMANodes:       1,
+	}
+}
+
+func (tensorBackend *TensorBackend) Upload(
+	shape computetensor.Shape,
+	sourceDType dtype.DType,
+	bytes []byte,
+) (computetensor.Tensor, error) {
+	_ = shape
+	_ = sourceDType
+	_ = bytes
+
+	return nil, cudaUnavailable()
+}
+
+func (tensorBackend *TensorBackend) UploadAsync(
+	shape computetensor.Shape,
+	sourceDType dtype.DType,
+	bytes []byte,
+) (computetensor.Tensor, error) {
+	return tensorBackend.Upload(shape, sourceDType, bytes)
+}
+
+func (tensorBackend *TensorBackend) UploadSparse(
+	shape computetensor.Shape,
+	valueDType dtype.DType,
+	layout computetensor.Layout,
+	values []byte,
+	indices []computetensor.SparseIndex,
+) (computetensor.SparseTensor, error) {
+	_ = shape
+	_ = valueDType
+	_ = layout
+	_ = values
+	_ = indices
+
+	return nil, cudaUnavailable()
+}
+
+func (tensorBackend *TensorBackend) Download(
+	input computetensor.Tensor,
+) (dtype.DType, []byte, error) {
+	_ = input
+
+	return dtype.Invalid, nil, cudaUnavailable()
 }
 
 /*
@@ -62,89 +105,18 @@ func (tensorBackend *TensorBackend) Close() error {
 func (tensorBackend *TensorBackend) Apply(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
+	_ = node
+	_ = inputs
+
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
+	return nil, cudaUnavailable()
 }
 
-func (tensorBackend *TensorBackend) ReLU(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) LeakyReLU(
-	input computetensor.Float64Tensor, alpha float64,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) GELU(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) Tanh(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) Sigmoid(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) Swish(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) SELU(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) SwiGLU(
-	input computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) Add(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) Mul(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) Matmul(
-	left, right computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) MatmulAdd(
-	left, right, bias computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
-}
-
-func (tensorBackend *TensorBackend) MatmulAddGELU(
-	left, right, bias computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
-	return nil, fmt.Errorf("%s", cudaTensorUnavailableMsg)
+func cudaUnavailable() error {
+	return fmt.Errorf("%w: %s", computetensor.ErrNeedsPlatformSetup, cudaTensorUnavailableMsg)
 }

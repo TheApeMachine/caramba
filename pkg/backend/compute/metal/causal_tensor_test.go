@@ -37,7 +37,7 @@ func TestMetalCausalOps_CounterfactualTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(
@@ -69,7 +69,7 @@ func TestTensorBackend_applyCausalCounterfactualGraph(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertMetalMaxDiff(values, expected, 1e-6)
 		})
@@ -99,7 +99,7 @@ func TestMetalCausalOps_FrontdoorAdjustmentTensor(test *testing.T) {
 					So(output.Close(), ShouldBeNil)
 				}()
 
-				values, err := output.CloneFloat64()
+				values, err := tensorFloat64Values(output)
 				So(err, ShouldBeNil)
 				So(output.Location(), ShouldEqual, computetensor.Metal)
 				assertMetalMaxDiff(values, expected, 1e-4)
@@ -127,7 +127,7 @@ func TestTensorBackend_applyCausalFrontdoorGraph(test *testing.T) {
 				So(output.Close(), ShouldBeNil)
 			}()
 
-			values, err := output.CloneFloat64()
+			values, err := tensorFloat64Values(output)
 			So(err, ShouldBeNil)
 			assertMetalMaxDiff(values, expected, 1e-4)
 		})

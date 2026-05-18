@@ -13,8 +13,8 @@ import (
 func (tensorBackend *TensorBackend) applyActiveFreeEnergy(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -39,8 +39,8 @@ func (tensorBackend *TensorBackend) applyActiveFreeEnergy(
 func (tensorBackend *TensorBackend) applyActiveBeliefUpdate(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -71,8 +71,8 @@ func (tensorBackend *TensorBackend) applyActiveBeliefUpdate(
 func (tensorBackend *TensorBackend) applyActivePrecisionWeight(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -92,8 +92,8 @@ func (tensorBackend *TensorBackend) applyActivePrecisionWeight(
 func (tensorBackend *TensorBackend) applyActiveExpectedFreeEnergy(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

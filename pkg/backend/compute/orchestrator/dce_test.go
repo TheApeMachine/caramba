@@ -7,6 +7,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 func TestDCEOptimizer(t *testing.T) {
@@ -77,7 +78,7 @@ func TestDCEOptimizer(t *testing.T) {
 			nodeSideEffect.SetOperationID("custom.state.write")
 			nodeSideEffect.SetValueType(ir.ValueType{
 				Shape:       shape,
-				DType:       tensor.Float64,
+				DType:       dtype.Float64,
 				Layout:      ir.LayoutColumnMajor,
 				MemoryClass: ir.MemoryUnified,
 			})

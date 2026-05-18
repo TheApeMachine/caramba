@@ -13,8 +13,8 @@ import (
 func (tensorBackend *TensorBackend) applyVSABind(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -34,8 +34,8 @@ func (tensorBackend *TensorBackend) applyVSABind(
 func (tensorBackend *TensorBackend) applyVSABundle(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -75,8 +75,8 @@ func (tensorBackend *TensorBackend) applyVSABundle(
 func (tensorBackend *TensorBackend) applyVSASimilarity(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -101,25 +101,25 @@ func (tensorBackend *TensorBackend) applyVSASimilarity(
 func (tensorBackend *TensorBackend) applyVSAPermute(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return tensorBackend.applyVSAPermutation(ctx, node, inputs, false)
 }
 
 func (tensorBackend *TensorBackend) applyVSAInversePermute(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
-) (computetensor.Float64Tensor, error) {
+	inputs []computetensor.Tensor,
+) (computetensor.Tensor, error) {
 	return tensorBackend.applyVSAPermutation(ctx, node, inputs, true)
 }
 
 func (tensorBackend *TensorBackend) applyVSAPermutation(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
+	inputs []computetensor.Tensor,
 	inverse bool,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -143,9 +143,9 @@ func (tensorBackend *TensorBackend) applyVSAPermutation(
 
 func (tensorBackend *TensorBackend) vsaBundleVectors(
 	node executor.NodeSpec,
-	inputs []computetensor.Float64Tensor,
+	inputs []computetensor.Tensor,
 	outputShape computetensor.Shape,
-) (computetensor.Float64Tensor, error) {
+) (computetensor.Tensor, error) {
 	for inputIndex, input := range inputs {
 		if input.Shape().Len() != outputShape.Len() {
 			return nil, fmt.Errorf(
@@ -162,7 +162,7 @@ func (tensorBackend *TensorBackend) vsaBundleVectors(
 	}
 
 	current := inputs[0]
-	var temporary computetensor.Float64Tensor
+	var temporary computetensor.Tensor
 
 	for inputIndex := 1; inputIndex < len(inputs); inputIndex++ {
 		nextShape, shapeErr := computetensor.NewShape(
@@ -218,7 +218,7 @@ func (tensorBackend *TensorBackend) vsa() (*MetalVSAOps, error) {
 
 func vsaBundleCount(
 	node executor.NodeSpec,
-	input computetensor.Float64Tensor,
+	input computetensor.Tensor,
 	outputShape computetensor.Shape,
 ) (int, error) {
 	if outputShape.Len() <= 0 {

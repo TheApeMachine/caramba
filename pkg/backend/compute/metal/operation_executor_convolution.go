@@ -45,8 +45,8 @@ type metalConv3DNodeConfig struct {
 func (tensorBackend *TensorBackend) applyConv1D(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -95,8 +95,8 @@ func (tensorBackend *TensorBackend) applyConv1D(
 func (tensorBackend *TensorBackend) applyConv3D(
 	ctx context.Context,
 	node executor.NodeSpec,
-	inputs []tensor.Float64Tensor,
-) (tensor.Float64Tensor, error) {
+	inputs []tensor.Tensor,
+) (tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -154,7 +154,7 @@ func (tensorBackend *TensorBackend) applyConv3D(
 
 func newMetalConv1DNodeConfig(
 	node executor.NodeSpec,
-	input tensor.Float64Tensor,
+	input tensor.Tensor,
 ) (metalConv1DNodeConfig, error) {
 	outputShape, err := tensor.NewShape(node.Shape)
 	if err != nil {
@@ -223,7 +223,7 @@ func (config metalConv1DNodeConfig) biasShape() []int {
 
 func newMetalConv3DNodeConfig(
 	node executor.NodeSpec,
-	input tensor.Float64Tensor,
+	input tensor.Tensor,
 ) (metalConv3DNodeConfig, error) {
 	outputShape, err := tensor.NewShape(node.Shape)
 	if err != nil {

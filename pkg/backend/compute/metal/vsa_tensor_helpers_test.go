@@ -163,14 +163,14 @@ func vsaGraph(
 }
 
 func assertVSAGraphOutputs(
-	results map[string]computetensor.Float64Tensor,
+	results map[string]computetensor.Tensor,
 	left []float64,
 	right []float64,
 	third []float64,
 ) {
 	for _, output := range results {
 		So(output.Location(), ShouldEqual, computetensor.Metal)
-		defer func(value computetensor.Float64Tensor) {
+		defer func(value computetensor.Tensor) {
 			So(value.Close(), ShouldBeNil)
 		}(output)
 	}
@@ -188,7 +188,7 @@ func assertVSAGraphOutputs(
 }
 
 func assertVSAGraphOutput(
-	results map[string]computetensor.Float64Tensor,
+	results map[string]computetensor.Tensor,
 	name string,
 	expected []float64,
 	tolerance float64,
@@ -196,12 +196,12 @@ func assertVSAGraphOutput(
 	output, ok := results[name]
 	So(ok, ShouldBeTrue)
 
-	values, err := output.CloneFloat64()
+	values, err := tensorFloat64Values(output)
 	So(err, ShouldBeNil)
 	assertMetalMaxDiff(values, expected, tolerance)
 }
 
-func closeBenchmarkTensors(values ...computetensor.Float64Tensor) {
+func closeBenchmarkTensors(values ...computetensor.Tensor) {
 	for _, value := range values {
 		_ = value.Close()
 	}
@@ -209,7 +209,7 @@ func closeBenchmarkTensors(values ...computetensor.Float64Tensor) {
 
 func closeBenchmarkOutput(
 	benchmark *testing.B,
-	output computetensor.Float64Tensor,
+	output computetensor.Tensor,
 	err error,
 ) {
 	benchmark.Helper()

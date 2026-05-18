@@ -6,6 +6,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 func TestLowerGraphToIR(t *testing.T) {
@@ -50,7 +51,7 @@ func TestLowerGraphToIR(t *testing.T) {
 			irGraph, err := LowerGraphToIR(graph, shape)
 
 			So(err, ShouldBeNil)
-			So(irGraph.Nodes()[1].ValueType().Precision, ShouldEqual, tensor.Float32)
+			So(irGraph.Nodes()[1].ValueType().Precision, ShouldEqual, dtype.Float32)
 		})
 	})
 
