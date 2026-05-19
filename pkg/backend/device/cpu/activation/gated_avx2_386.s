@@ -117,8 +117,7 @@ swiglu_avx2_scalar:
 swiglu_avx2_sloop:
 	MOVSS (SI), X0
 	VMOVAPS X0, X10
-	MOVSS (BX), X0
-	VMOVAPS X0, X11
+	VMOVSS (BX), X11
 	VXORPS X0, X0, X1
 	VSUBPS X1, X0, X0
 	VMULPS X8, X0, X1
@@ -191,8 +190,7 @@ linglu_avx2_scalar:
 	JEQ linglu_avx2_done
 linglu_avx2_sloop:
 	MOVSS (SI), X0
-	MOVSS (BX), X0
-	VMOVAPS X0, X11
+	VMOVSS (BX), X11
 	VMULPS X0, X11, X7
 	MOVSS X7, (DI)
 	ADDL $4, SI
@@ -511,8 +509,7 @@ siglu_avx2_scalar:
 	JEQ siglu_avx2_done
 siglu_avx2_sloop:
 	MOVSS (SI), X0
-	MOVSS (BX), X0
-	VMOVAPS X0, X11
+	VMOVSS (BX), X11
 	VXORPS X0, X0, X1
 	VSUBPS X1, X0, X0
 	VMULPS X8, X0, X1
@@ -658,8 +655,7 @@ seglu_avx2_scalar:
 	JEQ seglu_avx2_done
 seglu_avx2_sloop:
 	MOVSS (SI), X0
-	MOVSS (BX), X0
-	VMOVAPS X0, X11
+	VMOVSS (BX), X11
 	VXORPS X0, X0, X1
 	VSUBPS X1, X0, X0
 	VMULPS X8, X0, X1

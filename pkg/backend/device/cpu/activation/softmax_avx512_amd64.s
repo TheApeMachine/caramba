@@ -255,8 +255,8 @@ reduce_max_avx512_w8:
 reduce_max_avx512_w4:
 	CMPQ CX, $4
 	JL reduce_max_avx512_extract
-	VMOVUPS (SI), Y1
-	VMAXPS Y1, Y0, Y0
+	VMOVUPS (SI), X1
+	VMAXPS X1, X0, X0
 	ADDQ $16, SI
 	SUBQ $4, CX
 	JMP reduce_max_avx512_w4

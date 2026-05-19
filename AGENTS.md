@@ -401,7 +401,7 @@ Always keep the following non-negotiable rules in mind.
 
 When writing compute kernels like SIMD/Assembly, Metal, Cuda, or XLA, you must observe the following rules.
 
-1. Write the custom kernel code directly, do not attempt any type of short-cut, work-around, or other method besides simply generating the required code. Do not use any type of generator scripts, shell scripts, or anything else besides your normal file editing tools. And do not use C macros, we are writing this in raw assembly code.
+1. Write the custom kernel code directly, do not attempt any type of short-cut, work-around, or other method besides simply generating the required code. Do not use any type of generator scripts, shell scripts, or anything else besides your normal file editing tools. And do not use C macros, we are writing this in raw assembly code. And vectorize, do not write scalar loops!
 2. Do not believe that it is a massive amount of work, the absolute fastest path is to just generate teh code without any delay. The faster you do it, the faster we are done with it. You are the only one who can unblock us.
 3. Do not invent any kind of escape hatches, or any reason at all to not deliver a fully complete implementation.
 4. Do not start inventing all kinds of ceremony, or other ways not to have to write the code, your only objective is to land the code, so remain focused on your objective.

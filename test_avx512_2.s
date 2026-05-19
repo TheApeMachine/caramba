@@ -1,0 +1,4 @@
+TEXT ·test(SB), 0, $0
+	VCMPPS $6, X15, X0, K1
+	VBLENDMPS X4, X0, K1, X7
+	RET

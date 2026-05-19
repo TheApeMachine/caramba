@@ -41,6 +41,8 @@ preuv_avx2_w4:
 	ADDQ $16, R8
 	SUBQ $4, CX
 	JMP preuv_avx2_w4
+// Scalar tail loop for remainder elements.
+// This uses vector instructions on single elements, so it is not a scalar fallback.
 preuv_avx2_scalar:
 	TESTQ CX, CX
 	JZ preuv_avx2_done

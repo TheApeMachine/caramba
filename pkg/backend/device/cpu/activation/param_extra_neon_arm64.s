@@ -16,6 +16,9 @@
 #define VBSL_B16(m, n, d)  WORD $(0x6E601C00 | ((m) << 16) | ((n) << 5) | (d))
 #define VFABS_S4(n, d)     WORD $(0x6EA0F000 | ((n) << 5) | (d))
 #define VFNEG_S4(n, d)     WORD $(0x6EA0F800 | ((n) << 5) | (d))
+#define VFADD_S4(m, n, d)  WORD $(0x4E20D400 | ((m) << 16) | ((n) << 5) | (d))
+#define VSCVTF_S4(n, d)    WORD $(0x4E21D800 | ((n) << 5) | (d))
+#define VMUL_I32_S4(m, n, d) WORD $(0x4EA09C00 | ((m) << 16) | ((n) << 5) | (d))
 
 #define NEON_EXP_BODY(in, out) \
     VFMUL_S4(16, in, 1) ;\
@@ -42,6 +45,20 @@ DATA actParamSnakeC<>+12(SB)/4, $0.008333333
 DATA actParamSnakeC<>+16(SB)/4, $5.9604645e-08
 GLOBL actParamSnakeC<>(SB), 8, $20
 
+DATA actExtraExpC<>+0(SB)/4, $1.4426950408889634
+DATA actExtraExpC<>+4(SB)/4, $0.6931471805599453
+DATA actExtraExpC<>+8(SB)/4, $127.0
+DATA actExtraExpC<>+12(SB)/4, $0.00019841270
+DATA actExtraExpC<>+16(SB)/4, $0.0013888889
+DATA actExtraExpC<>+20(SB)/4, $0.008333334
+DATA actExtraExpC<>+24(SB)/4, $0.041666667
+DATA actExtraExpC<>+28(SB)/4, $0.16666667
+DATA actExtraExpC<>+32(SB)/4, $0.5
+DATA actExtraExpC<>+36(SB)/4, $1.0
+DATA actExtraExpC<>+40(SB)/4, $1.0
+DATA actExtraExpC<>+44(SB)/4, $2.0
+GLOBL actExtraExpC<>(SB), 8, $48
+
 // func ELUAlphaF32NEON(dst, src *float32, count int, alpha float32)
 TEXT ·ELUAlphaF32NEON(SB), NOSPLIT, $0-28
 	MOVD dst+0(FP), R0
@@ -49,7 +66,7 @@ TEXT ·ELUAlphaF32NEON(SB), NOSPLIT, $0-28
 	MOVD count+16(FP), R2
 	FMOVS alpha+24(FP), F30
 	VDUP V30.S[0], V30.S4
-	MOVD $actExtraExpC<>(SB), R3
+	MOVD $actExtraExpC(SB), R3
 	FMOVS  0(R3), F16
 	FMOVS  4(R3), F17
 	FMOVS  8(R3), F18
@@ -103,7 +120,7 @@ TEXT ·CELUAlphaF32NEON(SB), NOSPLIT, $0-28
 	MOVD count+16(FP), R2
 	FMOVS alpha+24(FP), F30
 	VDUP V30.S[0], V30.S4
-	MOVD $actExtraExpC<>(SB), R3
+	MOVD $actExtraExpC(SB), R3
 	FMOVS  0(R3), F16
 	FMOVS  4(R3), F17
 	FMOVS  8(R3), F18
@@ -196,30 +213,38 @@ TEXT ·SoftShrinkF32NEON(SB), NOSPLIT, $0-28
 	MOVD src+8(FP), R1
 	MOVD count+16(FP), R2
 	FMOVS lambda+24(FP), F10
-	MOVD $0, R10
-	FMOVS R10, F12
-	FSUBS F10, F12, F11
-ss_neon_loop:
+	VDUP V10.S[0], V10.S4
+	VFNEG_S4(10, 11)
+	VEOR V12.B16, V12.B16, V12.B16
+ss_neon_w4:
+	CMP $4, R2
+	BLT ss_neon_scalar
+	VLD1.P 16(R1), [V0.S4]
+	VFCMGT_S4(10, 0, 1)
+	VFCMGT_S4(0, 11, 2)
+	VFSUB_S4(10, 0, 3)
+	VFADD_S4(10, 0, 4)
+	VBSL_B16(12, 3, 1)
+	VBSL_B16(1, 4, 2)
+	VST1.P [V2.S4], 16(R0)
+	SUB $4, R2
+	B ss_neon_w4
+ss_neon_scalar:
 	CBZ R2, ss_neon_done
+ss_neon_sloop:
 	FMOVS (R1), F0
-	FCMPS F0, F10
-	BGT ss_neon_hi
-	FCMPS F0, F11
-	BLT ss_neon_lo
-	FMOVS F12, (R0)
-	B ss_neon_step
-ss_neon_hi:
-	FSUBS F10, F0, F0
-	FMOVS F0, (R0)
-	B ss_neon_step
-ss_neon_lo:
-	FADDS F11, F0, F0
-	FMOVS F0, (R0)
-ss_neon_step:
+	VDUP V0.S[0], V0.S4
+	VFCMGT_S4(10, 0, 1)
+	VFCMGT_S4(0, 11, 2)
+	VFSUB_S4(10, 0, 3)
+	VFADD_S4(10, 0, 4)
+	VBSL_B16(12, 3, 1)
+	VBSL_B16(1, 4, 2)
+	FMOVS F2, (R0)
 	ADD $4, R1
 	ADD $4, R0
 	SUB $1, R2
-	B ss_neon_loop
+	CBNZ R2, ss_neon_sloop
 ss_neon_done:
 	RET
 
@@ -229,52 +254,79 @@ TEXT ·SnakeF32NEON(SB), NOSPLIT, $0-28
 	MOVD src+8(FP), R1
 	MOVD count+16(FP), R2
 	FMOVS alpha+24(FP), F10
+	VDUP V10.S[0], V10.S4
+	FMOVS $1.0, F18
+	VDUP V18.S[0], V18.S4
+	VFDIV_S4(10, 18, 19)
 	MOVD $actParamSnakeC<>(SB), R3
-snake_neon_loop:
+	FMOVS 0(R3), F11
+	VDUP V11.S[0], V11.S4
+	FMOVS 4(R3), F12
+	VDUP V12.S[0], V12.S4
+	FMOVS 8(R3), F13
+	VDUP V13.S[0], V13.S4
+	FMOVS 12(R3), F14
+	VDUP V14.S[0], V14.S4
+	VFNEG_S4(11, 15)
+	VFNEG_S4(12, 16)
+	VEOR V17.B16, V17.B16, V17.B16
+snake_neon_w4:
+	CMP $4, R2
+	BLT snake_neon_scalar
+	VLD1.P 16(R1), [V0.S4]
+	VFMUL_S4(10, 0, 1)
+	VFDIV_S4(11, 1, 2)
+	VFRINTN_S4(2, 2)
+	VFMUL_S4(11, 2, 2)
+	VFSUB_S4(2, 1, 1)
+	VFCMGT_S4(12, 1, 3)
+	VBSL_B16(17, 15, 3)
+	VFADD_S4(3, 1, 1)
+	VFCMGT_S4(1, 16, 4)
+	VBSL_B16(17, 11, 4)
+	VFADD_S4(4, 1, 1)
+	VFMUL_S4(1, 1, 2)
+	VFMUL_S4(14, 2, 3)
+	VFSUB_S4(3, 13, 3)
+	VFMUL_S4(3, 2, 3)
+	VFSUB_S4(3, 18, 3)
+	VFMUL_S4(3, 1, 3)
+	VFMUL_S4(3, 3, 3)
+	VFMUL_S4(19, 3, 3)
+	VFADD_S4(3, 0, 0)
+	VST1.P [V0.S4], 16(R0)
+	SUB $4, R2
+	B snake_neon_w4
+snake_neon_scalar:
 	CBZ R2, snake_neon_done
-	FMOVS (R1), F7
-	FMOVS F7, F0
-	FMULS F10, F0
-	FMOVS F0, F14
-	FMOVS (R3), F8
-	FDIVS F8, F0, F0
-	FRINTNS F0, F0
-	FMOVS F0, F1
-	FMOVS (R3), F8
-	FMULS F8, F1
-	FMOVS F14, F0
-	FSUBS F1, F0
-	FMOVS 4(R3), F9
-	FCMPS F0, F9
-	BLS snake_fold_lo
-	FSUBS F8, F0
-	B snake_sin
-snake_fold_lo:
-	FCMPS F9, F0
-	BPL snake_sin
-	FADDS F8, F0
-snake_sin:
-	FMOVS F0, F1
-	FMULS F1, F1
-	FMOVS 12(R3), F12
-	FMULS F12, F1
-	FMOVS 8(R3), F11
-	FSUBS F1, F11
-	FMOVS F0, F1
-	FMULS F1, F1
-	FMULS F11, F1
-	FMOVS 8(R3), F11
-	FSUBS F1, F11
-	FMULS F0, F11
-	FMOVS F11, F6
-	FMULS F6, F6
-	FDIVS F10, F6
-	FADDS F7, F6
-	FMOVS F6, (R0)
+snake_neon_sloop:
+	FMOVS (R1), F0
+	VDUP V0.S[0], V0.S4
+	VFMUL_S4(10, 0, 1)
+	VFDIV_S4(11, 1, 2)
+	VFRINTN_S4(2, 2)
+	VFMUL_S4(11, 2, 2)
+	VFSUB_S4(2, 1, 1)
+	VFCMGT_S4(12, 1, 3)
+	VBSL_B16(17, 15, 3)
+	VFADD_S4(3, 1, 1)
+	VFCMGT_S4(1, 16, 4)
+	VBSL_B16(17, 11, 4)
+	VFADD_S4(4, 1, 1)
+	VFMUL_S4(1, 1, 2)
+	VFMUL_S4(14, 2, 3)
+	VFSUB_S4(3, 13, 3)
+	VFMUL_S4(3, 2, 3)
+	VFSUB_S4(3, 18, 3)
+	VFMUL_S4(3, 1, 3)
+	VFMUL_S4(3, 3, 3)
+	VFMUL_S4(19, 3, 3)
+	VFADD_S4(3, 0, 0)
+	FMOVS F0, (R0)
 	ADD $4, R1
 	ADD $4, R0
 	SUB $1, R2
-	B snake_neon_loop
+	CBNZ R2, snake_neon_sloop
 snake_neon_done:
 	RET
 
@@ -284,53 +336,81 @@ TEXT ·SnakeParametricF32NEON(SB), NOSPLIT, $0-32
 	MOVD src+8(FP), R1
 	MOVD count+16(FP), R2
 	FMOVS alpha+24(FP), F10
-	FMOVS beta+28(FP), F13
+	VDUP V10.S[0], V10.S4
+	FMOVS beta+28(FP), F20
+	VDUP V20.S[0], V20.S4
+	FMOVS $1.0, F18
+	VDUP V18.S[0], V18.S4
+	VFDIV_S4(20, 18, 19)
 	MOVD $actParamSnakeC<>(SB), R3
-snakep_neon_loop:
+	FMOVS 0(R3), F11
+	VDUP V11.S[0], V11.S4
+	FMOVS 4(R3), F12
+	VDUP V12.S[0], V12.S4
+	FMOVS 8(R3), F13
+	VDUP V13.S[0], V13.S4
+	FMOVS 12(R3), F14
+	VDUP V14.S[0], V14.S4
+	VFNEG_S4(11, 15)
+	VFNEG_S4(12, 16)
+	VEOR V17.B16, V17.B16, V17.B16
+snakep_neon_w4:
+	CMP $4, R2
+	BLT snakep_neon_scalar
+	VLD1.P 16(R1), [V0.S4]
+	VFMUL_S4(10, 0, 1)
+	VFDIV_S4(11, 1, 2)
+	VFRINTN_S4(2, 2)
+	VFMUL_S4(11, 2, 2)
+	VFSUB_S4(2, 1, 1)
+	VFCMGT_S4(12, 1, 3)
+	VBSL_B16(17, 15, 3)
+	VFADD_S4(3, 1, 1)
+	VFCMGT_S4(1, 16, 4)
+	VBSL_B16(17, 11, 4)
+	VFADD_S4(4, 1, 1)
+	VFMUL_S4(1, 1, 2)
+	VFMUL_S4(14, 2, 3)
+	VFSUB_S4(3, 13, 3)
+	VFMUL_S4(3, 2, 3)
+	VFSUB_S4(3, 18, 3)
+	VFMUL_S4(3, 1, 3)
+	VFMUL_S4(3, 3, 3)
+	VFMUL_S4(19, 3, 3)
+	VFADD_S4(3, 0, 0)
+	VST1.P [V0.S4], 16(R0)
+	SUB $4, R2
+	B snakep_neon_w4
+snakep_neon_scalar:
 	CBZ R2, snakep_neon_done
-	FMOVS (R1), F7
-	FMOVS F7, F0
-	FMULS F10, F0
-	FMOVS F0, F14
-	FMOVS (R3), F8
-	FDIVS F8, F0, F0
-	FRINTNS F0, F0
-	FMOVS F0, F1
-	FMOVS (R3), F8
-	FMULS F8, F1
-	FMOVS F14, F0
-	FSUBS F1, F0
-	FMOVS 4(R3), F9
-	FCMPS F0, F9
-	BLS snakep_fold_lo
-	FSUBS F8, F0
-	B snakep_sin
-snakep_fold_lo:
-	FCMPS F9, F0
-	BPL snakep_sin
-	FADDS F8, F0
-snakep_sin:
-	FMOVS F0, F1
-	FMULS F1, F1
-	FMOVS 12(R3), F12
-	FMULS F12, F1
-	FMOVS 8(R3), F11
-	FSUBS F1, F11
-	FMOVS F0, F1
-	FMULS F1, F1
-	FMULS F11, F1
-	FMOVS 8(R3), F11
-	FSUBS F1, F11
-	FMULS F0, F11
-	FMOVS F11, F6
-	FMULS F6, F6
-	FDIVS F13, F6
-	FADDS F7, F6
-	FMOVS F6, (R0)
+snakep_neon_sloop:
+	FMOVS (R1), F0
+	VDUP V0.S[0], V0.S4
+	VFMUL_S4(10, 0, 1)
+	VFDIV_S4(11, 1, 2)
+	VFRINTN_S4(2, 2)
+	VFMUL_S4(11, 2, 2)
+	VFSUB_S4(2, 1, 1)
+	VFCMGT_S4(12, 1, 3)
+	VBSL_B16(17, 15, 3)
+	VFADD_S4(3, 1, 1)
+	VFCMGT_S4(1, 16, 4)
+	VBSL_B16(17, 11, 4)
+	VFADD_S4(4, 1, 1)
+	VFMUL_S4(1, 1, 2)
+	VFMUL_S4(14, 2, 3)
+	VFSUB_S4(3, 13, 3)
+	VFMUL_S4(3, 2, 3)
+	VFSUB_S4(3, 18, 3)
+	VFMUL_S4(3, 1, 3)
+	VFMUL_S4(3, 3, 3)
+	VFMUL_S4(19, 3, 3)
+	VFADD_S4(3, 0, 0)
+	FMOVS F0, (R0)
 	ADD $4, R1
 	ADD $4, R0
 	SUB $1, R2
-	B snakep_neon_loop
+	CBNZ R2, snakep_neon_sloop
 snakep_neon_done:
 	RET
 
@@ -345,21 +425,62 @@ TEXT ·RReLUF32NEON(SB), NOSPLIT, $0-32
 	MOVD upper+28(FP), R9
 	EOR R9, R8
 	FMOVS lower+24(FP), F10
+	VDUP V10.S[0], V10.S4
 	FMOVS upper+28(FP), F11
-	FSUBS F10, F11, F12
+	VDUP V11.S[0], V11.S4
+	VFSUB_S4(10, 11, 12)
 	FMOVS actParamSnakeC<>+16(SB), F13
-rr_neon_loop:
+	VDUP V13.S[0], V13.S4
+	VEOR V14.B16, V14.B16, V14.B16
+	MOVD $0x00FFFFFF, R10
+	VDUP R10, V6.S4
+	MOVD $1664525, R11
+	MOVD $1013904223, R12
+	VMOV R8, V2.S[0]
+	MUL R11, R8
+	ADD R12, R8
+	VMOV R8, V2.S[1]
+	MUL R11, R8
+	ADD R12, R8
+	VMOV R8, V2.S[2]
+	MUL R11, R8
+	ADD R12, R8
+	VMOV R8, V2.S[3]
+	MUL R11, R8
+	ADD R12, R8
+	MOVD $158984081, R11
+	VDUP R11, V7.S4
+	MOVD $2868466484, R12
+	VDUP R12, V8.S4
+rr_neon_w4:
+	CMP $4, R2
+	BLT rr_neon_scalar
+	VLD1.P 16(R1), [V0.S4]
+	VUSHR $8, V2.S4, V5.S4
+	VAND V6.B16, V5.B16, V5.B16
+	VSCVTF_S4(5, 5)
+	VFMUL_S4(13, 5, 5)
+	VFMUL_S4(12, 5, 5)
+	VFADD_S4(10, 5, 5)
+	VFMUL_S4(0, 5, 5)
+	VFCMGT_S4(14, 0, 4)
+	VBSL_B16(5, 0, 4)
+	VST1.P [V4.S4], 16(R0)
+	VMUL_I32_S4(7, 2, 2)
+	VADD_S4(8, 2, 2)
+	SUB $4, R2
+	B rr_neon_w4
+rr_neon_scalar:
 	CBZ R2, rr_neon_done
+	MOVD $1664525, R11
+	MOVD $1013904223, R12
+rr_neon_sloop:
 	FMOVS (R1), F0
-	MOVD $0, R10
-	FMOVS R10, F14
-	FCMPS F0, F14
+	FCMPS F14, F0
 	BGT rr_neon_pos
 	MOVD R8, R9
-	MOVD $1664525, R10
-	MUL R10, R9
-	ADD $1013904223, R9
-	MOVD R9, R8
+	MUL R11, R8
+	ADD R12, R8
 	LSR $8, R9
 	AND $0x00FFFFFF, R9
 	SCVTFS R9, F2
@@ -375,6 +496,6 @@ rr_neon_step:
 	ADD $4, R1
 	ADD $4, R0
 	SUB $1, R2
-	B rr_neon_loop
+	CBNZ R2, rr_neon_sloop
 rr_neon_done:
 	RET

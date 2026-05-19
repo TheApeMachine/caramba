@@ -68,13 +68,13 @@ var (
 	}
 	eluAlphaF32Funcs = []paramSlopeKernelImpl{
 		{ELUAlphaF32AVX512, "avx512", cpu.X86.HasAVX512F},
-		{ELUAlphaF32AVX2, "avx2", cpu.X86.HasAVX2},
+		{ELUAlphaF32AVX2, "avx2", cpu.X86.HasAVX2 && cpu.X86.HasFMA},
 		{ELUAlphaF32SSE2, "sse2", cpu.X86.HasSSE2},
 		{ELUAlphaF32Generic, "generic", true},
 	}
 	celuAlphaF32Funcs = []paramSlopeKernelImpl{
 		{CELUAlphaF32AVX512, "avx512", cpu.X86.HasAVX512F},
-		{CELUAlphaF32AVX2, "avx2", cpu.X86.HasAVX2},
+		{CELUAlphaF32AVX2, "avx2", cpu.X86.HasAVX2 && cpu.X86.HasFMA},
 		{CELUAlphaF32SSE2, "sse2", cpu.X86.HasSSE2},
 		{CELUAlphaF32Generic, "generic", true},
 	}

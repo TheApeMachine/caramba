@@ -20,7 +20,8 @@ preuv_neon_w4:
 	VLD1.P 16(R2), [V10.S4]
 	VFCMGT_S4(8, 0, 4)
 	VFMUL_S4(10, 0, 5)
-	VBSL_B16(4, 0, 7)
+	VORR V4.B16, V4.B16, V7.B16
+	VBSL_B16(5, 0, 7)
 	VST1.P [V7.S4], 16(R0)
 	SUB $4, R3
 	B preuv_neon_w4
@@ -33,7 +34,8 @@ preuv_neon_sloop:
 	VDUP V10.S[0], V10.S4
 	VFCMGT_S4(8, 0, 4)
 	VFMUL_S4(10, 0, 5)
-	VBSL_B16(4, 0, 7)
+	VORR V4.B16, V4.B16, V7.B16
+	VBSL_B16(5, 0, 7)
 	FMOVS F7, (R0)
 	ADD $4, R1
 	ADD $4, R2

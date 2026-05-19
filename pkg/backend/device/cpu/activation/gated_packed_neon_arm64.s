@@ -3,7 +3,7 @@
 #include "textflag.h"
 
 // func SwiGLUPackedF32NEON(dst, packed *float32, batch, halfCount int)
-TEXT ·SwiGLUPackedF32NEON(SB), NOSPLIT, $32-28
+TEXT ·SwiGLUPackedF32NEON(SB), NOSPLIT, $32-32
 	MOVD dst+0(FP), R4
 	MOVD packed+8(FP), R5
 	MOVD batch+16(FP), R6
@@ -27,7 +27,7 @@ swiglu_packed_neon_done:
 	RET
 
 // func LinGLUPackedF32NEON(dst, packed *float32, batch, halfCount int)
-TEXT ·LinGLUPackedF32NEON(SB), NOSPLIT, $32-28
+TEXT ·LinGLUPackedF32NEON(SB), NOSPLIT, $32-32
 	MOVD dst+0(FP), R4
 	MOVD packed+8(FP), R5
 	MOVD batch+16(FP), R6
@@ -51,7 +51,7 @@ linglu_packed_neon_done:
 	RET
 
 // func ReGLUPackedF32NEON(dst, packed *float32, batch, halfCount int)
-TEXT ·ReGLUPackedF32NEON(SB), NOSPLIT, $32-28
+TEXT ·ReGLUPackedF32NEON(SB), NOSPLIT, $32-32
 	MOVD dst+0(FP), R4
 	MOVD packed+8(FP), R5
 	MOVD batch+16(FP), R6
@@ -75,7 +75,7 @@ reglu_packed_neon_done:
 	RET
 
 // func GLUPackedF32NEON(dst, packed *float32, batch, halfCount int)
-TEXT ·GLUPackedF32NEON(SB), NOSPLIT, $32-28
+TEXT ·GLUPackedF32NEON(SB), NOSPLIT, $32-32
 	MOVD dst+0(FP), R4
 	MOVD packed+8(FP), R5
 	MOVD batch+16(FP), R6
@@ -99,7 +99,7 @@ glu_packed_neon_done:
 	RET
 
 // func SiGLUPackedF32NEON(dst, packed *float32, batch, halfCount int)
-TEXT ·SiGLUPackedF32NEON(SB), NOSPLIT, $32-28
+TEXT ·SiGLUPackedF32NEON(SB), NOSPLIT, $32-32
 	MOVD dst+0(FP), R4
 	MOVD packed+8(FP), R5
 	MOVD batch+16(FP), R6
@@ -123,7 +123,7 @@ siglu_packed_neon_done:
 	RET
 
 // func SeGLUPackedF32NEON(dst, packed *float32, batch, halfCount int)
-TEXT ·SeGLUPackedF32NEON(SB), NOSPLIT, $32-28
+TEXT ·SeGLUPackedF32NEON(SB), NOSPLIT, $32-32
 	MOVD dst+0(FP), R4
 	MOVD packed+8(FP), R5
 	MOVD batch+16(FP), R6
@@ -147,7 +147,7 @@ seglu_packed_neon_done:
 	RET
 
 // func GeGLUPackedF32NEON(dst, packed *float32, batch, halfCount int)
-TEXT ·GeGLUPackedF32NEON(SB), NOSPLIT, $32-28
+TEXT ·GeGLUPackedF32NEON(SB), NOSPLIT, $32-32
 	MOVD dst+0(FP), R4
 	MOVD packed+8(FP), R5
 	MOVD batch+16(FP), R6
@@ -171,7 +171,7 @@ geglu_packed_neon_done:
 	RET
 
 // func GeGLUTanhPackedF32NEON(dst, packed *float32, batch, halfCount int)
-TEXT ·GeGLUTanhPackedF32NEON(SB), NOSPLIT, $32-28
+TEXT ·GeGLUTanhPackedF32NEON(SB), NOSPLIT, $32-32
 	MOVD dst+0(FP), R4
 	MOVD packed+8(FP), R5
 	MOVD batch+16(FP), R6

@@ -28,53 +28,53 @@
 #define VMIN_S4(m, n, d)    WORD $(0x6EA0D400 | ((m) << 16) | ((n) << 5) | (d))
 
 
-DATA actExtraExpC<>+0(SB)/4, $1.4426950408889634
-DATA actExtraExpC<>+4(SB)/4, $0.6931471805599453
-DATA actExtraExpC<>+8(SB)/4, $127.0
-DATA actExtraExpC<>+12(SB)/4, $0.00019841270
-DATA actExtraExpC<>+16(SB)/4, $0.0013888889
-DATA actExtraExpC<>+20(SB)/4, $0.008333334
-DATA actExtraExpC<>+24(SB)/4, $0.041666667
-DATA actExtraExpC<>+28(SB)/4, $0.16666667
-DATA actExtraExpC<>+32(SB)/4, $0.5
-DATA actExtraExpC<>+36(SB)/4, $1.0
-DATA actExtraExpC<>+40(SB)/4, $1.0
-DATA actExtraExpC<>+44(SB)/4, $2.0
-GLOBL actExtraExpC<>(SB), 8, $48
+DATA actExtraExpC+0(SB)/4, $1.4426950408889634
+DATA actExtraExpC+4(SB)/4, $0.6931471805599453
+DATA actExtraExpC+8(SB)/4, $127.0
+DATA actExtraExpC+12(SB)/4, $0.00019841270
+DATA actExtraExpC+16(SB)/4, $0.0013888889
+DATA actExtraExpC+20(SB)/4, $0.008333334
+DATA actExtraExpC+24(SB)/4, $0.041666667
+DATA actExtraExpC+28(SB)/4, $0.16666667
+DATA actExtraExpC+32(SB)/4, $0.5
+DATA actExtraExpC+36(SB)/4, $1.0
+DATA actExtraExpC+40(SB)/4, $1.0
+DATA actExtraExpC+44(SB)/4, $2.0
+GLOBL actExtraExpC(SB), 8, $48
 
 
-DATA actExtraLogC<>+0(SB)/4, $0.6931471805599453
-DATA actExtraLogC<>+4(SB)/4, $1.0
-DATA actExtraLogC<>+8(SB)/4, $0.09090909
-DATA actExtraLogC<>+12(SB)/4, $0.11111111
-DATA actExtraLogC<>+16(SB)/4, $0.14285715
-DATA actExtraLogC<>+20(SB)/4, $0.20000000
-DATA actExtraLogC<>+24(SB)/4, $0.33333334
-DATA actExtraLogC<>+28(SB)/4, $2.0
-GLOBL actExtraLogC<>(SB), 8, $32
+DATA actExtraLogC+0(SB)/4, $0.6931471805599453
+DATA actExtraLogC+4(SB)/4, $1.0
+DATA actExtraLogC+8(SB)/4, $0.09090909
+DATA actExtraLogC+12(SB)/4, $0.11111111
+DATA actExtraLogC+16(SB)/4, $0.14285715
+DATA actExtraLogC+20(SB)/4, $0.20000000
+DATA actExtraLogC+24(SB)/4, $0.33333334
+DATA actExtraLogC+28(SB)/4, $2.0
+GLOBL actExtraLogC(SB), 8, $32
 
 
-DATA actExtraMiscC<>+0(SB)/4, $0.01
-DATA actExtraMiscC<>+4(SB)/4, $1.6732632423543772
-DATA actExtraMiscC<>+8(SB)/4, $1.0507009873554805
-DATA actExtraMiscC<>+12(SB)/4, $20.0
-DATA actExtraMiscC<>+16(SB)/4, $0.5
-DATA actExtraMiscC<>+20(SB)/4, $6.0
-DATA actExtraMiscC<>+24(SB)/4, $3.0
-DATA actExtraMiscC<>+28(SB)/4, $-1.0
-DATA actExtraMiscC<>+32(SB)/4, $1.702
-DATA actExtraMiscC<>+36(SB)/4, $0.7071067811865475
-DATA actExtraMiscC<>+40(SB)/4, $135135.0
-DATA actExtraMiscC<>+44(SB)/4, $17325.0
-DATA actExtraMiscC<>+48(SB)/4, $378.0
-DATA actExtraMiscC<>+52(SB)/4, $62370.0
-DATA actExtraMiscC<>+56(SB)/4, $3150.0
-DATA actExtraMiscC<>+60(SB)/4, $28.0
-DATA actExtraMiscC<>+64(SB)/4, $4.92
-DATA actExtraMiscC<>+68(SB)/4, $-4.92
-DATA actExtraMiscC<>+72(SB)/4, $0.7978845608028654
-DATA actExtraMiscC<>+76(SB)/4, $0.044715
-GLOBL actExtraMiscC<>(SB), 8, $80
+DATA actExtraMiscC+0(SB)/4, $0.01
+DATA actExtraMiscC+4(SB)/4, $1.6732632423543772
+DATA actExtraMiscC+8(SB)/4, $1.0507009873554805
+DATA actExtraMiscC+12(SB)/4, $20.0
+DATA actExtraMiscC+16(SB)/4, $0.5
+DATA actExtraMiscC+20(SB)/4, $6.0
+DATA actExtraMiscC+24(SB)/4, $3.0
+DATA actExtraMiscC+28(SB)/4, $-1.0
+DATA actExtraMiscC+32(SB)/4, $1.702
+DATA actExtraMiscC+36(SB)/4, $0.7071067811865475
+DATA actExtraMiscC+40(SB)/4, $135135.0
+DATA actExtraMiscC+44(SB)/4, $17325.0
+DATA actExtraMiscC+48(SB)/4, $378.0
+DATA actExtraMiscC+52(SB)/4, $62370.0
+DATA actExtraMiscC+56(SB)/4, $3150.0
+DATA actExtraMiscC+60(SB)/4, $28.0
+DATA actExtraMiscC+64(SB)/4, $4.92
+DATA actExtraMiscC+68(SB)/4, $-4.92
+DATA actExtraMiscC+72(SB)/4, $0.7978845608028654
+DATA actExtraMiscC+76(SB)/4, $0.044715
+GLOBL actExtraMiscC(SB), 8, $80
 
 
 #define NEON_EXP_BODY(in, out) \
@@ -142,7 +142,7 @@ TEXT ·Log1pF32NEON(SB), NOSPLIT, $0-24
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
 
-MOVD $actExtraLogC<>(SB), R3
+MOVD $actExtraLogC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -192,7 +192,7 @@ TEXT ·Expm1F32NEON(SB), NOSPLIT, $0-24
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
 
-MOVD $actExtraExpC<>(SB), R3
+MOVD $actExtraExpC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -238,7 +238,7 @@ TEXT ·LogSigmoidF32NEON(SB), NOSPLIT, $0-24
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
 
-MOVD $actExtraExpC<>(SB), R3
+MOVD $actExtraExpC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -253,7 +253,7 @@ FMOVS 40(R3), F26
 VFCVTZS_S4(18, 27)
 FMOVS 44(R3), F28
 
-MOVD $actExtraLogC<>(SB), R3
+MOVD $actExtraLogC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -319,7 +319,7 @@ TEXT ·GeluF32NEON(SB), NOSPLIT, $0-24
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
 
-MOVD $actExtraExpC<>(SB), R3
+MOVD $actExtraExpC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -333,7 +333,7 @@ FMOVS 36(R3), F25
 FMOVS 40(R3), F26
 VFCVTZS_S4(18, 27)
 FMOVS 44(R3), F28
-    MOVD $actExtraMiscC<>(SB), R3
+    MOVD $actExtraMiscC(SB), R3
     FMOVS 32(R3), F24
 
         loop4:
@@ -402,13 +402,11 @@ TEXT ·LeakyReLUF32NEON(SB), NOSPLIT, $0-24
     MOVD dst+0(FP), R0
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
-    MOVD $actExtraMiscC<>(SB), R3
+    MOVD $actExtraMiscC(SB), R3
 
 VEOR V8.B16, V8.B16, V8.B16
 FMOVS 0(R3), F29
-VFCMGT_S4(8, 0, 4)
-VFMUL_S4(29, 0, 5)
-VBSL_B16(4, 0, 7)
+VDUP V29.S[0], V29.S4
 
     loop4:
         CMP  $4, R2
@@ -443,7 +441,7 @@ TEXT ·ELUF32NEON(SB), NOSPLIT, $0-24
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
 
-MOVD $actExtraExpC<>(SB), R3
+MOVD $actExtraExpC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -458,12 +456,7 @@ FMOVS 40(R3), F26
 VFCVTZS_S4(18, 27)
 FMOVS 44(R3), F28
 
-VMOV_B16(0, 10)
 VEOR V8.B16, V8.B16, V8.B16
-VFCMGT_S4(8, 0, 4)
-NEON_EXP_BODY(0, 6)
-VFSUB_S4(26, 6, 6)
-VBSL_B16(4, 10, 7)
 
     loop4:
         CMP  $4, R2
@@ -502,7 +495,7 @@ TEXT ·CELUF32NEON(SB), NOSPLIT, $0-24
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
 
-MOVD $actExtraExpC<>(SB), R3
+MOVD $actExtraExpC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -517,12 +510,7 @@ FMOVS 40(R3), F26
 VFCVTZS_S4(18, 27)
 FMOVS 44(R3), F28
 
-VMOV_B16(0, 10)
 VEOR V8.B16, V8.B16, V8.B16
-VFCMGT_S4(8, 0, 4)
-NEON_EXP_BODY(0, 6)
-VFSUB_S4(26, 6, 6)
-VBSL_B16(4, 10, 7)
 
     loop4:
         CMP  $4, R2
@@ -561,7 +549,7 @@ TEXT ·SELUF32NEON(SB), NOSPLIT, $0-24
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
 
-MOVD $actExtraExpC<>(SB), R3
+MOVD $actExtraExpC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -575,18 +563,9 @@ FMOVS 36(R3), F25
 FMOVS 40(R3), F26
 VFCVTZS_S4(18, 27)
 FMOVS 44(R3), F28
-    MOVD $actExtraMiscC<>(SB), R3
+    MOVD $actExtraMiscC(SB), R3
 
-VMOV_B16(0, 10)
 VEOR V8.B16, V8.B16, V8.B16
-FMOVS 8(R3), F29
-FMOVS 4(R3), F30
-VFCMGT_S4(8, 0, 4)
-VFMUL_S4(29, 0, 5)
-NEON_EXP_BODY(0, 6)
-VFSUB_S4(26, 6, 6)
-VFMUL_S4(30, 6, 6)
-VBSL_B16(4, 5, 7)
 
     loop4:
         CMP  $4, R2
@@ -631,7 +610,7 @@ TEXT ·SoftplusF32NEON(SB), NOSPLIT, $0-24
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
 
-MOVD $actExtraExpC<>(SB), R3
+MOVD $actExtraExpC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -646,7 +625,7 @@ FMOVS 40(R3), F26
 VFCVTZS_S4(18, 27)
 FMOVS 44(R3), F28
 
-MOVD $actExtraLogC<>(SB), R3
+MOVD $actExtraLogC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -664,16 +643,7 @@ VDUP V25.S[0], V25.S4
 MOVD $127, R6
 VMOV R6, V26.S[0]
 VDUP V26.S[0], V26.S4
-    MOVD $actExtraMiscC<>(SB), R3
-
-FMOVS 12(R3), F29
-VFCMGT_S4(29, 0, 4)
-VMOV_B16(0, 7)
-VFNEG_S4(0, 0)
-NEON_EXP_BODY(0, 6)
-VFADD_S4(26, 6, 6)
-NEON_LOG_BODY(6, 5)
-VBSL_B16(4, 7, 5)
+    MOVD $actExtraMiscC(SB), R3
 
     loop4:
         CMP  $4, R2
@@ -718,7 +688,7 @@ TEXT ·MishF32NEON(SB), NOSPLIT, $0-24
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
 
-MOVD $actExtraExpC<>(SB), R3
+MOVD $actExtraExpC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -733,7 +703,7 @@ FMOVS 40(R3), F26
 VFCVTZS_S4(18, 27)
 FMOVS 44(R3), F28
 
-MOVD $actExtraLogC<>(SB), R3
+MOVD $actExtraLogC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -751,19 +721,7 @@ VDUP V25.S[0], V25.S4
 MOVD $127, R6
 VMOV R6, V26.S[0]
 VDUP V26.S[0], V26.S4
-    MOVD $actExtraMiscC<>(SB), R3
-
-VMOV_B16(0, 10)
-FMOVS 12(R3), F29
-VFCMGT_S4(29, 0, 4)
-VMOV_B16(0, 7)
-VFNEG_S4(0, 0)
-NEON_EXP_BODY(0, 6)
-VFADD_S4(26, 6, 6)
-NEON_LOG_BODY(6, 5)
-VBSL_B16(4, 7, 5)
-NEON_TANH_PADÉ(5, 6)
-VFMUL_S4(10, 6, 7)
+    MOVD $actExtraMiscC(SB), R3
 
     loop4:
         CMP  $4, R2
@@ -814,6 +772,9 @@ TEXT ·SoftsignF32NEON(SB), NOSPLIT, $0-24
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
     VEOR V8.B16, V8.B16, V8.B16
+    MOVD $actExtraExpC(SB), R3
+    FMOVS 36(R3), F26
+    VDUP V26.S[0], V26.S4
 
         loop4:
             CMP  $4, R2
@@ -857,18 +818,9 @@ TEXT ·HardSigmoidF32NEON(SB), NOSPLIT, $0-24
     MOVD dst+0(FP), R0
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
-    MOVD $actExtraMiscC<>(SB), R3
+    MOVD $actExtraMiscC(SB), R3
 
-FMOVS 16(R3), F29
-VFMUL_S4(29, 0, 7)
-VFADD_S4(29, 7, 7)
 VEOR V8.B16, V8.B16, V8.B16
-VFCMGT_S4(8, 7, 4)
-VBSL_B16(4, 7, 7)
-FMOVS 4(R3), F30
-VFCMLE_S4(30, 7, 4)
-FMOVS 26(R3), F30
-VBSL_B16(4, 30, 7)
 
     loop4:
         CMP  $4, R2
@@ -916,22 +868,9 @@ TEXT ·HardSwishF32NEON(SB), NOSPLIT, $0-24
     MOVD dst+0(FP), R0
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
-    MOVD $actExtraMiscC<>(SB), R3
+    MOVD $actExtraMiscC(SB), R3
 
-VMOV_B16(0, 10)
-FMOVS 24(R3), F29
-VFADD_S4(29, 0, 0)
-FMOVS 16(R3), F29
-VFMUL_S4(29, 0, 7)
-VFADD_S4(29, 7, 7)
 VEOR V8.B16, V8.B16, V8.B16
-VFCMGT_S4(8, 7, 4)
-VBSL_B16(4, 7, 7)
-FMOVS 4(R3), F30
-VFCMLE_S4(30, 7, 4)
-FMOVS 26(R3), F30
-VBSL_B16(4, 30, 7)
-VFMUL_S4(10, 7, 7)
 
     loop4:
         CMP  $4, R2
@@ -987,12 +926,7 @@ TEXT ·HardTanhF32NEON(SB), NOSPLIT, $0-24
     MOVD dst+0(FP), R0
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
-    MOVD $actExtraMiscC<>(SB), R3
-
-FMOVS 28(R3), F29
-FMOVS 4(R3), F30
-VMAX_S4(29, 0, 7)
-VMIN_S4(30, 7, 7)
+    MOVD $actExtraMiscC(SB), R3
 
     loop4:
         CMP  $4, R2
@@ -1028,7 +962,7 @@ TEXT ·HardGeluF32NEON(SB), NOSPLIT, $0-24
     MOVD dst+0(FP), R0
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
-    MOVD $actExtraMiscC<>(SB), R3
+    MOVD $actExtraMiscC(SB), R3
 
 VMOV_B16(0, 10)
 FMOVS 24(R3), F29
@@ -1094,7 +1028,7 @@ TEXT ·QuickGeluF32NEON(SB), NOSPLIT, $0-24
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
 
-MOVD $actExtraExpC<>(SB), R3
+MOVD $actExtraExpC(SB), R3
 FMOVS  0(R3), F16
 FMOVS  4(R3), F17
 FMOVS  8(R3), F18
@@ -1108,7 +1042,7 @@ FMOVS 36(R3), F25
 FMOVS 40(R3), F26
 VFCVTZS_S4(18, 27)
 FMOVS 44(R3), F28
-    MOVD $actExtraMiscC<>(SB), R3
+    MOVD $actExtraMiscC(SB), R3
 
 VMOV_B16(0, 10)
 FMOVS 32(R3), F29
@@ -1161,7 +1095,7 @@ TEXT ·TanhShrinkF32NEON(SB), NOSPLIT, $0-24
     MOVD dst+0(FP), R0
     MOVD src+8(FP), R1
     MOVD n+16(FP), R2
-    MOVD $actExtraMiscC<>(SB), R3
+    MOVD $actExtraMiscC(SB), R3
 
 VMOV_B16(0, 10)
 NEON_TANH_PADÉ(0, 6)

@@ -24,8 +24,7 @@ func SnakeF32AVX2(dst, src *float32, count int, alpha float32)
 func SnakeF32SSE2(dst, src *float32, count int, alpha float32)
 func SnakeParametricF32AVX2(dst, src *float32, count int, alpha, beta float32)
 func SnakeParametricF32SSE2(dst, src *float32, count int, alpha, beta float32)
-func RReLUF32AVX2(dst, src *float32, count int, lower, upper float32)
-func RReLUF32SSE2(dst, src *float32, count int, lower, upper float32)
+	func RReLUF32SSE2(dst, src *float32, count int, lower, upper float32)
 func PReLUVF32AVX2(dst, src, slopes *float32, count int)
 func PReLUVF32SSE2(dst, src, slopes *float32, count int)
 
@@ -51,12 +50,12 @@ var (
 		{HardTanhRangeF32Generic, "generic", true},
 	}
 	eluAlphaF32Funcs = []paramSlopeKernelImpl{
-		{ELUAlphaF32AVX2, "avx2", cpu.X86.HasAVX2},
+		{ELUAlphaF32AVX2, "avx2", cpu.X86.HasAVX2 && cpu.X86.HasFMA},
 		{ELUAlphaF32SSE2, "sse2", cpu.X86.HasSSE2},
 		{ELUAlphaF32Generic, "generic", true},
 	}
 	celuAlphaF32Funcs = []paramSlopeKernelImpl{
-		{CELUAlphaF32AVX2, "avx2", cpu.X86.HasAVX2},
+		{CELUAlphaF32AVX2, "avx2", cpu.X86.HasAVX2 && cpu.X86.HasFMA},
 		{CELUAlphaF32SSE2, "sse2", cpu.X86.HasSSE2},
 		{CELUAlphaF32Generic, "generic", true},
 	}
@@ -81,7 +80,6 @@ var (
 		{SnakeParametricF32Generic, "generic", true},
 	}
 	rreluF32Funcs = []paramRReluKernelImpl{
-		{RReLUF32AVX2, "avx2", cpu.X86.HasAVX2},
 		{RReLUF32SSE2, "sse2", cpu.X86.HasSSE2},
 		{RReLUF32Generic, "generic", true},
 	}

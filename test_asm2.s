@@ -1,0 +1,3 @@
+TEXT ·test2(SB),0,$0
+	PADDL X1, X2
+	RET

@@ -1,0 +1,3 @@
+TEXT ·test(SB),0,$0
+	VCMPGTPS Y9, Y0, Y2
+	RET

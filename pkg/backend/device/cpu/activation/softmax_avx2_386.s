@@ -255,8 +255,8 @@ reduce_max_avx2_w8:
 reduce_max_avx2_w4:
 	CMPL CX, $4
 	JL reduce_max_avx2_extract
-	VMOVUPS (SI), Y1
-	VMAXPS Y1, Y0, Y0
+	VMOVUPS (SI), X1
+	VMAXPS X1, X0, X0
 	ADDL $16, SI
 	SUBL $4, CX
 	JMP reduce_max_avx2_w4

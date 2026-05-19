@@ -48,7 +48,41 @@ lrs_neon_done:
 
 // func PReLUF32NEON(dst, src *float32, count int, negativeSlope float32)
 TEXT ·PReLUF32NEON(SB), NOSPLIT, $0-28
-    JMP ·LeakyReLUSlopeF32NEON(SB)
+    MOVD dst+0(FP), R0
+    MOVD src+8(FP), R1
+    MOVD count+16(FP), R2
+    FMOVS negativeSlope+24(FP), F29
+    VDUP V29.S[0], V29.S4
+    VEOR V8.B16, V8.B16, V8.B16
+
+prelu_neon_w4:
+    CMP  $4, R2
+    BLT  prelu_neon_scalar
+    VLD1.P 16(R1), [V0.S4]
+    VFCMGT_S4(8, 0, 4)
+    VFMUL_S4(29, 0, 5)
+    VBSL_B16(4, 0, 7)
+    VST1.P [V7.S4], 16(R0)
+    SUB  $4, R2
+    B    prelu_neon_w4
+
+prelu_neon_scalar:
+    CBZ  R2, prelu_neon_done
+
+prelu_neon_sloop:
+    FMOVS (R1), F0
+    VDUP V0.S[0], V0.S4
+    VFCMGT_S4(8, 0, 4)
+    VFMUL_S4(29, 0, 5)
+    VBSL_B16(4, 0, 7)
+    FMOVS F7, (R0)
+    ADD  $4, R1
+    ADD  $4, R0
+    SUB  $1, R2
+    CBNZ R2, prelu_neon_sloop
+
+prelu_neon_done:
+    RET
 
 // func ThresholdF32NEON(dst, src *float32, count int, threshold float32)
 TEXT ·ThresholdF32NEON(SB), NOSPLIT, $0-28
@@ -63,6 +97,7 @@ thr_neon_w4:
     BLT  thr_neon_scalar
     VLD1.P 16(R1), [V0.S4]
     VFCMGT_S4(29, 0, 4)
+    VEOR V7.B16, V7.B16, V7.B16
     VBSL_B16(4, 0, 7)
     VST1.P [V7.S4], 16(R0)
     SUB  $4, R2
@@ -75,6 +110,7 @@ thr_neon_sloop:
     FMOVS (R1), F0
     VDUP V0.S[0], V0.S4
     VFCMGT_S4(29, 0, 4)
+    VEOR V7.B16, V7.B16, V7.B16
     VBSL_B16(4, 0, 7)
     FMOVS F7, (R0)
     ADD  $4, R1

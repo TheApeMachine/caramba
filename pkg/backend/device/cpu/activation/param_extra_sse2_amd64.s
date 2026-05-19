@@ -11,9 +11,9 @@ GLOBL actSnakeC<>(SB), 8, $20
 
 // func CELUAlphaF32SSE2(dst, src *float32, count int, alpha float32)
 TEXT ·CELUAlphaF32SSE2(SB), NOSPLIT, $0-28
-	MOVL dst+0(FP), DI
-	MOVL src+8(FP), SI
-	MOVL count+16(FP), CX
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ count+16(FP), CX
 	MOVSS alpha+24(FP), X6
 	VBROADCASTSS X6, X6
 	MOVL $actX86ExpC<>(SB), AX
@@ -162,9 +162,9 @@ cla_sse2_done:
 
 // func HardShrinkF32SSE2(dst, src *float32, count int, lambda float32)
 TEXT ·HardShrinkF32SSE2(SB), NOSPLIT, $0-28
-	MOVL dst+0(FP), DI
-	MOVL src+8(FP), SI
-	MOVL count+16(FP), CX
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ count+16(FP), CX
 	MOVSS lambda+24(FP), X10
 	VBROADCASTSS X10, X10
 	VPBROADCASTD actX86AbsMask<>(SB), X11
@@ -211,9 +211,9 @@ hs_sse2_done:
 
 // func SoftShrinkF32SSE2(dst, src *float32, count int, lambda float32)
 TEXT ·SoftShrinkF32SSE2(SB), NOSPLIT, $0-28
-	MOVL dst+0(FP), DI
-	MOVL src+8(FP), SI
-	MOVL count+16(FP), CX
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ count+16(FP), CX
 	MOVSS lambda+24(FP), X10
 	VBROADCASTSS X10, X10
 	VXORPS X1, X1, X1
@@ -278,9 +278,9 @@ ss_sse2_done:
 
 // func SnakeF32SSE2(dst, src *float32, count int, alpha float32)
 TEXT ·SnakeF32SSE2(SB), NOSPLIT, $0-28
-	MOVL dst+0(FP), DI
-	MOVL src+8(FP), SI
-	MOVL count+16(FP), CX
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ count+16(FP), CX
 	MOVSS alpha+24(FP), X10
 	MOVL $actSnakeC<>(SB), AX
 	MOVSS (AX), X8
@@ -334,9 +334,9 @@ snake_sse2_done:
 
 // func SnakeParametricF32SSE2(dst, src *float32, count int, alpha, beta float32)
 TEXT ·SnakeParametricF32SSE2(SB), NOSPLIT, $0-32
-	MOVL dst+0(FP), DI
-	MOVL src+8(FP), SI
-	MOVL count+16(FP), CX
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ count+16(FP), CX
 	MOVSS alpha+24(FP), X10
 	MOVSS beta+28(FP), X13
 	MOVL $actSnakeC<>(SB), AX
@@ -391,9 +391,9 @@ snakep_sse2_done:
 
 // func RReLUF32SSE2(dst, src *float32, count int, lower, upper float32)
 TEXT ·RReLUF32SSE2(SB), NOSPLIT, $0-32
-	MOVL dst+0(FP), DI
-	MOVL src+8(FP), SI
-	MOVL count+16(FP), CX
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ count+16(FP), CX
 	MOVL $0xA5A5A5A5, R8
 	MOVL lower+24(FP), R9
 	XORL R9, R8

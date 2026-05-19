@@ -6,6 +6,14 @@ func LeakyReLUSlopeF32NEON(dst, src *float32, count int, negativeSlope float32)
 func PReLUF32NEON(dst, src *float32, count int, negativeSlope float32)
 func ThresholdF32NEON(dst, src *float32, count int, threshold float32)
 func HardTanhRangeF32NEON(dst, src *float32, count int, minVal, maxVal float32)
+func ELUAlphaF32NEON(dst, src *float32, count int, alpha float32)
+func CELUAlphaF32NEON(dst, src *float32, count int, alpha float32)
+func HardShrinkF32NEON(dst, src *float32, count int, lambda float32)
+func SoftShrinkF32NEON(dst, src *float32, count int, lambda float32)
+func SnakeF32NEON(dst, src *float32, count int, alpha float32)
+func SnakeParametricF32NEON(dst, src *float32, count int, alpha, beta float32)
+func RReLUF32NEON(dst, src *float32, count int, lower, upper float32)
+func PReLUVF32NEON(dst, src, slopes *float32, count int)
 
 var (
 	leakyReLUSlopeF32Funcs = []paramSlopeKernelImpl{
@@ -57,12 +65,3 @@ var (
 		{PReLUVF32Generic, "generic", true},
 	}
 )
-
-func ELUAlphaF32NEON(dst, src *float32, count int, alpha float32)
-func CELUAlphaF32NEON(dst, src *float32, count int, alpha float32)
-func HardShrinkF32NEON(dst, src *float32, count int, lambda float32)
-func SoftShrinkF32NEON(dst, src *float32, count int, lambda float32)
-func SnakeF32NEON(dst, src *float32, count int, alpha float32)
-func SnakeParametricF32NEON(dst, src *float32, count int, alpha, beta float32)
-func RReLUF32NEON(dst, src *float32, count int, lower, upper float32)
-func PReLUVF32NEON(dst, src, slopes *float32, count int)

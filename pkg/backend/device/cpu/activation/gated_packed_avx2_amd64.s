@@ -3,7 +3,7 @@
 #include "textflag.h"
 
 // func SwiGLUPackedF32AVX2(dst, packed *float32, batch, halfCount int)
-TEXT ·SwiGLUPackedF32AVX2(SB), NOSPLIT, $32-28
+TEXT ·SwiGLUPackedF32AVX2(SB), NOSPLIT, $32-32
 	MOVQ dst+0(FP), DI
 	MOVQ packed+8(FP), SI
 	MOVQ batch+16(FP), BX
@@ -32,7 +32,7 @@ swiglu_packed_done:
 	RET
 
 // func LinGLUPackedF32AVX2(dst, packed *float32, batch, halfCount int)
-TEXT ·LinGLUPackedF32AVX2(SB), NOSPLIT, $32-28
+TEXT ·LinGLUPackedF32AVX2(SB), NOSPLIT, $32-32
 	MOVQ dst+0(FP), DI
 	MOVQ packed+8(FP), SI
 	MOVQ batch+16(FP), BX
@@ -61,7 +61,7 @@ linglu_packed_done:
 	RET
 
 // func ReGLUPackedF32AVX2(dst, packed *float32, batch, halfCount int)
-TEXT ·ReGLUPackedF32AVX2(SB), NOSPLIT, $32-28
+TEXT ·ReGLUPackedF32AVX2(SB), NOSPLIT, $32-32
 	MOVQ dst+0(FP), DI
 	MOVQ packed+8(FP), SI
 	MOVQ batch+16(FP), BX
@@ -90,7 +90,7 @@ reglu_packed_done:
 	RET
 
 // func GLUPackedF32AVX2(dst, packed *float32, batch, halfCount int)
-TEXT ·GLUPackedF32AVX2(SB), NOSPLIT, $32-28
+TEXT ·GLUPackedF32AVX2(SB), NOSPLIT, $32-32
 	MOVQ dst+0(FP), DI
 	MOVQ packed+8(FP), SI
 	MOVQ batch+16(FP), BX
@@ -119,7 +119,7 @@ glu_packed_done:
 	RET
 
 // func SiGLUPackedF32AVX2(dst, packed *float32, batch, halfCount int)
-TEXT ·SiGLUPackedF32AVX2(SB), NOSPLIT, $32-28
+TEXT ·SiGLUPackedF32AVX2(SB), NOSPLIT, $32-32
 	MOVQ dst+0(FP), DI
 	MOVQ packed+8(FP), SI
 	MOVQ batch+16(FP), BX
@@ -148,7 +148,7 @@ siglu_packed_done:
 	RET
 
 // func SeGLUPackedF32AVX2(dst, packed *float32, batch, halfCount int)
-TEXT ·SeGLUPackedF32AVX2(SB), NOSPLIT, $32-28
+TEXT ·SeGLUPackedF32AVX2(SB), NOSPLIT, $32-32
 	MOVQ dst+0(FP), DI
 	MOVQ packed+8(FP), SI
 	MOVQ batch+16(FP), BX
@@ -177,7 +177,7 @@ seglu_packed_done:
 	RET
 
 // func GeGLUPackedF32AVX2(dst, packed *float32, batch, halfCount int)
-TEXT ·GeGLUPackedF32AVX2(SB), NOSPLIT, $32-28
+TEXT ·GeGLUPackedF32AVX2(SB), NOSPLIT, $32-32
 	MOVQ dst+0(FP), DI
 	MOVQ packed+8(FP), SI
 	MOVQ batch+16(FP), BX
@@ -206,7 +206,7 @@ geglu_packed_done:
 	RET
 
 // func GeGLUTanhPackedF32AVX2(dst, packed *float32, batch, halfCount int)
-TEXT ·GeGLUTanhPackedF32AVX2(SB), NOSPLIT, $32-28
+TEXT ·GeGLUTanhPackedF32AVX2(SB), NOSPLIT, $32-32
 	MOVQ dst+0(FP), DI
 	MOVQ packed+8(FP), SI
 	MOVQ batch+16(FP), BX

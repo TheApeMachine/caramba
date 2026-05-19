@@ -525,7 +525,7 @@ TEXT ·GeluTanhF32NEON(SB), NOSPLIT, $0-24
 
 gelu_loop4:
     CMP  $4, R2
-    BLT  gelu_done
+    BLT  gelu_scalar_tail
     VLD1.P 16(R1), [V0.S4]
     // Stash x in V10 (we need it for the final multiply).
     VMOV_B16(0, 10)
@@ -552,6 +552,32 @@ gelu_loop4:
     SUB  $4, R2
     B    gelu_loop4
 
+gelu_scalar_tail:
+    CBZ  R2, gelu_done
+
+gelu_scalar_loop:
+    FMOVS (R1), F0
+    VDUP V0.S[0], V0.S4
+    VMOV_B16(0, 10)
+    VFMUL_S4(0, 0, 11)
+    VFMUL_S4(11, 0, 11)
+    VMOV_B16(0, 12)
+    VFMLA_S4(11, 30, 12)
+    VFMUL_S4(29, 12, 13)
+    VFMUL_S4(28, 13, 0)
+    EXP_BODY(0, 6)
+    VFSUB_S4(26, 6, 14)
+    VFADD_S4(26, 6, 15)
+    VFDIV_S4(15, 14, 6)
+    VFADD_S4(26, 6, 6)
+    VFMUL_S4(10, 6, 6)
+    VFMUL_S4(24, 6, 6)
+    FMOVS F6, (R0)
+    ADD  $4, R1
+    ADD  $4, R0
+    SUB  $1, R2
+    CBNZ R2, gelu_scalar_loop
+
 gelu_done:
     RET
 
@@ -569,7 +595,6 @@ swiglu_tensors_w4:
     VLD1.P 16(R1), [V0.S4]
     VMOV V0.B16, V1.B16
     VLD1.P 16(R2), [V8.S4]
-    VMOV_B16(0, 8)
     VFNEG_S4(0, 0)
     EXP_BODY_SIG(0, 6)
     VFADD_S4(26, 6, 6)
@@ -589,7 +614,6 @@ swiglu_tensors_sloop:
     VDUP V0.S[0], V0.S4
     VMOV V0.B16, V1.B16
     VDUP V8.S[0], V8.S4
-    VMOV_B16(0, 8)
     VFNEG_S4(0, 0)
     EXP_BODY_SIG(0, 6)
     VFADD_S4(26, 6, 6)
@@ -858,7 +882,7 @@ TEXT ·GeGLUTensorsF32NEON(SB), NOSPLIT, $0-32
     MOVD gate+8(FP), R1
     MOVD up+16(FP), R2
     MOVD count+24(FP), R3
-    MOVD $actExtraMiscC<>(SB), R4
+    MOVD $actExtraMiscC(SB), R4
     MOVD $actExpC<>(SB), R5
     FMOVS 40(R5), F26
     FMOVS 32(R4), F24
