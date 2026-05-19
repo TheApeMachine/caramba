@@ -1,4 +1,4 @@
-//go:build !arm64 && !amd64
+//go:build amd64
 
 package attention
 
@@ -13,15 +13,11 @@ func ComputeHeadScoresNative(
 	scores []float32,
 	config MultiHeadAttentionConfig,
 ) {
+	queryHead := queryView[qIndex*queryStride+queryHeadOffset : qIndex*queryStride+queryHeadOffset+headDim]
+
 	for kIndex := range seqK {
-		var dot float32
-
-		for dimIndex := range headDim {
-			dot += queryView[qIndex*queryStride+queryHeadOffset+dimIndex] *
-				keyView[kIndex*kvStride+kvHeadOffset+dimIndex]
-		}
-
-		score := dot * scale
+		keyHead := keyView[kIndex*kvStride+kvHeadOffset : kIndex*kvStride+kvHeadOffset+headDim]
+		score := DotFloat32Native(queryHead, keyHead) * scale
 
 		if config.Causal && kIndex > qIndex {
 			score = float32(math.Inf(-1))
@@ -40,29 +36,13 @@ func ComputeHeadScoresNative(
 }
 
 func StableSoftmaxRowNative(scores []float32) {
-	maximum := scores[0]
-
-	for _, value := range scores[1:] {
-		if value > maximum {
-			maximum = value
-		}
-	}
-
-	var sum float32
-
-	for index, value := range scores {
-		shifted := float32(math.Exp(float64(value - maximum)))
-		scores[index] = shifted
-		sum += shifted
-	}
-
-	if sum == 0 {
+	if len(scores) == 0 {
 		return
 	}
 
-	for index := range scores {
-		scores[index] /= sum
-	}
+	maximum := ReduceMaxFloat32Native(scores)
+	sum := SoftmaxRowFillExpsNative(scores, scores, maximum)
+	normalizeRow(scores, sum)
 }
 
 func WriteHeadOutputNative(
@@ -71,6 +51,8 @@ func WriteHeadOutputNative(
 	queryHeadOffset, kvHeadOffset int,
 	queryStride, kvStride int,
 ) {
+	outBase := qIndex*queryStride + queryHeadOffset
+
 	for dimIndex := range headDim {
 		var sum float32
 
@@ -79,10 +61,25 @@ func WriteHeadOutputNative(
 				valueView[kIndex*kvStride+kvHeadOffset+dimIndex]
 		}
 
-		outView[qIndex*queryStride+queryHeadOffset+dimIndex] = sum
+		outView[outBase+dimIndex] = sum
 	}
 }
 
 func ApplyAttentionSoftmaxNative(scores []float32, seqQ, seqK int) {
-	applySoftmax(scores, seqQ, seqK)
+	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
+		row := scores[rowIndex*seqK : (rowIndex+1)*seqK]
+		maximum := ReduceMaxFloat32Native(row)
+		sum := SoftmaxRowFillExpsNative(row, row, maximum)
+		normalizeRow(row, sum)
+	}
+}
+
+func normalizeRow(row []float32, sum float32) {
+	if sum == 0 {
+		return
+	}
+
+	for index := range row {
+		row[index] /= sum
+	}
 }

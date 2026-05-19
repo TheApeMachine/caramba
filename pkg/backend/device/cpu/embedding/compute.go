@@ -42,7 +42,7 @@ func dispatchLookup(
 
 	switch format {
 	case dtype.Float32:
-		runLookupF32(table, indices, output, vocab, hidden, indexCount)
+		runLookupF32Native(table, indices, output, vocab, hidden, indexCount)
 	case dtype.Float16, dtype.BFloat16:
 		runLookupReduced(table, indices, output, vocab, hidden, indexCount, format)
 	default:
@@ -61,32 +61,11 @@ func dispatchBag(
 
 	switch format {
 	case dtype.Float32:
-		runBagF32(table, indices, offsets, output, vocab, hidden, bagCount, indexCount)
+		runBagF32Native(table, indices, offsets, output, vocab, hidden, bagCount, indexCount)
 	case dtype.Float16, dtype.BFloat16:
 		runBagReduced(table, indices, offsets, output, vocab, hidden, bagCount, indexCount, format)
 	default:
 		panic("embedding: unsupported dtype")
-	}
-}
-
-func runLookupF32(
-	table, indices, output unsafe.Pointer,
-	vocab, hidden, indexCount int,
-) {
-	tableView := unsafe.Slice((*float32)(table), vocab*hidden)
-	outputView := unsafe.Slice((*float32)(output), indexCount*hidden)
-
-	for resultIndex := 0; resultIndex < indexCount; resultIndex++ {
-		tokenID := int(loadInt32(indices, resultIndex))
-
-		if tokenID < 0 || tokenID >= vocab {
-			panic("embedding: index out of range")
-		}
-
-		copy(
-			outputView[resultIndex*hidden:(resultIndex+1)*hidden],
-			tableView[tokenID*hidden:(tokenID+1)*hidden],
-		)
 	}
 }
 
@@ -113,37 +92,6 @@ func runLookupReduced(
 			case dtype.BFloat16:
 				bits := *(*uint16)(unsafe.Add(table, uintptr(tableIndex)*2))
 				*(*uint16)(unsafe.Add(output, uintptr(outputIndex)*2)) = bits
-			}
-		}
-	}
-}
-
-func runBagF32(
-	table, indices, offsets, output unsafe.Pointer,
-	vocab, hidden, bagCount, indexCount int,
-) {
-	tableView := unsafe.Slice((*float32)(table), vocab*hidden)
-	outputView := unsafe.Slice((*float32)(output), bagCount*hidden)
-
-	for bagIndex := 0; bagIndex < bagCount; bagIndex++ {
-		startIdx := int(loadInt32(offsets, bagIndex))
-		endIdx := indexCount
-
-		if bagIndex+1 < bagCount {
-			endIdx = int(loadInt32(offsets, bagIndex+1))
-		}
-
-		outOffset := bagIndex * hidden
-
-		for elementIndex := startIdx; elementIndex < endIdx; elementIndex++ {
-			tokenID := int(loadInt32(indices, elementIndex))
-
-			if tokenID < 0 || tokenID >= vocab {
-				panic("embedding: index out of range")
-			}
-
-			for dimIndex := 0; dimIndex < hidden; dimIndex++ {
-				outputView[outOffset+dimIndex] += tableView[tokenID*hidden+dimIndex]
 			}
 		}
 	}

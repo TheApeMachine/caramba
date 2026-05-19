@@ -13,7 +13,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | ISA path | Domains registered |
 |----------|-------------------:|
 | Scalar (Go) | 30 / 30 |
-| AVX-512 (amd64) | 8 / 30 |
+| AVX-512 (amd64) | 12 / 30 |
 | AVX2 (amd64) | 2 / 30 |
 | SSE2 (amd64) | 2 / 30 |
 | NEON (arm64) | 20 / 30 |
@@ -24,18 +24,18 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 |--------|:------:|:-------:|:----:|:----:|:----:|
 | activation | yes | yes | yes | yes | yes |
 | active_inference | yes | — | — | — | — |
-| attention | yes | — | — | — | yes |
+| attention | yes | yes | — | — | yes |
 | causal | yes | — | — | — | yes |
 | checkpoint | yes | — | — | — | — |
-| convolution | yes | — | — | — | yes |
+| convolution | yes | yes | — | — | yes |
 | dequant | yes | — | — | — | yes |
 | dot | yes | yes | — | — | yes |
 | dropout | yes | yes | — | — | yes |
 | elementwise | yes | yes | — | — | yes |
-| embedding | yes | — | — | — | — |
+| embedding | yes | yes | — | — | — |
 | hawkes | yes | — | — | — | yes |
 | layernorm | yes | — | — | — | yes |
-| losses | yes | — | — | — | yes |
+| losses | yes | yes | — | — | yes |
 | masking | yes | — | — | — | — |
 | math | yes | — | — | — | — |
 | matmul | yes | yes | — | — | yes |
@@ -56,8 +56,13 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 ### AVX-512 registered domains
 
 - `activation`
+- `attention`
+- `convolution`
 - `dot`
+- `dropout`
 - `elementwise`
+- `embedding`
+- `losses`
 - `matmul`
 - `pool`
 - `pospop`
