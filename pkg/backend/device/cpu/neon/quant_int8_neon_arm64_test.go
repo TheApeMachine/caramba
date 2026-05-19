@@ -17,7 +17,7 @@ the explicit clamp in the scalar code.
 */
 
 func TestQuantInt8NEONAsmParity(t *testing.T) {
-	for _, n := range elementwiseParityNs {
+	for _, n := range parityNs {
 		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
 			rng := rand.New(rand.NewSource(0x55aa + int64(n)))
 			src := make([]float32, n)

@@ -2,7 +2,6 @@ package neon
 
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 /*
@@ -25,45 +24,6 @@ type LoRAConfig struct {
 
 func DefaultLoRAConfig() LoRAConfig {
 	return LoRAConfig{Scale: 1.0, Rank: 8}
-}
-
-func init() {
-	Default.Register(Kernel{
-		Name: "lora_apply",
-		Signature: Signature{
-			Layout: tensor.LayoutDense,
-			Inputs: []dtype.DType{
-				dtype.Float32, dtype.Float32, dtype.Float32, dtype.Float32,
-			},
-			Outputs: []dtype.DType{dtype.Float32},
-		},
-		Locations: []tensor.Location{tensor.Host},
-		Run:       runLoRAApplyDefault,
-	})
-
-	Default.Register(Kernel{
-		Name: "lora_merge",
-		Signature: Signature{
-			Layout: tensor.LayoutDense,
-			Inputs: []dtype.DType{
-				dtype.Float32, dtype.Float32, dtype.Float32,
-			},
-			Outputs: []dtype.DType{dtype.Float32},
-		},
-		Locations: []tensor.Location{tensor.Host},
-		Run:       runLoRAMergeDefault,
-	})
-
-	Default.Register(Kernel{
-		Name: "weight_freeze_mask",
-		Signature: Signature{
-			Layout:  tensor.LayoutDense,
-			Inputs:  []dtype.DType{dtype.Bool, dtype.Float32},
-			Outputs: []dtype.DType{dtype.Float32},
-		},
-		Locations: []tensor.Location{tensor.Host},
-		Run:       runWeightFreezeMask,
-	})
 }
 
 func runLoRAApplyDefault(args ...tensor.Tensor) error {

@@ -6,10 +6,19 @@ import (
 	"fmt"
 	"math"
 	"testing"
+
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/attention"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/convolution"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/dropout"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/hawkes"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/matmul"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/pool"
 )
 
+var paritySizes = []int{1, 7, 64, 1024, 8192}
+
 func TestConv2DFloat32NEONParity(t *testing.T) {
-	config := DefaultConv2DConfig()
+	config := convolution.DefaultConv2DConfig()
 	cases := []struct {
 		batch, inC, inH, inW, outC, kH, kW int
 	}{
@@ -29,13 +38,17 @@ func TestConv2DFloat32NEONParity(t *testing.T) {
 			got := make([]float32, testCase.batch*testCase.outC*outH*outW)
 			want := make([]float32, len(got))
 
-			Conv2DFloat32Native(
-				config, input, weight, bias, got,
+			convolution.Conv2DFloat32Native(
+				config,
+				convFloat32Pointer(input), convFloat32Pointer(weight),
+				convFloat32Pointer(bias), convFloat32Pointer(got),
 				testCase.batch, testCase.inC, testCase.inH, testCase.inW,
 				testCase.outC, testCase.kH, testCase.kW, outH, outW,
 			)
-			conv2DFloat32Scalar(
-				config, input, weight, bias, want,
+			convolution.Conv2DFloat32Scalar(
+				config,
+				convFloat32Pointer(input), convFloat32Pointer(weight),
+				convFloat32Pointer(bias), convFloat32Pointer(want),
 				testCase.batch, testCase.inC, testCase.inH, testCase.inW,
 				testCase.outC, testCase.kH, testCase.kW, outH, outW,
 			)
@@ -46,9 +59,9 @@ func TestConv2DFloat32NEONParity(t *testing.T) {
 }
 
 func TestPool2DFloat32NEONParity(t *testing.T) {
-	cases := []PoolConfig{
+	cases := []pool.PoolConfig{
 		{KernelH: 3, KernelW: 3, StrideH: 1, StrideW: 1},
-		DefaultPoolConfig(),
+		pool.DefaultPoolConfig(),
 	}
 
 	for _, config := range cases {
@@ -69,12 +82,12 @@ func TestPool2DFloat32NEONParity(t *testing.T) {
 				got := make([]float32, outH*outW)
 				want := make([]float32, outH*outW)
 
-				Pool2DFloat32Native(
-					config, input, got,
+				pool.Pool2DFloat32Native(
+					config, convFloat32Pointer(input), convFloat32Pointer(got),
 					1, 1, inH, inW, outH, outW,
 					useMax,
 				)
-				pool2DFloat32Scalar(
+				pool.Pool2DFloat32Scalar(
 					config, input, want,
 					1, 1, inH, inW, outH, outW,
 					useMax,
@@ -87,7 +100,7 @@ func TestPool2DFloat32NEONParity(t *testing.T) {
 }
 
 func TestConv1DFloat32NEONParity(t *testing.T) {
-	config := DefaultConv1DConfig()
+	config := convolution.DefaultConv1DConfig()
 	cases := []struct {
 		batch, inC, inLen, outC, kLen int
 	}{
@@ -106,13 +119,17 @@ func TestConv1DFloat32NEONParity(t *testing.T) {
 			got := make([]float32, testCase.batch*testCase.outC*outLen)
 			want := make([]float32, len(got))
 
-			Conv1DFloat32Native(
-				config, input, weight, bias, got,
+			convolution.Conv1DFloat32Native(
+				config,
+				convFloat32Pointer(input), convFloat32Pointer(weight),
+				convFloat32Pointer(bias), convFloat32Pointer(got),
 				testCase.batch, testCase.inC, testCase.inLen,
 				testCase.outC, testCase.kLen, outLen,
 			)
-			conv1DFloat32Scalar(
-				config, input, weight, bias, want,
+			convolution.Conv1DFloat32Scalar(
+				config,
+				convFloat32Pointer(input), convFloat32Pointer(weight),
+				convFloat32Pointer(bias), convFloat32Pointer(want),
 				testCase.batch, testCase.inC, testCase.inLen,
 				testCase.outC, testCase.kLen, outLen,
 			)
@@ -123,7 +140,7 @@ func TestConv1DFloat32NEONParity(t *testing.T) {
 }
 
 func TestConv3DFloat32NEONParity(t *testing.T) {
-	config := DefaultConv3DConfig()
+	config := convolution.DefaultConv3DConfig()
 	batch, inC, inD, inH, inW := 1, 2, 4, 8, 8
 	outC, kD, kH, kW := 2, 3, 3, 3
 	outD := inD - kD + 1
@@ -135,13 +152,17 @@ func TestConv3DFloat32NEONParity(t *testing.T) {
 	got := make([]float32, batch*outC*outD*outH*outW)
 	want := make([]float32, len(got))
 
-	Conv3DFloat32Native(
-		config, input, weight, bias, got,
+	convolution.Conv3DFloat32Native(
+		config,
+		convFloat32Pointer(input), convFloat32Pointer(weight),
+		convFloat32Pointer(bias), convFloat32Pointer(got),
 		batch, inC, inD, inH, inW,
 		outC, kD, kH, kW, outD, outH, outW,
 	)
-	conv3DFloat32Scalar(
-		config, input, weight, bias, want,
+	convolution.Conv3DFloat32Scalar(
+		config,
+		convFloat32Pointer(input), convFloat32Pointer(weight),
+		convFloat32Pointer(bias), convFloat32Pointer(want),
 		batch, inC, inD, inH, inW,
 		outC, kD, kH, kW, outD, outH, outW,
 	)
@@ -155,12 +176,12 @@ func TestDropoutFloat32NativeParity(t *testing.T) {
 			src := randFloat32Slice(elementCount, 0xD00)
 			got := make([]float32, elementCount)
 			want := make([]float32, elementCount)
-			SeedNEON := dropoutSeedState(0xD00)
+			SeedNEON := dropout.DropoutSeedState(0xD00)
 			seedScalar := SeedNEON
 			keepProb := float32(0.75)
 
-			DropoutFloat32Native(got, src, &SeedNEON, keepProb)
-			DropoutFloat32Native(want, src, &seedScalar, keepProb)
+			dropout.DropoutFloat32Native(got, src, &SeedNEON, keepProb)
+			dropout.DropoutFloat32Native(want, src, &seedScalar, keepProb)
 
 			assertFloat32SlicesNear(t, got, want, 0)
 		})
@@ -179,8 +200,8 @@ func TestHawkesLogLikelihoodNEONParity(t *testing.T) {
 			got := make([]float32, 1)
 			want := make([]float32, 1)
 
-			HawkesLogLikelihoodNative(eventTimes, 10.0, 0.2, 0.5, 1.0, got)
-			hawkesLogLikelihoodScalar(eventTimes, 10.0, 0.2, 0.5, 1.0, want)
+			hawkes.HawkesLogLikelihoodNative(eventTimes, 10.0, 0.2, 0.5, 1.0, got)
+			hawkes.HawkesLogLikelihoodScalar(eventTimes, 10.0, 0.2, 0.5, 1.0, want)
 
 			assertFloat32SlicesNear(t, got, want, 1e-4)
 		})
@@ -212,8 +233,8 @@ func TestMarkovMutualInformationNEONParity(t *testing.T) {
 			got := make([]float32, 1)
 			want := make([]float32, 1)
 
-			MarkovMutualInformationNative(joint, testCase.xCount, testCase.yCount, got)
-			markovMutualInformationScalar(joint, testCase.xCount, testCase.yCount, want)
+			hawkes.MarkovMutualInformationNative(joint, testCase.xCount, testCase.yCount, got)
+			hawkes.MarkovMutualInformationScalar(joint, testCase.xCount, testCase.yCount, want)
 
 			assertFloat32SlicesNear(t, got, want, 1e-4)
 		})
@@ -225,7 +246,7 @@ func TestSparseCSRMatMulRowNEONAsmDirect(t *testing.T) {
 	right := make([]float32, 16)
 	right[0] = 3
 
-	SparseCSRMatMulRowSingleNzNEONAsm(&out[0], 2, &right[0], 1)
+	matmul.SparseCSRMatMulRowSingleNzNEONAsm(&out[0], 2, &right[0], 1)
 
 	if math.Abs(float64(out[0]-6)) > 1e-5 {
 		t.Fatalf("single nz got=%g want=6", out[0])
@@ -243,7 +264,7 @@ func TestSparseCSRMatMulRowNEONAsmDirect(t *testing.T) {
 
 	for nzIndex := 0; nzIndex < 3; nzIndex++ {
 		denseRow := right[colIdx[nzIndex]:]
-		SparseCSRMatMulRowSingleNzNEONAsm(&out[0], values[nzIndex], &denseRow[0], 1)
+		matmul.SparseCSRMatMulRowSingleNzNEONAsm(&out[0], values[nzIndex], &denseRow[0], 1)
 	}
 
 	want := float32(2*1 + 3*2 + 4*3)
@@ -277,8 +298,8 @@ func TestSparseCSRMatMulFloat32NEONParity(t *testing.T) {
 			got := make([]float32, rows*cols)
 			want := make([]float32, rows*cols)
 
-			SparseCSRMatMulFloat32Native(got, values, right, rowPtr, colIdx, rows, cols)
-			sparseCSRMatMulFloat32Scalar(want, values, right, rowPtr, colIdx, rows, cols)
+			matmul.SparseCSRMatMulFloat32Native(got, values, right, rowPtr, colIdx, rows, cols)
+			matmul.SparseCSRMatMulFloat32Scalar(want, values, right, rowPtr, colIdx, rows, cols)
 
 			assertFloat32SlicesNear(t, got, want, 1e-5)
 		})
@@ -287,7 +308,7 @@ func TestSparseCSRMatMulFloat32NEONParity(t *testing.T) {
 
 func TestHawkesExpSumNEONAsmDirect(t *testing.T) {
 	exponents := []float32{-0.1, -0.15, -0.2, -0.25}
-	got := HawkesExpSumNEONAsm(&exponents[0], 4)
+	got := hawkes.HawkesExpSumNEONAsm(&exponents[0], 4)
 	want := float32(0)
 
 	for _, value := range exponents {
@@ -313,8 +334,8 @@ func TestHawkesIntensityNEONParity(t *testing.T) {
 			got := make([]float32, eventCount)
 			want := make([]float32, eventCount)
 
-			HawkesIntensityNative(eventTimes, queryTimes, got, 0.1, 0.5, 1.0)
-			hawkesIntensityScalar(eventTimes, queryTimes, want, 0.1, 0.5, 1.0)
+			hawkes.HawkesIntensityNative(eventTimes, queryTimes, got, 0.1, 0.5, 1.0)
+			hawkes.HawkesIntensityScalar(eventTimes, queryTimes, want, 0.1, 0.5, 1.0)
 
 			assertFloat32SlicesNear(t, got, want, 1e-5)
 		})
@@ -333,7 +354,7 @@ func TestFlashAttentionRowNEONParity(t *testing.T) {
 			scale := float32(1.0 / math.Sqrt(float64(depth)))
 
 			for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
-				RunFlashAttentionRowNative(query, key, value, got, rowIndex, seqK, depth, valueDim, scale, false)
+				attention.RunFlashAttentionRowNative(query, key, value, got, rowIndex, seqK, depth, valueDim, scale, false)
 				runFlashAttentionRowScalar(query, key, value, want, rowIndex, seqK, depth, valueDim, scale, false)
 			}
 
@@ -397,8 +418,8 @@ func dotFloat32Scalar(left, right []float32) float32 {
 
 func TestPoolWindowMaxFloat32NativeParity(t *testing.T) {
 	channel := []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9}
-	got := PoolWindowMaxFloat32Native(channel, 3, 0, 2, 0, 2)
-	want := PoolWindowMaxScalar(channel, 3, 0, 2, 0, 2)
+	got := pool.PoolWindowMaxFloat32Native(channel, 3, 0, 2, 0, 2)
+	want := pool.PoolWindowMaxScalar(channel, 3, 0, 2, 0, 2)
 
 	assertFloat32SlicesNear(t, []float32{got}, []float32{want}, 1e-6)
 }
@@ -408,7 +429,7 @@ func TestConvTranspose2dStride1RowNEONAsmDirect(t *testing.T) {
 		input := []float32{1, 2, 3, 4}
 		got := []float32{0, 0, 0, 0}
 
-		ConvTranspose2dTapNEONAsm(
+		convolution.ConvTranspose2dTapNEONAsm(
 			&got[0],
 			2,
 			&input[0],
@@ -424,7 +445,7 @@ func TestConvTranspose2dStride1RowNEONAsmDirect(t *testing.T) {
 		got := []float32{0.25, 0.5, 0.75, 1.0}
 		want := []float32{2.25, 4.5, 6.75, 9.0}
 
-		ConvTranspose2dStride1RowNEON(
+		convolution.ConvTranspose2dStride1RowNEON(
 			got,
 			input,
 			weight,
@@ -438,7 +459,7 @@ func TestConvTranspose2dStride1RowNEONAsmDirect(t *testing.T) {
 }
 
 func TestConvTranspose2DFloat32NEONParity(t *testing.T) {
-	config := DefaultConv2DConfig()
+	config := convolution.DefaultConv2DConfig()
 	batch, inC, inH, inW := 1, 2, 8, 8
 	outC, kH, kW := 2, 3, 3
 	outH := (inH-1)*config.StrideH + kH
@@ -449,12 +470,16 @@ func TestConvTranspose2DFloat32NEONParity(t *testing.T) {
 	got := make([]float32, batch*outC*outH*outW)
 	want := make([]float32, len(got))
 
-	ConvTranspose2DFloat32Native(
-		config, input, weight, bias, got,
+	convolution.ConvTranspose2DFloat32Native(
+		config,
+		convFloat32Pointer(input), convFloat32Pointer(weight),
+		convFloat32Pointer(bias), convFloat32Pointer(got),
 		batch, inC, inH, inW, outC, kH, kW, outH, outW,
 	)
-	ConvTranspose2DFloat32Scalar(
-		config, input, weight, bias, want,
+	convolution.ConvTranspose2DFloat32Scalar(
+		config,
+		convFloat32Pointer(input), convFloat32Pointer(weight),
+		convFloat32Pointer(bias), convFloat32Pointer(want),
 		batch, inC, inH, inW, outC, kH, kW, outH, outW,
 	)
 
@@ -476,12 +501,12 @@ func TestAdaptivePool2DFloat32NEONParity(t *testing.T) {
 		}
 
 		t.Run(label, func(t *testing.T) {
-			AdaptivePool2DFloat32Native(
-				input, got,
+			pool.AdaptivePool2DFloat32Native(
+				convFloat32Pointer(input), convFloat32Pointer(got),
 				batch, channels, inH, inW, outH, outW,
 				useMax,
 			)
-			adaptivePool2DFloat32Scalar(
+			pool.AdaptivePool2DFloat32Scalar(
 				input, want,
 				batch, channels, inH, inW, outH, outW,
 				useMax,
@@ -493,7 +518,7 @@ func TestAdaptivePool2DFloat32NEONParity(t *testing.T) {
 }
 
 func TestConv2DGeneralFloat32NEONParity(t *testing.T) {
-	config := Conv2DConfig{
+	config := convolution.Conv2DConfig{
 		StrideH: 2, StrideW: 2,
 		PaddingH: 1, PaddingW: 1,
 		DilationH: 1, DilationW: 1,
@@ -508,12 +533,16 @@ func TestConv2DGeneralFloat32NEONParity(t *testing.T) {
 	got := make([]float32, batch*outC*outH*outW)
 	want := make([]float32, len(got))
 
-	Conv2DFloat32Native(
-		config, input, weight, bias, got,
+	convolution.Conv2DFloat32Native(
+		config,
+		convFloat32Pointer(input), convFloat32Pointer(weight),
+		convFloat32Pointer(bias), convFloat32Pointer(got),
 		batch, inC, inH, inW, outC, kH, kW, outH, outW,
 	)
-	conv2DFloat32Scalar(
-		config, input, weight, bias, want,
+	convolution.Conv2DFloat32Scalar(
+		config,
+		convFloat32Pointer(input), convFloat32Pointer(weight),
+		convFloat32Pointer(bias), convFloat32Pointer(want),
 		batch, inC, inH, inW, outC, kH, kW, outH, outW,
 	)
 
@@ -521,7 +550,7 @@ func TestConv2DGeneralFloat32NEONParity(t *testing.T) {
 }
 
 func TestPool2DGeneralFloat32NEONParity(t *testing.T) {
-	config := PoolConfig{
+	config := pool.PoolConfig{
 		KernelH: 3, KernelW: 3,
 		StrideH: 2, StrideW: 2,
 		PaddingH: 1, PaddingW: 1,
@@ -542,12 +571,12 @@ func TestPool2DGeneralFloat32NEONParity(t *testing.T) {
 			got := make([]float32, outH*outW)
 			want := make([]float32, outH*outW)
 
-			Pool2DFloat32Native(
-				config, input, got,
+			pool.Pool2DFloat32Native(
+				config, convFloat32Pointer(input), convFloat32Pointer(got),
 				1, 1, inH, inW, outH, outW,
 				useMax,
 			)
-			pool2DFloat32Scalar(
+			pool.Pool2DFloat32Scalar(
 				config, input, want,
 				1, 1, inH, inW, outH, outW,
 				useMax,
@@ -559,7 +588,7 @@ func TestPool2DGeneralFloat32NEONParity(t *testing.T) {
 }
 
 func BenchmarkConv2DFloat32Native(b *testing.B) {
-	config := DefaultConv2DConfig()
+	config := convolution.DefaultConv2DConfig()
 	input := randFloat32Slice(1*16*32*32, 0xBC0)
 	weight := randFloat32Slice(8*16*3*3, 0xBC1)
 	bias := randFloat32Slice(8, 0xBC2)
@@ -568,8 +597,10 @@ func BenchmarkConv2DFloat32Native(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		Conv2DFloat32Native(
-			config, input, weight, bias, output,
+		convolution.Conv2DFloat32Native(
+			config,
+			convFloat32Pointer(input), convFloat32Pointer(weight),
+			convFloat32Pointer(bias), convFloat32Pointer(output),
 			1, 16, 32, 32,
 			8, 3, 3, 30, 30,
 		)
@@ -597,12 +628,12 @@ func BenchmarkSparseCSRMatMulFloat32Native(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		SparseCSRMatMulFloat32Native(output, values, right, rowPtr, colIdx, rows, cols)
+		matmul.SparseCSRMatMulFloat32Native(output, values, right, rowPtr, colIdx, rows, cols)
 	}
 }
 
 func BenchmarkConvTranspose2DFloat32Native(b *testing.B) {
-	config := DefaultConv2DConfig()
+	config := convolution.DefaultConv2DConfig()
 	batch, inC, inH, inW := 1, 8, 64, 64
 	outC, kH, kW := 8, 3, 3
 	outH := (inH-1)*config.StrideH + kH
@@ -615,8 +646,10 @@ func BenchmarkConvTranspose2DFloat32Native(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		ConvTranspose2DFloat32Native(
-			config, input, weight, bias, output,
+		convolution.ConvTranspose2DFloat32Native(
+			config,
+			convFloat32Pointer(input), convFloat32Pointer(weight),
+			convFloat32Pointer(bias), convFloat32Pointer(output),
 			batch, inC, inH, inW, outC, kH, kW, outH, outW,
 		)
 	}
@@ -631,8 +664,8 @@ func BenchmarkAdaptivePool2DFloat32Native(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		AdaptivePool2DFloat32Native(
-			input, output,
+		pool.AdaptivePool2DFloat32Native(
+			convFloat32Pointer(input), convFloat32Pointer(output),
 			batch, channels, inH, inW, outH, outW,
 			true,
 		)
@@ -640,7 +673,7 @@ func BenchmarkAdaptivePool2DFloat32Native(b *testing.B) {
 }
 
 func BenchmarkPool2DGeneralFloat32Native(b *testing.B) {
-	config := PoolConfig{KernelH: 3, KernelW: 3, StrideH: 2, StrideW: 2, PaddingH: 1, PaddingW: 1}
+	config := pool.PoolConfig{KernelH: 3, KernelW: 3, StrideH: 2, StrideW: 2, PaddingH: 1, PaddingW: 1}
 	batch, channels, inH, inW := 1, 16, 64, 64
 	outH := (inH+2*config.PaddingH-config.KernelH)/config.StrideH + 1
 	outW := (inW+2*config.PaddingW-config.KernelW)/config.StrideW + 1
@@ -650,8 +683,8 @@ func BenchmarkPool2DGeneralFloat32Native(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		Pool2DFloat32Native(
-			config, input, output,
+		pool.Pool2DFloat32Native(
+			config, convFloat32Pointer(input), convFloat32Pointer(output),
 			batch, channels, inH, inW, outH, outW,
 			true,
 		)
@@ -670,7 +703,7 @@ func BenchmarkFlashAttentionRowNative(b *testing.B) {
 
 	for b.Loop() {
 		for rowIndex := range seqQ {
-			RunFlashAttentionRowNative(
+			attention.RunFlashAttentionRowNative(
 				query, key, value, output,
 				rowIndex, seqK, depth, valueDim, scale, false,
 			)
@@ -684,7 +717,7 @@ func BenchmarkPoolWindowMaxFloat32Native(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		_ = PoolWindowMaxFloat32Native(channel, 64, 4, 12, 8, 20)
+		_ = pool.PoolWindowMaxFloat32Native(channel, 64, 4, 12, 8, 20)
 	}
 }
 
@@ -696,6 +729,6 @@ func BenchmarkConvTranspose2dTapNEONAsm(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		ConvTranspose2dTapNEONAsm(&output[0], weightVal, &input[32], 64)
+		convolution.ConvTranspose2dTapNEONAsm(&output[0], weightVal, &input[32], 64)
 	}
 }

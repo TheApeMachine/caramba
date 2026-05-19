@@ -129,10 +129,10 @@ func expectedInstanceNormValues(
 			start := (batchIndex*channels + channelIndex) * spatial
 			row := input[start : start+spatial]
 			outRow := out[start : start+spatial]
-			mean := normalizationMeanForTest(row)
-			variance := normalizationVarianceForTest(row, mean)
-			invStdDev := normInvStdDev(variance)
-			applyNorm3DExpectedRow(row, outRow, scale[channelIndex], bias[channelIndex], mean, invStdDev)
+			mean := normalizationMean64ForTest(row)
+			variance := normalizationVariance64ForTest(row, mean)
+			invStdDev := normInvStdDev64(variance)
+			applyNorm3DExpectedRow64(row, outRow, scale[channelIndex], bias[channelIndex], mean, invStdDev)
 		}
 	}
 
@@ -174,13 +174,13 @@ func applyGroupNormExpected(
 	channelsPerGroup int,
 	spatial int,
 ) {
-	mean := normalizationMeanForTest(input)
-	variance := normalizationVarianceForTest(input, mean)
-	invStdDev := normInvStdDev(variance)
+	mean := normalizationMean64ForTest(input)
+	variance := normalizationVariance64ForTest(input, mean)
+	invStdDev := normInvStdDev64(variance)
 
 	for channelIndex := range channelsPerGroup {
 		start := channelIndex * spatial
-		applyNorm3DExpectedRow(
+		applyNorm3DExpectedRow64(
 			input[start:start+spatial],
 			out[start:start+spatial],
 			scale[channelIndex],
@@ -188,6 +188,20 @@ func applyGroupNormExpected(
 			mean,
 			invStdDev,
 		)
+	}
+}
+
+func applyNorm3DExpectedRow64(
+	input []float32,
+	out []float32,
+	scale float32,
+	bias float32,
+	mean float64,
+	invStdDev float64,
+) {
+	for index, value := range input {
+		normalized := (float64(value) - mean) * invStdDev
+		out[index] = float32(normalized)*scale + bias
 	}
 }
 
@@ -206,6 +220,31 @@ func applyNorm3DExpectedRow(
 
 func normInvStdDev(variance float32) float32 {
 	return 1 / sqrtFloat32(variance+layerNormEpsilonMetalForTest)
+}
+
+func normInvStdDev64(variance float64) float64 {
+	return 1 / math.Sqrt(variance+layerNormEpsilonMetalForTest)
+}
+
+func normalizationMean64ForTest(row []float32) float64 {
+	var sum float64
+
+	for _, value := range row {
+		sum += float64(value)
+	}
+
+	return sum / float64(len(row))
+}
+
+func normalizationVariance64ForTest(row []float32, mean float64) float64 {
+	var variance float64
+
+	for _, value := range row {
+		delta := float64(value) - mean
+		variance += delta * delta
+	}
+
+	return variance / float64(len(row))
 }
 
 func sqrtFloat32(value float32) float32 {

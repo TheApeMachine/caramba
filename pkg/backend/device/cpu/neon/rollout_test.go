@@ -7,6 +7,13 @@ import (
 
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/attention"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/convolution"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/dequant"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/matmul"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/optimizer"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/quant"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/rope"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
@@ -20,7 +27,7 @@ func TestRoPEFloat32(t *testing.T) {
 		inputView, _ := input.Float32Native()
 		copy(inputView, []float32{1, 2, 3, 4})
 
-		err := RunRoPEFloat32(DefaultRoPEConfig(), input, out)
+		err := rope.RunRoPEFloat32(rope.DefaultRoPEConfig(), input, out)
 		convey.So(err, convey.ShouldBeNil)
 
 		outView, _ := out.Float32Native()
@@ -38,10 +45,10 @@ func TestRoPEFloat32(t *testing.T) {
 		inputView[2] = 1
 		inputView[3] = 0
 
-		config := DefaultRoPEConfig()
+		config := rope.DefaultRoPEConfig()
 		config.StartPosition = 1
 
-		err := RunRoPEFloat32(config, input, out)
+		err := rope.RunRoPEFloat32(config, input, out)
 		convey.So(err, convey.ShouldBeNil)
 
 		// For pair 0 with base=10000 and exponent 0: theta = 1.
@@ -73,17 +80,11 @@ func TestFlashAttentionMatchesBasic(t *testing.T) {
 			valueView[index] = float32(index%9) * 0.25
 		}
 
-		basicKernel, _ := Default.Lookup("attention", Signature{
-			Layout:  tensor.LayoutDense,
-			Inputs:  []dtype.DType{dtype.Float32, dtype.Float32, dtype.Float32},
-			Outputs: []dtype.DType{dtype.Float32},
-		})
-
-		err := basicKernel.Run(query, key, value, basicOut)
+		err := attention.RunAttentionFloat32(query, key, value, basicOut)
 		convey.So(err, convey.ShouldBeNil)
 
-		err = RunFlashAttentionFloat32(
-			FlashAttentionConfig{BlockSize: 4, Causal: false},
+		err = attention.RunFlashAttentionFloat32(
+			attention.FlashAttentionConfig{BlockSize: 4, Causal: false},
 			query, key, value, flashOut,
 		)
 		convey.So(err, convey.ShouldBeNil)
@@ -114,8 +115,8 @@ func TestAdamWStepWithDecay(t *testing.T) {
 		paramsView[0] = 1.0
 		paramsView[1] = -1.0
 
-		config := DefaultAdamWConfig()
-		err := AdamWStepFloat32(config, params, grads, firstMoment, secondMoment, out)
+		config := optimizer.DefaultAdamWConfig()
+		err := optimizer.AdamWStepFloat32(config, params, grads, firstMoment, secondMoment, out)
 		convey.So(err, convey.ShouldBeNil)
 
 		outView, _ := out.Float32Native()
@@ -143,7 +144,7 @@ func TestLionStepDirection(t *testing.T) {
 		paramsView[0] = 0
 		gradView[0] = 1.0
 
-		err := LionStepFloat32(DefaultLionConfig(), params, grads, momentum, out)
+		err := optimizer.LionStepFloat32(optimizer.DefaultLionConfig(), params, grads, momentum, out)
 		convey.So(err, convey.ShouldBeNil)
 
 		outView, _ := out.Float32Native()
@@ -166,7 +167,7 @@ func TestSGDStepDirection(t *testing.T) {
 		paramsView[0] = 1.0
 		gradView[0] = 1.0
 
-		err := SGDStepFloat32(DefaultSGDConfig(), params, grads, momentum, out)
+		err := optimizer.SGDStepFloat32(optimizer.DefaultSGDConfig(), params, grads, momentum, out)
 		convey.So(err, convey.ShouldBeNil)
 
 		outView, _ := out.Float32Native()
@@ -185,10 +186,10 @@ func TestInt8DequantRoundTrip(t *testing.T) {
 		floatsView, _ := floats.Float32Native()
 		copy(floatsView, []float32{0, 1, -1, 50})
 
-		err := QuantInt8Float32(DequantInt8Config{Scale: 1, ZeroPoint: 0}, floats, quantized)
+		err := quant.Int8Float32(dequant.Int8Config{Scale: 1, ZeroPoint: 0}, floats, quantized)
 		convey.So(err, convey.ShouldBeNil)
 
-		err = DequantInt8Float32(DequantInt8Config{Scale: 1, ZeroPoint: 0}, quantized, dequantized)
+		err = dequant.Int8Float32(dequant.Int8Config{Scale: 1, ZeroPoint: 0}, quantized, dequantized)
 		convey.So(err, convey.ShouldBeNil)
 
 		dequantView, _ := dequantized.Float32Native()
@@ -214,7 +215,7 @@ func TestConv2DIdentityKernel(t *testing.T) {
 		weightView, _ := weight.Float32Native()
 		weightView[0] = 1
 
-		err := Conv2DFloat32(DefaultConv2DConfig(), input, weight, bias, out)
+		err := convolution.Conv2DFloat32(convolution.DefaultConv2DConfig(), input, weight, bias, out)
 		convey.So(err, convey.ShouldBeNil)
 
 		outView, _ := out.Float32Native()
@@ -273,7 +274,7 @@ func TestSparseCSRMatMul(t *testing.T) {
 		outShape, _ := tensor.NewShape([]int{3, 2})
 		out, _ := tensor.NewZeroed(outShape, dtype.Float32)
 
-		err := SparseCSRMatMulFloat32(sparse, right, out)
+		err := matmul.SparseCSRMatMulFloat32(sparse, right, out)
 		convey.So(err, convey.ShouldBeNil)
 
 		outView, _ := out.Float32Native()

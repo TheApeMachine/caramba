@@ -553,3 +553,14 @@ TEXT ·Count64NEON(SB), 0, $0-32
 	LSL $3, R3, R3			// count in bytes
 	CALL Count64NEON<>(SB)
 	RET
+
+// Count16NEON<>, Count32NEON<>, and Count64NEON<> share the byte-oriented
+// Count8NEON<> kernel; width-specific accumulators are passed in R0.
+TEXT Count16NEON<>(SB), NOSPLIT, $0-0
+	JMP Count8NEON<>(SB)
+
+TEXT Count32NEON<>(SB), NOSPLIT, $0-0
+	JMP Count8NEON<>(SB)
+
+TEXT Count64NEON<>(SB), NOSPLIT, $0-0
+	JMP Count8NEON<>(SB)

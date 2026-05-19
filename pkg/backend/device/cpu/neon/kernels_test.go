@@ -3,9 +3,11 @@ package neon
 import (
 	"fmt"
 	"testing"
+	"unsafe"
 
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/elementwise"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
@@ -17,13 +19,6 @@ func TestAddFloat32(t *testing.T) {
 
 		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
 			convey.Convey("Given two float32 host tensors", t, func() {
-				kernel, ok := Default.Lookup("add", Signature{
-					Layout:  tensor.LayoutDense,
-					Inputs:  []dtype.DType{dtype.Float32, dtype.Float32},
-					Outputs: []dtype.DType{dtype.Float32},
-				})
-				convey.So(ok, convey.ShouldBeTrue)
-
 				shape, _ := tensor.NewShape([]int{n})
 				left, _ := tensor.NewZeroed(shape, dtype.Float32)
 				right, _ := tensor.NewZeroed(shape, dtype.Float32)
@@ -37,10 +32,14 @@ func TestAddFloat32(t *testing.T) {
 					rightView[index] = float32(10 * (index + 1))
 				}
 
-				err := kernel.Run(left, right, out)
-				convey.So(err, convey.ShouldBeNil)
-
 				outView, _ := out.Float32Native()
+				elementwise.Add(
+					unsafe.Pointer(&outView[0]),
+					unsafe.Pointer(&leftView[0]),
+					unsafe.Pointer(&rightView[0]),
+					n,
+					dtype.Float32,
+				)
 
 				for index := range outView {
 					convey.So(outView[index], convey.ShouldEqual, leftView[index]+rightView[index])
@@ -67,20 +66,16 @@ func TestAddBFloat16_MixedAccumulation(t *testing.T) {
 			rightView[index] = dtype.NewBfloat16FromFloat32(value * 2)
 		}
 
-		kernel, ok := Default.Lookup("add", Signature{
-			Layout:  tensor.LayoutDense,
-			Inputs:  []dtype.DType{dtype.BFloat16, dtype.BFloat16},
-			Outputs: []dtype.DType{dtype.BFloat16},
-		})
-		convey.So(ok, convey.ShouldBeTrue)
-
-		err := kernel.Run(left, right, out)
+		outView, _ := out.BFloat16Native()
+		elementwise.Add(
+			unsafe.Pointer(&outView[0]),
+			unsafe.Pointer(&leftView[0]),
+			unsafe.Pointer(&rightView[0]),
+			len(originals),
+			dtype.BFloat16,
+		)
 
 		convey.Convey("Output should equal the elementwise sum within BF16 ULP", func() {
-			convey.So(err, convey.ShouldBeNil)
-
-			outView, _ := out.BFloat16Native()
-
 			for index, source := range originals {
 				expected := source + source*2
 				actual := (&outView[index]).Float32()

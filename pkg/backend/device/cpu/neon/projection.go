@@ -2,7 +2,6 @@ package neon
 
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 /*
@@ -13,36 +12,6 @@ transformer blocks.
   - fused_qkv: computes Q, K, V projections in a single pass against
     a fused [3 × outDim, inDim] weight matrix.
 */
-
-func init() {
-	Default.Register(Kernel{
-		Name: "linear",
-		Signature: Signature{
-			Layout: tensor.LayoutDense,
-			Inputs: []dtype.DType{
-				dtype.Float32, dtype.Float32, dtype.Float32,
-			},
-			Outputs: []dtype.DType{dtype.Float32},
-		},
-		Locations: []tensor.Location{tensor.Host},
-		Run:       runLinear,
-	})
-
-	Default.Register(Kernel{
-		Name: "fused_qkv",
-		Signature: Signature{
-			Layout: tensor.LayoutDense,
-			Inputs: []dtype.DType{
-				dtype.Float32, dtype.Float32, dtype.Float32,
-			},
-			Outputs: []dtype.DType{
-				dtype.Float32, dtype.Float32, dtype.Float32,
-			},
-		},
-		Locations: []tensor.Location{tensor.Host},
-		Run:       runFusedQKV,
-	})
-}
 
 /*
 runLinear computes y = x @ W^T + b where x is [batch, inDim],

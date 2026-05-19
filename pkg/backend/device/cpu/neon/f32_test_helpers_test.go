@@ -4,7 +4,12 @@ import (
 	"math"
 	"math/rand"
 	"testing"
+	"unsafe"
 )
+
+func convFloat32Pointer(slice []float32) unsafe.Pointer {
+	return unsafe.Pointer(unsafe.SliceData(slice))
+}
 
 func randFloat32Slice(elementCount int, seed int64) []float32 {
 	rng := rand.New(rand.NewSource(seed))

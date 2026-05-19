@@ -2,6 +2,8 @@ package neon
 
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/attention"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/optimizer"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
@@ -31,6 +33,19 @@ type opSpec struct {
 	// dtype.Float32 become the paramDType in the new registration.
 	outputDTypes []dtype.DType
 	runF32       func(args ...tensor.Tensor) error
+}
+
+func (spec opSpec) registerF32() {
+	Default.Register(Kernel{
+		Name: spec.name,
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  spec.inputDTypes,
+			Outputs: spec.outputDTypes,
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       spec.runF32,
+	})
 }
 
 func (spec opSpec) registerMixed(paramDType dtype.DType) {
@@ -165,6 +180,71 @@ func init() {
 			outputDTypes: []dtype.DType{dtype.Float32},
 			runF32:       runOuter,
 		},
+		// matmul_add: (A, B, bias) → out
+		{
+			name: "matmul_add",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runMatMulAdd,
+		},
+
+		// === masking ===
+		{
+			name:         "apply_mask",
+			inputDTypes:  []dtype.DType{dtype.Float32, dtype.Float32},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runApplyMask,
+		},
+		{
+			name:         "alibi_bias",
+			inputDTypes:  []dtype.DType{dtype.Float32, dtype.Float32},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runALiBiBias,
+		},
+
+		// === attention ===
+		{
+			name: "attention",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runAttentionFloat32,
+		},
+		{
+			name: "flash_attention",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runFlashAttentionFloat32Default,
+		},
+		{
+			name: "multi_head_attention",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runMultiHeadAttentionDefault,
+		},
+		{
+			name: "grouped_query_attention",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runGroupedQueryAttentionDefault,
+		},
+		{
+			name: "sliding_window_attention",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runSlidingWindowAttentionDefault,
+		},
 
 		// === projection.go ===
 		// linear: (x, W, b) → y
@@ -188,6 +268,66 @@ func init() {
 			inputDTypes:  []dtype.DType{dtype.Float32},
 			outputDTypes: []dtype.DType{dtype.Float32},
 			runF32:       runDropoutDefault,
+		},
+
+		// === pool ===
+		{
+			name:         "max_pool2d",
+			inputDTypes:  []dtype.DType{dtype.Float32},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runMaxPool2DDefault,
+		},
+		{
+			name:         "avg_pool2d",
+			inputDTypes:  []dtype.DType{dtype.Float32},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runAvgPool2DDefault,
+		},
+		{
+			name:         "adaptive_avg_pool2d",
+			inputDTypes:  []dtype.DType{dtype.Float32},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runAdaptiveAvgPool2DDefault,
+		},
+		{
+			name:         "adaptive_max_pool2d",
+			inputDTypes:  []dtype.DType{dtype.Float32},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runAdaptiveMaxPool2DDefault,
+		},
+
+		// === convolution ===
+		{
+			name: "conv1d",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runConv1DDefault,
+		},
+		{
+			name: "conv2d",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runConv2DDefault,
+		},
+		{
+			name: "conv3d",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runConv3DDefault,
+		},
+		{
+			name: "conv_transpose2d",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runConvTranspose2DDefault,
 		},
 
 		// === sampling.go ===
@@ -361,11 +501,256 @@ func init() {
 		{name: "quantum_potential", inputDTypes: []dtype.DType{dtype.Float32, dtype.Float32}, outputDTypes: []dtype.DType{dtype.Float32}, runF32: runQuantumPotential},
 		{name: "bohmian_velocity", inputDTypes: []dtype.DType{dtype.Float32, dtype.Float32}, outputDTypes: []dtype.DType{dtype.Float32}, runF32: runBohmianVelocity},
 		{name: "madelung_continuity", inputDTypes: []dtype.DType{dtype.Float32, dtype.Float32, dtype.Float32}, outputDTypes: []dtype.DType{dtype.Float32}, runF32: runMadelungContinuity},
+
+		// === optimizer ===
+		{
+			name: "adam_step",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runAdamStepDefault,
+		},
+		{
+			name: "adamw_step",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runAdamWStepDefault,
+		},
+		{
+			name: "lion_step",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runLionStepDefault,
+		},
+		{
+			name: "sgd_step",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runSGDStepDefault,
+		},
+		{
+			name: "adamax_step",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runAdamaxStepDefault,
+		},
+		{
+			name: "adagrad_step",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runAdagradStepDefault,
+		},
+		{
+			name: "rmsprop_step",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runRMSpropStepDefault,
+		},
+		{
+			name: "lars_step",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runLARSStepDefault,
+		},
+		{
+			name: "hebbian_step",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runHebbianStepDefault,
+		},
+		{
+			name: "lbfgs_step",
+			inputDTypes: []dtype.DType{
+				dtype.Float32, dtype.Float32,
+			},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runLBFGSStepDefault,
+		},
+
+		// === matmul int8 ===
+		{
+			name:         "matmul",
+			inputDTypes:  []dtype.DType{dtype.Int8, dtype.Int8},
+			outputDTypes: []dtype.DType{dtype.Int32},
+			runF32:       runMatMulInt8,
+		},
+
+		// === quantization ===
+		{
+			name:         "int8_dequant",
+			inputDTypes:  []dtype.DType{dtype.Int8},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runInt8DequantDefault,
+		},
+		{
+			name:         "int4_dequant",
+			inputDTypes:  []dtype.DType{dtype.Int4},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runInt4DequantDefault,
+		},
+		{
+			name:         "int8_quant",
+			inputDTypes:  []dtype.DType{dtype.Float32},
+			outputDTypes: []dtype.DType{dtype.Int8},
+			runF32:       runInt8QuantDefault,
+		},
+
+		// === checkpoint ===
+		{
+			name:         "checkpoint_encode_float32",
+			inputDTypes:  []dtype.DType{dtype.Float32},
+			outputDTypes: []dtype.DType{dtype.Uint8},
+			runF32:       runCheckpointEncodeFloat32,
+		},
+		{
+			name:         "checkpoint_decode_float32",
+			inputDTypes:  []dtype.DType{dtype.Uint8},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runCheckpointDecodeFloat32,
+		},
+
+		// === tokenizer ===
+		{
+			name:         "tokenizer_pack_int32",
+			inputDTypes:  []dtype.DType{dtype.Int32},
+			outputDTypes: []dtype.DType{dtype.Int32},
+			runF32:       runTokenizerPackInt32,
+		},
+	}
+
+	for _, spec := range specs {
+		spec.registerF32()
 	}
 
 	for _, paramDType := range []dtype.DType{dtype.BFloat16, dtype.Float16} {
 		for _, spec := range specs {
+			if spec.name == "multi_head_attention" ||
+				spec.name == "grouped_query_attention" ||
+				spec.name == "sliding_window_attention" ||
+				isOptimizerStep(spec.name) ||
+				skipMixedRegistration(spec.name) {
+				continue
+			}
+
 			spec.registerMixed(paramDType)
 		}
 	}
+
+	registerMaskingReducedPrecision()
+	registerAttentionVariantsReducedPrecision()
+	optimizer.RegisterMixedPrecisionSteps()
+}
+
+func isOptimizerStep(name string) bool {
+	switch name {
+	case "adam_step", "adamw_step", "lion_step", "sgd_step",
+		"adamax_step", "adagrad_step", "rmsprop_step", "lars_step",
+		"lbfgs_step", "hebbian_step":
+		return true
+	default:
+		return false
+	}
+}
+
+func skipMixedRegistration(name string) bool {
+	switch name {
+	case "matmul",
+		"int8_dequant", "int4_dequant", "int8_quant",
+		"checkpoint_encode_float32", "checkpoint_decode_float32",
+		"tokenizer_pack_int32":
+		return true
+	default:
+		return false
+	}
+}
+
+func registerAttentionVariantsReducedPrecision() {
+	for _, variant := range []struct {
+		name string
+		run  func(args ...tensor.Tensor) error
+	}{
+		{name: "multi_head_attention", run: runMultiHeadAttentionDefault},
+		{name: "grouped_query_attention", run: runGroupedQueryAttentionDefault},
+		{name: "sliding_window_attention", run: runSlidingWindowAttentionDefault},
+	} {
+		variant := variant
+		Default.Register(Kernel{
+			Name: variant.name,
+			Signature: Signature{
+				Layout: tensor.LayoutDense,
+				Inputs: []dtype.DType{
+					dtype.BFloat16, dtype.BFloat16, dtype.BFloat16,
+				},
+				Outputs: []dtype.DType{dtype.BFloat16},
+			},
+			Locations: []tensor.Location{tensor.Host},
+			Run: func(args ...tensor.Tensor) error {
+				return attention.RunMultiHeadAttentionVariantBFloat16(variant.name, args...)
+			},
+		})
+		Default.Register(Kernel{
+			Name: variant.name,
+			Signature: Signature{
+				Layout: tensor.LayoutDense,
+				Inputs: []dtype.DType{
+					dtype.Float16, dtype.Float16, dtype.Float16,
+				},
+				Outputs: []dtype.DType{dtype.Float16},
+			},
+			Locations: []tensor.Location{tensor.Host},
+			Run: func(args ...tensor.Tensor) error {
+				return attention.RunMultiHeadAttentionVariantFloat16(variant.name, args...)
+			},
+		})
+	}
+}
+
+func registerMaskingReducedPrecision() {
+	Default.Register(Kernel{
+		Name: "causal_mask",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float32},
+			Outputs: []dtype.DType{dtype.Float32},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runCausalMask,
+	})
+	Default.Register(Kernel{
+		Name: "causal_mask",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.BFloat16},
+			Outputs: []dtype.DType{dtype.BFloat16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runCausalMaskBFloat16,
+	})
+	Default.Register(Kernel{
+		Name: "causal_mask",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float16},
+			Outputs: []dtype.DType{dtype.Float16},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runCausalMaskFloat16,
+	})
 }

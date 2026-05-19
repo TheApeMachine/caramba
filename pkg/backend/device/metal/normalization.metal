@@ -1,7 +1,5 @@
 #include <metal_stdlib>
 
-#pragma clang fp contract(off)
-
 using namespace metal;
 
 constant uint normalizationThreadCount = 256;
@@ -14,6 +12,65 @@ static inline float bf16_to_float_norm(ushort value) {
 
 static inline ushort float_to_bf16_norm(float value) {
     return ushort(as_type<uint>(value) >> 16);
+}
+
+static inline float refined_inv_sqrt_norm(float value) {
+    float estimate = 1.0f / precise::sqrt(value);
+    float halfValue = 0.5f * value;
+    estimate = estimate * (1.5f - halfValue * estimate * estimate);
+    return estimate;
+}
+
+static inline float2 ds_renorm(float high, float low) {
+    float sum = high + low;
+    float error = low - (sum - high);
+    return float2(sum, error);
+}
+
+static inline float2 ds_add_float(float2 value, float addend) {
+    float sum = value.x + addend;
+    float virtualAddend = sum - value.x;
+    float error = (value.x - (sum - virtualAddend)) + (addend - virtualAddend);
+    return ds_renorm(sum, value.y + error);
+}
+
+static inline float2 ds_add_pair(float2 left, float2 right) {
+    float2 withHigh = ds_add_float(left, right.x);
+    return ds_add_float(withHigh, right.y);
+}
+
+static inline float2 ds_neg(float2 value) {
+    return float2(-value.x, -value.y);
+}
+
+static inline float2 ds_sub_from_float(float value, float2 subtrahend) {
+    return ds_add_float(ds_neg(subtrahend), value);
+}
+
+static inline float2 ds_mul_pair(float2 left, float2 right) {
+    float product = left.x * right.x;
+    float error = fma(left.x, right.x, -product) + left.x * right.y + left.y * right.x;
+    return ds_renorm(product, error);
+}
+
+static inline float2 ds_mul_float(float2 value, float scalar) {
+    float product = value.x * scalar;
+    float error = fma(value.x, scalar, -product) + value.y * scalar;
+    return ds_renorm(product, error);
+}
+
+static inline float2 ds_div_count(float2 value, uint count) {
+    return ds_mul_float(value, 1.0f / float(count));
+}
+
+static inline float ds_to_float(float2 value) {
+    return value.x + value.y;
+}
+
+static inline float ds_inv_sqrt(float2 value, float epsilon) {
+    float high = value.x + epsilon;
+    float estimate = refined_inv_sqrt_norm(high);
+    return estimate * (1.0f - 0.5f * value.y / high);
 }
 
 struct Float32NormStorage {
@@ -422,7 +479,7 @@ kernel void groupnorm_float32(
     uint row [[threadgroup_position_in_grid]],
     uint threadIndex [[thread_position_in_threadgroup]]
 ) {
-    threadgroup float stats[2];
+    threadgroup float stats[3];
     uint groupIndex = row % groups;
     uint batchIndex = row / groups;
     uint channelsPerGroup = channels / groups;
@@ -431,33 +488,36 @@ kernel void groupnorm_float32(
     uint groupOffset = (batchIndex * channels + channelStart) * spatial;
 
     if (threadIndex == 0) {
-        float sum = 0.0f;
+        float2 sum = float2(0.0f, 0.0f);
 
         for (uint offset = 0; offset < groupSize; offset++) {
-            sum += input[groupOffset + offset];
+            sum = ds_add_float(sum, input[groupOffset + offset]);
         }
 
-        float mean = sum / float(groupSize);
-        float variance = 0.0f;
+        float2 mean = ds_div_count(sum, groupSize);
+        float2 variance = float2(0.0f, 0.0f);
 
         for (uint offset = 0; offset < groupSize; offset++) {
-            float delta = input[groupOffset + offset] - mean;
-            variance += delta * delta;
+            float2 delta = ds_sub_from_float(input[groupOffset + offset], mean);
+            variance = ds_add_pair(variance, ds_mul_pair(delta, delta));
         }
 
-        stats[0] = mean;
-        stats[1] = 1.0f / precise::sqrt(variance / float(groupSize) + layerNormEpsilonMetal);
+        float2 varianceMean = ds_div_count(variance, groupSize);
+        stats[0] = mean.x;
+        stats[1] = mean.y;
+        stats[2] = ds_inv_sqrt(varianceMean, layerNormEpsilonMetal);
     }
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    float mean = stats[0];
-    float invStdDev = stats[1];
+    float2 mean = float2(stats[0], stats[1]);
+    float invStdDev = stats[2];
 
     for (uint offset = threadIndex; offset < groupSize; offset += normalizationThreadCount) {
         uint channel = channelStart + offset / spatial;
-        float normalized = (input[groupOffset + offset] - mean) * invStdDev;
-        out[groupOffset + offset] = normalized * scale[channel] + bias[channel];
+        float2 centered = ds_sub_from_float(input[groupOffset + offset], mean);
+        float normalized = ds_to_float(ds_mul_float(centered, invStdDev));
+        out[groupOffset + offset] = fma(normalized, scale[channel], bias[channel]);
     }
 }
 
@@ -474,39 +534,42 @@ kernel void instancenorm_float32(
     uint row [[threadgroup_position_in_grid]],
     uint threadIndex [[thread_position_in_threadgroup]]
 ) {
-    threadgroup float stats[2];
+    threadgroup float stats[3];
     uint channel = row % channels;
     uint rowOffset = row * spatial;
 
     if (threadIndex == 0) {
-        float sum = 0.0f;
+        float2 sum = float2(0.0f, 0.0f);
 
         for (uint offset = 0; offset < spatial; offset++) {
-            sum += input[rowOffset + offset];
+            sum = ds_add_float(sum, input[rowOffset + offset]);
         }
 
-        float mean = sum / float(spatial);
-        float variance = 0.0f;
+        float2 mean = ds_div_count(sum, spatial);
+        float2 variance = float2(0.0f, 0.0f);
 
         for (uint offset = 0; offset < spatial; offset++) {
-            float delta = input[rowOffset + offset] - mean;
-            variance += delta * delta;
+            float2 delta = ds_sub_from_float(input[rowOffset + offset], mean);
+            variance = ds_add_pair(variance, ds_mul_pair(delta, delta));
         }
 
-        stats[0] = mean;
-        stats[1] = 1.0f / precise::sqrt(variance / float(spatial) + layerNormEpsilonMetal);
+        float2 varianceMean = ds_div_count(variance, spatial);
+        stats[0] = mean.x;
+        stats[1] = mean.y;
+        stats[2] = ds_inv_sqrt(varianceMean, layerNormEpsilonMetal);
     }
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    float mean = stats[0];
-    float invStdDev = stats[1];
+    float2 mean = float2(stats[0], stats[1]);
+    float invStdDev = stats[2];
     float channelScale = scale[channel];
     float channelBias = bias[channel];
 
     for (uint offset = threadIndex; offset < spatial; offset += normalizationThreadCount) {
-        float normalized = (input[rowOffset + offset] - mean) * invStdDev;
-        out[rowOffset + offset] = normalized * channelScale + channelBias;
+        float2 centered = ds_sub_from_float(input[rowOffset + offset], mean);
+        float normalized = ds_to_float(ds_mul_float(centered, invStdDev));
+        out[rowOffset + offset] = fma(normalized, channelScale, channelBias);
     }
 }
 
