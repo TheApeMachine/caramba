@@ -44,12 +44,12 @@ Equal standing per `AGENTS.md` §1. **Applicable** is the audit denominator for 
 | ISA path | Domains registered |
 |----------|-------------------:|
 | Scalar (Go) | 30 / 30 |
-| AVX-512 (amd64) | 7 / 30 |
+| AVX-512 (amd64) | 8 / 30 |
 | AVX2 (amd64) | 2 / 30 |
 | SSE2 (amd64) | 2 / 30 |
 | NEON (arm64) | 20 / 30 |
 
-AMD64 SIMD registered only on: `activation`, `pospop`.
+AMD64 AVX-512 registered on: `activation`, `dot`, `dropout`, `elementwise`, `matmul`, `pool`, `pospop`, `reduction`.
 
 Per-domain table: [`cpu-dispatch-matrix.md`](./cpu-dispatch-matrix.md).
 

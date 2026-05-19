@@ -2,6 +2,8 @@
 
 package dropout
 
+import "golang.org/x/sys/cpu"
+
 func DropoutFloat32Native(
 	dst, src []float32,
 	seedState *[4]uint32,
@@ -15,5 +17,6 @@ func DropoutFloat32Native(
 }
 
 var dropoutF32Funcs = []f32DropoutKernelImpl{
+	{DropoutF32AVX512, "avx512", cpu.X86.HasAVX512F},
 	{DropoutF32Generic, "generic", true},
 }

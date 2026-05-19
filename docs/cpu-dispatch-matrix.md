@@ -13,7 +13,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | ISA path | Domains registered |
 |----------|-------------------:|
 | Scalar (Go) | 30 / 30 |
-| AVX-512 (amd64) | 7 / 30 |
+| AVX-512 (amd64) | 8 / 30 |
 | AVX2 (amd64) | 2 / 30 |
 | SSE2 (amd64) | 2 / 30 |
 | NEON (arm64) | 20 / 30 |
@@ -30,7 +30,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | convolution | yes | — | — | — | yes |
 | dequant | yes | — | — | — | yes |
 | dot | yes | yes | — | — | yes |
-| dropout | yes | — | — | — | yes |
+| dropout | yes | yes | — | — | yes |
 | elementwise | yes | yes | — | — | yes |
 | embedding | yes | — | — | — | — |
 | hawkes | yes | — | — | — | yes |
