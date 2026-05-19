@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
 	"golang.org/x/sys/cpu"
 )
 
@@ -16,15 +17,15 @@ func TestParamExtraAVX512Parity(t *testing.T) {
 		t.Skip("AVX512F not supported")
 	}
 
-	sizes := []int{1, 7, 64, 1024, 8192}
-
 	testCases := []struct {
 		name    string
+		maxULP  int
 		generic func(dst, src *float32, count int)
 		avx512  func(dst, src *float32, count int)
 	}{
 		{
-			name: "CELUAlphaF32",
+			name:   "CELUAlphaF32",
+			maxULP: 2,
 			generic: func(dst, src *float32, count int) {
 				CELUAlphaF32Generic(dst, src, count, 1.5)
 			},
@@ -33,7 +34,8 @@ func TestParamExtraAVX512Parity(t *testing.T) {
 			},
 		},
 		{
-			name: "HardShrinkF32",
+			name:   "HardShrinkF32",
+			maxULP: 1,
 			generic: func(dst, src *float32, count int) {
 				HardShrinkF32Generic(dst, src, count, 0.5)
 			},
@@ -42,7 +44,8 @@ func TestParamExtraAVX512Parity(t *testing.T) {
 			},
 		},
 		{
-			name: "SoftShrinkF32",
+			name:   "SoftShrinkF32",
+			maxULP: 1,
 			generic: func(dst, src *float32, count int) {
 				SoftShrinkF32Generic(dst, src, count, 0.5)
 			},
@@ -51,7 +54,8 @@ func TestParamExtraAVX512Parity(t *testing.T) {
 			},
 		},
 		{
-			name: "SnakeF32",
+			name:   "SnakeF32",
+			maxULP: 2,
 			generic: func(dst, src *float32, count int) {
 				SnakeF32Generic(dst, src, count, 0.5)
 			},
@@ -60,7 +64,8 @@ func TestParamExtraAVX512Parity(t *testing.T) {
 			},
 		},
 		{
-			name: "SnakeParametricF32",
+			name:   "SnakeParametricF32",
+			maxULP: 2,
 			generic: func(dst, src *float32, count int) {
 				SnakeParametricF32Generic(dst, src, count, 0.5, 0.2)
 			},
@@ -69,7 +74,8 @@ func TestParamExtraAVX512Parity(t *testing.T) {
 			},
 		},
 		{
-			name: "RReLUF32",
+			name:   "RReLUF32",
+			maxULP: 1,
 			generic: func(dst, src *float32, count int) {
 				RReLUF32Generic(dst, src, count, 0.1, 0.3)
 			},
@@ -79,27 +85,22 @@ func TestParamExtraAVX512Parity(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
-		convey.Convey(fmt.Sprintf("Given %sAVX512", tc.name), t, func() {
-			for _, n := range sizes {
-				convey.Convey(fmt.Sprintf("It should match scalar reference for N=%d", n), func() {
-					src := make([]float32, n)
-					expected := make([]float32, n)
-					actual := make([]float32, n)
+	for _, testCase := range testCases {
+		convey.Convey(fmt.Sprintf("Given %sAVX512", testCase.name), t, func() {
+			for _, count := range parity.Lengths {
+				convey.Convey(fmt.Sprintf("It should match scalar reference for N=%d", count), func() {
+					source := make([]float32, count)
+					want := make([]float32, count)
+					got := make([]float32, count)
 
-					for i := 0; i < n; i++ {
-						src[i] = rand.Float32()*10.0 - 5.0
+					for index := range source {
+						source[index] = rand.Float32()*10.0 - 5.0
 					}
 
-					tc.generic(&expected[0], &src[0], n)
-					tc.avx512(&actual[0], &src[0], n)
+					testCase.generic(&want[0], &source[0], count)
+					testCase.avx512(&got[0], &source[0], count)
 
-					for i := 0; i < n; i++ {
-						diff := ulpDiffF32(expected[i], actual[i])
-						if diff > 10 {
-							convey.So(diff, convey.ShouldBeLessThanOrEqualTo, uint32(10))
-						}
-					}
+					parity.AssertFloat32SlicesWithinULP(t, got, want, testCase.maxULP)
 				})
 			}
 		})
@@ -110,31 +111,58 @@ func benchmarkParamExtraKernel(b *testing.B, name string, kernel func(dst, src *
 	if !cpu.X86.HasAVX512F {
 		b.Skip("AVX512F not supported")
 	}
+
 	b.Run(name, func(b *testing.B) {
-		n := 8192
-		src := make([]float32, n)
-		dst := make([]float32, n)
-		for i := 0; i < n; i++ {
-			src[i] = rand.Float32()*10.0 - 5.0
+		count := 8192
+		source := make([]float32, count)
+		destination := make([]float32, count)
+
+		for index := range source {
+			source[index] = rand.Float32()*10.0 - 5.0
 		}
+
 		b.ResetTimer()
 		for b.Loop() {
-			kernel(&dst[0], &src[0], n)
+			kernel(&destination[0], &source[0], count)
 		}
 	})
 }
 
 func BenchmarkParamExtraAVX512(b *testing.B) {
-	benchmarkParamExtraKernel(b, "CELUAlphaF32_Generic", func(dst, src *float32, count int) { CELUAlphaF32Generic(dst, src, count, 1.5) })
-	benchmarkParamExtraKernel(b, "CELUAlphaF32_AVX512", func(dst, src *float32, count int) { CELUAlphaF32AVX512(dst, src, count, 1.5) })
-	benchmarkParamExtraKernel(b, "HardShrinkF32_Generic", func(dst, src *float32, count int) { HardShrinkF32Generic(dst, src, count, 0.5) })
-	benchmarkParamExtraKernel(b, "HardShrinkF32_AVX512", func(dst, src *float32, count int) { HardShrinkF32AVX512(dst, src, count, 0.5) })
-	benchmarkParamExtraKernel(b, "SoftShrinkF32_Generic", func(dst, src *float32, count int) { SoftShrinkF32Generic(dst, src, count, 0.5) })
-	benchmarkParamExtraKernel(b, "SoftShrinkF32_AVX512", func(dst, src *float32, count int) { SoftShrinkF32AVX512(dst, src, count, 0.5) })
-	benchmarkParamExtraKernel(b, "SnakeF32_Generic", func(dst, src *float32, count int) { SnakeF32Generic(dst, src, count, 0.5) })
-	benchmarkParamExtraKernel(b, "SnakeF32_AVX512", func(dst, src *float32, count int) { SnakeF32AVX512(dst, src, count, 0.5) })
-	benchmarkParamExtraKernel(b, "SnakeParametricF32_Generic", func(dst, src *float32, count int) { SnakeParametricF32Generic(dst, src, count, 0.5, 0.2) })
-	benchmarkParamExtraKernel(b, "SnakeParametricF32_AVX512", func(dst, src *float32, count int) { SnakeParametricF32AVX512(dst, src, count, 0.5, 0.2) })
-	benchmarkParamExtraKernel(b, "RReLUF32_Generic", func(dst, src *float32, count int) { RReLUF32Generic(dst, src, count, 0.1, 0.3) })
-	benchmarkParamExtraKernel(b, "RReLUF32_AVX512", func(dst, src *float32, count int) { RReLUF32AVX512(dst, src, count, 0.1, 0.3) })
+	benchmarkParamExtraKernel(b, "CELUAlphaF32_Generic", func(dst, src *float32, count int) {
+		CELUAlphaF32Generic(dst, src, count, 1.5)
+	})
+	benchmarkParamExtraKernel(b, "CELUAlphaF32_AVX512", func(dst, src *float32, count int) {
+		CELUAlphaF32AVX512(dst, src, count, 1.5)
+	})
+	benchmarkParamExtraKernel(b, "HardShrinkF32_Generic", func(dst, src *float32, count int) {
+		HardShrinkF32Generic(dst, src, count, 0.5)
+	})
+	benchmarkParamExtraKernel(b, "HardShrinkF32_AVX512", func(dst, src *float32, count int) {
+		HardShrinkF32AVX512(dst, src, count, 0.5)
+	})
+	benchmarkParamExtraKernel(b, "SoftShrinkF32_Generic", func(dst, src *float32, count int) {
+		SoftShrinkF32Generic(dst, src, count, 0.5)
+	})
+	benchmarkParamExtraKernel(b, "SoftShrinkF32_AVX512", func(dst, src *float32, count int) {
+		SoftShrinkF32AVX512(dst, src, count, 0.5)
+	})
+	benchmarkParamExtraKernel(b, "SnakeF32_Generic", func(dst, src *float32, count int) {
+		SnakeF32Generic(dst, src, count, 0.5)
+	})
+	benchmarkParamExtraKernel(b, "SnakeF32_AVX512", func(dst, src *float32, count int) {
+		SnakeF32AVX512(dst, src, count, 0.5)
+	})
+	benchmarkParamExtraKernel(b, "SnakeParametricF32_Generic", func(dst, src *float32, count int) {
+		SnakeParametricF32Generic(dst, src, count, 0.5, 0.2)
+	})
+	benchmarkParamExtraKernel(b, "SnakeParametricF32_AVX512", func(dst, src *float32, count int) {
+		SnakeParametricF32AVX512(dst, src, count, 0.5, 0.2)
+	})
+	benchmarkParamExtraKernel(b, "RReLUF32_Generic", func(dst, src *float32, count int) {
+		RReLUF32Generic(dst, src, count, 0.1, 0.3)
+	})
+	benchmarkParamExtraKernel(b, "RReLUF32_AVX512", func(dst, src *float32, count int) {
+		RReLUF32AVX512(dst, src, count, 0.1, 0.3)
+	})
 }
