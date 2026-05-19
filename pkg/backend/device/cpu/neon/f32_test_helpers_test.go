@@ -3,10 +3,11 @@
 package neon
 
 import (
-	"math"
 	"math/rand"
 	"testing"
 	"unsafe"
+
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
 )
 
 func convFloat32Pointer(slice []float32) unsafe.Pointer {
@@ -27,22 +28,9 @@ func randFloat32Slice(elementCount int, seed int64) []float32 {
 func assertFloat32SlicesNear(
 	testing *testing.T,
 	got, want []float32,
-	tolerance float64,
+	maxULP int,
 ) {
 	testing.Helper()
 
-	if len(got) != len(want) {
-		testing.Fatalf("length mismatch got=%d want=%d", len(got), len(want))
-	}
-
-	for index := range got {
-		diff := math.Abs(float64(got[index] - want[index]))
-
-		if diff > tolerance {
-			testing.Fatalf(
-				"lane %d got=%g want=%g diff=%g",
-				index, got[index], want[index], diff,
-			)
-		}
-	}
+	parity.AssertFloat32SlicesWithinULP(testing, got, want, maxULP)
 }

@@ -18,7 +18,7 @@ structs so the dispatcher signature remains (Q, K, V, output).
 Per Phase 8.2, batched attention requires extending the dispatch
 table to (Q, K, V, output, mask) — that lands in a follow-up;
 the kernels here apply masking via the config rather than an input
-tensor for now.
+tensor until a dedicated layout kernel lands.
 */
 
 type MultiHeadAttentionConfig struct {

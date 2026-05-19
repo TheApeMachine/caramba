@@ -80,7 +80,7 @@ func TestAddBFloat16_MixedAccumulation(t *testing.T) {
 				expected := source + source*2
 				actual := (&outView[index]).Float32()
 
-				convey.So(actual, convey.ShouldAlmostEqual, expected, 1e-2)
+				convey.So(actual, convey.ShouldEqual, expected)
 			}
 		})
 	})

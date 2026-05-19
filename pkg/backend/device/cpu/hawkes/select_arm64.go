@@ -7,8 +7,6 @@ import (
 	"unsafe"
 
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/activation"
-	"github.com/theapemachine/caramba/pkg/backend/device/cpu/elementwise"
-	"github.com/theapemachine/caramba/pkg/backend/device/cpu/reduction"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
@@ -198,26 +196,7 @@ func MarkovMutualInformationNative(joint []float32, xCount, yCount int, out []fl
 			weightScratch[yIndex] = jointValue
 		}
 
-		blockCount := yCount &^ 3
-
-		if blockCount > 0 {
-			activation.Log(
-				unsafe.Pointer(&ratioScratch[0]),
-				unsafe.Pointer(&ratioScratch[0]),
-				blockCount,
-				dtype.Float32,
-			)
-			elementwise.Mul(
-				unsafe.Pointer(&weightScratch[0]),
-				unsafe.Pointer(&rowView[0]),
-				unsafe.Pointer(&ratioScratch[0]),
-				blockCount,
-				dtype.Float32,
-			)
-			mutualInformation += float64(reduction.SumFloat32Native(weightScratch[:blockCount]))
-		}
-
-		for yIndex := blockCount; yIndex < yCount; yIndex++ {
+		for yIndex := range yCount {
 			if rowView[yIndex] <= epsilon {
 				continue
 			}

@@ -56,20 +56,18 @@ func pool2DFloat32FastRowNative(
 				blockCols := len(outputRow) &^ 3
 				ihStart := outRow*config.StrideH - config.PaddingH
 
-				if blockCols > 0 && strideTwo {
-					if useMax {
-						MaxPool2x2Stride2RowNEONAsm(
-							&outputRow[0], &channel[0],
-							blockCols, inWidth, ihStart,
-						)
-					}
+				if blockCols > 0 && strideTwo && useMax {
+					MaxPool2x2Stride2RowNEONAsm(
+						&outputRow[0], &channel[0],
+						blockCols, inWidth, ihStart,
+					)
+				}
 
-					if !useMax {
-						AvgPool2x2Stride2RowNEONAsm(
-							&outputRow[0], &channel[0],
-							blockCols, inWidth, ihStart,
-						)
-					}
+				if blockCols > 0 && strideTwo && !useMax {
+					AvgPool2x2Stride2RowNEONAsm(
+						&outputRow[0], &channel[0],
+						blockCols, inWidth, ihStart,
+					)
 				}
 
 				if blockCols > 0 && !strideTwo {
@@ -185,7 +183,7 @@ func PoolWindowAvgFloat32Native(
 
 	PoolWindowGather(channel, scratch, inWidth, startRow, endRow, startCol, endCol)
 
-	return reduction.SumFloat32Native(scratch[:elementCount]) / float32(elementCount)
+	return sumFloat32Sequential(scratch[:elementCount]) / float32(elementCount)
 }
 
 func AdaptivePool2DFloat32Native(

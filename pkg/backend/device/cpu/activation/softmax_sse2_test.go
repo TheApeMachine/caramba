@@ -3,39 +3,31 @@
 package activation
 
 import (
-	"math"
 	"math/rand"
 	"testing"
 
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
 	"golang.org/x/sys/cpu"
 )
 
-func assertSoftmaxParity(t *testing.T, count int) {
+func TestSoftmaxF32SSE2(t *testing.T) {
 	if !cpu.X86.HasSSE2 {
 		t.Skip("SSE2 not supported")
 	}
-	src := make([]float32, count)
-	dstSSE := make([]float32, count)
-	dstGen := make([]float32, count)
 
-	for i := 0; i < count; i++ {
-		src[i] = rand.Float32()*2 - 1
-	}
+	for _, count := range parity.Lengths {
+		source := make([]float32, count)
+		sseOutput := make([]float32, count)
+		genericOutput := make([]float32, count)
 
-	SoftmaxF32SSE2(&dstSSE[0], &src[0], count)
-	SoftmaxF32Generic(&dstGen[0], &src[0], count)
-
-	for i := 0; i < count; i++ {
-		if math.Abs(float64(dstSSE[i]-dstGen[i])) > 1e-5 {
-			t.Fatalf("mismatch at index %d: sse2=%f generic=%f", i, dstSSE[i], dstGen[i])
+		for index := range source {
+			source[index] = rand.Float32()*2 - 1
 		}
-	}
-}
 
-func TestSoftmaxF32SSE2(t *testing.T) {
-	sizes := []int{1, 7, 64, 1024, 8192}
-	for _, n := range sizes {
-		assertSoftmaxParity(t, n)
+		SoftmaxF32SSE2(&sseOutput[0], &source[0], count)
+		SoftmaxF32Generic(&genericOutput[0], &source[0], count)
+
+		parity.AssertFloat32SlicesWithinULP(t, sseOutput, genericOutput, 2)
 	}
 }
 
@@ -43,27 +35,30 @@ func BenchmarkSoftmaxF32SSE2(b *testing.B) {
 	if !cpu.X86.HasSSE2 {
 		b.Skip("SSE2 not supported")
 	}
+
 	count := 1024
-	src := make([]float32, count)
-	dst := make([]float32, count)
-	for i := 0; i < count; i++ {
-		src[i] = rand.Float32()
+	source := make([]float32, count)
+	destination := make([]float32, count)
+
+	for index := range source {
+		source[index] = rand.Float32()
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		SoftmaxF32SSE2(&dst[0], &src[0], count)
+
+	for b.Loop() {
+		SoftmaxF32SSE2(&destination[0], &source[0], count)
 	}
 }
 
 func BenchmarkSoftmaxF32Generic(b *testing.B) {
 	count := 1024
-	src := make([]float32, count)
-	dst := make([]float32, count)
-	for i := 0; i < count; i++ {
-		src[i] = rand.Float32()
+	source := make([]float32, count)
+	destination := make([]float32, count)
+
+	for index := range source {
+		source[index] = rand.Float32()
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		SoftmaxF32Generic(&dst[0], &src[0], count)
+
+	for b.Loop() {
+		SoftmaxF32Generic(&destination[0], &source[0], count)
 	}
 }

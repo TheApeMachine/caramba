@@ -9,6 +9,34 @@ func Conv2DFloat32Scalar(
 	outChannels, kernelHeight, kernelWidth,
 	outHeight, outWidth int,
 ) {
+	if conv2DConfigNEONEligible(config) {
+		conv2DFloat32Stride1Scalar(
+			config,
+			input, weight, bias, output,
+			batch, inChannels, inHeight, inWidth,
+			outChannels, kernelHeight, kernelWidth,
+			outHeight, outWidth,
+		)
+
+		return
+	}
+
+	conv2DFloat32GeneralScalar(
+		config,
+		input, weight, bias, output,
+		batch, inChannels, inHeight, inWidth,
+		outChannels, kernelHeight, kernelWidth,
+		outHeight, outWidth,
+	)
+}
+
+func conv2DFloat32Stride1Scalar(
+	config Conv2DConfig,
+	input, weight, bias, output unsafe.Pointer,
+	batch, inChannels, inHeight, inWidth,
+	outChannels, kernelHeight, kernelWidth,
+	outHeight, outWidth int,
+) {
 	inputView := float32View(input, batch*inChannels*inHeight*inWidth)
 	weightView := float32View(weight, outChannels*inChannels*kernelHeight*kernelWidth)
 	biasView := float32View(bias, outChannels)
@@ -29,6 +57,52 @@ func Conv2DFloat32Scalar(
 						outRow, outCol,
 						biasView[outChIndex],
 					)
+				}
+			}
+		}
+	}
+}
+
+func conv2DFloat32GeneralScalar(
+	config Conv2DConfig,
+	input, weight, bias, output unsafe.Pointer,
+	batch, inChannels, inHeight, inWidth,
+	outChannels, kernelHeight, kernelWidth,
+	outHeight, outWidth int,
+) {
+	inputView := float32View(input, batch*inChannels*inHeight*inWidth)
+	weightView := float32View(weight, outChannels*inChannels*kernelHeight*kernelWidth)
+	biasView := float32View(bias, outChannels)
+	outputView := float32View(output, batch*outChannels*outHeight*outWidth)
+
+	patchLength := inChannels * kernelHeight * kernelWidth
+	patchScratch := make([]float32, patchLength)
+
+	for batchIndex := range batch {
+		inputBatchOffset := batchIndex * inChannels * inHeight * inWidth
+
+		for outChIndex := range outChannels {
+			weightChannelOffset := outChIndex * inChannels * kernelHeight * kernelWidth
+
+			for outRow := range outHeight {
+				for outCol := range outWidth {
+					Conv2DPatchGather(
+						config,
+						inputView, inputBatchOffset,
+						patchScratch,
+						inChannels, inHeight, inWidth,
+						kernelHeight, kernelWidth,
+						outRow, outCol,
+					)
+
+					dotValue := ConvPatchDotScalar(
+						weightView[weightChannelOffset:weightChannelOffset+patchLength],
+						patchScratch,
+						patchLength,
+					)
+
+					outputView[((batchIndex*outChannels+outChIndex)*outHeight+outRow)*outWidth+outCol] =
+						biasView[outChIndex] + dotValue
 				}
 			}
 		}

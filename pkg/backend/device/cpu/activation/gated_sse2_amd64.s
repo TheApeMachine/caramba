@@ -183,7 +183,7 @@ swiglu_sse2_w8:
 	
 swiglu_sse2_w4:
 	CMPQ CX, $4
-	JL swiglu_sse2_scalar
+	JL swiglu_sse2_done
 	
 	MOVUPS (SI), X0
 	MOVUPS (R8), X5 // up tensor
@@ -276,89 +276,6 @@ swiglu_sse2_w4:
 	SUBQ $4, CX
 	JMP swiglu_sse2_w4
 	
-swiglu_sse2_scalar:
-	TESTQ CX, CX
-	JZ swiglu_sse2_done
-swiglu_sse2_sloop:
-	MOVSS (SI), X0
-	MOVSS (R8), X5 // up tensor
-	
-	MOVAPS X0, X10  // save gate tensor
-	
-	MOVSS (AX), X8
-	MOVSS 4(AX), X9
-	
-	MOVAPS X0, X1
-	XORPS X1, X1
-	SUBPS X0, X1
-	MOVAPS X1, X0 // X0 is now -gate
-	
-	MOVAPS X0, X1
-	MULPS X8, X1
-	
-	CVTPS2DQ X1, X1
-	CVTDQ2PS X1, X1
-	
-	MOVAPS X1, X2
-	MULPS X9, X2
-	
-	SUBPS X2, X0 // X0 is now reduced x (r)
-	
-	MOVSS 36(AX), X7
-	
-	MOVAPS X7, X3
-	MULPS X0, X3
-	MOVSS 32(AX), X7
-	ADDPS X3, X7
-	
-	MOVAPS X7, X3
-	MULPS X0, X3
-	MOVSS 28(AX), X7
-	ADDPS X3, X7
-	
-	MOVAPS X7, X3
-	MULPS X0, X3
-	MOVSS 24(AX), X7
-	ADDPS X3, X7
-	
-	MOVAPS X7, X3
-	MULPS X0, X3
-	MOVSS 20(AX), X7
-	ADDPS X3, X7
-	
-	MOVAPS X7, X3
-	MULPS X0, X3
-	MOVSS 16(AX), X7
-	ADDPS X3, X7
-	
-	MOVAPS X7, X3
-	MULPS X0, X3
-	MOVSS 12(AX), X7
-	ADDPS X3, X7
-	
-	CVTPS2DQ X1, X1
-	MOVD actX86Bias127<>(SB), X20
-	PADDD X20, X1
-	PSLLD $23, X1
-	
-	PADDD X1, X7
-	
-	MOVSS 4(DX), X6 // actX86LogC[1] is 1.0
-	MOVAPS X7, X2
-	ADDPS X6, X2
-	
-	MOVAPS X6, X7
-	DIVPS X2, X7
-	
-	MULPS X10, X7
-	MULPS X5, X7
-	
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, R8
-	ADDQ $4, DI
-	DECQ CX
-	JNZ swiglu_sse2_sloop
 swiglu_sse2_done:
 	RET
 
@@ -382,7 +299,7 @@ linglu_sse2_w8:
 	JMP linglu_sse2_w8
 linglu_sse2_w4:
 	CMPQ CX, $4
-	JL linglu_sse2_scalar
+	JL linglu_sse2_done
 	VMOVUPS (SI), X0
 	VMOVUPS (R8), X11
 	VMULPS X0, X11, X7
@@ -392,19 +309,6 @@ linglu_sse2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP linglu_sse2_w4
-linglu_sse2_scalar:
-	TESTQ CX, CX
-	JZ linglu_sse2_done
-linglu_sse2_sloop:
-	MOVSS (SI), X0
-	MOVSS (R8), X11
-	VMULPS X0, X11, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, R8
-	ADDQ $4, DI
-	DECQ CX
-	JNZ linglu_sse2_sloop
 linglu_sse2_done:
 	RET
 
@@ -430,7 +334,7 @@ reglu_sse2_w8:
 	JMP reglu_sse2_w8
 reglu_sse2_w4:
 	CMPQ CX, $4
-	JL reglu_sse2_scalar
+	JL reglu_sse2_done
 	VMOVUPS (SI), X10
 	VMOVUPS (R8), X11
 	VMAXPS X15, X11, X7
@@ -441,20 +345,6 @@ reglu_sse2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP reglu_sse2_w4
-reglu_sse2_scalar:
-	TESTQ CX, CX
-	JZ reglu_sse2_done
-reglu_sse2_sloop:
-	MOVSS (SI), X10
-	MOVSS (R8), X11
-	VMAXPS X15, X11, X7
-	VMULPS X10, X7, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, R8
-	ADDQ $4, DI
-	DECQ CX
-	JNZ reglu_sse2_sloop
 reglu_sse2_done:
 	RET
 
@@ -526,7 +416,7 @@ glu_sse2_w8:
 	JMP glu_sse2_w8
 glu_sse2_w4:
 	CMPQ CX, $4
-	JL glu_sse2_scalar
+	JL glu_sse2_done
 	VMOVUPS (SI), X10
 	VMOVUPS (R8), X0
 	VXORPS X0, X0, X1
@@ -562,45 +452,6 @@ glu_sse2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP glu_sse2_w4
-glu_sse2_scalar:
-	TESTQ CX, CX
-	JZ glu_sse2_done
-glu_sse2_sloop:
-	MOVSS (SI), X10
-	MOVSS (R8), X0
-	VXORPS X0, X0, X1
-	VSUBPS X1, X0, X0
-	VMULPS X8, X0, X1
-	VROUNDPS $8, X1, X1
-	VMULPS X1, X9, X2
-	VSUBPS X2, X0, X0
-	VMOVAPS X11, X3
-	VFMADD213PS X3, X0, X11
-	VMOVAPS X12, X3
-	VFMADD213PS X3, X0, X12
-	VMOVAPS X13, X3
-	VFMADD213PS X3, X0, X13
-	VMOVAPS X14, X3
-	VFMADD213PS X3, X0, X14
-	VMOVAPS X15, X3
-	VFMADD213PS X3, X0, X15
-	VMOVAPS X16, X3
-	VFMADD213PS X3, X0, X16
-	VMOVAPS X17, X7
-	VFMADD213PS X7, X0, X17
-	VCVTPS2DQ X1, X1
-	VPADDD X20, X1, X1
-	VPSLLD $23, X1, X1
-	VPADDD X1, X7, X7
-	VADDPS X7, X26, X6
-	VDIVPS X6, X26, X7
-	VMULPS X10, X7, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, R8
-	ADDQ $4, DI
-	DECQ CX
-	JNZ glu_sse2_sloop
 glu_sse2_done:
 	RET
 
@@ -672,7 +523,7 @@ siglu_sse2_w8:
 	JMP siglu_sse2_w8
 siglu_sse2_w4:
 	CMPQ CX, $4
-	JL siglu_sse2_scalar
+	JL siglu_sse2_done
 	VMOVUPS (SI), X0
 	VMOVUPS (R8), X11
 	VXORPS X0, X0, X1
@@ -708,45 +559,6 @@ siglu_sse2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP siglu_sse2_w4
-siglu_sse2_scalar:
-	TESTQ CX, CX
-	JZ siglu_sse2_done
-siglu_sse2_sloop:
-	MOVSS (SI), X0
-	MOVSS (R8), X11
-	VXORPS X0, X0, X1
-	VSUBPS X1, X0, X0
-	VMULPS X8, X0, X1
-	VROUNDPS $8, X1, X1
-	VMULPS X1, X9, X2
-	VSUBPS X2, X0, X0
-	VMOVAPS X11, X3
-	VFMADD213PS X3, X0, X11
-	VMOVAPS X12, X3
-	VFMADD213PS X3, X0, X12
-	VMOVAPS X13, X3
-	VFMADD213PS X3, X0, X13
-	VMOVAPS X14, X3
-	VFMADD213PS X3, X0, X14
-	VMOVAPS X15, X3
-	VFMADD213PS X3, X0, X15
-	VMOVAPS X16, X3
-	VFMADD213PS X3, X0, X16
-	VMOVAPS X17, X7
-	VFMADD213PS X7, X0, X17
-	VCVTPS2DQ X1, X1
-	VPADDD X20, X1, X1
-	VPSLLD $23, X1, X1
-	VPADDD X1, X7, X7
-	VADDPS X7, X26, X6
-	VDIVPS X6, X26, X7
-	VMULPS X11, X7, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, R8
-	ADDQ $4, DI
-	DECQ CX
-	JNZ siglu_sse2_sloop
 siglu_sse2_done:
 	RET
 
@@ -818,7 +630,7 @@ seglu_sse2_w8:
 	JMP seglu_sse2_w8
 seglu_sse2_w4:
 	CMPQ CX, $4
-	JL seglu_sse2_scalar
+	JL seglu_sse2_done
 	VMOVUPS (SI), X0
 	VMOVUPS (R8), X11
 	VXORPS X0, X0, X1
@@ -854,45 +666,6 @@ seglu_sse2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP seglu_sse2_w4
-seglu_sse2_scalar:
-	TESTQ CX, CX
-	JZ seglu_sse2_done
-seglu_sse2_sloop:
-	MOVSS (SI), X0
-	MOVSS (R8), X11
-	VXORPS X0, X0, X1
-	VSUBPS X1, X0, X0
-	VMULPS X8, X0, X1
-	VROUNDPS $8, X1, X1
-	VMULPS X1, X9, X2
-	VSUBPS X2, X0, X0
-	VMOVAPS X11, X3
-	VFMADD213PS X3, X0, X11
-	VMOVAPS X12, X3
-	VFMADD213PS X3, X0, X12
-	VMOVAPS X13, X3
-	VFMADD213PS X3, X0, X13
-	VMOVAPS X14, X3
-	VFMADD213PS X3, X0, X14
-	VMOVAPS X15, X3
-	VFMADD213PS X3, X0, X15
-	VMOVAPS X16, X3
-	VFMADD213PS X3, X0, X16
-	VMOVAPS X17, X7
-	VFMADD213PS X7, X0, X17
-	VCVTPS2DQ X1, X1
-	VPADDD X20, X1, X1
-	VPSLLD $23, X1, X1
-	VPADDD X1, X7, X7
-	VADDPS X7, X26, X6
-	VDIVPS X6, X26, X7
-	VMULPS X11, X7, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, R8
-	ADDQ $4, DI
-	DECQ CX
-	JNZ seglu_sse2_sloop
 seglu_sse2_done:
 	RET
 
@@ -946,7 +719,7 @@ geglu_sse2_w8:
 	JMP geglu_sse2_w8
 geglu_sse2_w4:
 	CMPQ CX, $4
-	JL geglu_sse2_scalar
+	JL geglu_sse2_done
 	VMOVUPS (SI), X3
 	VMOVUPS (R8), X0
 	VMOVAPS X0, X2
@@ -977,40 +750,6 @@ geglu_sse2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP geglu_sse2_w4
-geglu_sse2_scalar:
-	TESTQ CX, CX
-	JZ geglu_sse2_done
-geglu_sse2_sloop:
-	MOVSS (SI), X3
-	MOVSS (R8), X0
-	VMOVAPS X0, X2
-	VMULPS X30, X0, X11
-	VANDPS X27, X11, X12
-	VADDPS X31, X12, X13
-	VDIVPS X13, X12, X12
-	VMOVAPS X11, X14
-	VXORPS X14, X14, X14
-	VSUBPS X11, X14, X14
-	VMULPS X14, X14, X15
-	VFMADD213PS X11, X12, X14
-	VMULPS X14, X12, X14
-	VSUBPS X18, X14, X14
-	VCMPPS $6, X15, X11, X13
-	VXORPS X14, X14, X15
-	VSUBPS X14, X15, X15
-	VANDPS X13, X15, X4
-	VPANDN X13, X14, X5
-	VORPS X4, X5, X14
-	VADDPS X18, X14, X14
-	VMULPS X2, X14, X7
-	VMULPS X16, X7, X7
-	VMULPS X3, X7, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, R8
-	ADDQ $4, DI
-	DECQ CX
-	JNZ geglu_sse2_sloop
 geglu_sse2_done:
 	RET
 
@@ -1095,7 +834,7 @@ geglu_tanh_sse2_w8:
 	JMP geglu_tanh_sse2_w8
 geglu_tanh_sse2_w4:
 	CMPQ CX, $4
-	JL geglu_tanh_sse2_scalar
+	JL geglu_tanh_sse2_done
 	VMOVUPS (SI), X3
 	VMOVUPS (R8), X0
 	VMOVAPS X0, X10
@@ -1138,51 +877,5 @@ geglu_tanh_sse2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP geglu_tanh_sse2_w4
-geglu_tanh_sse2_scalar:
-	TESTQ CX, CX
-	JZ geglu_tanh_sse2_done
-geglu_tanh_sse2_sloop:
-	MOVSS (SI), X3
-	MOVSS (R8), X0
-	VMOVAPS X0, X10
-	VMULPS X0, X0, X1
-	VMULPS X1, X0, X1
-	VFMADD213PS X29, X1, X10
-	VMULPS X27, X10, X0
-	VMULPS X8, X0, X1
-	VROUNDPS $8, X1, X1
-	VMULPS X1, X9, X4
-	VSUBPS X4, X0, X0
-	VMOVAPS X11, X5
-	VFMADD213PS X5, X0, X11
-	VMOVAPS X12, X5
-	VFMADD213PS X5, X0, X12
-	VMOVAPS X13, X5
-	VFMADD213PS X5, X0, X13
-	VMOVAPS X14, X5
-	VFMADD213PS X5, X0, X14
-	VMOVAPS X15, X5
-	VFMADD213PS X5, X0, X15
-	VMOVAPS X16, X5
-	VFMADD213PS X5, X0, X16
-	VMOVAPS X17, X6
-	VFMADD213PS X6, X0, X17
-	VCVTPS2DQ X1, X1
-	VPADDD X20, X1, X1
-	VPSLLD $23, X1, X1
-	VPADDD X1, X17, X6
-	VSUBPS X6, X26, X14
-	VADDPS X6, X26, X15
-	VDIVPS X15, X14, X6
-	VADDPS X6, X26, X6
-	VMULPS X10, X6, X7
-	VMULPS X28, X7, X7
-	VMULPS X3, X7, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, R8
-	ADDQ $4, DI
-	DECQ CX
-	JNZ geglu_tanh_sse2_sloop
 geglu_tanh_sse2_done:
 	RET

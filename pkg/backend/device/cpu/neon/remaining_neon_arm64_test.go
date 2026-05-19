@@ -12,10 +12,15 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/dropout"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/hawkes"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/matmul"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/pool"
 )
 
 var paritySizes = []int{1, 7, 64, 1024, 8192}
+
+const maxULPElementary = 2
+
+const maxULPReduction = 4
 
 func TestConv2DFloat32NEONParity(t *testing.T) {
 	config := convolution.DefaultConv2DConfig()
@@ -53,7 +58,7 @@ func TestConv2DFloat32NEONParity(t *testing.T) {
 				testCase.outC, testCase.kH, testCase.kW, outH, outW,
 			)
 
-			assertFloat32SlicesNear(t, got, want, 1e-4)
+			assertFloat32SlicesNear(t, got, want, maxULPReduction)
 		})
 	}
 }
@@ -93,7 +98,7 @@ func TestPool2DFloat32NEONParity(t *testing.T) {
 					useMax,
 				)
 
-				assertFloat32SlicesNear(t, got, want, 1e-5)
+				assertFloat32SlicesNear(t, got, want, maxULPElementary)
 			})
 		}
 	}
@@ -134,7 +139,7 @@ func TestConv1DFloat32NEONParity(t *testing.T) {
 				testCase.outC, testCase.kLen, outLen,
 			)
 
-			assertFloat32SlicesNear(t, got, want, 1e-4)
+			assertFloat32SlicesNear(t, got, want, maxULPReduction)
 		})
 	}
 }
@@ -167,7 +172,7 @@ func TestConv3DFloat32NEONParity(t *testing.T) {
 		outC, kD, kH, kW, outD, outH, outW,
 	)
 
-	assertFloat32SlicesNear(t, got, want, 1e-4)
+	assertFloat32SlicesNear(t, got, want, maxULPReduction)
 }
 
 func TestDropoutFloat32NativeParity(t *testing.T) {
@@ -203,7 +208,7 @@ func TestHawkesLogLikelihoodNEONParity(t *testing.T) {
 			hawkes.HawkesLogLikelihoodNative(eventTimes, 10.0, 0.2, 0.5, 1.0, got)
 			hawkes.HawkesLogLikelihoodScalar(eventTimes, 10.0, 0.2, 0.5, 1.0, want)
 
-			assertFloat32SlicesNear(t, got, want, 1e-4)
+			assertFloat32SlicesNear(t, got, want, maxULPReduction)
 		})
 	}
 }
@@ -236,7 +241,7 @@ func TestMarkovMutualInformationNEONParity(t *testing.T) {
 			hawkes.MarkovMutualInformationNative(joint, testCase.xCount, testCase.yCount, got)
 			hawkes.MarkovMutualInformationScalar(joint, testCase.xCount, testCase.yCount, want)
 
-			assertFloat32SlicesNear(t, got, want, 1e-4)
+			assertFloat32SlicesNear(t, got, want, maxULPReduction)
 		})
 	}
 }
@@ -248,8 +253,8 @@ func TestSparseCSRMatMulRowNEONAsmDirect(t *testing.T) {
 
 	matmul.SparseCSRMatMulRowSingleNzNEONAsm(&out[0], 2, &right[0], 1)
 
-	if math.Abs(float64(out[0]-6)) > 1e-5 {
-		t.Fatalf("single nz got=%g want=6", out[0])
+	if parity.Float32ULPDistance(out[0], 6) > 1 {
+		t.Fatalf("single nz got=%g want=6 ulp=%d", out[0], parity.Float32ULPDistance(out[0], 6))
 	}
 
 	out[0] = 0
@@ -268,8 +273,8 @@ func TestSparseCSRMatMulRowNEONAsmDirect(t *testing.T) {
 	}
 
 	want := float32(2*1 + 3*2 + 4*3)
-	if math.Abs(float64(out[0]-want)) > 1e-5 {
-		t.Fatalf("got=%g want=%g", out[0], want)
+	if parity.Float32ULPDistance(out[0], want) > 1 {
+		t.Fatalf("got=%g want=%g ulp=%d", out[0], want, parity.Float32ULPDistance(out[0], want))
 	}
 }
 
@@ -301,7 +306,7 @@ func TestSparseCSRMatMulFloat32NEONParity(t *testing.T) {
 			matmul.SparseCSRMatMulFloat32Native(got, values, right, rowPtr, colIdx, rows, cols)
 			matmul.SparseCSRMatMulFloat32Scalar(want, values, right, rowPtr, colIdx, rows, cols)
 
-			assertFloat32SlicesNear(t, got, want, 1e-5)
+			assertFloat32SlicesNear(t, got, want, maxULPReduction)
 		})
 	}
 }
@@ -315,8 +320,8 @@ func TestHawkesExpSumNEONAsmDirect(t *testing.T) {
 		want += float32(math.Exp(float64(value)))
 	}
 
-	if math.Abs(float64(got-want)) > 1e-3 {
-		t.Fatalf("got=%g want=%g", got, want)
+	if parity.Float32ULPDistance(got, want) > 4 {
+		t.Fatalf("got=%g want=%g ulp=%d", got, want, parity.Float32ULPDistance(got, want))
 	}
 }
 
@@ -337,7 +342,7 @@ func TestHawkesIntensityNEONParity(t *testing.T) {
 			hawkes.HawkesIntensityNative(eventTimes, queryTimes, got, 0.1, 0.5, 1.0)
 			hawkes.HawkesIntensityScalar(eventTimes, queryTimes, want, 0.1, 0.5, 1.0)
 
-			assertFloat32SlicesNear(t, got, want, 1e-5)
+			assertFloat32SlicesNear(t, got, want, maxULPReduction)
 		})
 	}
 }
@@ -358,7 +363,7 @@ func TestFlashAttentionRowNEONParity(t *testing.T) {
 				runFlashAttentionRowScalar(query, key, value, want, rowIndex, seqK, depth, valueDim, scale, false)
 			}
 
-			assertFloat32SlicesNear(t, got, want, 1e-4)
+			assertFloat32SlicesNear(t, got, want, maxULPReduction)
 		})
 	}
 }
@@ -421,7 +426,7 @@ func TestPoolWindowMaxFloat32NativeParity(t *testing.T) {
 	got := pool.PoolWindowMaxFloat32Native(channel, 3, 0, 2, 0, 2)
 	want := pool.PoolWindowMaxScalar(channel, 3, 0, 2, 0, 2)
 
-	assertFloat32SlicesNear(t, []float32{got}, []float32{want}, 1e-6)
+	assertFloat32SlicesNear(t, []float32{got}, []float32{want}, 1)
 }
 
 func TestConvTranspose2dStride1RowNEONAsmDirect(t *testing.T) {
@@ -436,7 +441,7 @@ func TestConvTranspose2dStride1RowNEONAsmDirect(t *testing.T) {
 			4,
 		)
 
-		assertFloat32SlicesNear(t, got, []float32{2, 4, 6, 8}, 1e-6)
+		assertFloat32SlicesNear(t, got, []float32{2, 4, 6, 8}, 1)
 	})
 
 	t.Run("single_tap", func(t *testing.T) {
@@ -454,7 +459,7 @@ func TestConvTranspose2dStride1RowNEONAsmDirect(t *testing.T) {
 			0, 0,
 		)
 
-		assertFloat32SlicesNear(t, got, want, 1e-6)
+		assertFloat32SlicesNear(t, got, want, 1)
 	})
 }
 
@@ -483,7 +488,7 @@ func TestConvTranspose2DFloat32NEONParity(t *testing.T) {
 		batch, inC, inH, inW, outC, kH, kW, outH, outW,
 	)
 
-	assertFloat32SlicesNear(t, got, want, 1e-4)
+	assertFloat32SlicesNear(t, got, want, maxULPReduction)
 }
 
 func TestAdaptivePool2DFloat32NEONParity(t *testing.T) {
@@ -512,7 +517,7 @@ func TestAdaptivePool2DFloat32NEONParity(t *testing.T) {
 				useMax,
 			)
 
-			assertFloat32SlicesNear(t, got, want, 1e-5)
+			assertFloat32SlicesNear(t, got, want, maxULPReduction)
 		})
 	}
 }
@@ -546,7 +551,7 @@ func TestConv2DGeneralFloat32NEONParity(t *testing.T) {
 		batch, inC, inH, inW, outC, kH, kW, outH, outW,
 	)
 
-	assertFloat32SlicesNear(t, got, want, 1e-4)
+	assertFloat32SlicesNear(t, got, want, maxULPReduction)
 }
 
 func TestPool2DGeneralFloat32NEONParity(t *testing.T) {
@@ -582,7 +587,7 @@ func TestPool2DGeneralFloat32NEONParity(t *testing.T) {
 				useMax,
 			)
 
-			assertFloat32SlicesNear(t, got, want, 1e-5)
+			assertFloat32SlicesNear(t, got, want, maxULPReduction)
 		})
 	}
 }

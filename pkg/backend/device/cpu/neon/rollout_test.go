@@ -13,6 +13,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/matmul"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/optimizer"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/quant"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/rope"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
@@ -54,8 +55,10 @@ func TestRoPEFloat32(t *testing.T) {
 		// For pair 0 with base=10000 and exponent 0: theta = 1.
 		// cos(1) ~ 0.5403, sin(1) ~ 0.8415.
 		outView, _ := out.Float32Native()
-		convey.So(math.Abs(float64(outView[0])-0.5403), convey.ShouldBeLessThan, 1e-3)
-		convey.So(math.Abs(float64(outView[1])-0.8415), convey.ShouldBeLessThan, 1e-3)
+		wantCos := float32(math.Cos(1))
+		wantSin := float32(math.Sin(1))
+		convey.So(parity.Float32ULPDistance(outView[0], wantCos), convey.ShouldBeLessThanOrEqualTo, 2)
+		convey.So(parity.Float32ULPDistance(outView[1], wantSin), convey.ShouldBeLessThanOrEqualTo, 2)
 	})
 }
 
@@ -94,8 +97,8 @@ func TestFlashAttentionMatchesBasic(t *testing.T) {
 
 		for index := range basicView {
 			convey.So(
-				math.Abs(float64(basicView[index]-flashView[index])),
-				convey.ShouldBeLessThan, 1e-5,
+				parity.Float32ULPDistance(basicView[index], flashView[index]),
+				convey.ShouldBeLessThanOrEqualTo, 4,
 			)
 		}
 	})

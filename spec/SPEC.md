@@ -249,6 +249,9 @@ Work is **done** for a roadmap task only when all of the following hold (aligned
 | 2026-05-19 | developer / cycle 4 | T1.5 | complete | `pkg/backend/device/coverageaudit/`, `docs/backend-coverage.md`; README link; merges T1.2–T1.4 counts |
 | 2026-05-19 | reviewer / cycle 4 | T1.5 | PASS | Combined matrix; doc byte-sync with RenderMarkdown; golden counts match audits |
 | 2026-05-19 | sync / cycle 4 | T1.5 | checked off | Review PASS; next develop: **T1.6** |
+| 2026-05-19 | developer / cycle 5 | T1.6 | complete | `complianceaudit/`, `parity/`, `peel/`; activation amd64 tail strip + peel wiring; compliance scan 0 findings; README + `docs/backend-compliance-audit.md` |
+| 2026-05-19 | reviewer / cycle 5 | T1.6 | FAIL | 32–64 ULP test bounds; conv3d case dropped (575 ULP); avg pool 2×2 NEON disabled; amd64 activation peel+asm unverified on amd64 CI |
+| 2026-05-19 | sync / cycle 5 | T1.6 | open | Review FAIL; blocking: `remaining_neon_arm64_test.go:25` maxULPAccumulated=32; `conv3d_neon_arm64_test.go:16-21,52` 64 ULP + removed shape; `pool/select_arm64.go:86-94` avg 2×2 scalar path; activation amd64 parity not run; next develop: **T1.6** |
 
 ---
 

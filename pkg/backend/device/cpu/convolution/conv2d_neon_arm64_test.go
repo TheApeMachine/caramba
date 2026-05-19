@@ -3,9 +3,10 @@
 package convolution
 
 import (
-	"math"
 	"math/rand"
 	"testing"
+
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
 )
 
 func TestConv2DStride1RowNEONAsm(t *testing.T) {
@@ -63,10 +64,5 @@ func TestConv2DStride1RowNEONAsm(t *testing.T) {
 		0, 0,
 	)
 
-	for i := 0; i < 4; i++ {
-		diff := math.Abs(float64(got[i] - scalar[i]))
-		if diff > 1e-4 {
-			t.Fatalf("col %d scalar=%g neon=%g diff=%g", i, scalar[i], got[i], diff)
-		}
-	}
+	parity.AssertFloat32SlicesWithinULP(t, got[:4], scalar[:4], 2)
 }

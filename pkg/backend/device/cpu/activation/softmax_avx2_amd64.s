@@ -71,7 +71,7 @@ smexp_avx2_w8:
 	JMP smexp_avx2_w8
 smexp_avx2_w4:
 	CMPQ CX, $4
-	JL smexp_avx2_scalar
+	JL smexp_avx2_done
 	VMOVUPS (SI), X0
 	VSUBPS X6, X0, X0
 	VMAXPS X4, X0, X0
@@ -103,88 +103,6 @@ smexp_avx2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP smexp_avx2_w4
-smexp_avx2_scalar:
-	TESTQ CX, CX
-	JZ smexp_avx2_fold
-smexp_avx2_sloop:
-	MOVSS (SI), X0
-	VSUBPS X6, X0, X0
-	VMAXPS X4, X0, X0
-	VMULPS X8, X0, X1
-	VROUNDPS $8, X1, X1
-	VMULPS X1, X9, X2
-	VSUBPS X2, X0, X0
-	VMOVAPS X11, X3
-	VFMADD213PS X3, X0, X11
-	VMOVAPS X12, X3
-	VFMADD213PS X3, X0, X12
-	VMOVAPS X13, X3
-	VFMADD213PS X3, X0, X13
-	VMOVAPS X14, X3
-	VFMADD213PS X3, X0, X14
-	VMOVAPS X15, X3
-	VFMADD213PS X3, X0, X15
-	VMOVAPS X16, X3
-	VFMADD213PS X3, X0, X16
-	VMOVAPS X17, X7
-	VFMADD213PS X7, X0, X17
-	VCVTPS2DQ X1, X1
-	VPADDD X20, X1, X1
-	VPSLLD $23, X1, X1
-	VPADDD X1, X7, X7
-	VADDPS X5, X7, X5
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ smexp_avx2_sloop
-smexp_avx2_fold:
-	VHADDPS Y5, Y5, Y0
-	VEXTRACTF128 $1, Y0, X1
-	VADDPS X0, X1, X0
-	VHADDPS X0, X0, X0
-	VHADDPS X0, X0, X0
-	MOVSS X0, ret+28(FP)
-	RET
-
-// func scaleF32AVX2(dst, src *float32, scale float32, count int)
-TEXT ·scaleF32AVX2(SB), NOSPLIT, $0-28
-	MOVQ dst+0(FP), DI
-	MOVQ src+8(FP), SI
-	VMOVSS scale+16(FP), X8
-	VBROADCASTSS X8, Y8
-	MOVQ count+24(FP), CX
-smscale_avx2_w8:
-	CMPQ CX, $8
-	JL smscale_avx2_w4
-	VMOVUPS (SI), Y0
-	VMULPS Y8, Y0, Y0
-	VMOVUPS Y0, (DI)
-	ADDQ $32, SI
-	ADDQ $32, DI
-	SUBQ $8, CX
-	JMP smscale_avx2_w8
-smscale_avx2_w4:
-	CMPQ CX, $4
-	JL smscale_avx2_scalar
-	VMOVUPS (SI), X0
-	VMULPS X8, X0, X0
-	VMOVUPS X0, (DI)
-	ADDQ $16, SI
-	ADDQ $16, DI
-	SUBQ $4, CX
-	JMP smscale_avx2_w4
-smscale_avx2_scalar:
-	TESTQ CX, CX
-	JZ smscale_avx2_done
-smscale_avx2_sloop:
-	MOVSS (SI), X0
-	VMULPS X8, X0, X0
-	MOVSS X0, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ smscale_avx2_sloop
 smscale_avx2_done:
 	RET
 
@@ -210,7 +128,7 @@ smlog_avx2_w8:
 	JMP smlog_avx2_w8
 smlog_avx2_w4:
 	CMPQ CX, $4
-	JL smlog_avx2_scalar
+	JL smlog_avx2_done
 	VMOVUPS (SI), X0
 	VSUBPS X8, X0, X0
 	VSUBPS X9, X0, X7
@@ -219,18 +137,6 @@ smlog_avx2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP smlog_avx2_w4
-smlog_avx2_scalar:
-	TESTQ CX, CX
-	JZ smlog_avx2_done
-smlog_avx2_sloop:
-	MOVSS (SI), X0
-	VSUBPS X8, X0, X0
-	VSUBPS X9, X0, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ smlog_avx2_sloop
 smlog_avx2_done:
 	RET
 
@@ -268,12 +174,6 @@ reduce_max_avx2_extract:
 reduce_max_avx2_tail:
 	TESTQ CX, CX
 	JZ reduce_max_avx2_done
-reduce_max_avx2_sloop:
-	MAXSS (SI), X0
-	ADDQ $4, SI
-	DECQ CX
-	JNZ reduce_max_avx2_sloop
-	JMP reduce_max_avx2_done
 reduce_max_avx2_done:
 	MOVSS X0, ret+16(FP)
 	RET

@@ -30,7 +30,7 @@ func TestDropoutFloat32NEONAsm(t *testing.T) {
 	for _, v := range dst {
 		if v != 0 {
 			kept++
-			if math.Abs(float64(v-2.0)) > 1e-6 {
+			if v != 2.0 {
 				t.Fatalf("kept lane has wrong value %g, expected 2.0", v)
 			}
 		}

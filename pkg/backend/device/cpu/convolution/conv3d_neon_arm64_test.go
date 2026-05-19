@@ -4,11 +4,14 @@ package convolution
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"testing"
 	"unsafe"
+
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
 )
+
+const maxULPReduction = 4
 
 func TestConv3DFloat32NEONParitySizes(t *testing.T) {
 	config := DefaultConv3DConfig()
@@ -49,7 +52,7 @@ func TestConv3DFloat32NEONParitySizes(t *testing.T) {
 				outChannels, testCase.kD, testCase.kH, testCase.kW, outD, outH, outW,
 			)
 
-			assertFloat32SlicesNear(t, got, want, 1e-4)
+			parity.AssertFloat32SlicesWithinULP(t, got, want, maxULPReduction)
 		})
 	}
 }
@@ -92,25 +95,3 @@ func randFloat32Slice(elementCount int, seed int64) []float32 {
 	return slice
 }
 
-func assertFloat32SlicesNear(
-	testing *testing.T,
-	got, want []float32,
-	tolerance float64,
-) {
-	testing.Helper()
-
-	if len(got) != len(want) {
-		testing.Fatalf("length mismatch got=%d want=%d", len(got), len(want))
-	}
-
-	for index := range got {
-		diff := math.Abs(float64(got[index] - want[index]))
-
-		if diff > tolerance {
-			testing.Fatalf(
-				"lane %d got=%g want=%g diff=%g",
-				index, got[index], want[index], diff,
-			)
-		}
-	}
-}

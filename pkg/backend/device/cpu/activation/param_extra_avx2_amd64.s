@@ -80,7 +80,7 @@ cla_avx2_w8:
 	JMP cla_avx2_w8
 cla_avx2_w4:
 	CMPQ CX, $4
-	JL cla_avx2_scalar
+	JL cla_avx2_done
 	VMOVUPS (SI), X0
 	VMOVAPS X0, X10
 	VCMPPS $6, X15, X0, X2
@@ -117,46 +117,6 @@ cla_avx2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP cla_avx2_w4
-cla_avx2_scalar:
-	TESTQ CX, CX
-	JZ cla_avx2_done
-cla_avx2_sloop:
-	MOVSS (SI), X0
-	VMOVAPS X0, X10
-	VCMPPS $6, X15, X0, X2
-	VDIVPS X6, X0, X0
-	VMULPS X8, X0, X1
-	VROUNDPS $8, X1, X1
-	VMULPS X1, X9, X3
-	VSUBPS X3, X0, X0
-	VMOVAPS X11, X4
-	VFMADD213PS X4, X0, X11
-	VMOVAPS X12, X4
-	VFMADD213PS X4, X0, X12
-	VMOVAPS X13, X4
-	VFMADD213PS X4, X0, X13
-	VMOVAPS X14, X4
-	VFMADD213PS X4, X0, X14
-	VMOVAPS X15, X4
-	VFMADD213PS X4, X0, X15
-	VMOVAPS X16, X4
-	VFMADD213PS X4, X0, X16
-	VMOVAPS X17, X7
-	VFMADD213PS X7, X0, X17
-	VCVTPS2DQ X1, X1
-	VPADDD X20, X1, X1
-	VPSLLD $23, X1, X1
-	VPADDD X1, X7, X7
-	VSUBPS X7, X21, X7
-	VMULPS X6, X7, X7
-	VANDPS X2, X10, X3
-	VPANDN X2, X7, X4
-	VORPS X3, X4, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ cla_avx2_sloop
 cla_avx2_done:
 	RET
 
@@ -183,7 +143,7 @@ hs_avx2_w:
 	JMP hs_avx2_w
 hs_avx2_w4:
 	CMPQ CX, $4
-	JL hs_avx2_scalar
+	JL hs_avx2_done
 	VMOVUPS (SI), X0
 	VANDPS X11, X0, X12
 	VCMPPS $6, X10, X12, X2
@@ -193,19 +153,6 @@ hs_avx2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP hs_avx2_w4
-hs_avx2_scalar:
-	TESTQ CX, CX
-	JZ hs_avx2_done
-hs_avx2_sloop:
-	MOVSS (SI), X0
-	VANDPS X11, X0, X12
-	VCMPPS $6, X10, X12, X2
-	VANDPS X2, X0, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ hs_avx2_sloop
 hs_avx2_done:
 	RET
 
@@ -238,7 +185,7 @@ ss_avx2_w:
 	JMP ss_avx2_w
 ss_avx2_w4:
 	CMPQ CX, $4
-	JL ss_avx2_scalar
+	JL ss_avx2_done
 	VMOVUPS (SI), X0
 	VCMPPS $6, X10, X0, X2
 	VCMPPS $1, X0, X11, X3
@@ -254,25 +201,6 @@ ss_avx2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP ss_avx2_w4
-ss_avx2_scalar:
-	TESTQ CX, CX
-	JZ ss_avx2_done
-ss_avx2_sloop:
-	MOVSS (SI), X0
-	VCMPPS $6, X10, X0, X2
-	VCMPPS $1, X0, X11, X3
-	VSUBPS X10, X0, X4
-	VADDPS X11, X0, X5
-	VXORPS X6, X6, X6
-	VBLENDVPS X4, X5, X6, X4
-	VANDPS X2, X4, X7
-	VPANDN X2, X0, X0
-	VORPS X0, X7, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ ss_avx2_sloop
 ss_avx2_done:
 	RET
 
@@ -329,7 +257,7 @@ snake_avx2_w8:
 	JMP snake_avx2_w8
 snake_avx2_w4:
 	CMPQ CX, $4
-	JL snake_avx2_scalar
+	JL snake_avx2_done
 	VMOVUPS (SI), X7
 	VMULPS X10, X7, X0
 	VMOVAPS X0, X14
@@ -364,53 +292,6 @@ snake_avx2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP snake_avx2_w4
-snake_avx2_scalar:
-	TESTQ CX, CX
-	JZ snake_avx2_done
-snake_avx2_sloop:
-	MOVSS (SI), X7
-	MOVSS X7, X0
-	MULSS X10, X0
-	MOVSS X0, X14
-	DIVSS X8, X0
-	VROUNDPS $3, X0, X0
-	MOVSS X0, X1
-	MULSS X8, X1
-	MOVSS X14, X0
-	SUBSS X1, X0
-	
-	COMISS X9, X0
-	JBE snake_fold_lo
-	SUBSS X8, X0
-	JMP snake_sin
-snake_fold_lo:
-	XORPS X4, X4
-	SUBSS X9, X4
-	COMISS X0, X4
-	JBE snake_sin
-	ADDSS X8, X0
-snake_sin:
-	MOVSS X0, X1
-	MULSS X1, X1
-	MULSS X12, X1
-	MOVSS X11, X2
-	SUBSS X1, X2
-	MOVSS X0, X1
-	MULSS X1, X1
-	MULSS X2, X1
-	MOVSS X15, X2
-	SUBSS X1, X2
-	MULSS X0, X2
-	
-	MOVSS X2, X6
-	MULSS X6, X6
-	DIVSS X10, X6
-	ADDSS X7, X6
-	MOVSS X6, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ snake_avx2_sloop
 snake_avx2_done:
 	RET
 
@@ -469,7 +350,7 @@ snakep_avx2_w8:
 	JMP snakep_avx2_w8
 snakep_avx2_w4:
 	CMPQ CX, $4
-	JL snakep_avx2_scalar
+	JL snakep_avx2_done
 	VMOVUPS (SI), X7
 	VMULPS X10, X7, X0
 	VMOVAPS X0, X14
@@ -504,53 +385,6 @@ snakep_avx2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP snakep_avx2_w4
-snakep_avx2_scalar:
-	TESTQ CX, CX
-	JZ snakep_avx2_done
-snakep_avx2_sloop:
-	MOVSS (SI), X7
-	MOVSS X7, X0
-	MULSS X10, X0
-	MOVSS X0, X14
-	DIVSS X8, X0
-	VROUNDPS $3, X0, X0
-	MOVSS X0, X1
-	MULSS X8, X1
-	MOVSS X14, X0
-	SUBSS X1, X0
-	
-	COMISS X9, X0
-	JBE snakep_fold_lo
-	SUBSS X8, X0
-	JMP snakep_sin
-snakep_fold_lo:
-	XORPS X4, X4
-	SUBSS X9, X4
-	COMISS X0, X4
-	JBE snakep_sin
-	ADDSS X8, X0
-snakep_sin:
-	MOVSS X0, X1
-	MULSS X1, X1
-	MULSS X12, X1
-	MOVSS X11, X2
-	SUBSS X1, X2
-	MOVSS X0, X1
-	MULSS X1, X1
-	MULSS X2, X1
-	MOVSS X15, X2
-	SUBSS X1, X2
-	MULSS X0, X2
-	
-	MOVSS X2, X6
-	MULSS X6, X6
-	DIVSS X13, X6
-	ADDSS X7, X6
-	MOVSS X6, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ snakep_avx2_sloop
 snakep_avx2_done:
 	RET
 
@@ -627,7 +461,7 @@ rr_avx2_w8:
 	JMP rr_avx2_w8
 rr_avx2_w4:
 	CMPQ CX, $4
-	JL rr_avx2_scalar
+	JL rr_avx2_done
 	VMOVUPS (SI), X0
 	
 	VPMULLD X14, X8, X8
@@ -651,32 +485,5 @@ rr_avx2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP rr_avx2_w4
-rr_avx2_scalar:
-	TESTQ CX, CX
-	JZ rr_avx2_done
-rr_avx2_sloop:
-	MOVSS (SI), X0
-	
-	VPMULLD X14, X8, X8
-	VPADDD X15, X8, X8
-	
-	VPSRLD $8, X8, X1
-	VPAND X16, X1, X1
-	VCVTDQ2PS X1, X1
-	
-	VMULPS X13, X1, X1
-	VMULPS X12, X1, X1
-	VADDPS X10, X1, X1
-	
-	VXORPS X2, X2, X2
-	UCOMISS X0, X2
-	JBE rr_avx2_pos
-	MULSS X1, X0
-rr_avx2_pos:
-	MOVSS X0, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ rr_avx2_sloop
 rr_avx2_done:
 	RET

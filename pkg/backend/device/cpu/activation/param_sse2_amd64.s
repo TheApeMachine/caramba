@@ -13,7 +13,7 @@ TEXT ·LeakyReLUSlopeF32SSE2(SB), NOSPLIT, $0-28
 	XORPS X15, X15
 lrs_SSE2_w:
 	CMPQ CX, $4
-	JL lrs_SSE2_scalar
+	JL lrs_SSE2_done
 	MOVUPS (SI), X0
 	MOVAPS X15, X2
 	CMPPS $6, X0, X2
@@ -29,25 +29,6 @@ lrs_SSE2_w:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP lrs_SSE2_w
-lrs_SSE2_scalar:
-	TESTQ CX, CX
-	JZ lrs_SSE2_done
-lrs_SSE2_sloop:
-	MOVSS (SI), X0
-	MOVAPS X15, X2
-	CMPSS $6, X0, X2
-	MOVAPS X0, X4
-	MULSS X10, X4
-	MOVAPS X0, X3
-	ANDPS X2, X3
-	ANDNPS X4, X2
-	MOVAPS X3, X7
-	ORPS X2, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ lrs_SSE2_sloop
 lrs_SSE2_done:
 	RET
 
@@ -75,7 +56,7 @@ thr_SSE2_w:
 	JMP thr_SSE2_w
 thr_SSE2_w4:
 	CMPQ CX, $4
-	JL thr_SSE2_scalar
+	JL thr_SSE2_done
 	VMOVUPS (SI), X0
 	VCMPPS $6, X10, X0, X2
 	VANDPS X2, X0, X7
@@ -84,18 +65,6 @@ thr_SSE2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP thr_SSE2_w4
-thr_SSE2_scalar:
-	TESTQ CX, CX
-	JZ thr_SSE2_done
-thr_SSE2_sloop:
-	MOVSS (SI), X0
-	VCMPPS $6, X10, X0, X2
-	VANDPS X2, X0, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ thr_SSE2_sloop
 thr_SSE2_done:
 	RET
 
@@ -121,7 +90,7 @@ htr_SSE2_w:
 	JMP htr_SSE2_w
 htr_SSE2_w4:
 	CMPQ CX, $4
-	JL htr_SSE2_scalar
+	JL htr_SSE2_done
 	VMOVUPS (SI), X0
 	VMAXPS X8, X0, X7
 	VMINPS X9, X7, X7
@@ -130,18 +99,6 @@ htr_SSE2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP htr_SSE2_w4
-htr_SSE2_scalar:
-	TESTQ CX, CX
-	JZ htr_SSE2_done
-htr_SSE2_sloop:
-	MOVSS (SI), X0
-	VMAXPS X8, X0, X7
-	VMINPS X9, X7, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ htr_SSE2_sloop
 htr_SSE2_done:
 	RET
 
@@ -190,7 +147,7 @@ TEXT ·ELUAlphaF32SSE2(SB), NOSPLIT, $0-28
 	XORPS X5, X5
 ela_sse2_w4:
 	CMPQ CX, $4
-	JL ela_sse2_scalar
+	JL ela_sse2_done
 	MOVUPS (SI), X0
 	MOVAPS X0, X10
 	MOVAPS X5, X3
@@ -232,51 +189,5 @@ ela_sse2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP ela_sse2_w4
-ela_sse2_scalar:
-	TESTQ CX, CX
-	JZ ela_sse2_done
-ela_sse2_sloop:
-	MOVSS (SI), X0
-	MOVAPS X0, X10
-	MOVAPS X5, X3
-	CMPSS $6, X0, X3
-	MOVAPS X0, X4
-	MULSS X8, X4
-	CVTTSS2SI X4, AX
-	CVTSI2SS AX, X4
-	MOVAPS X4, X7
-	MULSS X9, X7
-	MOVAPS X0, X4
-	SUBSS X7, X4
-	MOVAPS X11, X7
-	MULSS X4, X7
-	ADDSS X12, X7
-	MULSS X4, X7
-	ADDSS X13, X7
-	MULSS X4, X7
-	ADDSS X14, X7
-	MULSS X4, X7
-	ADDSS X15, X7
-	MULSS X4, X7
-	ADDSS X16, X7
-	MULSS X4, X7
-	ADDSS X17, X7
-	CVTTSS2SI X4, AX
-	ADDL $127, AX
-	SHLL $23, AX
-	MOVD AX, X4
-	PADDD X7, X4
-	SUBSS X2, X4
-	MULSS X6, X4
-	MOVAPS X10, X7
-	ANDPS X3, X7
-	ANDNPS X4, X3
-	MOVAPS X7, X4
-	ORPS X3, X4
-	MOVSS X4, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ ela_sse2_sloop
 ela_sse2_done:
 	RET

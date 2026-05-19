@@ -39,7 +39,7 @@ preuv_avx512_w8:
 	JMP preuv_avx512_w8
 preuv_avx512_w4:
 	CMPQ CX, $4
-	JL preuv_avx512_scalar
+	JL preuv_avx512_done
 	VMOVUPS (SI), X0
 	VMOVUPS (R8), X10
 	VCMPPS $6, X15, X0, K1
@@ -51,20 +51,5 @@ preuv_avx512_w4:
 	ADDQ $16, R8
 	SUBQ $4, CX
 	JMP preuv_avx512_w4
-preuv_avx512_scalar:
-	TESTQ CX, CX
-	JZ preuv_avx512_done
-preuv_avx512_sloop:
-	MOVSS (SI), X0
-	MOVSS (R8), X10
-	VCMPPS $6, X15, X0, K1
-	VMULPS X10, X0, X4
-	VBLENDMPS X4, X0, K1, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	ADDQ $4, R8
-	DECQ CX
-	JNZ preuv_avx512_sloop
 preuv_avx512_done:
 	RET

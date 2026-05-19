@@ -49,21 +49,35 @@ func Conv3DFloat32Scalar(
 	biasView := float32View(bias, outChannels)
 	outputView := float32View(output, batch*outChannels*outD*outH*outW)
 
+	patchLength := inChannels * kD * kH * kW
+	patchScratch := make([]float32, patchLength)
+
 	for batchIndex := range batch {
+		inputBatchOffset := batchIndex * inChannels * inD * inH * inW
+
 		for outChIndex := range outChannels {
+			weightOffset := outChIndex * inChannels * kD * kH * kW
+
 			for outDIndex := range outD {
 				for outHIndex := range outH {
 					for outWIndex := range outW {
+						conv3DPatchGather(
+							config,
+							inputView, inputBatchOffset,
+							patchScratch,
+							inChannels, inD, inH, inW,
+							kD, kH, kW,
+							outDIndex, outHIndex, outWIndex,
+						)
+
+						dotValue := ConvPatchDotScalar(
+							weightView[weightOffset:weightOffset+patchLength],
+							patchScratch,
+							patchLength,
+						)
+
 						outputView[(((batchIndex*outChannels+outChIndex)*outD+outDIndex)*outH+outHIndex)*outW+outWIndex] =
-							conv3DPixelScalar(
-								config,
-								inputView, weightView,
-								batchIndex, outChIndex,
-								inChannels, inD, inH, inW,
-								kD, kH, kW,
-								outDIndex, outHIndex, outWIndex,
-								biasView[outChIndex],
-							)
+							biasView[outChIndex] + dotValue
 					}
 				}
 			}

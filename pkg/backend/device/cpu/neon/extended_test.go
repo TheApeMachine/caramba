@@ -1,7 +1,6 @@
 package neon
 
 import (
-	"math"
 	"testing"
 	"unsafe"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/elementwise"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/embedding"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/losses"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/pool"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/reduction"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/sampling"
@@ -45,7 +45,7 @@ func TestUnaryAbsAndExp(t *testing.T) {
 			dtype.Float32,
 		)
 
-		convey.So(math.Abs(float64(outView[0]-1)), convey.ShouldBeLessThan, 1e-6)
+		convey.So(parity.Float32ULPDistance(outView[0], 1), convey.ShouldBeLessThanOrEqualTo, 2)
 	})
 }
 
@@ -86,7 +86,7 @@ func TestMSELoss(t *testing.T) {
 			dtype.Float32,
 		)
 
-		convey.So(math.Abs(float64(mean)-5.0/3.0), convey.ShouldBeLessThan, 1e-5)
+		convey.So(parity.Float32ULPDistance(mean, float32(5.0/3.0)), convey.ShouldBeLessThanOrEqualTo, 4)
 	})
 }
 

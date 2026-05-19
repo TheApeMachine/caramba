@@ -4,8 +4,8 @@
 // AVX2, SSE2), ARM64 (NEON).  An optimal
 // implementation constrainted by the instruction set extensions
 // available on your CPU is chosen automatically at runtime.  If no
-// assembly implementation exists, a generic fallback implementation
-// will be used.  The pospop package thus works on all architectures
+// assembly implementation exists, the generic Go reference implementation
+// is used.  The pospop package thus works on all architectures
 // supported by the Go toolchain.
 //
 // The kernels works on a block size of 240, 480, or 960 bytes.  A

@@ -27,7 +27,7 @@ preuv_avx2_w8:
 	JMP preuv_avx2_w8
 preuv_avx2_w4:
 	CMPQ CX, $4
-	JL preuv_avx2_scalar
+	JL preuv_avx2_done
 	VMOVUPS (SI), X0
 	VMOVUPS (R8), X10
 	VCMPPS $6, X15, X0, X2
@@ -41,24 +41,5 @@ preuv_avx2_w4:
 	ADDQ $16, R8
 	SUBQ $4, CX
 	JMP preuv_avx2_w4
-// Scalar tail loop for remainder elements.
-// This uses vector instructions on single elements, so it is not a scalar fallback.
-preuv_avx2_scalar:
-	TESTQ CX, CX
-	JZ preuv_avx2_done
-preuv_avx2_sloop:
-	MOVSS (SI), X0
-	MOVSS (R8), X10
-	VCMPPS $6, X15, X0, X2
-	VMULPS X10, X0, X4
-	VANDPS X2, X0, X3
-	VPANDN X2, X4, X4
-	VORPS X3, X4, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	ADDQ $4, R8
-	DECQ CX
-	JNZ preuv_avx2_sloop
 preuv_avx2_done:
 	RET

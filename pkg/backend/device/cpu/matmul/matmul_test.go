@@ -7,6 +7,7 @@ import (
 
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
@@ -55,9 +56,7 @@ func TestMatMulFloat32(t *testing.T) {
 					}
 				}
 
-				for index, want := range expected {
-					convey.So(outView[index], convey.ShouldAlmostEqual, want, math.Max(1e-3, float64(want)*1e-4))
-				}
+				parity.AssertFloat32SlicesWithinULP(t, outView, expected, 1)
 			})
 		})
 	}

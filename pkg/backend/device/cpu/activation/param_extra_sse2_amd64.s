@@ -80,7 +80,7 @@ cla_sse2_w8:
 	JMP cla_sse2_w8
 cla_sse2_w4:
 	CMPL CX, $4
-	JL cla_sse2_scalar
+	JL cla_sse2_done
 	VMOVUPS (SI), X0
 	VMOVAPS X0, X10
 	VCMPPS $6, X15, X0, X2
@@ -117,46 +117,6 @@ cla_sse2_w4:
 	ADDL $16, DI
 	SUBL $4, CX
 	JMP cla_sse2_w4
-cla_sse2_scalar:
-	TESTL CX, CX
-	JEQ cla_sse2_done
-cla_sse2_sloop:
-	MOVSS (SI), X0
-	VMOVAPS X0, X10
-	VCMPPS $6, X15, X0, X2
-	VDIVPS X6, X0, X0
-	VMULPS X8, X0, X1
-	VROUNDPS $8, X1, X1
-	VMULPS X1, X9, X3
-	VSUBPS X3, X0, X0
-	VMOVAPS X11, X4
-	VFMADD213PS X4, X0, X11
-	VMOVAPS X12, X4
-	VFMADD213PS X4, X0, X12
-	VMOVAPS X13, X4
-	VFMADD213PS X4, X0, X13
-	VMOVAPS X14, X4
-	VFMADD213PS X4, X0, X14
-	VMOVAPS X15, X4
-	VFMADD213PS X4, X0, X15
-	VMOVAPS X16, X4
-	VFMADD213PS X4, X0, X16
-	VMOVAPS X17, X7
-	VFMADD213PS X7, X0, X17
-	VCVTPS2DQ X1, X1
-	VPADDD X20, X1, X1
-	VPSLLD $23, X1, X1
-	VPADDD X1, X7, X7
-	VSUBPS X7, X21, X7
-	VMULPS X6, X7, X7
-	VANDPS X2, X10, X3
-	VPANDN X2, X7, X4
-	VORPS X3, X4, X7
-	MOVSS X7, (DI)
-	ADDL $4, SI
-	ADDL $4, DI
-	DECL CX
-	JNE cla_sse2_sloop
 cla_sse2_done:
 	RET
 
@@ -183,7 +143,7 @@ hs_sse2_w:
 	JMP hs_sse2_w
 hs_sse2_w4:
 	CMPL CX, $4
-	JL hs_sse2_scalar
+	JL hs_sse2_done
 	VMOVUPS (SI), X0
 	VANDPS X11, X0, X12
 	VCMPPS $6, X10, X12, X2
@@ -193,19 +153,6 @@ hs_sse2_w4:
 	ADDL $16, DI
 	SUBL $4, CX
 	JMP hs_sse2_w4
-hs_sse2_scalar:
-	TESTL CX, CX
-	JEQ hs_sse2_done
-hs_sse2_sloop:
-	MOVSS (SI), X0
-	VANDPS X11, X0, X12
-	VCMPPS $6, X10, X12, X2
-	VANDPS X2, X0, X7
-	MOVSS X7, (DI)
-	ADDL $4, SI
-	ADDL $4, DI
-	DECL CX
-	JNE hs_sse2_sloop
 hs_sse2_done:
 	RET
 
@@ -238,7 +185,7 @@ ss_sse2_w:
 	JMP ss_sse2_w
 ss_sse2_w4:
 	CMPL CX, $4
-	JL ss_sse2_scalar
+	JL ss_sse2_done
 	VMOVUPS (SI), X0
 	VCMPPS $6, X10, X0, X2
 	VCMPPS $1, X0, X11, X3
@@ -254,25 +201,6 @@ ss_sse2_w4:
 	ADDL $16, DI
 	SUBL $4, CX
 	JMP ss_sse2_w4
-ss_sse2_scalar:
-	TESTL CX, CX
-	JEQ ss_sse2_done
-ss_sse2_sloop:
-	MOVSS (SI), X0
-	VCMPPS $6, X10, X0, X2
-	VCMPPS $1, X0, X11, X3
-	VSUBPS X10, X0, X4
-	VADDPS X11, X0, X5
-	VXORPS X6, X6, X6
-	VBLENDVPS X4, X5, X6, X4
-	VANDPS X2, X4, X7
-	VPANDN X2, X0, X0
-	VORPS X0, X7, X7
-	MOVSS X7, (DI)
-	ADDL $4, SI
-	ADDL $4, DI
-	DECL CX
-	JNE ss_sse2_sloop
 ss_sse2_done:
 	RET
 

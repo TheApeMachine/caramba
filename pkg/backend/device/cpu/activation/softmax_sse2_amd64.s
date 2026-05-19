@@ -83,7 +83,7 @@ smexp_sse2_w8:
 	JMP smexp_sse2_w8
 smexp_sse2_w4:
 	CMPQ CX, $4
-	JL smexp_sse2_scalar
+	JL smexp_sse2_done
 	MOVUPS (SI), X0
 	SUBPS X6, X0
 	MAXPS X4, X0
@@ -125,97 +125,6 @@ smexp_sse2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP smexp_sse2_w4
-smexp_sse2_scalar:
-	TESTQ CX, CX
-	JZ smexp_sse2_fold
-smexp_sse2_sloop:
-	MOVSS (SI), X0
-	SUBPS X6, X0
-	MAXPS X4, X0
-	MOVAPS X0, X1
-	MULPS X8, X1
-	ROUNDPS $8, X1, X1
-	MOVAPS X1, X2
-	MULPS X9, X2
-	SUBPS X2, X0
-	MOVAPS X11, X3
-	MULPS X0, X11
-	ADDPS X3, X11
-	MOVAPS X12, X3
-	MULPS X0, X12
-	ADDPS X3, X12
-	MOVAPS X13, X3
-	MULPS X0, X13
-	ADDPS X3, X13
-	MOVAPS X14, X3
-	MULPS X0, X14
-	ADDPS X3, X14
-	MOVAPS X15, X3
-	MULPS X0, X15
-	ADDPS X3, X15
-	MOVAPS X16, X3
-	MULPS X0, X16
-	ADDPS X3, X16
-	MOVAPS X17, X7
-	MULPS X0, X17
-	ADDPS X7, X17
-	CVTPS2DQ X1, X1
-	PADDD X20, X1
-	PSLLD $23, X1
-	MOVAPS X17, X7
-	PADDD X1, X7
-	ADDPS X7, X5
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ smexp_sse2_sloop
-smexp_sse2_fold:
-	MOVAPS X5, X0
-	HADDPS X5, X0
-	HADDPS X0, X0
-	HADDPS X0, X0
-	MOVSS X0, ret+28(FP)
-	RET
-
-// func scaleF32SSE2(dst, src *float32, scale float32, count int)
-TEXT ·scaleF32SSE2(SB), NOSPLIT, $0-28
-	MOVQ dst+0(FP), DI
-	MOVQ src+8(FP), SI
-	MOVSS scale+16(FP), X8
-	SHUFPS $0, X8, X8
-	MOVQ count+24(FP), CX
-smscale_sse2_w8:
-	CMPQ CX, $4
-	JL smscale_sse2_w4
-	MOVUPS (SI), X0
-	MULPS X8, X0
-	MOVUPS X0, (DI)
-	ADDQ $16, SI
-	ADDQ $16, DI
-	SUBQ $4, CX
-	JMP smscale_sse2_w8
-smscale_sse2_w4:
-	CMPQ CX, $4
-	JL smscale_sse2_scalar
-	MOVUPS (SI), X0
-	MULPS X8, X0
-	MOVUPS X0, (DI)
-	ADDQ $16, SI
-	ADDQ $16, DI
-	SUBQ $4, CX
-	JMP smscale_sse2_w4
-smscale_sse2_scalar:
-	TESTQ CX, CX
-	JZ smscale_sse2_done
-smscale_sse2_sloop:
-	MOVSS (SI), X0
-	MULPS X8, X0
-	MOVSS X0, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ smscale_sse2_sloop
 smscale_sse2_done:
 	RET
 
@@ -242,7 +151,7 @@ smlog_sse2_w8:
 	JMP smlog_sse2_w8
 smlog_sse2_w4:
 	CMPQ CX, $4
-	JL smlog_sse2_scalar
+	JL smlog_sse2_done
 	MOVUPS (SI), X0
 	SUBPS X8, X0
 	MOVAPS X0, X7
@@ -252,19 +161,6 @@ smlog_sse2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP smlog_sse2_w4
-smlog_sse2_scalar:
-	TESTQ CX, CX
-	JZ smlog_sse2_done
-smlog_sse2_sloop:
-	MOVSS (SI), X0
-	SUBPS X8, X0
-	MOVAPS X0, X7
-	SUBPS X9, X7
-	MOVSS X7, (DI)
-	ADDQ $4, SI
-	ADDQ $4, DI
-	DECQ CX
-	JNZ smlog_sse2_sloop
 smlog_sse2_done:
 	RET
 
@@ -293,12 +189,6 @@ reduce_max_sse2_extract:
 reduce_max_sse2_tail:
 	TESTQ CX, CX
 	JZ reduce_max_sse2_done
-reduce_max_sse2_sloop:
-	MAXSS (SI), X0
-	ADDQ $4, SI
-	DECQ CX
-	JNZ reduce_max_sse2_sloop
-	JMP reduce_max_sse2_done
 reduce_max_sse2_done:
 	MOVSS X0, ret+16(FP)
 	RET
