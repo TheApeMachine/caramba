@@ -12,7 +12,7 @@ func GLU(
 	batch, halfCount int,
 	format dtype.DType,
 ) {
-	dispatchGatedPacked(dst, packed, batch, halfCount, format, math.FastGLU32)
+	dispatchGatedPacked(dst, packed, batch, halfCount, format, gluPackedKernel, math.FastGLU32)
 }
 
 func GeGLU(
@@ -20,7 +20,7 @@ func GeGLU(
 	batch, halfCount int,
 	format dtype.DType,
 ) {
-	dispatchGatedPacked(dst, packed, batch, halfCount, format, math.FastGeGLU32)
+	dispatchGatedPacked(dst, packed, batch, halfCount, format, geGLUPackedKernel, math.FastGeGLU32)
 }
 
 func GeGLUTanh(
@@ -28,7 +28,7 @@ func GeGLUTanh(
 	batch, halfCount int,
 	format dtype.DType,
 ) {
-	dispatchGatedPacked(dst, packed, batch, halfCount, format, math.FastGeGLUTanh32)
+	dispatchGatedPacked(dst, packed, batch, halfCount, format, geGLUTanhPackedKernel, math.FastGeGLUTanh32)
 }
 
 func SwiGLU(
@@ -36,7 +36,7 @@ func SwiGLU(
 	batch, halfCount int,
 	format dtype.DType,
 ) {
-	dispatchGatedPacked(dst, packed, batch, halfCount, format, math.FastSwiGLU32)
+	dispatchGatedPacked(dst, packed, batch, halfCount, format, swiGLUPackedKernel, math.FastSwiGLU32)
 }
 
 func ReGLU(
@@ -44,7 +44,7 @@ func ReGLU(
 	batch, halfCount int,
 	format dtype.DType,
 ) {
-	dispatchGatedPacked(dst, packed, batch, halfCount, format, math.FastReGLU32)
+	dispatchGatedPacked(dst, packed, batch, halfCount, format, reGLUPackedKernel, math.FastReGLU32)
 }
 
 func SiGLU(
@@ -52,7 +52,7 @@ func SiGLU(
 	batch, halfCount int,
 	format dtype.DType,
 ) {
-	dispatchGatedPacked(dst, packed, batch, halfCount, format, math.FastSiGLU32)
+	dispatchGatedPacked(dst, packed, batch, halfCount, format, siGLUPackedKernel, math.FastSiGLU32)
 }
 
 func GLUTensors(
@@ -60,7 +60,7 @@ func GLUTensors(
 	count int,
 	format dtype.DType,
 ) {
-	dispatchGatedTensors(dst, gate, up, count, format, math.FastGLU32)
+	dispatchGatedTensors(dst, gate, up, count, format, gluTensorsKernel, math.FastGLU32)
 }
 
 func GeGLUTensors(
@@ -68,7 +68,15 @@ func GeGLUTensors(
 	count int,
 	format dtype.DType,
 ) {
-	dispatchGatedTensors(dst, gate, up, count, format, math.FastGeGLU32)
+	dispatchGatedTensors(dst, gate, up, count, format, geGLUTensorsKernel, math.FastGeGLU32)
+}
+
+func GeGLUTanhTensors(
+	dst, gate, up unsafe.Pointer,
+	count int,
+	format dtype.DType,
+) {
+	dispatchGatedTensors(dst, gate, up, count, format, geGLUTanhTensorsKernel, math.FastGeGLUTanh32)
 }
 
 func SwiGLUTensors(
@@ -76,7 +84,7 @@ func SwiGLUTensors(
 	count int,
 	format dtype.DType,
 ) {
-	dispatchGatedTensors(dst, gate, up, count, format, math.FastSwiGLU32)
+	dispatchGatedTensors(dst, gate, up, count, format, swiGLUTensorsKernel, math.FastSwiGLU32)
 }
 
 func ReGLUTensors(
@@ -84,7 +92,7 @@ func ReGLUTensors(
 	count int,
 	format dtype.DType,
 ) {
-	dispatchGatedTensors(dst, gate, up, count, format, math.FastReGLU32)
+	dispatchGatedTensors(dst, gate, up, count, format, reGLUTensorsKernel, math.FastReGLU32)
 }
 
 func SiGLUTensors(
@@ -92,7 +100,7 @@ func SiGLUTensors(
 	count int,
 	format dtype.DType,
 ) {
-	dispatchGatedTensors(dst, gate, up, count, format, math.FastSiGLU32)
+	dispatchGatedTensors(dst, gate, up, count, format, siGLUTensorsKernel, math.FastSiGLU32)
 }
 
 func LinGLU(
@@ -100,7 +108,7 @@ func LinGLU(
 	batch, halfCount int,
 	format dtype.DType,
 ) {
-	dispatchGatedPacked(dst, packed, batch, halfCount, format, math.FastLinGLU32)
+	dispatchGatedPacked(dst, packed, batch, halfCount, format, linGLUPackedKernel, math.FastLinGLU32)
 }
 
 func SeGLU(
@@ -108,7 +116,7 @@ func SeGLU(
 	batch, halfCount int,
 	format dtype.DType,
 ) {
-	dispatchGatedPacked(dst, packed, batch, halfCount, format, math.FastSeGLU32)
+	dispatchGatedPacked(dst, packed, batch, halfCount, format, seGLUPackedKernel, math.FastSeGLU32)
 }
 
 func LinGLUTensors(
@@ -116,7 +124,7 @@ func LinGLUTensors(
 	count int,
 	format dtype.DType,
 ) {
-	dispatchGatedTensors(dst, gate, up, count, format, math.FastLinGLU32)
+	dispatchGatedTensors(dst, gate, up, count, format, linGLUTensorsKernel, math.FastLinGLU32)
 }
 
 func SeGLUTensors(
@@ -124,5 +132,5 @@ func SeGLUTensors(
 	count int,
 	format dtype.DType,
 ) {
-	dispatchGatedTensors(dst, gate, up, count, format, math.FastSeGLU32)
+	dispatchGatedTensors(dst, gate, up, count, format, seGLUTensorsKernel, math.FastSeGLU32)
 }

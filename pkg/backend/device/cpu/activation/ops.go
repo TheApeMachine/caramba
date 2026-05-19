@@ -3,94 +3,93 @@ package activation
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/backend/device/cpu/math"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 func Exp(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &expF16LUT, &expBF16LUT, math.FastExp32)
+	dispatchActivation(dst, src, count, format, &expF16LUT, &expBF16LUT, runExpF32)
 }
 
 func Log(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &logF16LUT, &logBF16LUT, math.FastLog32)
+	dispatchActivation(dst, src, count, format, &logF16LUT, &logBF16LUT, runLogF32)
 }
 
 func Log1p(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &log1pF16LUT, &log1pBF16LUT, math.FastLog1p32)
+	dispatchActivation(dst, src, count, format, &log1pF16LUT, &log1pBF16LUT, runLog1pF32)
 }
 
 func Expm1(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &expm1F16LUT, &expm1BF16LUT, math.FastExpm1_32)
+	dispatchActivation(dst, src, count, format, &expm1F16LUT, &expm1BF16LUT, runExpm1F32)
 }
 
 func Sigmoid(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &sigmoidF16LUT, &sigmoidBF16LUT, math.FastSigmoid32)
+	dispatchActivation(dst, src, count, format, &sigmoidF16LUT, &sigmoidBF16LUT, runSigmoidF32)
 }
 
 func LogSigmoid(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &logSigmoidF16LUT, &logSigmoidBF16LUT, math.FastLogSigmoid32)
+	dispatchActivation(dst, src, count, format, &logSigmoidF16LUT, &logSigmoidBF16LUT, runLogSigmoidF32)
 }
 
 func Tanh(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &tanhF16LUT, &tanhBF16LUT, math.FastTanh32)
+	dispatchActivation(dst, src, count, format, &tanhF16LUT, &tanhBF16LUT, runTanhF32)
 }
 
 func Silu(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &siluF16LUT, &siluBF16LUT, math.FastSilu32)
+	dispatchActivation(dst, src, count, format, &siluF16LUT, &siluBF16LUT, runSiluF32)
 }
 
 func Swish(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &siluF16LUT, &siluBF16LUT, math.FastSilu32)
+	dispatchActivation(dst, src, count, format, &siluF16LUT, &siluBF16LUT, runSiluF32)
 }
 
 func GeluTanh(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &geluTanhF16LUT, &geluTanhBF16LUT, math.FastGeluTanh32)
+	dispatchActivation(dst, src, count, format, &geluTanhF16LUT, &geluTanhBF16LUT, runGeluTanhF32)
 }
 
 func Gelu(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &geluF16LUT, &geluBF16LUT, math.FastGelu32)
+	dispatchActivation(dst, src, count, format, &geluF16LUT, &geluBF16LUT, runGeluF32)
 }
 
 func ReLU(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &reluF16LUT, &reluBF16LUT, math.FastReLU32)
+	dispatchActivation(dst, src, count, format, &reluF16LUT, &reluBF16LUT, runReLUF32)
 }
 
 func LeakyReLU(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &leakyReluF16LUT, &leakyReluBF16LUT, math.FastLeakyReLU32)
+	dispatchActivation(dst, src, count, format, &leakyReluF16LUT, &leakyReluBF16LUT, runLeakyReLUF32)
 }
 
 func ELU(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &eluF16LUT, &eluBF16LUT, math.FastELU32)
+	dispatchActivation(dst, src, count, format, &eluF16LUT, &eluBF16LUT, runELUF32)
 }
 
 func CELU(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &celuF16LUT, &celuBF16LUT, math.FastCELU32)
+	dispatchActivation(dst, src, count, format, &celuF16LUT, &celuBF16LUT, runCELUF32)
 }
 
 func SELU(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &seluF16LUT, &seluBF16LUT, math.FastSELU32)
+	dispatchActivation(dst, src, count, format, &seluF16LUT, &seluBF16LUT, runSELUF32)
 }
 
 func Softplus(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &softplusF16LUT, &softplusBF16LUT, math.FastSoftplus32)
+	dispatchActivation(dst, src, count, format, &softplusF16LUT, &softplusBF16LUT, runSoftplusF32)
 }
 
 func Mish(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &mishF16LUT, &mishBF16LUT, math.FastMish32)
+	dispatchActivation(dst, src, count, format, &mishF16LUT, &mishBF16LUT, runMishF32)
 }
 
 func Softsign(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &softsignF16LUT, &softsignBF16LUT, math.FastSoftsign32)
+	dispatchActivation(dst, src, count, format, &softsignF16LUT, &softsignBF16LUT, runSoftsignF32)
 }
 
 func HardSigmoid(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &hardSigmoidF16LUT, &hardSigmoidBF16LUT, math.FastHardSigmoid32)
+	dispatchActivation(dst, src, count, format, &hardSigmoidF16LUT, &hardSigmoidBF16LUT, runHardSigmoidF32)
 }
 
 func HardSwish(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &hardSwishF16LUT, &hardSwishBF16LUT, math.FastHardSwish32)
+	dispatchActivation(dst, src, count, format, &hardSwishF16LUT, &hardSwishBF16LUT, runHardSwishF32)
 }
 
 func HardTanh(dst, src unsafe.Pointer, count int, format dtype.DType) {
-	dispatchActivation(dst, src, count, format, &hardTanhF16LUT, &hardTanhBF16LUT, math.FastHardTanh32)
+	dispatchActivation(dst, src, count, format, &hardTanhF16LUT, &hardTanhBF16LUT, runHardTanhF32)
 }

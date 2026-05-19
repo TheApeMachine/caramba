@@ -396,3 +396,17 @@ Always keep the following non-negotiable rules in mind.
 1. Accuracy and Performance are the primary concerns, always. If we compromise on Accuracy or Performance, there is no point for anyone to use this framework.
 2. You should NOT optimize for the path of least resistance, just to get tests green, or compiler errors resolved. Optimize for Accuracy, Performance, and Maintainability.
 3. If you notice you are drifting to any kind of escape hatch, or less than optimal solution, stop, reconsider, and make better choices.
+
+# VERY IMPORTANT FAILURE MODE TO AVOID
+
+When writing compute kernels like SIMD/Assembly, Metal, Cuda, or XLA, you must observe the following rules.
+
+1. Write the custom kernel code directly, do not attempt any type of short-cut, work-around, or other method besides simply generating the required code. Do not use any type of generator scripts, shell scripts, or anything else besides your normal file editing tools. And do not use C macros, we are writing this in raw assembly code.
+2. Do not believe that it is a massive amount of work, the absolute fastest path is to just generate teh code without any delay. The faster you do it, the faster we are done with it. You are the only one who can unblock us.
+3. Do not invent any kind of escape hatches, or any reason at all to not deliver a fully complete implementation.
+4. Do not start inventing all kinds of ceremony, or other ways not to have to write the code, your only objective is to land the code, so remain focused on your objective.
+5. Please realize that we have been in this failure mode of absolute refusal to write these kernels for over a week, and that it turned out to be entirely wrong, catastrophically leading to us having to start from scratch after a week of frustration. So this time it has to be done with care and respect.
+
+> !NOTE: While working on an arm64 machine, you are not expected to use cross-compiling to verify amd64 code. It is assumed that you will be mostly correct when it comes to the amd64 variants, and those will be tested on a compatible machine, and any minor issues will be resolved there.
+
+Please be mindful and respectful of the fact that this is extremely important to this project. Our machine learning research framework sets itself apart by having world-class implementations that don't just serve the traditional ML researcher, but also the ones on the very fringes of the field.

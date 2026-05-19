@@ -1,0 +1,335 @@
+// SPDX-License-Identifier: Apache-2.0
+// AVX512 stable-softmax helpers: exp-sum, scale, log-softmax shift.
+#include "textflag.h"
+
+DATA actSoftmaxClamp<>+0(SB)/4, $-87.0
+GLOBL actSoftmaxClamp<>(SB), 8, $4
+
+// func softmaxExpSumF32AVX512(dst, src *float32, maxValue float32, count int) float32
+TEXT ·softmaxExpSumF32AVX512(SB), NOSPLIT, $0-32
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVSS maxValue+16(FP), X6
+	VBROADCASTSS X6, Y6
+	MOVQ count+24(FP), CX
+	MOVQ $actX86ExpC<>(SB), AX
+	VMOVSS (AX), X8
+	VBROADCASTSS X8, Y8
+	VMOVSS 4(AX), X9
+	VBROADCASTSS X9, Y9
+	VMOVSS 12(AX), X11
+	VBROADCASTSS X11, Y11
+	VMOVSS 16(AX), X12
+	VBROADCASTSS X12, Y12
+	VMOVSS 20(AX), X13
+	VBROADCASTSS X13, Y13
+	VMOVSS 24(AX), X14
+	VBROADCASTSS X14, Y14
+	VMOVSS 28(AX), X15
+	VBROADCASTSS X15, Y15
+	VMOVSS 32(AX), X16
+	VBROADCASTSS X16, Y16
+	VMOVSS 36(AX), X17
+	VBROADCASTSS X17, Y17
+	VPBROADCASTD actX86Bias127<>(SB), Y20
+	VMOVSS actSoftmaxClamp<>+0(SB), X8
+	VBROADCASTSS X8, Y4
+	VXORPS Y5, Y5, Y5
+smexp_avx512_w8:
+	CMPQ CX, $8
+	JL smexp_avx512_w4
+	VMOVUPS (SI), Y0
+	VSUBPS Y6, Y0, Y0
+	VMAXPS Y4, Y0, Y0
+	VMULPS Y8, Y0, Y1
+	VROUNDPS $8, Y1, Y1
+	VMULPS Y1, Y9, Y2
+	VSUBPS Y2, Y0, Y0
+	VMOVAPS Y11, Y3
+	VFMADD213PS Y3, Y0, Y11
+	VMOVAPS Y12, Y3
+	VFMADD213PS Y3, Y0, Y12
+	VMOVAPS Y13, Y3
+	VFMADD213PS Y3, Y0, Y13
+	VMOVAPS Y14, Y3
+	VFMADD213PS Y3, Y0, Y14
+	VMOVAPS Y15, Y3
+	VFMADD213PS Y3, Y0, Y15
+	VMOVAPS Y16, Y3
+	VFMADD213PS Y3, Y0, Y16
+	VMOVAPS Y17, Y7
+	VFMADD213PS Y7, Y0, Y17
+	VCVTPS2DQ Y1, Y1
+	VPADDD Y20, Y1, Y1
+	VPSLLD $23, Y1, Y1
+	VPADDD Y1, Y7, Y7
+	VADDPS Y5, Y7, Y5
+	VMOVUPS Y7, (DI)
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP smexp_avx512_w8
+smexp_avx512_w4:
+	CMPQ CX, $4
+	JL smexp_avx512_scalar
+	VMOVUPS (SI), X0
+	VSUBPS X6, X0, X0
+	VMAXPS X4, X0, X0
+	VMULPS X8, X0, X1
+	VROUNDPS $8, X1, X1
+	VMULPS X1, X9, X2
+	VSUBPS X2, X0, X0
+	VMOVAPS X11, X3
+	VFMADD213PS X3, X0, X11
+	VMOVAPS X12, X3
+	VFMADD213PS X3, X0, X12
+	VMOVAPS X13, X3
+	VFMADD213PS X3, X0, X13
+	VMOVAPS X14, X3
+	VFMADD213PS X3, X0, X14
+	VMOVAPS X15, X3
+	VFMADD213PS X3, X0, X15
+	VMOVAPS X16, X3
+	VFMADD213PS X3, X0, X16
+	VMOVAPS X17, X7
+	VFMADD213PS X7, X0, X17
+	VCVTPS2DQ X1, X1
+	VPADDD X20, X1, X1
+	VPSLLD $23, X1, X1
+	VPADDD X1, X7, X7
+	VADDPS X5, X7, X5
+	VMOVUPS X7, (DI)
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP smexp_avx512_w4
+smexp_avx512_scalar:
+	TESTQ CX, CX
+	JZ smexp_avx512_fold
+smexp_avx512_sloop:
+	MOVSS (SI), X0
+	VSUBPS X6, X0, X0
+	VMAXPS X4, X0, X0
+	VMULPS X8, X0, X1
+	VROUNDPS $8, X1, X1
+	VMULPS X1, X9, X2
+	VSUBPS X2, X0, X0
+	VMOVAPS X11, X3
+	VFMADD213PS X3, X0, X11
+	VMOVAPS X12, X3
+	VFMADD213PS X3, X0, X12
+	VMOVAPS X13, X3
+	VFMADD213PS X3, X0, X13
+	VMOVAPS X14, X3
+	VFMADD213PS X3, X0, X14
+	VMOVAPS X15, X3
+	VFMADD213PS X3, X0, X15
+	VMOVAPS X16, X3
+	VFMADD213PS X3, X0, X16
+	VMOVAPS X17, X7
+	VFMADD213PS X7, X0, X17
+	VCVTPS2DQ X1, X1
+	VPADDD X20, X1, X1
+	VPSLLD $23, X1, X1
+	VPADDD X1, X7, X7
+	VADDPS X5, X7, X5
+	MOVSS X7, (DI)
+	ADDQ $4, SI
+	ADDQ $4, DI
+	DECQ CX
+	JNZ smexp_avx512_sloop
+smexp_avx512_fold:
+	VHADDPS Y5, Y5, Y0
+	VEXTRACTF128 $1, Y0, X1
+	VADDPS X0, X1, X0
+	VHADDPS X0, X0, X0
+	VHADDPS X0, X0, X0
+	MOVSS X0, ret+28(FP)
+	RET
+
+// func scaleF32AVX512(dst, src *float32, scale float32, count int)
+TEXT ·scaleF32AVX512(SB), NOSPLIT, $0-28
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	VMOVSS scale+16(FP), X8
+	VBROADCASTSS X8, Y8
+	MOVQ count+24(FP), CX
+smscale_avx512_w8:
+	CMPQ CX, $8
+	JL smscale_avx512_w4
+	VMOVUPS (SI), Y0
+	VMULPS Y8, Y0, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP smscale_avx512_w8
+smscale_avx512_w4:
+	CMPQ CX, $4
+	JL smscale_avx512_scalar
+	VMOVUPS (SI), X0
+	VMULPS X8, X0, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP smscale_avx512_w4
+smscale_avx512_scalar:
+	TESTQ CX, CX
+	JZ smscale_avx512_done
+smscale_avx512_sloop:
+	MOVSS (SI), X0
+	VMULPS X8, X0, X0
+	MOVSS X0, (DI)
+	ADDQ $4, SI
+	ADDQ $4, DI
+	DECQ CX
+	JNZ smscale_avx512_sloop
+smscale_avx512_done:
+	RET
+
+// func logSoftmaxShiftF32AVX512(dst, src *float32, maxValue, logSum float32, count int)
+TEXT ·logSoftmaxShiftF32AVX512(SB), NOSPLIT, $0-32
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	VMOVSS maxValue+16(FP), X8
+	VBROADCASTSS X8, Y8
+	VMOVSS logSum+20(FP), X9
+	VBROADCASTSS X9, Y9
+	MOVQ count+24(FP), CX
+smlog_avx512_w8:
+	CMPQ CX, $8
+	JL smlog_avx512_w4
+	VMOVUPS (SI), Y0
+	VSUBPS Y8, Y0, Y0
+	VSUBPS Y9, Y0, Y7
+	VMOVUPS Y7, (DI)
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP smlog_avx512_w8
+smlog_avx512_w4:
+	CMPQ CX, $4
+	JL smlog_avx512_scalar
+	VMOVUPS (SI), X0
+	VSUBPS X8, X0, X0
+	VSUBPS X9, X0, X7
+	VMOVUPS X7, (DI)
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP smlog_avx512_w4
+smlog_avx512_scalar:
+	TESTQ CX, CX
+	JZ smlog_avx512_done
+smlog_avx512_sloop:
+	MOVSS (SI), X0
+	VSUBPS X8, X0, X0
+	VSUBPS X9, X0, X7
+	MOVSS X7, (DI)
+	ADDQ $4, SI
+	ADDQ $4, DI
+	DECQ CX
+	JNZ smlog_avx512_sloop
+smlog_avx512_done:
+	RET
+
+// func reduceMaxSoftmaxF32AVX512(src *float32, count int) float32
+TEXT ·reduceMaxSoftmaxF32AVX512(SB), NOSPLIT, $0-20
+	MOVQ src+0(FP), SI
+	MOVQ count+8(FP), CX
+	TESTQ CX, CX
+	JZ reduce_max_avx512_zero
+	MOVSS (SI), X0
+	VBROADCASTSS X0, Y0
+	ADDQ $4, SI
+	DECQ CX
+reduce_max_avx512_w8:
+	CMPQ CX, $8
+	JL reduce_max_avx512_w4
+	VMOVUPS (SI), Y1
+	VMAXPS Y1, Y0, Y0
+	ADDQ $32, SI
+	SUBQ $8, CX
+	JMP reduce_max_avx512_w8
+reduce_max_avx512_w4:
+	CMPQ CX, $4
+	JL reduce_max_avx512_extract
+	VMOVUPS (SI), Y1
+	VMAXPS Y1, Y0, Y0
+	ADDQ $16, SI
+	SUBQ $4, CX
+	JMP reduce_max_avx512_w4
+reduce_max_avx512_extract:
+	VEXTRACTF128 $1, Y0, X1
+	VMAXPS X1, X0, X0
+	VHADDPS X0, X0, X0
+	VHADDPS X0, X0, X0
+reduce_max_avx512_tail:
+	TESTQ CX, CX
+	JZ reduce_max_avx512_done
+reduce_max_avx512_sloop:
+	MAXSS (SI), X0
+	ADDQ $4, SI
+	DECQ CX
+	JNZ reduce_max_avx512_sloop
+	JMP reduce_max_avx512_done
+reduce_max_avx512_done:
+	MOVSS X0, ret+16(FP)
+	RET
+reduce_max_avx512_zero:
+	XORPS X0, X0
+	MOVSS X0, ret+16(FP)
+	RET
+
+// func SoftmaxF32AVX512(dst, src *float32, count int)
+TEXT ·SoftmaxF32AVX512(SB), NOSPLIT, $32-24
+	MOVQ dst+0(FP), R10
+	MOVQ src+8(FP), R11
+	MOVQ count+16(FP), R12
+	MOVQ R11, 0(SP)
+	MOVQ R12, 8(SP)
+	CALL ·reduceMaxSoftmaxF32AVX512(SB)
+	MOVSS X0, X6
+	MOVQ R10, 0(SP)
+	MOVQ R11, 8(SP)
+	MOVSS X6, 16(SP)
+	MOVQ R12, 24(SP)
+	CALL ·softmaxExpSumF32AVX512(SB)
+	MOVSS actX86LogC<>+4(SB), X8
+	DIVSS X0, X8
+	MOVQ R10, 0(SP)
+	MOVQ R10, 8(SP)
+	MOVSS X8, 16(SP)
+	MOVQ R12, 24(SP)
+	CALL ·scaleF32AVX512(SB)
+	RET
+
+// func LogSoftmaxF32AVX512(dst, src *float32, count int)
+TEXT ·LogSoftmaxF32AVX512(SB), NOSPLIT, $32-24
+	MOVQ dst+0(FP), R10
+	MOVQ src+8(FP), R11
+	MOVQ count+16(FP), R12
+	MOVQ R11, 0(SP)
+	MOVQ R12, 8(SP)
+	CALL ·reduceMaxSoftmaxF32AVX512(SB)
+	MOVSS X0, X6
+	MOVQ R10, 0(SP)
+	MOVQ R11, 8(SP)
+	MOVSS X6, 16(SP)
+	MOVQ R12, 24(SP)
+	CALL ·softmaxExpSumF32AVX512(SB)
+	MOVSS X0, 0(SP)
+	LEAQ 0(SP), AX
+	MOVQ AX, 0(SP)
+	MOVQ AX, 8(SP)
+	MOVQ $1, 16(SP)
+	CALL ·LogF32AVX512(SB)
+	MOVSS X0, X9
+	MOVQ R10, 0(SP)
+	MOVQ R11, 8(SP)
+	MOVSS X6, 16(SP)
+	MOVSS X9, 20(SP)
+	MOVQ R12, 24(SP)
+	CALL ·logSoftmaxShiftF32AVX512(SB)
+	RET

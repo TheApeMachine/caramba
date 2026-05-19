@@ -3,7 +3,6 @@ package activation
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/backend/device/cpu/math"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
@@ -27,15 +26,20 @@ func dispatchSoftmax(
 
 	switch format {
 	case dtype.Float32:
-		source := unsafe.Slice((*float32)(src), count)
-		destination := unsafe.Slice((*float32)(dst), count)
-
 		if logSpace {
-			math.LogSoftmaxF32(destination, source)
+			logSoftmaxF32Kernel(
+				(*float32)(dst),
+				(*float32)(src),
+				count,
+			)
 			return
 		}
 
-		math.SoftmaxF32(destination, source)
+		softmaxF32Kernel(
+			(*float32)(dst),
+			(*float32)(src),
+			count,
+		)
 	case dtype.Float16, dtype.BFloat16:
 		scratch := make([]float32, count)
 		destination := make([]float32, count)
@@ -50,9 +54,9 @@ func dispatchSoftmax(
 		}
 
 		if logSpace {
-			math.LogSoftmaxF32(destination, scratch)
+			logSoftmaxF32Kernel(&destination[0], &scratch[0], count)
 		} else {
-			math.SoftmaxF32(destination, scratch)
+			softmaxF32Kernel(&destination[0], &scratch[0], count)
 		}
 
 		for index := 0; index < count; index++ {

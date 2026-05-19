@@ -35,7 +35,7 @@ func storeBF16(pointer unsafe.Pointer, index int, value float32) {
 	*(*uint16)(unsafe.Add(pointer, uintptr(index)*2)) = uint16(encoded)
 }
 
-func dispatchUnaryCompute(
+func dispatchActivationLane(
 	dst, src unsafe.Pointer,
 	count int,
 	format dtype.DType,
@@ -73,6 +73,7 @@ func dispatchGatedPacked(
 	dst, packed unsafe.Pointer,
 	batch, halfCount int,
 	format dtype.DType,
+	kernel func(dst, packed *float32, batch, halfCount int),
 	combine func(gate, up float32) float32,
 ) {
 	if batch == 0 || halfCount == 0 {
@@ -83,16 +84,12 @@ func dispatchGatedPacked(
 
 	switch format {
 	case dtype.Float32:
-		for batchIndex := 0; batchIndex < batch; batchIndex++ {
-			rowBase := batchIndex * rowStride
-			dstBase := batchIndex * halfCount
-
-			for index := 0; index < halfCount; index++ {
-				gate := loadF32(packed, rowBase+index)
-				up := loadF32(packed, rowBase+halfCount+index)
-				storeF32(dst, dstBase+index, combine(gate, up))
-			}
-		}
+		kernel(
+			(*float32)(dst),
+			(*float32)(packed),
+			batch,
+			halfCount,
+		)
 	case dtype.Float16:
 		for batchIndex := 0; batchIndex < batch; batchIndex++ {
 			rowBase := batchIndex * rowStride
@@ -118,7 +115,7 @@ func dispatchGatedPacked(
 	}
 }
 
-func dispatchUnaryComputeIndexed(
+func dispatchActivationLaneIndexed(
 	dst, src, slopes unsafe.Pointer,
 	count int,
 	format dtype.DType,
@@ -152,6 +149,7 @@ func dispatchGatedTensors(
 	dst, gate, up unsafe.Pointer,
 	count int,
 	format dtype.DType,
+	kernel func(dst, gate, up *float32, count int),
 	combine func(gate, up float32) float32,
 ) {
 	if count == 0 {
@@ -160,9 +158,12 @@ func dispatchGatedTensors(
 
 	switch format {
 	case dtype.Float32:
-		for index := 0; index < count; index++ {
-			storeF32(dst, index, combine(loadF32(gate, index), loadF32(up, index)))
-		}
+		kernel(
+			(*float32)(dst),
+			(*float32)(gate),
+			(*float32)(up),
+			count,
+		)
 	case dtype.Float16:
 		for index := 0; index < count; index++ {
 			storeF16(dst, index, combine(loadF16(gate, index), loadF16(up, index)))
