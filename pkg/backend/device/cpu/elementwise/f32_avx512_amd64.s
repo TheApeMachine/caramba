@@ -1,0 +1,623 @@
+#include "textflag.h"
+
+DATA ewAbsMask<>+0(SB)/4, $0x7fffffff
+DATA ewAbsMask<>+4(SB)/4, $0x7fffffff
+DATA ewAbsMask<>+8(SB)/4, $0x7fffffff
+DATA ewAbsMask<>+12(SB)/4, $0x7fffffff
+GLOBL ewAbsMask<>(SB), RODATA|NOPTR, $16
+
+DATA ewSignMask<>+0(SB)/4, $0x80000000
+DATA ewSignMask<>+4(SB)/4, $0x80000000
+DATA ewSignMask<>+8(SB)/4, $0x80000000
+DATA ewSignMask<>+12(SB)/4, $0x80000000
+GLOBL ewSignMask<>(SB), RODATA|NOPTR, $16
+
+// func AddFloat32AVX512Asm(dst, left, right *float32, n int)
+TEXT ·AddFloat32AVX512Asm(SB), NOSPLIT, $0-32
+	MOVQ dst+0(FP), DI
+	MOVQ left+8(FP), SI
+	MOVQ right+16(FP), R8
+	MOVQ n+24(FP), CX
+add_w16:
+	CMPQ CX, $16
+	JL add_w8
+	VMOVUPS (SI), Z0
+	VMOVUPS (R8), Z1
+	VADDPS Z1, Z0, Z0
+	VMOVUPS Z0, (DI)
+	ADDQ $64, SI
+	ADDQ $64, R8
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP add_w16
+add_w8:
+	CMPQ CX, $8
+	JL add_w4
+	VMOVUPS (SI), Y0
+	VMOVUPS (R8), Y1
+	VADDPS Y1, Y0, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, SI
+	ADDQ $32, R8
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP add_w8
+add_w4:
+	CMPQ CX, $4
+	JL add_w4_tail
+	VMOVUPS (SI), X0
+	VMOVUPS (R8), X1
+	VADDPS X1, X0, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, R8
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP add_w4
+add_w4_tail:
+	TESTQ CX, CX
+	JZ add_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VMOVDQU32 (R8), K7, Y1
+	VADDPS Y1, Y0, Y0
+	VMOVDQU32 Y0, K7, (DI)
+add_done:
+	RET
+
+// func SubFloat32AVX512Asm(dst, left, right *float32, n int)
+TEXT ·SubFloat32AVX512Asm(SB), NOSPLIT, $0-32
+	MOVQ dst+0(FP), DI
+	MOVQ left+8(FP), SI
+	MOVQ right+16(FP), R8
+	MOVQ n+24(FP), CX
+sub_w16:
+	CMPQ CX, $16
+	JL sub_w8
+	VMOVUPS (SI), Z0
+	VMOVUPS (R8), Z1
+	VSUBPS Z1, Z0, Z0
+	VMOVUPS Z0, (DI)
+	ADDQ $64, SI
+	ADDQ $64, R8
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP sub_w16
+sub_w8:
+	CMPQ CX, $8
+	JL sub_w4
+	VMOVUPS (SI), Y0
+	VMOVUPS (R8), Y1
+	VSUBPS Y1, Y0, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, SI
+	ADDQ $32, R8
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP sub_w8
+sub_w4:
+	CMPQ CX, $4
+	JL sub_w4_tail
+	VMOVUPS (SI), X0
+	VMOVUPS (R8), X1
+	VSUBPS X1, X0, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, R8
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP sub_w4
+sub_w4_tail:
+	TESTQ CX, CX
+	JZ sub_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VMOVDQU32 (R8), K7, Y1
+	VSUBPS Y1, Y0, Y0
+	VMOVDQU32 Y0, K7, (DI)
+sub_done:
+	RET
+
+// func MulFloat32AVX512Asm(dst, left, right *float32, n int)
+TEXT ·MulFloat32AVX512Asm(SB), NOSPLIT, $0-32
+	MOVQ dst+0(FP), DI
+	MOVQ left+8(FP), SI
+	MOVQ right+16(FP), R8
+	MOVQ n+24(FP), CX
+mul_w16:
+	CMPQ CX, $16
+	JL mul_w8
+	VMOVUPS (SI), Z0
+	VMOVUPS (R8), Z1
+	VMULPS Z1, Z0, Z0
+	VMOVUPS Z0, (DI)
+	ADDQ $64, SI
+	ADDQ $64, R8
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP mul_w16
+mul_w8:
+	CMPQ CX, $8
+	JL mul_w4
+	VMOVUPS (SI), Y0
+	VMOVUPS (R8), Y1
+	VMULPS Y1, Y0, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, SI
+	ADDQ $32, R8
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP mul_w8
+mul_w4:
+	CMPQ CX, $4
+	JL mul_w4_tail
+	VMOVUPS (SI), X0
+	VMOVUPS (R8), X1
+	VMULPS X1, X0, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, R8
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP mul_w4
+mul_w4_tail:
+	TESTQ CX, CX
+	JZ mul_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VMOVDQU32 (R8), K7, Y1
+	VMULPS Y1, Y0, Y0
+	VMOVDQU32 Y0, K7, (DI)
+mul_done:
+	RET
+
+// func DivFloat32AVX512Asm(dst, left, right *float32, n int)
+TEXT ·DivFloat32AVX512Asm(SB), NOSPLIT, $0-32
+	MOVQ dst+0(FP), DI
+	MOVQ left+8(FP), SI
+	MOVQ right+16(FP), R8
+	MOVQ n+24(FP), CX
+div_w16:
+	CMPQ CX, $16
+	JL div_w8
+	VMOVUPS (SI), Z0
+	VMOVUPS (R8), Z1
+	VDIVPS Z1, Z0, Z0
+	VMOVUPS Z0, (DI)
+	ADDQ $64, SI
+	ADDQ $64, R8
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP div_w16
+div_w8:
+	CMPQ CX, $8
+	JL div_w4
+	VMOVUPS (SI), Y0
+	VMOVUPS (R8), Y1
+	VDIVPS Y1, Y0, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, SI
+	ADDQ $32, R8
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP div_w8
+div_w4:
+	CMPQ CX, $4
+	JL div_w4_tail
+	VMOVUPS (SI), X0
+	VMOVUPS (R8), X1
+	VDIVPS X1, X0, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, R8
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP div_w4
+div_w4_tail:
+	TESTQ CX, CX
+	JZ div_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VMOVDQU32 (R8), K7, Y1
+	VDIVPS Y1, Y0, Y0
+	VMOVDQU32 Y0, K7, (DI)
+div_done:
+	RET
+
+// func MaxFloat32AVX512Asm(dst, left, right *float32, n int)
+TEXT ·MaxFloat32AVX512Asm(SB), NOSPLIT, $0-32
+	MOVQ dst+0(FP), DI
+	MOVQ left+8(FP), SI
+	MOVQ right+16(FP), R8
+	MOVQ n+24(FP), CX
+max_w16:
+	CMPQ CX, $16
+	JL max_w8
+	VMOVUPS (SI), Z0
+	VMOVUPS (R8), Z1
+	VCMPPS $6, Z0, Z1, K1
+	VBLENDMPS Z1, Z0, K1, Z0
+	VMOVUPS Z0, (DI)
+	ADDQ $64, SI
+	ADDQ $64, R8
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP max_w16
+max_w8:
+	CMPQ CX, $8
+	JL max_w4
+	VMOVUPS (SI), Y0
+	VMOVUPS (R8), Y1
+	VCMPPS $6, Y0, Y1, K1
+	VBLENDMPS Y1, Y0, K1, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, SI
+	ADDQ $32, R8
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP max_w8
+max_w4:
+	CMPQ CX, $4
+	JL max_w4_tail
+	VMOVUPS (SI), X0
+	VMOVUPS (R8), X1
+	VCMPPS $6, X0, X1, K1
+	VBLENDMPS X1, X0, K1, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, R8
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP max_w4
+max_w4_tail:
+	TESTQ CX, CX
+	JZ max_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VMOVDQU32 (R8), K7, Y1
+	VCMPPS $6, Y0, Y1, K1
+	VBLENDMPS Y1, Y0, K1, Y0
+	VMOVDQU32 Y0, K7, (DI)
+max_done:
+	RET
+
+// func MinFloat32AVX512Asm(dst, left, right *float32, n int)
+TEXT ·MinFloat32AVX512Asm(SB), NOSPLIT, $0-32
+	MOVQ dst+0(FP), DI
+	MOVQ left+8(FP), SI
+	MOVQ right+16(FP), R8
+	MOVQ n+24(FP), CX
+min_w16:
+	CMPQ CX, $16
+	JL min_w8
+	VMOVUPS (SI), Z0
+	VMOVUPS (R8), Z1
+	VCMPPS $6, Z1, Z0, K1
+	VBLENDMPS Z1, Z0, K1, Z0
+	VMOVUPS Z0, (DI)
+	ADDQ $64, SI
+	ADDQ $64, R8
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP min_w16
+min_w8:
+	CMPQ CX, $8
+	JL min_w4
+	VMOVUPS (SI), Y0
+	VMOVUPS (R8), Y1
+	VCMPPS $6, Y1, Y0, K1
+	VBLENDMPS Y1, Y0, K1, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, SI
+	ADDQ $32, R8
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP min_w8
+min_w4:
+	CMPQ CX, $4
+	JL min_w4_tail
+	VMOVUPS (SI), X0
+	VMOVUPS (R8), X1
+	VCMPPS $6, X1, X0, K1
+	VBLENDMPS X1, X0, K1, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, R8
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP min_w4
+min_w4_tail:
+	TESTQ CX, CX
+	JZ min_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VMOVDQU32 (R8), K7, Y1
+	VCMPPS $6, Y1, Y0, K1
+	VBLENDMPS Y1, Y0, K1, Y0
+	VMOVDQU32 Y0, K7, (DI)
+min_done:
+	RET
+
+// func AbsFloat32AVX512Asm(dst, src *float32, n int)
+TEXT ·AbsFloat32AVX512Asm(SB), NOSPLIT, $0-24
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ n+16(FP), CX
+	VPBROADCASTD ewAbsMask<>(SB), Z31
+abs_w16:
+	CMPQ CX, $16
+	JL abs_w8
+	VMOVUPS (SI), Z0
+	VPANDD Z31, Z0, Z0
+	VMOVUPS Z0, (DI)
+	ADDQ $64, SI
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP abs_w16
+abs_w8:
+	CMPQ CX, $8
+	JL abs_w4
+	VMOVUPS (SI), Y0
+	VPBROADCASTD ewAbsMask<>(SB), Y31
+	VPANDD Y31, Y0, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP abs_w8
+abs_w4:
+	CMPQ CX, $4
+	JL abs_w4_tail
+	VMOVUPS (SI), X0
+	VPBROADCASTD ewAbsMask<>(SB), X31
+	VPANDD X31, X0, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP abs_w4
+abs_w4_tail:
+	TESTQ CX, CX
+	JZ abs_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VPBROADCASTD ewAbsMask<>(SB), Y31
+	VPANDD Y31, Y0, Y0
+	VMOVDQU32 Y0, K7, (DI)
+abs_done:
+	RET
+
+// func NegFloat32AVX512Asm(dst, src *float32, n int)
+TEXT ·NegFloat32AVX512Asm(SB), NOSPLIT, $0-24
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ n+16(FP), CX
+	VPBROADCASTD ewSignMask<>(SB), Z31
+neg_w16:
+	CMPQ CX, $16
+	JL neg_w8
+	VMOVUPS (SI), Z0
+	VPXORD Z31, Z0, Z0
+	VMOVUPS Z0, (DI)
+	ADDQ $64, SI
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP neg_w16
+neg_w8:
+	CMPQ CX, $8
+	JL neg_w4
+	VMOVUPS (SI), Y0
+	VPBROADCASTD ewSignMask<>(SB), Y31
+	VPXORD Y31, Y0, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP neg_w8
+neg_w4:
+	CMPQ CX, $4
+	JL neg_w4_tail
+	VMOVUPS (SI), X0
+	VPBROADCASTD ewSignMask<>(SB), X31
+	VPXORD X31, X0, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP neg_w4
+neg_w4_tail:
+	TESTQ CX, CX
+	JZ neg_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VPBROADCASTD ewSignMask<>(SB), Y31
+	VPXORD Y31, Y0, Y0
+	VMOVDQU32 Y0, K7, (DI)
+neg_done:
+	RET
+
+// func SqrtFloat32AVX512Asm(dst, src *float32, n int)
+TEXT ·SqrtFloat32AVX512Asm(SB), NOSPLIT, $0-24
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ n+16(FP), CX
+sqrt_w16:
+	CMPQ CX, $16
+	JL sqrt_w8
+	VMOVUPS (SI), Z0
+	VSQRTPS Z0, Z0
+	VMOVUPS Z0, (DI)
+	ADDQ $64, SI
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP sqrt_w16
+sqrt_w8:
+	CMPQ CX, $8
+	JL sqrt_w4
+	VMOVUPS (SI), Y0
+	VSQRTPS Y0, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP sqrt_w8
+sqrt_w4:
+	CMPQ CX, $4
+	JL sqrt_w4_tail
+	VMOVUPS (SI), X0
+	VSQRTPS X0, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP sqrt_w4
+sqrt_w4_tail:
+	TESTQ CX, CX
+	JZ sqrt_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VSQRTPS Y0, Y0
+	VMOVDQU32 Y0, K7, (DI)
+sqrt_done:
+	RET
+
+// func ReluFloat32AVX512Asm(dst, src *float32, n int)
+TEXT ·ReluFloat32AVX512Asm(SB), NOSPLIT, $0-24
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ n+16(FP), CX
+	VXORPS X15, X15, X15
+	VPBROADCASTD X15, Z31
+	VXORPS Y15, Y15, Y15
+relu_w16:
+	CMPQ CX, $16
+	JL relu_w8
+	VMOVUPS (SI), Z0
+	VCMPPS $6, Z0, Z31, K1
+	VBLENDMPS Z31, Z0, K1, Z0
+	VMOVUPS Z0, (DI)
+	ADDQ $64, SI
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP relu_w16
+relu_w8:
+	CMPQ CX, $8
+	JL relu_w4
+	VMOVUPS (SI), Y0
+	VXORPS Y15, Y15, Y15
+	VCMPPS $6, Y0, Y15, K1
+	VBLENDMPS Y15, Y0, K1, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP relu_w8
+relu_w4:
+	CMPQ CX, $4
+	JL relu_w4_tail
+	VMOVUPS (SI), X0
+	VXORPS X15, X15, X15
+	VCMPPS $6, X0, X15, K1
+	VBLENDMPS X15, X0, K1, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP relu_w4
+relu_w4_tail:
+	TESTQ CX, CX
+	JZ relu_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VCMPPS $6, Y0, Y15, K1
+	VBLENDMPS Y15, Y0, K1, Y0
+	VMOVDQU32 Y0, K7, (DI)
+relu_done:
+	RET
+
+// func AxpyFloat32AVX512Asm(y, x *float32, alpha float32, n int)
+TEXT ·AxpyFloat32AVX512Asm(SB), NOSPLIT, $0-32
+	MOVQ y+0(FP), DI
+	MOVQ x+8(FP), SI
+	MOVSS alpha+16(FP), X0
+	VBROADCASTSS X0, Z31
+	MOVQ n+24(FP), CX
+axpy_w16:
+	CMPQ CX, $16
+	JL axpy_w8
+	VMOVUPS (DI), Z0
+	VMOVUPS (SI), Z1
+	VFMADD231PS Z31, Z1, Z0
+	VMOVUPS Z0, (DI)
+	ADDQ $64, DI
+	ADDQ $64, SI
+	SUBQ $16, CX
+	JMP axpy_w16
+axpy_w8:
+	CMPQ CX, $8
+	JL axpy_w4
+	VMOVUPS (DI), Y0
+	VMOVUPS (SI), Y1
+	VBROADCASTSS X0, Y31
+	VFMADD231PS Y31, Y1, Y0
+	VMOVUPS Y0, (DI)
+	ADDQ $32, DI
+	ADDQ $32, SI
+	SUBQ $8, CX
+	JMP axpy_w8
+axpy_w4:
+	CMPQ CX, $4
+	JL axpy_w4_tail
+	VMOVUPS (DI), X0
+	VMOVUPS (SI), X1
+	VBROADCASTSS X0, X31
+	VFMADD231PS X31, X1, X0
+	VMOVUPS X0, (DI)
+	ADDQ $16, DI
+	ADDQ $16, SI
+	SUBQ $4, CX
+	JMP axpy_w4
+axpy_w4_tail:
+	TESTQ CX, CX
+	JZ axpy_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (DI), K7, Y0
+	VMOVDQU32 (SI), K7, Y1
+	VBROADCASTSS X0, Y31
+	VFMADD231PS Y31, Y1, Y0
+	VMOVDQU32 Y0, K7, (DI)
+axpy_done:
+	RET

@@ -31,7 +31,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | dequant | yes | — | — | — | yes |
 | dot | yes | — | — | — | yes |
 | dropout | yes | — | — | — | yes |
-| elementwise | yes | — | — | — | yes |
+| elementwise | yes | yes | — | — | yes |
 | embedding | yes | — | — | — | — |
 | hawkes | yes | — | — | — | yes |
 | layernorm | yes | — | — | — | yes |

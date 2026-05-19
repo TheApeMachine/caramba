@@ -29,7 +29,8 @@ GLOBL window<>(SB), RODATA|NOPTR, $32
 
 // Process 4 bytes from X4.  Add low word counts to L, high to H
 // assumes mask loaded into X2.  Trashes X4, X5.
-#define COUNT4(L, H) \			// X4 = ----:----:----:3210
+// X4 = ----:----:----:3210
+#define COUNT4(L, H) \
 	PUNPCKLBW X4, X4 \		// X4 = ----:----:3322:1100
 	PUNPCKLWL X4, X4 \		// X4 = 3333:2222:1111:0000
 	PSHUFD $0xfa, X4, X5 \		// X5 = 3333:3333:2222:2222
@@ -146,14 +147,13 @@ vec:	MOVOA 0*16(SI), X4
 	MOVOU magic<>+8(SB), X9		// 55555555, aaaaaaaa, 33333333, cccccccc
 	CSA(X0, X6, X7)
 	ADDQ $16*16, SI
-#define D	90
-	PREFETCHT0 (D+ 0)*16(SI)
+	PREFETCHT0 (90+0)*16(SI)
 	CSA(X1, X6, X8)
-	PREFETCHT0 (D+ 4)*16(SI)
+	PREFETCHT0 (90+4)*16(SI)
 	CSA(X2, X4, X6)
-	PREFETCHT0 (D+ 8)*16(SI)
+	PREFETCHT0 (90+8)*16(SI)
 	CSA(X3, X4, X5)
-	PREFETCHT0 (D+12)*16(SI)
+	PREFETCHT0 (90+12)*16(SI)
 
 	MOVQ magic<>+24(SB), X8		// 0f0f0f0f, 00ff00ff
 

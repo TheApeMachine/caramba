@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/theapemachine/caramba/pkg/dtype"
+	"golang.org/x/sys/cpu"
 )
 
 func AddFloat32Native(dst, left, right []float32) {
@@ -385,16 +386,49 @@ func ReluFloat16Native(dst, src []dtype.F16) {
 }
 
 var (
-	addF32Funcs  = []f32BinaryKernelImpl{{AddF32Generic, "generic", true}}
-	subF32Funcs  = []f32BinaryKernelImpl{{SubF32Generic, "generic", true}}
-	mulF32Funcs  = []f32BinaryKernelImpl{{MulF32Generic, "generic", true}}
-	divF32Funcs  = []f32BinaryKernelImpl{{DivF32Generic, "generic", true}}
-	maxF32Funcs  = []f32BinaryKernelImpl{{MaxF32Generic, "generic", true}}
-	minF32Funcs  = []f32BinaryKernelImpl{{MinF32Generic, "generic", true}}
-	absF32Funcs  = []f32UnaryKernelImpl{{AbsF32Generic, "generic", true}}
-	negF32Funcs  = []f32UnaryKernelImpl{{NegF32Generic, "generic", true}}
-	sqrtF32Funcs = []f32UnaryKernelImpl{{SqrtF32Generic, "generic", true}}
-	reluF32Funcs = []f32UnaryKernelImpl{{ReluF32Generic, "generic", true}}
-	axpyF32Funcs = []f32AxpyKernelImpl{{AxpyF32Generic, "generic", true}}
-	addF64Funcs  = []f64BinaryKernelImpl{{AddF64Generic, "generic", true}}
+	addF32Funcs = []f32BinaryKernelImpl{
+		{AddF32AVX512, "avx512", cpu.X86.HasAVX512F},
+		{AddF32Generic, "generic", true},
+	}
+	subF32Funcs = []f32BinaryKernelImpl{
+		{SubF32AVX512, "avx512", cpu.X86.HasAVX512F},
+		{SubF32Generic, "generic", true},
+	}
+	mulF32Funcs = []f32BinaryKernelImpl{
+		{MulF32AVX512, "avx512", cpu.X86.HasAVX512F},
+		{MulF32Generic, "generic", true},
+	}
+	divF32Funcs = []f32BinaryKernelImpl{
+		{DivF32AVX512, "avx512", cpu.X86.HasAVX512F},
+		{DivF32Generic, "generic", true},
+	}
+	maxF32Funcs = []f32BinaryKernelImpl{
+		{MaxF32AVX512, "avx512", cpu.X86.HasAVX512F},
+		{MaxF32Generic, "generic", true},
+	}
+	minF32Funcs = []f32BinaryKernelImpl{
+		{MinF32AVX512, "avx512", cpu.X86.HasAVX512F},
+		{MinF32Generic, "generic", true},
+	}
+	absF32Funcs = []f32UnaryKernelImpl{
+		{AbsF32AVX512, "avx512", cpu.X86.HasAVX512F},
+		{AbsF32Generic, "generic", true},
+	}
+	negF32Funcs = []f32UnaryKernelImpl{
+		{NegF32AVX512, "avx512", cpu.X86.HasAVX512F},
+		{NegF32Generic, "generic", true},
+	}
+	sqrtF32Funcs = []f32UnaryKernelImpl{
+		{SqrtF32AVX512, "avx512", cpu.X86.HasAVX512F},
+		{SqrtF32Generic, "generic", true},
+	}
+	reluF32Funcs = []f32UnaryKernelImpl{
+		{ReluF32AVX512, "avx512", cpu.X86.HasAVX512F},
+		{ReluF32Generic, "generic", true},
+	}
+	axpyF32Funcs = []f32AxpyKernelImpl{
+		{AxpyF32AVX512, "avx512", cpu.X86.HasAVX512F},
+		{AxpyF32Generic, "generic", true},
+	}
+	addF64Funcs = []f64BinaryKernelImpl{{AddF64Generic, "generic", true}}
 )

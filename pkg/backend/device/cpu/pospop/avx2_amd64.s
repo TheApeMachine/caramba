@@ -44,15 +44,15 @@ GLOBL window<>(SB), RODATA|NOPTR, $64
 // count 8 bytes from L into Y0 and Y1,
 // using Y4, and Y5 for scratch space
 #define COUNT8(L) \
-	VPBROADCASTQ L, Y4 \	// Y4 = 7654:3210:7654:3210:7654:3210:7654:3210
-	VPSHUFB Y7, Y4, Y5 \	// Y5 = 7777:7777:6666:6666:5555:5555:4444:4444
-	VPSHUFB Y3, Y4, Y4 \	// Y4 = 3333:3333:2222:2222:1111:1111:0000:0000
+	VPBROADCASTQ L, Y4 \
+	VPSHUFB Y7, Y4, Y5 \
+	VPSHUFB Y3, Y4, Y4 \
 	VPAND Y2, Y5, Y5 \
-	VPAND Y2, Y4, Y4 \	// mask out one bit in each copy of the bytes
-	VPCMPEQB Y2, Y5, Y5 \	// set bytes to -1 if the bits were set
-	VPCMPEQB Y2, Y4, Y4 \	// or to 0 otherwise
+	VPAND Y2, Y4, Y4 \
+	VPCMPEQB Y2, Y5, Y5 \
+	VPCMPEQB Y2, Y4, Y4 \
 	VPSUBB Y5, Y1, Y1 \
-	VPSUBB Y4, Y0, Y0	// add 1/0 (subtract -1/0) to counters
+	VPSUBB Y4, Y0, Y0
 
 
 // Generic kernel.  This function expects a pointer to a width-specific
@@ -499,6 +499,7 @@ TEXT ·Count8AVX2(SB), 0, $0-32
 	CALL CountAVX2<>(SB)
 	RET
 
+
 // func Count16AVX2(counts *[16]int, buf []uint16)
 TEXT ·Count16AVX2(SB), 0, $0-32
 	MOVQ counts+0(FP), DI
@@ -509,6 +510,7 @@ TEXT ·Count16AVX2(SB), 0, $0-32
 	CALL CountAVX2<>(SB)
 	RET
 
+
 // func Count32AVX2(counts *[32]int, buf []uint32)
 TEXT ·Count32AVX2(SB), 0, $0-32
 	MOVQ counts+0(FP), DI
@@ -518,6 +520,7 @@ TEXT ·Count32AVX2(SB), 0, $0-32
 	SHLQ $2, CX			// count in bytes
 	CALL CountAVX2<>(SB)
 	RET
+
 
 // func Count64AVX2(counts *[64]int, buf []uint64)
 TEXT ·Count64AVX2(SB), 0, $0-32

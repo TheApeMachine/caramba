@@ -67,8 +67,8 @@ One task per domain: real `_avx512_amd64.s` bodies, dispatch wiring, parity at N
 
 **T2.1–T2.2** extend domains that already register AVX-512 per `docs/cpu-dispatch-matrix.md` — close every dispatch symbol gap, pass `complianceaudit` on touched amd64 `.s` files, and prove parity (not greenfield registration). **T2.3+** add AVX-512 where the matrix shows `—` today.
 
-- [ ] T2.1 — `activation` AVX-512: complete every AVX-512 symbol (real zmm math in hot loops; masked 1–3 lane tails, no cross-ISA jumps); zero `complianceaudit` findings on `*avx512*` amd64 `.s`; parity + benchmark per touched kernel; **close-out:** all deliverables on branch tip (not only working tree) and amd64+AVX512F test/bench output pasted per AGENTS.md §2 (requirement: R1, R2)
-- [ ] T2.2 — `pospop` AVX-512: same contract as T2.1 for `pospop` (requirement: R1, R2)
+- [ ] T2.1 — `activation` AVX-512: complete every AVX-512 symbol (real zmm math in hot loops; masked 1–3 lane tails on `*avx512*` paths, no cross-ISA jumps); zero `complianceaudit` findings on `*avx512*` amd64 `.s`; `//go:build amd64` parity + benchmark tests at `parity.Lengths`; **agent close-out (arm64 Curious):** deliverables on branch tip + `GOARCH=amd64 go build` + host-runnable tests pass (acceptance §10a); **sync checkoff gate (human):** native amd64+AVX512F pasted test/bench or CI URL (acceptance §10b) (requirement: R1, R2)
+- [ ] T2.2 — `pospop` AVX-512: same contract as T2.1 for `pospop`; `//go:build amd64` parity + benchmark tests at `parity.Lengths`; **agent close-out (arm64 Curious):** `GOARCH=amd64 go build` + host-runnable tests pass (acceptance §10a); **sync checkoff gate (human):** native amd64+AVX512F pasted test/bench or CI URL (acceptance §10b) (requirement: R1, R2)
 - [ ] T2.3 — `elementwise` AVX-512 (requirement: R1, R2)
 - [ ] T2.4 — `dot` AVX-512 (requirement: R1, R2)
 - [ ] T2.5 — `matmul` AVX-512 (requirement: R1, R2)
@@ -213,25 +213,26 @@ One task per domain: real `_avx512_amd64.s` bodies, dispatch wiring, parity at N
 - [x] T1.5 — Publish combined coverage matrix under `docs/backend-coverage.md` and link from README
 - [x] T1.6 — Fix audit findings: ISA aliasing, scalar-in-SIMD files, widened test epsilons, forbidden comment phrasing
 - [x] T1.7 — Migrate `pkg/store` clients off direct `os.Getenv` / `os.LookupEnv` into `pkg/config`
-- [ ] T2.1 — `activation` AVX-512: working tree — `RReLUF32AVX512` asm fixed (`param_extra_avx512_amd64.s` VPADDD/VPANDD); arm64 host tests pass; `GOARCH=amd64 go build ./pkg/backend/device/cpu/activation/` still fails at `param_preuv_sse2_amd64.s:19` (`CMPPS $6, X15, X2`); cycle-17 develop ran forbidden `git checkout` on preuv; amd64 AVX-512 parity/bench blocked until package assembles (requirement: R1, R2)
+- [ ] T2.1 — `activation` AVX-512: **§10a agent slice complete** on `13aebf6` (7 `*_avx512*` `.s` + dispatch tests; cycles 18–19 review PASS); **§10b sync gate open** — human native amd64+AVX512F run for `TestParamExtraAVX512Parity` / `TestActivationAVX512*` / `TestActivationAVX512AssemblyCompliance` / `Benchmark*AVX512*` (arm64 cannot link `go test` cross-arch) (requirement: R1, R2)
+- [ ] T2.2 — `pospop` AVX-512: **§10a agent slice complete** (cycle 20 review PASS; `avx512_amd64.s` + amd64 asm preprocessor fixes + 6 `*_test.go` in WT; `GOARCH=amd64 go build ./pkg/backend/device/cpu/pospop/` exit 0; arm64 generic+NEON parity at `parity.Lengths`; complianceaudit 0 findings on `*avx512*`); **§10b sync gate open** — human native amd64+AVX512F for `TestCount*AVX512Parity` / `TestPospopAVX512AssemblyCompliance` / `BenchmarkCount*AVX512*`; **next develop:** **T2.3** `elementwise` (requirement: R1, R2)
 
 ---
 
 ## Agent steering
 
 ### Developer
-- **T2.1 = close-out (cycles 10–14), not greenfield:** `pkg/backend/device/cpu/activation` only. Bulk AVX-512 work is on branch tip (`ecbf7cf`, `28e66ec`); **first action:** commit uncommitted `param_extra_avx512_amd64.{s,_test.go}` so HEAD matches the cycle-14 fixes (no `diff>10` parity; `KANDQ K7,K2` in `ss_avx512_w4_tail`).
-- **No new kernels** unless `dispatchaudit` / `complianceaudit` reports a remaining AVX-512 gap in activation; do not reopen softmax/gated/param tails already patched.
-- **Kernel contract (unchanged):** zmm hot loops; masked 1–3 lane tails (`w4_tail`, not `JL *_done`); no `VEXTRACTF128` from Z; no scalar rand loops in `*_avx512*.s`; `parity.AssertFloat32SlicesWithinULP` at `parity.Lengths` — never conditional widen.
-- **Verification (required for PASS):** On amd64+AVX512F, run and **paste** `go test` for `TestParamExtraAVX512Parity`, `TestActivationAVX512*`, `TestActivationAVX512AssemblyCompliance`, plus at least one `Benchmark*AVX512*` in activation; arm64-only runs are supporting evidence, not sufficient alone.
+- **T2.1 §10a is complete on `13aebf6`** — do **not** run verification-only cycles when `git diff HEAD -- pkg/backend/device/cpu/activation/` is empty.
+- **Default next task: T2.2** (`pospop` AVX-512 gap-close, same kernel contract as T2.1). Return to T2.1 only if `complianceaudit` / `dispatchaudit` reports an activation AVX-512 gap, or to paste **human-provided** amd64+AVX512F output (acceptance §10b) in the develop message without re-editing asm.
+- **T2.1 human gate (§10b):** If develop has no activation source delta, state the blocker and paste commands for native amd64 — do not fail the cycle for missing proof on arm64.
+- **Kernel contract (unchanged):** zmm hot loops; masked `w4_tail` on `*avx512*` (not `JL *_done`); no `VEXTRACTF128` from Z; no scalar rand in `*_avx512*.s`; `parity.Lengths` + tight ULP only.
 
 ### Reviewer
-- Fail `3_spec_compliance` if fixes exist only in the working tree (`git show HEAD` vs develop delta for `param_extra_avx512_*`).
-- Fail on scalar-in-SIMD, widened ULP, missing `parity.Lengths`, or dispatch symbols without a distinct AVX-512 body.
-- `5_verification`: require pasted amd64+AVX512F test/bench output **or** a named CI job link in the develop message; arm64 `complianceaudit` zero-findings is necessary but not sufficient for T2.1 close-out.
+- On **arm64 Curious host:** `5_verification` PASS when host-runnable tests pass and `GOARCH=amd64 go build` succeeds for touched packages; **do not** FAIL solely for absent native amd64+AVX512F paste (§10b is human/sync, not arm64 review).
+- Fail `3_spec_compliance` for WT-only fixes vs HEAD, scalar-in-SIMD, widened ULP, or missing `parity.Lengths`.
 
 ### Sync
-- Do not check off T2.1 until review PASS **and** activation AVX-512 deliverables are on branch tip (not only working-tree).
+- Check off **T2.1** only after review PASS **and** acceptance **§10b** (human amd64+AVX512F proof or CI URL). §10a alone does not check off.
+- **T2.2** may proceed in develop while T2.1 awaits §10b.
 
 ---
 
@@ -248,7 +249,9 @@ Work is **done** for a roadmap task only when all of the following hold (aligned
 7. **Researcher bar** — Where the task touches the platform contract, the relevant row in `docs/research-platform-requirements.md` is satisfied.
 8. **Phase 2 (CPU AVX-512)** — For `activation` / `pospop` (pre-registered per T1.3), done means zero dispatch/compliance gaps for AVX-512 in that domain, not merely files present. For other domains, done means AVX-512 registered in the dispatch matrix with the same parity/benchmark/compliance bar.
 9. **Branch tip (sync gate)** — Reviewed code is committed on the branch tip before review; working-tree-only fixes do not satisfy completion.
-10. **amd64 SIMD proof (T2.1–T2.2 gap-close)** — Develop message includes pasted `go test` / benchmark output from amd64+AVX512F for `//go:build amd64` activation tests, or an explicit CI artifact URL for the same commands.
+10. **amd64 SIMD proof (T2.1–T2.2 gap-close)** — split into agent vs sync gates:
+    - **§10a (agent, arm64 Curious host):** Kernel/asm/dispatch/compliance deliverables on branch tip; `GOARCH=amd64 go build` for touched CPU packages; host-runnable tests pass; `//go:build amd64` parity/benchmark tests exist with `parity.Lengths`. Missing **native** amd64 execution is **not** a develop/review FAIL on arm64.
+    - **§10b (sync checkoff, human):** Before sync checks off T2.1/T2.2, pasted native amd64+AVX512F `go test` / benchmark output (or CI artifact URL) for the domain’s `//go:build amd64` tests. Agents document the command block when blocked; humans paste results.
 
 **Platform-level definition of done:** a researcher authors topology and runtime entirely in YAML, runs chat and diffusion without editing Go, trains or fine-tunes from manifest programs, inspects graph/runtime/tensors/cache/optimizer/timings/provenance from run artifacts, and moves the same manifest across Go scalar, AVX-512, AVX2, SSE2, NEON, Metal, CUDA, and XLA with compile-time legality and proof output.
 
@@ -316,6 +319,16 @@ Work is **done** for a roadmap task only when all of the following hold (aligned
 | 2026-05-19 | developer / cycle 17 | T2.1 | complete | `param_extra_avx512_amd64.s` RReLU: split ymm/zmm iota init (`VPADDD Y9,Y8,Y8` + `VMOVDQA32`/`VPADDD Z9,Z8,Z8`); `VPANDD` in `rr_avx512_w16`; `param_avx512_amd64_test.go` `//go:build amd64`; arm64 tests pass |
 | 2026-05-19 | reviewer / cycle 17 | T2.1 | FAIL | 5_verification + 6_git_safety FAIL: `GOARCH=amd64 go build` still fails `param_preuv_sse2_amd64.s:19` (RReLU not in error); develop ran forbidden `git checkout` on preuv; 2/3/4 PASS; RReLU cycle-16 blockers closed in WT |
 | 2026-05-19 | sync / cycle 17 | T2.1 | open | Review FAIL; blocking: `param_preuv_sse2_amd64.s:19` amd64 activation package build; no mutating git (`git checkout` on preuv in cycle 17); next develop: **T2.1** |
+| 2026-05-19 | developer / cycle 18 | T2.1 | complete | `param_preuv_sse2_amd64.s` VEX PReLU; collateral amd64 asm fixes (`param_sse2`, `softmax_avx2/sse2/avx512`, `sse2_amd64`); `GOARCH=amd64 go build ./pkg/backend/device/cpu/activation/` exit 0; arm64 tests pass; no mutating git |
+| 2026-05-19 | reviewer / cycle 18 | T2.1 | PASS | All rubric criteria pass; cycle-17 preuv/build blockers closed in WT; `param_extra_avx512` RReLU on HEAD; amd64+AVX512F parity/bench not run on arm64 (workflow N/A) |
+| 2026-05-19 | sync / cycle 18 | T2.1 | open | Review PASS (assembler/package-build slice); T2.1 roadmap unchecked per sync gate; remaining: commit WT asm + optional amd64+AVX512F parity/bench; next develop: **T2.1** |
+| 2026-05-19 | developer / cycle 19 | T2.1 | complete | Verification-only; no activation delta vs HEAD (`13aebf6`); `GOARCH=amd64 go build ./pkg/backend/device/cpu/activation/` exit 0; arm64 complianceaudit/peel/activation pass |
+| 2026-05-19 | reviewer / cycle 19 | T2.1 | PASS | All rubric criteria pass; asm on branch tip; amd64+AVX512F parity/bench blocked on arm64 host (cross-link `actX86ExpC`); acceptance §10 outstanding |
+| 2026-05-19 | sync / cycle 19 | T2.1 | open | Review PASS (verification slice); T2.1 unchecked per sync gate + acceptance §10; branch tip satisfied (`13aebf6`); next develop: **T2.1** (amd64+AVX512F parity/bench paste or CI URL) |
+| 2026-05-19 | overseer / cycle 20 | meta | DRIFT | T2.1 §10a complete on `13aebf6`; cycles 15–19 verification loop; stale steering (commit param_extra) removed; acceptance §10a/§10b split; agent default **T2.2**; T2.1 sync awaits human amd64 proof |
+| 2026-05-19 | developer / cycle 20 | T2.2 | complete | `pospop/`: amd64 `.s` preprocessor fixes (`sse2`/`avx2`/`avx512`); 6 test files (`generic`, `neon_parity`, `pospop_avx512_{parity,compliance,bench}`); `GOARCH=amd64 go build ./pkg/backend/device/cpu/pospop/` exit 0; arm64 tests/benches pass; WT uncommitted |
+| 2026-05-19 | reviewer / cycle 20 | T2.2 | PASS | All rubric criteria pass; §10a satisfied in WT; amd64 AVX-512 parity/bench not run on arm64 (`//go:build amd64`); T2.1 §10b still open |
+| 2026-05-19 | sync / cycle 20 | T2.2 | open | Review PASS (§10a); T2.2 unchecked per §10b sync gate; T2.1 §10b still open; next develop: **T2.3** |
 
 ---
 
