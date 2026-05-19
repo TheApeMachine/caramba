@@ -2,8 +2,10 @@ package neon
 
 import (
 	"math"
+	"unsafe"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/activation"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
@@ -266,7 +268,12 @@ func flashExpFloat32(value float32) float32 {
 	}
 
 	scratch := [1]float32{value}
-	ExpFloat32Native(scratch[:], scratch[:])
+	activation.Exp(
+		unsafe.Pointer(unsafe.SliceData(scratch[:])),
+		unsafe.Pointer(unsafe.SliceData(scratch[:])),
+		1,
+		dtype.Float32,
+	)
 
 	return scratch[0]
 }
