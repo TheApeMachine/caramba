@@ -1,0 +1,559 @@
+// SPDX-License-Identifier: Apache-2.0
+// AVX-512 float32 sampling kernels: greedy argmax and temperature softmax row.
+#include "textflag.h"
+
+DATA samOneF32<>+0(SB)/4, $0x3f800000
+GLOBL samOneF32<>(SB), RODATA|NOPTR, $4
+
+DATA samExpC<>+0(SB)/4, $1.4426950408889634
+DATA samExpC<>+4(SB)/4, $0.6931471805599453
+DATA samExpC<>+12(SB)/4, $0.00019841270
+DATA samExpC<>+16(SB)/4, $0.0013888889
+DATA samExpC<>+20(SB)/4, $0.008333334
+DATA samExpC<>+24(SB)/4, $0.041666667
+DATA samExpC<>+28(SB)/4, $0.16666667
+DATA samExpC<>+32(SB)/4, $0.5
+DATA samExpC<>+36(SB)/4, $1.0
+DATA samExpC<>+40(SB)/4, $1.0
+GLOBL samExpC<>(SB), RODATA|NOPTR, $44
+
+DATA samExpBias127<>+0(SB)/4, $127
+GLOBL samExpBias127<>(SB), RODATA|NOPTR, $4
+
+DATA samSoftmaxClamp<>+0(SB)/4, $-87.0
+GLOBL samSoftmaxClamp<>(SB), RODATA|NOPTR, $4
+
+// func GreedySampleFloat32AVX512Asm(logits *float32, count int) int32
+TEXT ·GreedySampleFloat32AVX512Asm(SB), NOSPLIT, $64-16
+	MOVQ logits+0(FP), SI
+	MOVQ SI, BX
+	MOVQ count+8(FP), CX
+	TESTQ CX, CX
+	JZ   greedy_avx512_zero
+
+	CMPQ CX, $1
+	JE   greedy_avx512_one
+
+	MOVSS (SI), X0
+	VBROADCASTSS X0, Z0
+	ADDQ $4, SI
+	DECQ CX
+
+greedy_avx512_max_w16:
+	CMPQ CX, $16
+	JL   greedy_avx512_max_w8
+
+	VMOVUPS (SI), Z1
+	VMAXPS  Z1, Z0, Z0
+
+	ADDQ $64, SI
+	SUBQ $16, CX
+	JMP  greedy_avx512_max_w16
+
+greedy_avx512_max_w8:
+	CMPQ CX, $8
+	JL   greedy_avx512_max_w4
+
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVUPS (SI), Y1
+	VMAXPS  Y1, Y0, Y0
+	VMOVUPS Y0, (R15)
+	VMOVUPS (R15), Z0
+
+	ADDQ $32, SI
+	SUBQ $8, CX
+	JMP  greedy_avx512_max_w8
+
+greedy_avx512_max_w4:
+	CMPQ CX, $4
+	JL   greedy_avx512_max_w4_tail
+
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVUPS (SI), Y1
+	VMAXPS  Y1, Y0, Y0
+	VMOVUPS Y0, (R15)
+	VMOVUPS (R15), Z0
+
+	ADDQ $16, SI
+	SUBQ $4, CX
+	JMP  greedy_avx512_max_w4
+
+greedy_avx512_max_w4_tail:
+	TESTQ CX, CX
+	JZ   greedy_avx512_max_done
+
+	MOVQ  CX, DX
+	MOVQ  $1, AX
+	SHLQ  CL, AX
+	DECQ  AX
+	KMOVQ AX, K7
+
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVDQU32 (SI), K7, Y1
+	VMAXPS  Y1, Y0, K7, Y0
+	VMOVUPS Y0, (R15)
+	VMOVUPS (R15), Z0
+
+greedy_avx512_max_done:
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVUPS 32(R15), Y1
+	VMAXPS  Y1, Y0, Y0
+	VHADDPS Y0, Y0, Y0
+	VHADDPS Y0, Y0, Y0
+	VEXTRACTF128 $0, Y0, X0
+
+	MOVQ BX, SI
+	MOVQ count+8(FP), CX
+	XORQ R8, R8
+
+greedy_avx512_find_w16:
+	CMPQ CX, $16
+	JL   greedy_avx512_find_w8
+
+	VBROADCASTSS X0, Y1
+	VMOVUPS (SI), Y2
+	VCMPPS $0, Y1, Y2, K1
+	KMOVQ K1, AX
+	TESTQ AX, AX
+	JNZ  greedy_avx512_found
+
+	VMOVUPS 32(SI), Y2
+	VCMPPS $0, Y1, Y2, K1
+	KMOVQ K1, AX
+	TESTQ AX, AX
+	JNZ  greedy_avx512_found_hi8
+
+	ADDQ $64, SI
+	ADDQ $16, R8
+	SUBQ $16, CX
+	JMP  greedy_avx512_find_w16
+
+greedy_avx512_found_hi8:
+	BSFQ AX, DX
+	ADDQ $8, DX
+	ADDQ R8, DX
+	MOVL DX, ret+12(FP)
+	RET
+
+greedy_avx512_find_w8:
+	CMPQ CX, $8
+	JL   greedy_avx512_find_w4
+
+	VBROADCASTSS X0, Y1
+	VMOVUPS (SI), Y2
+	VCMPPS $0, Y1, Y2, K1
+	KMOVQ K1, AX
+	TESTQ AX, AX
+	JNZ  greedy_avx512_found
+
+	ADDQ $32, SI
+	ADDQ $8, R8
+	SUBQ $8, CX
+	JMP  greedy_avx512_find_w8
+
+greedy_avx512_find_w4:
+	CMPQ CX, $4
+	JL   greedy_avx512_find_w4_tail
+
+	VBROADCASTSS X0, Y1
+	VMOVUPS (SI), Y2
+	VCMPPS $0, Y1, Y2, K1
+	KMOVQ K1, AX
+	TESTQ AX, AX
+	JNZ  greedy_avx512_found
+
+	ADDQ $16, SI
+	ADDQ $4, R8
+	SUBQ $4, CX
+	JMP  greedy_avx512_find_w4
+
+greedy_avx512_find_w4_tail:
+	TESTQ CX, CX
+	JZ   greedy_avx512_fail
+
+	MOVQ  CX, DX
+	MOVQ  $1, AX
+	SHLQ  CL, AX
+	DECQ  AX
+	KMOVQ AX, K7
+
+	VBROADCASTSS X0, Y1
+	VMOVDQU32 (SI), K7, Y2
+	VCMPPS $0, Y1, Y2, K7
+	KMOVQ K7, AX
+	TESTQ AX, AX
+	JNZ  greedy_avx512_found
+
+greedy_avx512_fail:
+	MOVQ count+8(FP), AX
+	DECQ AX
+	MOVL AX, ret+12(FP)
+	RET
+
+greedy_avx512_found:
+	BSFQ AX, DX
+	ADDQ R8, DX
+	MOVL DX, ret+12(FP)
+	RET
+
+greedy_avx512_one:
+	XORL AX, AX
+	MOVL AX, ret+12(FP)
+	RET
+
+greedy_avx512_zero:
+	XORL AX, AX
+	MOVL AX, ret+12(FP)
+	RET
+
+// func SamplingSoftmaxRowFloat32AVX512Asm(logits, out *float32, temperature float32, count int)
+TEXT ·SamplingSoftmaxRowFloat32AVX512Asm(SB), NOSPLIT, $64-28
+	MOVQ logits+0(FP), SI
+	MOVQ out+8(FP), DI
+	MOVSS temperature+16(FP), X10
+	MOVQ count+24(FP), CX
+	TESTQ CX, CX
+	JZ   sam_softmax_done
+
+	XORPS X11, X11
+	UCOMISS X10, X11
+	JNE  sam_softmax_temp_ok
+	MOVSS samOneF32<>(SB), X10
+
+sam_softmax_temp_ok:
+	VBROADCASTSS X10, Y10
+
+	MOVSS (SI), X0
+	VBROADCASTSS X0, Z0
+	ADDQ $4, SI
+	DECQ CX
+
+sam_softmax_max_w16:
+	CMPQ CX, $16
+	JL   sam_softmax_max_w8
+
+	VMOVUPS (SI), Z1
+	VMAXPS  Z1, Z0, Z0
+
+	ADDQ $64, SI
+	SUBQ $16, CX
+	JMP  sam_softmax_max_w16
+
+sam_softmax_max_w8:
+	CMPQ CX, $8
+	JL   sam_softmax_max_w4
+
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVUPS (SI), Y1
+	VMAXPS  Y1, Y0, Y0
+	VMOVUPS Y0, (R15)
+	VMOVUPS (R15), Z0
+
+	ADDQ $32, SI
+	SUBQ $8, CX
+	JMP  sam_softmax_max_w8
+
+sam_softmax_max_w4:
+	CMPQ CX, $4
+	JL   sam_softmax_max_w4_tail
+
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVUPS (SI), Y1
+	VMAXPS  Y1, Y0, Y0
+	VMOVUPS Y0, (R15)
+	VMOVUPS (R15), Z0
+
+	ADDQ $16, SI
+	SUBQ $4, CX
+	JMP  sam_softmax_max_w4
+
+sam_softmax_max_w4_tail:
+	TESTQ CX, CX
+	JZ   sam_softmax_max_reduce
+
+	MOVQ  CX, DX
+	MOVQ  $1, AX
+	SHLQ  CL, AX
+	DECQ  AX
+	KMOVQ AX, K7
+
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVDQU32 (SI), K7, Y1
+	VMAXPS  Y1, Y0, K7, Y0
+	VMOVUPS Y0, (R15)
+	VMOVUPS (R15), Z0
+
+sam_softmax_max_reduce:
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVUPS 32(R15), Y1
+	VMAXPS  Y1, Y0, Y0
+	VHADDPS Y0, Y0, Y0
+	VHADDPS Y0, Y0, Y0
+	VEXTRACTF128 $0, Y0, X6
+
+	MOVQ logits+0(FP), SI
+	MOVQ count+24(FP), CX
+
+	MOVQ $samExpC<>(SB), AX
+	VMOVSS (AX), X8
+	VBROADCASTSS X8, Y8
+	VMOVSS 4(AX), X9
+	VBROADCASTSS X9, Y9
+	VMOVSS 12(AX), X11
+	VBROADCASTSS X11, Y11
+	VMOVSS 16(AX), X12
+	VBROADCASTSS X12, Y12
+	VMOVSS 20(AX), X13
+	VBROADCASTSS X13, Y13
+	VMOVSS 24(AX), X14
+	VBROADCASTSS X14, Y14
+	VMOVSS 28(AX), X15
+	VBROADCASTSS X15, Y15
+	VMOVSS 32(AX), X16
+	VBROADCASTSS X16, Y16
+	VMOVSS 36(AX), X17
+	VBROADCASTSS X17, Y17
+	VPBROADCASTD samExpBias127<>(SB), Y20
+	VMOVSS samSoftmaxClamp<>(SB), X8
+	VBROADCASTSS X8, Y4
+	VBROADCASTSS X6, Y6
+	VXORPS Y5, Y5, Y5
+
+sam_softmax_exp_w16:
+	CMPQ CX, $16
+	JL   sam_softmax_exp_w8
+
+	VMOVUPS (SI), Y0
+	VSUBPS Y6, Y0, Y0
+	VDIVPS Y10, Y0, Y0
+	VMAXPS Y4, Y0, Y0
+	VMULPS Y8, Y0, Y1
+	VROUNDPS $8, Y1, Y1
+	VMULPS Y1, Y9, Y2
+	VSUBPS Y2, Y0, Y0
+	VMOVAPS Y11, Y3
+	VFMADD213PS Y3, Y0, Y11
+	VMOVAPS Y12, Y3
+	VFMADD213PS Y3, Y0, Y12
+	VMOVAPS Y13, Y3
+	VFMADD213PS Y3, Y0, Y13
+	VMOVAPS Y14, Y3
+	VFMADD213PS Y3, Y0, Y14
+	VMOVAPS Y15, Y3
+	VFMADD213PS Y3, Y0, Y15
+	VMOVAPS Y16, Y3
+	VFMADD213PS Y3, Y0, Y16
+	VMOVAPS Y17, Y7
+	VFMADD213PS Y7, Y0, Y17
+	VCVTPS2DQ Y1, Y1
+	VPADDD Y20, Y1, Y1
+	VPSLLD $23, Y1, Y1
+	VPADDD Y1, Y7, Y7
+	VADDPS Y5, Y7, Y5
+	VMOVUPS Y7, (DI)
+
+	ADDQ $64, SI
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP  sam_softmax_exp_w16
+
+sam_softmax_exp_w8:
+	CMPQ CX, $8
+	JL   sam_softmax_exp_w4
+
+	VMOVUPS (SI), Y0
+	VSUBPS Y6, Y0, Y0
+	VDIVPS Y10, Y0, Y0
+	VMAXPS Y4, Y0, Y0
+	VMULPS Y8, Y0, Y1
+	VROUNDPS $8, Y1, Y1
+	VMULPS Y1, Y9, Y2
+	VSUBPS Y2, Y0, Y0
+	VMOVAPS Y11, Y3
+	VFMADD213PS Y3, Y0, Y11
+	VMOVAPS Y12, Y3
+	VFMADD213PS Y3, Y0, Y12
+	VMOVAPS Y13, Y3
+	VFMADD213PS Y3, Y0, Y13
+	VMOVAPS Y14, Y3
+	VFMADD213PS Y3, Y0, Y14
+	VMOVAPS Y15, Y3
+	VFMADD213PS Y3, Y0, Y15
+	VMOVAPS Y16, Y3
+	VFMADD213PS Y3, Y0, Y16
+	VMOVAPS Y17, Y7
+	VFMADD213PS Y7, Y0, Y17
+	VCVTPS2DQ Y1, Y1
+	VPADDD Y20, Y1, Y1
+	VPSLLD $23, Y1, Y1
+	VPADDD Y1, Y7, Y7
+	VADDPS Y5, Y7, Y5
+	VMOVUPS Y7, (DI)
+
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP  sam_softmax_exp_w8
+
+sam_softmax_exp_w4:
+	CMPQ CX, $4
+	JL   sam_softmax_exp_w4_tail
+
+	VMOVUPS (SI), X0
+	VSUBPS X6, X0, X0
+	VDIVPS X10, X0, X0
+	VMAXPS X4, X0, X0
+	VMULPS X8, X0, X1
+	VROUNDPS $8, X1, X1
+	VMULPS X1, X9, X2
+	VSUBPS X2, X0, X0
+	VMOVAPS X11, X3
+	VFMADD213PS X3, X0, X11
+	VMOVAPS X12, X3
+	VFMADD213PS X3, X0, X12
+	VMOVAPS X13, X3
+	VFMADD213PS X3, X0, X13
+	VMOVAPS X14, X3
+	VFMADD213PS X3, X0, X14
+	VMOVAPS X15, X3
+	VFMADD213PS X3, X0, X15
+	VMOVAPS X16, X3
+	VFMADD213PS X3, X0, X16
+	VMOVAPS X17, X7
+	VFMADD213PS X7, X0, X17
+	VCVTPS2DQ X1, X1
+	VPADDD X20, X1, X1
+	VPSLLD $23, X1, X1
+	VPADDD X1, X7, X7
+	VADDPS X5, X7, X5
+	VMOVUPS X7, (DI)
+
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP  sam_softmax_exp_w4
+
+sam_softmax_exp_w4_tail:
+	TESTQ CX, CX
+	JZ   sam_softmax_exp_reduce
+
+	MOVQ  CX, DX
+	MOVQ  $1, AX
+	SHLQ  CL, AX
+	DECQ  AX
+	KMOVQ AX, K7
+
+	VMOVDQU32 (SI), K7, Y0
+	VSUBPS Y6, Y0, Y0
+	VDIVPS Y10, Y0, Y0
+	VMAXPS Y4, Y0, Y0
+	VMULPS Y8, Y0, Y1
+	VROUNDPS $8, Y1, Y1
+	VMULPS Y1, Y9, Y2
+	VSUBPS Y2, Y0, Y0
+	VMOVAPS Y11, Y3
+	VFMADD213PS Y3, Y0, Y11
+	VMOVAPS Y12, Y3
+	VFMADD213PS Y3, Y0, Y12
+	VMOVAPS Y13, Y3
+	VFMADD213PS Y3, Y0, Y13
+	VMOVAPS Y14, Y3
+	VFMADD213PS Y3, Y0, Y14
+	VMOVAPS Y15, Y3
+	VFMADD213PS Y3, Y0, Y15
+	VMOVAPS Y16, Y3
+	VFMADD213PS Y3, Y0, Y16
+	VMOVAPS Y17, Y7
+	VFMADD213PS Y7, Y0, Y17
+	VCVTPS2DQ Y1, Y1
+	VPADDD Y20, Y1, Y1
+	VPSLLD $23, Y1, Y1
+	VPADDD Y1, Y7, Y7
+	VXORPS Y24, Y24, Y24
+	VBLENDMPS Y7, Y24, K7, Y24
+	VADDPS Y24, Y5, Y5
+	VMOVDQU32 Y7, K7, (DI)
+
+sam_softmax_exp_reduce:
+	VHADDPS Y5, Y5, Y5
+	VHADDPS Y5, Y5, Y5
+	VEXTRACTF128 $0, Y5, X0
+	XORPS X1, X1
+	UCOMISS X0, X1
+	JE    sam_softmax_done
+
+	MOVSS samOneF32<>(SB), X8
+	DIVSS X0, X8
+	VBROADCASTSS X8, Y8
+
+	MOVQ out+8(FP), DI
+	MOVQ count+24(FP), CX
+
+sam_softmax_scale_w16:
+	CMPQ CX, $16
+	JL   sam_softmax_scale_w8
+
+	VMOVUPS (DI), Y0
+	VMULPS Y8, Y0, Y0
+	VMOVUPS Y0, (DI)
+
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP  sam_softmax_scale_w16
+
+sam_softmax_scale_w8:
+	CMPQ CX, $8
+	JL   sam_softmax_scale_w4
+
+	VMOVUPS (DI), Y0
+	VMULPS Y8, Y0, Y0
+	VMOVUPS Y0, (DI)
+
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP  sam_softmax_scale_w8
+
+sam_softmax_scale_w4:
+	CMPQ CX, $4
+	JL   sam_softmax_scale_w4_tail
+
+	VMOVUPS (DI), X0
+	VMULPS X8, X0, X0
+	VMOVUPS X0, (DI)
+
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP  sam_softmax_scale_w4
+
+sam_softmax_scale_w4_tail:
+	TESTQ CX, CX
+	JZ   sam_softmax_done
+
+	MOVQ  CX, DX
+	MOVQ  $1, AX
+	SHLQ  CL, AX
+	DECQ  AX
+	KMOVQ AX, K7
+
+	VMOVDQU32 (DI), K7, Y0
+	VMULPS Y8, Y0, Y0
+	VMOVDQU32 Y0, K7, (DI)
+
+sam_softmax_done:
+	RET

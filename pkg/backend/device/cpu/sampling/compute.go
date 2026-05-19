@@ -1,40 +1,18 @@
 package sampling
 
 import (
-	"math"
 	"math/rand/v2"
 	"sort"
 )
 
 func softmaxAndSort(logits []float32, temperature float32) ([]float32, []int) {
-	if temperature == 0 {
-		temperature = 1
-	}
-
 	probabilities := make([]float32, len(logits))
 	indices := make([]int, len(logits))
 
-	maximum := logits[0]
+	SamplingSoftmaxRowFloat32Native(logits, probabilities, temperature)
 
-	for _, value := range logits[1:] {
-		if value > maximum {
-			maximum = value
-		}
-	}
-
-	var denominator float64
-
-	for index, value := range logits {
-		shifted := math.Exp(float64((value - maximum) / temperature))
-		probabilities[index] = float32(shifted)
+	for index := range indices {
 		indices[index] = index
-		denominator += shifted
-	}
-
-	scale := float32(1.0 / denominator)
-
-	for index := range probabilities {
-		probabilities[index] *= scale
 	}
 
 	sort.SliceStable(indices, func(left, right int) bool {
