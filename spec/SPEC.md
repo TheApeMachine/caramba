@@ -6,8 +6,8 @@
 
 **What exists today**
 
-- **Low-level compute:** `pkg/backend/device/cpu` — 31 operation domains (`activation` … `vsa`) with Go scalar plus AVX2, SSE2 (amd64), and NEON (arm64) assembly; **AVX-512 is partial** (mainly `activation`, dispatch hooks in `pospop`). Legacy **386** paths are being removed (non-goal per constraints).
-- **Device backends:** `pkg/backend/device/{metal,cuda,xla}` with real kernel submission paths (coverage gaps remain; audit required).
+- **Low-level compute:** `pkg/backend/device/cpu` — 30 operation domains (`activation` … `vsa`, excluding shared `cpu/neon`) with Go scalar on all; **NEON** registered in 20/30 domains; **amd64 AVX2/SSE2/AVX-512** assembly registered only in `activation` and `pospop` (per T1.3 audit). Legacy **386** paths removed; CPU targets **amd64** and **arm64** only (`GOARCH=386` unsupported).
+- **Device backends:** `pkg/backend/device/{metal,cuda,xla}` — **Metal** has 462 `kernels.Default` registrations (158 unique names, 68/119 required ops); **CUDA** and **XLA** are tensor upload/download only (0 kernel registrations). **`device.Backend` ↔ `ir.RequiredOperationIDs()` inventory** in `docs/backend-inventory.md` and `pkg/backend/device/inventory*.go` (151 methods, 119 required ops cross-linked). **CPU dispatch matrix** in `docs/cpu-dispatch-matrix.md` and `pkg/backend/device/cpu/dispatchaudit/`. **Device backend matrix** in `docs/device-backend-matrix.md` and `pkg/backend/device/backendaudit/`. **Combined backend coverage** in `docs/backend-coverage.md` and `pkg/backend/device/coverageaudit/` (T1.2–T1.4 registration snapshot, R1 execution-target summary).
 - **Compute core:** `pkg/backend/compute/{ir,tensor,kernels,fusion,state}`; minimal `pkg/backend/compute/runtime` (`executor.go`, `host.go` only).
 - **Assets and templates:** `pkg/asset` (embedded YAML, `system.topology` shapes, `TemplateFS` for includes); model manifests under `pkg/asset/template/manifest/`; canonical runtime YAML in `pkg/asset/template/runtime/{chat,diffusion}.yml`.
 - **Hub, provenance, API, frontend:** `pkg/hub`, `pkg/notary`, `pkg/backend/api` + `cmd/serve`, TanStack Start `frontend/` (node-graph, research, benchmark routes).
@@ -51,11 +51,11 @@ Tasks use stable IDs. The sync phase checks these off when review passes. Each t
 
 ### Phase 1: Backend audit and platform hygiene
 
-- [ ] T1.1 — Finish removing legacy `386` CPU build tags, selectors, and `.s` files across all domains; `GOARCH=386` builds are unsupported (requirement: R1, R10; non-goal: 32-bit)
-- [ ] T1.2 — Inventory every method on `device.Backend` and cross-link to `ir.RequiredOperationIDs()` (requirement: R1)
-- [ ] T1.3 — Per-domain CPU dispatch matrix: scalar / AVX-512 / AVX2 / SSE2 / NEON registration status (requirement: R1)
-- [ ] T1.4 — Per-backend matrix for Metal, CUDA, XLA: registered ops, dtypes, and missing kernels (requirement: R1)
-- [ ] T1.5 — Publish combined coverage matrix under `docs/backend-coverage.md` and link from README (requirement: R1, R11)
+- [x] T1.1 — Finish removing legacy `386` CPU build tags, selectors, and `.s` files across all domains; `GOARCH=386` builds are unsupported (requirement: R1, R10; non-goal: 32-bit)
+- [x] T1.2 — Inventory every method on `device.Backend` and cross-link to `ir.RequiredOperationIDs()` (requirement: R1)
+- [x] T1.3 — Per-domain CPU dispatch matrix: scalar / AVX-512 / AVX2 / SSE2 / NEON registration status (requirement: R1)
+- [x] T1.4 — Per-backend matrix for Metal, CUDA, XLA: registered ops, dtypes, and missing kernels (requirement: R1)
+- [x] T1.5 — Publish combined coverage matrix under `docs/backend-coverage.md` and link from README (requirement: R1, R11)
 - [ ] T1.6 — Fix audit findings: ISA aliasing, scalar-in-SIMD files, widened test epsilons, forbidden comment phrasing (requirement: R1, R2, R10)
 - [ ] T1.7 — Migrate `pkg/store` clients off direct `os.Getenv` / `os.LookupEnv` into `pkg/config` (requirement: R9)
 
@@ -202,11 +202,11 @@ One task per domain: real `_avx512_amd64.s` bodies, dispatch wiring, parity at N
 
 ## Progress
 
-- [ ] T1.1 — Finish removing legacy `386` CPU build tags, selectors, and `.s` files across all domains; `GOARCH=386` builds are unsupported
-- [ ] T1.2 — Inventory every method on `device.Backend` and cross-link to `ir.RequiredOperationIDs()`
-- [ ] T1.3 — Per-domain CPU dispatch matrix: scalar / AVX-512 / AVX2 / SSE2 / NEON registration status
-- [ ] T1.4 — Per-backend matrix for Metal, CUDA, XLA: registered ops, dtypes, and missing kernels
-- [ ] T1.5 — Publish combined coverage matrix under `docs/backend-coverage.md` and link from README
+- [x] T1.1 — Finish removing legacy `386` CPU build tags, selectors, and `.s` files across all domains; `GOARCH=386` builds are unsupported
+- [x] T1.2 — Inventory every method on `device.Backend` and cross-link to `ir.RequiredOperationIDs()`
+- [x] T1.3 — Per-domain CPU dispatch matrix: scalar / AVX-512 / AVX2 / SSE2 / NEON registration status
+- [x] T1.4 — Per-backend matrix for Metal, CUDA, XLA: registered ops, dtypes, and missing kernels
+- [x] T1.5 — Publish combined coverage matrix under `docs/backend-coverage.md` and link from README
 - [ ] T1.6 — Fix audit findings: ISA aliasing, scalar-in-SIMD files, widened test epsilons, forbidden comment phrasing
 - [ ] T1.7 — Migrate `pkg/store` clients off direct `os.Getenv` / `os.LookupEnv` into `pkg/config`
 
@@ -234,6 +234,21 @@ Work is **done** for a roadmap task only when all of the following hold (aligned
 |-----------------|---------------|------|---------|-------|
 | 2026-05-19 | spec-author | bootstrap | spec created | Initial `spec/SPEC.md` from README, AGENTS.md, and repo exploration |
 | 2026-05-19 | roadmap-planner | expand-roadmap | spec updated | Split coarse tasks into single-cycle items; aligned Vision with repo; Progress = Phase 1 only |
+| 2026-05-19 | developer / cycle 0 | T1.1 | complete | Removed 30 legacy `386` selectors and `.s` files across 9 CPU domains; commit `43f5c70` |
+| 2026-05-19 | reviewer / cycle 0 | T1.1 | PASS | All rubric criteria pass; amd64 SSE2 tests gated; optimizer NEON 2-ULP failure pre-existing |
+| 2026-05-19 | sync / cycle 0 | T1.1 | checked off | Review PASS; next develop: **T1.2** |
+| 2026-05-19 | developer / cycle 1 | T1.2 | complete | `pkg/backend/device/inventory*.go`, `docs/backend-inventory.md`; 151 Backend methods, 119 required-op cross-links |
+| 2026-05-19 | reviewer / cycle 1 | T1.2 | PASS | Machine-checked inventory; kernel_registry notes approximate |
+| 2026-05-19 | sync / cycle 1 | T1.2 | checked off | Review PASS; next develop: **T1.3** |
+| 2026-05-19 | developer / cycle 2 | T1.3 | complete | `pkg/backend/device/cpu/dispatchaudit/`, `docs/cpu-dispatch-matrix.md`; 30 domains, amd64 SIMD 2/30, NEON 20/30 |
+| 2026-05-19 | reviewer / cycle 2 | T1.3 | PASS | Machine-checked dispatch matrix; doc matches audit counts |
+| 2026-05-19 | sync / cycle 2 | T1.3 | checked off | Review PASS; next develop: **T1.4** |
+| 2026-05-19 | developer / cycle 3 | T1.4 | complete | `pkg/backend/device/backendaudit/`, `kernels.Registry.Snapshot`, `docs/device-backend-matrix.md`; Metal 462 regs / CUDA+XLA 0 |
+| 2026-05-19 | reviewer / cycle 3 | T1.4 | PASS | Machine-checked device backend matrix; doc in sync with RenderMarkdown |
+| 2026-05-19 | sync / cycle 3 | T1.4 | checked off | Review PASS; next develop: **T1.5** |
+| 2026-05-19 | developer / cycle 4 | T1.5 | complete | `pkg/backend/device/coverageaudit/`, `docs/backend-coverage.md`; README link; merges T1.2–T1.4 counts |
+| 2026-05-19 | reviewer / cycle 4 | T1.5 | PASS | Combined matrix; doc byte-sync with RenderMarkdown; golden counts match audits |
+| 2026-05-19 | sync / cycle 4 | T1.5 | checked off | Review PASS; next develop: **T1.6** |
 
 ---
 

@@ -276,6 +276,10 @@ CGO_ENABLED=1 go test -tags "cgo cuda"     ./pkg/backend/device/cuda/...
 | [Architecture](./docs/architecture.md)         | System design, IR, executor                         |
 | [Manifest & Governance](./docs/manifest.md)    | Manifest grammar, compiler pipeline, examples       |
 | [Compute Backends](./docs/compute.md)          | CPU/SIMD, CUDA, Metal, XLA in depth                 |
+| [Backend inventory](./docs/backend-inventory.md) | `device.Backend` methods ↔ `ir.RequiredOperationIDs()` |
+| [CPU dispatch matrix](./docs/cpu-dispatch-matrix.md) | Per-domain scalar / AVX-512 / AVX2 / SSE2 / NEON registration |
+| [Device backend matrix](./docs/device-backend-matrix.md) | Metal / CUDA / XLA kernel registrations, dtypes, required-op coverage |
+| [Backend coverage matrix](./docs/backend-coverage.md) | Combined T1.2–T1.4 registration snapshot and R1 execution-target summary |
 | [Operations](./docs/operations.md)             | Operation library, SIMD kernels, custom ops         |
 | [Frontend & Visualization](./docs/frontend.md) | Node editor, microscope tooling                     |
 | [The Notary](./docs/notary.md)                 | Identity, ledger, custody model                     |

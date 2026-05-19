@@ -16,3 +16,4 @@ __pycache__/
 .continue/
 .kilo/
 .claude/
+.curious/state.json

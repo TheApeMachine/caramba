@@ -86,6 +86,23 @@ func (registry *Registry) Lookup(name string, signature Signature) (Kernel, bool
 }
 
 /*
+Snapshot returns a copy of every registered kernel. Intended for audits and
+tests; callers must not mutate entries or retain Run funcs beyond the call.
+*/
+func (registry *Registry) Snapshot() []Kernel {
+	registry.mu.RLock()
+	defer registry.mu.RUnlock()
+
+	entries := make([]Kernel, 0, 256)
+
+	for _, registered := range registry.kernels {
+		entries = append(entries, registered...)
+	}
+
+	return entries
+}
+
+/*
 LookupLocation returns the kernel matching name, signature, and location.
 */
 func (registry *Registry) LookupLocation(
