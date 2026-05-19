@@ -26,7 +26,7 @@ func TestBuildCPUDispatchMatrix(t *testing.T) {
 		Convey("It should match expected AVX-512 registration counts", func() {
 			counts := summarize(matrix)
 
-			So(counts[ISAPathAVX512], ShouldEqual, 18)
+			So(counts[ISAPathAVX512], ShouldEqual, 21)
 		})
 
 		Convey("It should match expected AVX2 and SSE2 registration counts", func() {
@@ -52,9 +52,9 @@ func TestBuildCPUDispatchMatrix(t *testing.T) {
 			avx512Domains := domainNamesWith(matrix, ISAPathAVX512)
 
 			So(avx512Domains, ShouldResemble, []string{
-				"activation", "attention", "convolution", "dot", "dropout", "elementwise", "embedding",
-				"layernorm", "losses", "masking", "matmul", "normalization", "pool", "pospop", "reduction", "rope",
-				"sampling", "shape",
+				"activation", "attention", "causal", "convolution", "dequant", "dot", "dropout", "elementwise",
+				"embedding", "layernorm", "losses", "masking", "matmul", "normalization", "pool", "pospop",
+				"quant", "reduction", "rope", "sampling", "shape",
 			})
 		})
 
@@ -213,6 +213,36 @@ func TestBuildCPUDispatchMatrix(t *testing.T) {
 			So(row.Scalar, ShouldEqual, ISARegistered)
 			So(row.AVX512, ShouldEqual, ISARegistered)
 			So(row.NEON, ShouldEqual, ISANotRegistered)
+			So(row.AVX2, ShouldEqual, ISANotRegistered)
+			So(row.SSE2, ShouldEqual, ISANotRegistered)
+		})
+
+		Convey("It should register AVX-512 and NEON on causal", func() {
+			row := rowByDomain(matrix, "causal")
+
+			So(row.Scalar, ShouldEqual, ISARegistered)
+			So(row.AVX512, ShouldEqual, ISARegistered)
+			So(row.NEON, ShouldEqual, ISARegistered)
+			So(row.AVX2, ShouldEqual, ISANotRegistered)
+			So(row.SSE2, ShouldEqual, ISANotRegistered)
+		})
+
+		Convey("It should register AVX-512 and NEON on quant", func() {
+			row := rowByDomain(matrix, "quant")
+
+			So(row.Scalar, ShouldEqual, ISARegistered)
+			So(row.AVX512, ShouldEqual, ISARegistered)
+			So(row.NEON, ShouldEqual, ISARegistered)
+			So(row.AVX2, ShouldEqual, ISANotRegistered)
+			So(row.SSE2, ShouldEqual, ISANotRegistered)
+		})
+
+		Convey("It should register AVX-512 and NEON on dequant", func() {
+			row := rowByDomain(matrix, "dequant")
+
+			So(row.Scalar, ShouldEqual, ISARegistered)
+			So(row.AVX512, ShouldEqual, ISARegistered)
+			So(row.NEON, ShouldEqual, ISARegistered)
 			So(row.AVX2, ShouldEqual, ISANotRegistered)
 			So(row.SSE2, ShouldEqual, ISANotRegistered)
 		})

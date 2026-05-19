@@ -8,10 +8,10 @@ DATA maskZero<>+8(SB)/4, $0.0
 DATA maskZero<>+12(SB)/4, $0.0
 GLOBL maskZero<>(SB), RODATA|NOPTR, $16
 
-DATA maskNegInf<>+0(SB)/4, $-0x1.0p127
-DATA maskNegInf<>+4(SB)/4, $-0x1.0p127
-DATA maskNegInf<>+8(SB)/4, $-0x1.0p127
-DATA maskNegInf<>+12(SB)/4, $-0x1.0p127
+DATA maskNegInf<>+0(SB)/4, $0xFF800000
+DATA maskNegInf<>+4(SB)/4, $0xFF800000
+DATA maskNegInf<>+8(SB)/4, $0xFF800000
+DATA maskNegInf<>+12(SB)/4, $0xFF800000
 GLOBL maskNegInf<>(SB), RODATA|NOPTR, $16
 
 DATA maskIota16<>+0(SB)/4, $0

@@ -2,19 +2,18 @@
 
 package quant
 
-import "math"
+import "golang.org/x/sys/cpu"
 
 func QuantInt8Native(dst []int8, src []float32, scale float32, zeroPoint int8) {
-	for index, value := range src {
-		scaled := math.Round(float64(value/scale)) + float64(zeroPoint)
-
-		switch {
-		case scaled > float64(math.MaxInt8):
-			dst[index] = math.MaxInt8
-		case scaled < float64(math.MinInt8):
-			dst[index] = math.MinInt8
-		default:
-			dst[index] = int8(scaled)
-		}
+	if len(dst) == 0 {
+		return
 	}
+
+	if cpu.X86.HasAVX512F {
+		quantInt8AVX512(dst, src, scale, zeroPoint)
+
+		return
+	}
+
+	quantInt8Generic(dst, src, scale, zeroPoint)
 }

@@ -2,11 +2,23 @@
 
 package dequant
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import (
+	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"golang.org/x/sys/cpu"
+)
 
 func DequantInt4Native(dst []float32, pairs tensor.Int4Vector, scale float32, zeroPoint int8) {
-	for index := range dst {
-		nibble := pairs.Get(index)
-		dst[index] = float32(int(nibble)-int(zeroPoint)) * scale
+	elementCount := len(dst)
+
+	if elementCount == 0 {
+		return
 	}
+
+	if cpu.X86.HasAVX512F {
+		dequantInt4AVX512(dst, pairs.Bytes(), elementCount, scale, zeroPoint)
+
+		return
+	}
+
+	dequantInt4Generic(dst, pairs, scale, zeroPoint)
 }

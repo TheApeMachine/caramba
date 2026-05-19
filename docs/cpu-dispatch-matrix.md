@@ -13,7 +13,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | ISA path | Domains registered |
 |----------|-------------------:|
 | Scalar (Go) | 30 / 30 |
-| AVX-512 (amd64) | 18 / 30 |
+| AVX-512 (amd64) | 21 / 30 |
 | AVX2 (amd64) | 2 / 30 |
 | SSE2 (amd64) | 2 / 30 |
 | NEON (arm64) | 20 / 30 |
@@ -25,10 +25,10 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | activation | yes | yes | yes | yes | yes |
 | active_inference | yes | — | — | — | — |
 | attention | yes | yes | — | — | yes |
-| causal | yes | — | — | — | yes |
+| causal | yes | yes | — | — | yes |
 | checkpoint | yes | — | — | — | — |
 | convolution | yes | yes | — | — | yes |
-| dequant | yes | — | — | — | yes |
+| dequant | yes | yes | — | — | yes |
 | dot | yes | yes | — | — | yes |
 | dropout | yes | yes | — | — | yes |
 | elementwise | yes | yes | — | — | yes |
@@ -45,7 +45,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | pool | yes | yes | — | — | yes |
 | pospop | yes | yes | yes | yes | yes |
 | predictive_coding | yes | — | — | — | — |
-| quant | yes | — | — | — | yes |
+| quant | yes | yes | — | — | yes |
 | reduction | yes | yes | — | — | yes |
 | rope | yes | yes | — | — | yes |
 | sampling | yes | yes | — | — | — |
@@ -57,7 +57,9 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 
 - `activation`
 - `attention`
+- `causal`
 - `convolution`
+- `dequant`
 - `dot`
 - `dropout`
 - `elementwise`
@@ -69,6 +71,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 - `normalization`
 - `pool`
 - `pospop`
+- `quant`
 - `reduction`
 - `rope`
 - `sampling`

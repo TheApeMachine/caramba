@@ -1,0 +1,100 @@
+#include "textflag.h"
+
+DATA quantMin32<>+0(SB)/4, $-128
+DATA quantMax32<>+4(SB)/4, $127
+GLOBL quantMin32<>(SB), RODATA, $8
+
+// func QuantInt8AVX512Asm(dst *int8, src *float32, count int, invScale float32, zeroPoint int32)
+TEXT ·QuantInt8AVX512Asm(SB), NOSPLIT, $0-32
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ count+16(FP), CX
+	MOVSS invScale+24(FP), X15
+	MOVL zeroPoint+28(FP), R8
+
+	VBROADCASTSS X15, Z15
+	VBROADCASTSS X15, Y15
+	VPBROADCASTD quantMin32<>(SB), Z14
+	VPBROADCASTD quantMin32<>(SB), Y14
+	VPBROADCASTD quantMax32<>(SB), Z13
+	VPBROADCASTD quantMax32<>(SB), Y13
+	VPBROADCASTD R8, Z12
+	VPBROADCASTD R8, Y12
+
+	TESTQ CX, CX
+	JZ   quant_done
+
+quant_w16:
+	CMPQ CX, $16
+	JL   quant_w8
+
+	VMOVUPS Z0, (SI)
+	VMULPS  Z0, Z15, Z0
+	VROUNDPS $8, Z0, Z0
+	VCVTPS2DQ Z0, Z0
+	VPADDD  Z0, Z12, Z0
+	VPMAXSD Z0, Z14, Z0
+	VPMINSD Z0, Z13, Z0
+	VPMOVDB Z0, (DI)
+
+	ADDQ $64, SI
+	ADDQ $16, DI
+	SUBQ $16, CX
+	JMP  quant_w16
+
+quant_w8:
+	CMPQ CX, $8
+	JL   quant_w4
+
+	VMOVUPS Y0, (SI)
+	VMULPS  Y0, Y15, Y0
+	VROUNDPS $8, Y0, Y0
+	VCVTPS2DQ Y0, Y0
+	VPADDD  Y0, Y12, Y0
+	VPMAXSD Y0, Y14, Y0
+	VPMINSD Y0, Y13, Y0
+	VPMOVDB Y0, (DI)
+
+	ADDQ $32, SI
+	ADDQ $8, DI
+	SUBQ $8, CX
+	JMP  quant_w16
+
+quant_w4:
+	CMPQ CX, $4
+	JL   quant_w4_tail
+
+	VMOVUPS X0, (SI)
+	VMULPS  X0, X15, X0
+	VROUNDPS $8, X0, X0
+	VCVTPS2DQ X0, X0
+	VPADDD  X0, X12, X0
+	VPMAXSD X0, X14, X0
+	VPMINSD X0, X13, X0
+	VPMOVDB X0, (DI)
+
+	ADDQ $16, SI
+	ADDQ $4, DI
+	SUBQ $4, CX
+	JMP  quant_w4
+
+quant_w4_tail:
+	TESTQ CX, CX
+	JZ   quant_done
+
+	MOVQ  $1, AX
+	SHLQ  CL, AX
+	DECQ  AX
+	KMOVQ AX, K7
+
+	VMOVDQU32 (SI), K7, Z0
+	VMULPS  Z0, Z15, Z0
+	VROUNDPS $8, Z0, Z0
+	VCVTPS2DQ Z0, Z0
+	VPADDD  Z0, Z12, Z0
+	VPMAXSD Z0, Z14, Z0
+	VPMINSD Z0, Z13, Z0
+	VPMOVDB Z0, K7, (DI)
+
+quant_done:
+	RET

@@ -2,15 +2,18 @@
 
 package dequant
 
-/*
-amd64 dispatcher for int8 dequantization. AVX-512-VNNI / AVX2 paths
-(VPMOVSXBD widen, VPSUBD subtract zero point, VCVTDQ2PS, VMULPS) land
-in .s files in a hardware-verified session; today this routes through
-the scalar reference.
-*/
+import "golang.org/x/sys/cpu"
 
 func DequantInt8Native(dst []float32, src []int8, scale float32, zeroPoint int8) {
-	for index := range src {
-		dst[index] = float32(int32(src[index])-int32(zeroPoint)) * scale
+	if len(src) == 0 {
+		return
 	}
+
+	if cpu.X86.HasAVX512F {
+		dequantInt8AVX512(dst, src, scale, zeroPoint)
+
+		return
+	}
+
+	dequantInt8Generic(dst, src, scale, zeroPoint)
 }
