@@ -71,7 +71,7 @@ smexp_avx512_w8:
 	JMP smexp_avx512_w8
 smexp_avx512_w4:
 	CMPQ CX, $4
-	JL smexp_avx512_done
+	JL smexp_avx512_w4_tail
 	VMOVUPS (SI), X0
 	VSUBPS X6, X0, X0
 	VMAXPS X4, X0, X0
@@ -103,7 +103,88 @@ smexp_avx512_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP smexp_avx512_w4
-smscale_avx512_done:
+smexp_avx512_w4_tail:
+	TESTQ CX, CX
+	JZ smexp_avx512_reduce
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VSUBPS Y6, Y0, Y0
+	VMAXPS Y4, Y0, Y0
+	VMULPS Y8, Y0, Y1
+	VROUNDPS $8, Y1, Y1
+	VMULPS Y1, Y9, Y2
+	VSUBPS Y2, Y0, Y0
+	VMOVAPS Y11, Y3
+	VFMADD213PS Y3, Y0, Y11
+	VMOVAPS Y12, Y3
+	VFMADD213PS Y3, Y0, Y12
+	VMOVAPS Y13, Y3
+	VFMADD213PS Y3, Y0, Y13
+	VMOVAPS Y14, Y3
+	VFMADD213PS Y3, Y0, Y14
+	VMOVAPS Y15, Y3
+	VFMADD213PS Y3, Y0, Y15
+	VMOVAPS Y16, Y3
+	VFMADD213PS Y3, Y0, Y16
+	VMOVAPS Y17, Y7
+	VFMADD213PS Y7, Y0, Y17
+	VCVTPS2DQ Y1, Y1
+	VPADDD Y20, Y1, Y1
+	VPSLLD $23, Y1, Y1
+	VPADDD Y1, Y7, Y7
+	VXORPS Y24, Y24, Y24
+	VBLENDMPS Y7, Y24, K7, Y24
+	VADDPS Y24, Y5, Y5
+	VMOVDQU32 Y7, K7, (DI)
+smexp_avx512_reduce:
+	VHADDPS Y5, Y5, Y5
+	VHADDPS Y5, Y5, Y5
+	VEXTRACTF128 $0, Y5, X0
+smexp_avx512_done:
+	MOVSS X0, ret+32(FP)
+	RET
+
+// func scaleF32AVX512(dst, src *float32, scale float32, count int)
+TEXT ·scaleF32AVX512(SB), NOSPLIT, $0-28
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVSS scale+16(FP), X8
+	VBROADCASTSS X8, Y8
+	MOVQ count+24(FP), CX
+scale_avx512_w8:
+	CMPQ CX, $8
+	JL scale_avx512_w4
+	VMOVUPS (SI), Y0
+	VMULPS Y8, Y0, Y7
+	VMOVUPS Y7, (DI)
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP scale_avx512_w8
+scale_avx512_w4:
+	CMPQ CX, $4
+	JL scale_avx512_w4_tail
+	VMOVUPS (SI), X0
+	VMULPS X8, X0, X7
+	VMOVUPS X7, (DI)
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP scale_avx512_w4
+scale_avx512_w4_tail:
+	TESTQ CX, CX
+	JZ scale_avx512_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VMULPS Y8, Y0, Y7
+	VMOVDQU32 Y7, K7, (DI)
+scale_avx512_done:
 	RET
 
 // func logSoftmaxShiftF32AVX512(dst, src *float32, maxValue, logSum float32, count int)
@@ -128,7 +209,7 @@ smlog_avx512_w8:
 	JMP smlog_avx512_w8
 smlog_avx512_w4:
 	CMPQ CX, $4
-	JL smlog_avx512_done
+	JL smlog_avx512_w4_tail
 	VMOVUPS (SI), X0
 	VSUBPS X8, X0, X0
 	VSUBPS X9, X0, X7
@@ -137,6 +218,17 @@ smlog_avx512_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP smlog_avx512_w4
+smlog_avx512_w4_tail:
+	TESTQ CX, CX
+	JZ smlog_avx512_done
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y0
+	VSUBPS Y8, Y0, Y0
+	VSUBPS Y9, Y0, Y7
+	VMOVDQU32 Y7, K7, (DI)
 smlog_avx512_done:
 	RET
 
@@ -160,20 +252,26 @@ reduce_max_avx512_w8:
 	JMP reduce_max_avx512_w8
 reduce_max_avx512_w4:
 	CMPQ CX, $4
-	JL reduce_max_avx512_extract
+	JL reduce_max_avx512_w4_tail
 	VMOVUPS (SI), X1
-	VMAXPS X1, X0, X0
+	VMAXPS X1, X0, Y0
 	ADDQ $16, SI
 	SUBQ $4, CX
 	JMP reduce_max_avx512_w4
+reduce_max_avx512_w4_tail:
+	TESTQ CX, CX
+	JZ reduce_max_avx512_extract
+	MOVQ $1, AX
+	SHLQ CL, AX
+	DECQ AX
+	KMOVQ AX, K7
+	VMOVDQU32 (SI), K7, Y1
+	VMAXPS Y1, Y0, Y0
 reduce_max_avx512_extract:
 	VEXTRACTF128 $1, Y0, X1
 	VMAXPS X1, X0, X0
 	VHADDPS X0, X0, X0
 	VHADDPS X0, X0, X0
-reduce_max_avx512_tail:
-	TESTQ CX, CX
-	JZ reduce_max_avx512_done
 reduce_max_avx512_done:
 	MOVSS X0, ret+16(FP)
 	RET
