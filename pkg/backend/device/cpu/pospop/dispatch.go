@@ -1,7 +1,7 @@
 // This package contains a set of functions to compute positional
 // population counts for arrays of uint8, uint16, uint32, or uint64.
 // Optimised assembly optimisations are provided for amd64 (AVX-512,
-// AVX2, SSE2), 386 (AVX2, SSE2), and ARM64 (NEON).  An optimal
+// AVX2, SSE2), ARM64 (NEON).  An optimal
 // implementation constrainted by the instruction set extensions
 // available on your CPU is chosen automatically at runtime.  If no
 // assembly implementation exists, a generic fallback implementation

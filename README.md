@@ -34,7 +34,7 @@ Operating on the core philosophy that **a manifest is a model**, Caramba allows 
   - [x] Predictive Coding (prediction, prediction error, representation/weight updates)
   - [x] VSA (bind, bundle, permute, inverse permute, similarity)
 - [x] Multiple Compute Backends
-  - [x] CPU (Go native)
+  - [x] CPU (Go native; **amd64** and **arm64** only — 32-bit `GOARCH=386` is not supported)
   - [x] SIMD/Assembly
     - [ ] AVX-512 (amd64)
     - [x] AVX2 (amd64)

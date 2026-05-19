@@ -1,11 +1,12 @@
-//go:build amd64 || 386
+//go:build amd64
 
 package activation
 
 import (
 	"math"
-	"testing"
 	"math/rand"
+	"testing"
+
 	"golang.org/x/sys/cpu"
 )
 
