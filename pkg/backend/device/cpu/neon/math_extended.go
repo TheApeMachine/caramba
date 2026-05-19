@@ -4,7 +4,6 @@ import (
 	"math"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 /*
@@ -143,119 +142,6 @@ func runMatMulAdd(args ...tensor.Tensor) error {
 	}
 
 	return nil
-}
-
-func runMatMulAddFloat16(args ...tensor.Tensor) error {
-	if len(args) != 4 {
-		return tensor.ErrShapeMismatch
-	}
-
-	rows, inner, cols, err := matmulAddDims(args)
-	if err != nil {
-		return err
-	}
-
-	aView, err := args[0].Float16Native()
-	if err != nil {
-		return err
-	}
-
-	bView, err := args[1].Float16Native()
-	if err != nil {
-		return err
-	}
-
-	biasView, err := args[2].Float16Native()
-	if err != nil {
-		return err
-	}
-
-	outView, err := args[3].Float16Native()
-	if err != nil {
-		return err
-	}
-
-	for rowIndex := 0; rowIndex < rows; rowIndex++ {
-		for colIndex := 0; colIndex < cols; colIndex++ {
-			sum := biasView[colIndex].Float32()
-
-			for innerIndex := 0; innerIndex < inner; innerIndex++ {
-				sum += aView[rowIndex*inner+innerIndex].Float32() *
-					bView[innerIndex*cols+colIndex].Float32()
-			}
-
-			outView[rowIndex*cols+colIndex] = dtype.Fromfloat32(sum)
-		}
-	}
-
-	return nil
-}
-
-func runMatMulAddBFloat16(args ...tensor.Tensor) error {
-	if len(args) != 4 {
-		return tensor.ErrShapeMismatch
-	}
-
-	rows, inner, cols, err := matmulAddDims(args)
-	if err != nil {
-		return err
-	}
-
-	aView, err := args[0].BFloat16Native()
-	if err != nil {
-		return err
-	}
-
-	bView, err := args[1].BFloat16Native()
-	if err != nil {
-		return err
-	}
-
-	biasView, err := args[2].BFloat16Native()
-	if err != nil {
-		return err
-	}
-
-	outView, err := args[3].BFloat16Native()
-	if err != nil {
-		return err
-	}
-
-	for rowIndex := 0; rowIndex < rows; rowIndex++ {
-		for colIndex := 0; colIndex < cols; colIndex++ {
-			sum := (&biasView[colIndex]).Float32()
-
-			for innerIndex := 0; innerIndex < inner; innerIndex++ {
-				sum += (&aView[rowIndex*inner+innerIndex]).Float32() *
-					(&bView[innerIndex*cols+colIndex]).Float32()
-			}
-
-			outView[rowIndex*cols+colIndex] = dtype.NewBfloat16FromFloat32(sum)
-		}
-	}
-
-	return nil
-}
-
-func matmulAddDims(args []tensor.Tensor) (int, int, int, error) {
-	aDims := args[0].Shape().Dims()
-	bDims := args[1].Shape().Dims()
-	biasDims := args[2].Shape().Dims()
-
-	if len(aDims) != 2 || len(bDims) != 2 || len(biasDims) != 1 ||
-		aDims[1] != bDims[0] || biasDims[0] != bDims[1] {
-		return 0, 0, 0, tensor.ErrShapeMismatch
-	}
-
-	rows := aDims[0]
-	inner := aDims[1]
-	cols := bDims[1]
-
-	if args[3].Len() != rows*cols {
-		return 0, 0, 0, tensor.ErrShapeMismatch
-	}
-
-	return rows, inner, cols, nil
 }
 
 /*

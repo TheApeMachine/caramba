@@ -75,3 +75,13 @@ func ApplyAttentionSoftmaxNative(scores []float32, seqQ, seqK int) {
 		normalizeRow(row, sum)
 	}
 }
+
+func normalizeRow(row []float32, sum float32) {
+	if sum == 0 {
+		return
+	}
+
+	for index := range row {
+		row[index] /= sum
+	}
+}

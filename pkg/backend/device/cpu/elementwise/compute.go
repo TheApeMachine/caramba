@@ -6,14 +6,6 @@ import (
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
-func loadF32(pointer unsafe.Pointer, index int) float32 {
-	return *(*float32)(unsafe.Add(pointer, uintptr(index)*4))
-}
-
-func storeF32(pointer unsafe.Pointer, index int, value float32) {
-	*(*float32)(unsafe.Add(pointer, uintptr(index)*4)) = value
-}
-
 func loadF64(pointer unsafe.Pointer, index int) float64 {
 	return *(*float64)(unsafe.Add(pointer, uintptr(index)*8))
 }

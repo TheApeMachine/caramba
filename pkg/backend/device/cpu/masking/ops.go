@@ -143,13 +143,13 @@ func alibiBiasBF16(scores, slope, output unsafe.Pointer, seqQ, seqK int) {
 	scoresView := unsafe.Slice((*dtype.BF16)(scores), seqQ*seqK)
 	slopeView := unsafe.Slice((*dtype.BF16)(slope), 1)
 	outputView := unsafe.Slice((*dtype.BF16)(output), seqQ*seqK)
-	slopeValue := (&slopeView[0]).Float32()
+	slopeValue := slopeView[0].Float32()
 
 	for rowIndex := range seqQ {
 		for colIndex := range seqK {
 			index := rowIndex*seqK + colIndex
 			distance := rowIndex - colIndex
-			score := (&scoresView[index]).Float32()
+			score := scoresView[index].Float32()
 
 			if distance < 0 {
 				outputView[index] = scoresView[index]

@@ -15,8 +15,8 @@ func requireHawkesFloat32(format dtype.DType) {
 func HawkesIntensity(
 	eventTimes, queryTimes, output unsafe.Pointer,
 	eventCount, queryCount int,
-	format dtype.DType,
 	mu, alpha, beta float32,
+	format dtype.DType,
 ) {
 	requireHawkesFloat32(format)
 
@@ -34,8 +34,8 @@ func HawkesIntensity(
 func HawkesKernelMatrix(
 	eventTimes, output unsafe.Pointer,
 	eventCount int,
-	format dtype.DType,
 	alpha, beta float32,
+	format dtype.DType,
 ) {
 	requireHawkesFloat32(format)
 

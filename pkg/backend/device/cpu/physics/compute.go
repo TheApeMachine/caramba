@@ -83,45 +83,6 @@ func runLaplacian(args ...tensor.Tensor) error {
 	return nil
 }
 
-func laplacian1D(input, out []float32, n int, dxSquared float32) {
-	for index := 0; index < n; index++ {
-		left := input[(index-1+n)%n]
-		right := input[(index+1)%n]
-		out[index] = (left - 2*input[index] + right) / dxSquared
-	}
-}
-
-func laplacian2D(input, out []float32, rows, cols int, dxSquared float32) {
-	for row := 0; row < rows; row++ {
-		for col := 0; col < cols; col++ {
-			center := input[row*cols+col]
-			up := input[((row-1+rows)%rows)*cols+col]
-			down := input[((row+1)%rows)*cols+col]
-			left := input[row*cols+((col-1+cols)%cols)]
-			right := input[row*cols+((col+1)%cols)]
-			out[row*cols+col] = (up + down + left + right - 4*center) / dxSquared
-		}
-	}
-}
-
-func laplacian3D(input, out []float32, depth, rows, cols int, dxSquared float32) {
-	for d := 0; d < depth; d++ {
-		for row := 0; row < rows; row++ {
-			for col := 0; col < cols; col++ {
-				index := (d*rows+row)*cols + col
-				center := input[index]
-				dm := input[(((d-1+depth)%depth)*rows+row)*cols+col]
-				dp := input[(((d+1)%depth)*rows+row)*cols+col]
-				rm := input[(d*rows+((row-1+rows)%rows))*cols+col]
-				rp := input[(d*rows+((row+1)%rows))*cols+col]
-				cm := input[(d*rows+row)*cols+((col-1+cols)%cols)]
-				cp := input[(d*rows+row)*cols+((col+1)%cols)]
-				out[index] = (dm + dp + rm + rp + cm + cp - 6*center) / dxSquared
-			}
-		}
-	}
-}
-
 /*
 runLaplacian4 is the 4th-order central-difference Laplacian on a 1-D
 periodic grid: Δu[i] = (-u[i-2] + 16u[i-1] - 30u[i] + 16u[i+1] - u[i+2]) / (12 dx²).

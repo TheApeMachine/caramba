@@ -258,14 +258,14 @@ type Hawkes interface {
 	HawkesIntensity(
 		eventTimes, queryTimes, output unsafe.Pointer,
 		eventCount, queryCount int,
-		format dtype.DType,
 		mu, alpha, beta float32,
+		format dtype.DType,
 	)
 	HawkesKernelMatrix(
 		eventTimes, output unsafe.Pointer,
 		eventCount int,
-		format dtype.DType,
 		alpha, beta float32,
+		format dtype.DType,
 	)
 	HawkesLogLikelihood(
 		eventTimes unsafe.Pointer,
@@ -324,8 +324,8 @@ type Causal interface {
 	Counterfactual(
 		observedY, observedX, counterfactualX, output unsafe.Pointer,
 		count int,
-		format dtype.DType,
 		slope float32,
+		format dtype.DType,
 	)
 	IVEstimate(
 		instrument, treatment, outcome unsafe.Pointer,

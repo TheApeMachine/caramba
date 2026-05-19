@@ -21,6 +21,14 @@ func Quant(
 		panic("quant: Quant unsupported dtype pair")
 	}
 
+	if dst == nil {
+		panic("quant: nil dst pointer")
+	}
+
+	if src == nil {
+		panic("quant: nil src pointer")
+	}
+
 	dstView := unsafe.Slice((*int8)(dst), count)
 	srcView := unsafe.Slice((*float32)(src), count)
 

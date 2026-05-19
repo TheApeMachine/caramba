@@ -6,6 +6,12 @@ import (
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
+func requireRoPEFloat32(format dtype.DType) {
+	if format != dtype.Float32 {
+		panic("rope: RoPEPairs unsupported dtype")
+	}
+}
+
 func RoPE(
 	config RoPEConfig,
 	input, output unsafe.Pointer,
@@ -20,9 +26,7 @@ func RoPEPairs(
 	halfDim int,
 	format dtype.DType,
 ) {
-	if format != dtype.Float32 {
-		panic("rope: RoPEPairs unsupported dtype")
-	}
+	requireRoPEFloat32(format)
 
 	RopePairsNative(
 		unsafe.Slice((*float32)(output), halfDim*2),

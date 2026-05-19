@@ -24,10 +24,11 @@ func runFlashAttentionRow(
 ) {
 	maxScore := float32(math.Inf(-1))
 	normalizer := float32(0)
-	accumulator := make([]float32, valueDim)
+	accumulator := BorrowFloat32Buffer(valueDim)
 	scaleScratch := BorrowFloat32Buffer(valueDim)
 	valueScratch := BorrowFloat32Buffer(valueDim)
 
+	defer ReleaseFloat32Buffer(accumulator)
 	defer ReleaseFloat32Buffer(scaleScratch)
 	defer ReleaseFloat32Buffer(valueScratch)
 

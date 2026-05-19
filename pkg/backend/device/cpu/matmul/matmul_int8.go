@@ -83,6 +83,14 @@ func RunMatMulInt8(args ...tensor.Tensor) error {
 		return err
 	}
 
+	if inner == 0 {
+		for index := range outView {
+			outView[index] = 0
+		}
+
+		return nil
+	}
+
 	// Pack RHS in column-major: each "column" of B becomes a contiguous
 	// row of length K. Output dimensions stay (rows, cols).
 	packed := borrowInt8Buffer(inner * cols)

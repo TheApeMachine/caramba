@@ -155,46 +155,10 @@ func runAddF8E4M3(args ...tensor.Tensor) error {
 	return runFP8E4M3Binary(args, AddFloat32Native)
 }
 
-func runSubF8E4M3(args ...tensor.Tensor) error {
-	return runFP8E4M3Binary(args, SubFloat32Native)
-}
-
 func runMulF8E4M3(args ...tensor.Tensor) error {
 	return runFP8E4M3Binary(args, MulFloat32Native)
 }
 
-func runDivF8E4M3(args ...tensor.Tensor) error {
-	return runFP8E4M3Binary(args, DivFloat32Native)
-}
-
-func runMaxF8E4M3(args ...tensor.Tensor) error {
-	return runFP8E4M3Binary(args, MaxFloat32Native)
-}
-
-func runMinF8E4M3(args ...tensor.Tensor) error {
-	return runFP8E4M3Binary(args, MinFloat32Native)
-}
-
 func runAddF8E5M2(args ...tensor.Tensor) error {
 	return runFP8E5M2Binary(args, AddFloat32Native)
-}
-
-func runSubF8E5M2(args ...tensor.Tensor) error {
-	return runFP8E5M2Binary(args, SubFloat32Native)
-}
-
-func runMulF8E5M2(args ...tensor.Tensor) error {
-	return runFP8E5M2Binary(args, MulFloat32Native)
-}
-
-func runDivF8E5M2(args ...tensor.Tensor) error {
-	return runFP8E5M2Binary(args, DivFloat32Native)
-}
-
-func runMaxF8E5M2(args ...tensor.Tensor) error {
-	return runFP8E5M2Binary(args, MaxFloat32Native)
-}
-
-func runMinF8E5M2(args ...tensor.Tensor) error {
-	return runFP8E5M2Binary(args, MinFloat32Native)
 }

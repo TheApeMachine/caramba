@@ -134,8 +134,8 @@ func CATE(treated, control, output unsafe.Pointer, count int, format dtype.DType
 func Counterfactual(
 	observedY, observedX, counterfactualX, output unsafe.Pointer,
 	count int,
-	format dtype.DType,
 	slope float32,
+	format dtype.DType,
 ) {
 	requireCausalFloat32(format)
 

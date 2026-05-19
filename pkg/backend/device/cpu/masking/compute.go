@@ -34,6 +34,10 @@ func runApplyMaskBFloat16(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
+	if len(input) == 0 {
+		return nil
+	}
+
 	ApplyMask(
 		unsafe.Pointer(&input[0]),
 		unsafe.Pointer(&mask[0]),
@@ -72,6 +76,10 @@ func runApplyMaskFloat16(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
+	if len(input) == 0 {
+		return nil
+	}
+
 	ApplyMask(
 		unsafe.Pointer(&input[0]),
 		unsafe.Pointer(&mask[0]),
@@ -100,6 +108,10 @@ func runCausalMaskBFloat16(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
+	if dims[0] == 0 || dims[1] == 0 || len(out) == 0 {
+		return nil
+	}
+
 	CausalMask(unsafe.Pointer(&out[0]), dims[0], dims[1], dtype.BFloat16)
 
 	return nil
@@ -120,6 +132,10 @@ func runCausalMaskFloat16(args ...tensor.Tensor) error {
 
 	if len(dims) != 2 {
 		return tensor.ErrShapeMismatch
+	}
+
+	if dims[0] == 0 || dims[1] == 0 || len(out) == 0 {
+		return nil
 	}
 
 	CausalMask(unsafe.Pointer(&out[0]), dims[0], dims[1], dtype.Float16)
@@ -150,13 +166,13 @@ func runALiBiBiasBFloat16(args ...tensor.Tensor) error {
 		return err
 	}
 
-	if len(slope) < 1 || len(out) != len(scores) {
+	if len(slope) < 1 || len(scores) < 1 || len(out) != len(scores) {
 		return tensor.ErrShapeMismatch
 	}
 
 	dims := args[0].Shape().Dims()
 
-	if len(dims) != 2 {
+	if len(dims) != 2 || dims[0] == 0 || dims[1] == 0 {
 		return tensor.ErrShapeMismatch
 	}
 
@@ -194,13 +210,13 @@ func runALiBiBiasFloat16(args ...tensor.Tensor) error {
 		return err
 	}
 
-	if len(slope) < 1 || len(out) != len(scores) {
+	if len(slope) < 1 || len(scores) < 1 || len(out) != len(scores) {
 		return tensor.ErrShapeMismatch
 	}
 
 	dims := args[0].Shape().Dims()
 
-	if len(dims) != 2 {
+	if len(dims) != 2 || dims[0] == 0 || dims[1] == 0 {
 		return tensor.ErrShapeMismatch
 	}
 
@@ -242,6 +258,10 @@ func runApplyMask(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
+	if len(input) == 0 {
+		return nil
+	}
+
 	ApplyMask(
 		unsafe.Pointer(&input[0]),
 		unsafe.Pointer(&mask[0]),
@@ -268,6 +288,10 @@ func runCausalMask(args ...tensor.Tensor) error {
 
 	if len(dims) != 2 {
 		return tensor.ErrShapeMismatch
+	}
+
+	if dims[0] == 0 || dims[1] == 0 || len(out) == 0 {
+		return nil
 	}
 
 	CausalMask(unsafe.Pointer(&out[0]), dims[0], dims[1], dtype.Float32)
@@ -298,13 +322,13 @@ func runALiBiBias(args ...tensor.Tensor) error {
 		return err
 	}
 
-	if len(slope) < 1 || len(out) != len(scores) {
+	if len(slope) < 1 || len(scores) < 1 || len(out) != len(scores) {
 		return tensor.ErrShapeMismatch
 	}
 
 	dims := args[0].Shape().Dims()
 
-	if len(dims) != 2 {
+	if len(dims) != 2 || dims[0] == 0 || dims[1] == 0 {
 		return tensor.ErrShapeMismatch
 	}
 

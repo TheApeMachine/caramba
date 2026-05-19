@@ -22,6 +22,14 @@ func Dequant(
 		panic("dequant: Dequant unsupported dtype pair")
 	}
 
+	if dst == nil {
+		panic("dequant: nil dst pointer")
+	}
+
+	if src == nil {
+		panic("dequant: nil src pointer")
+	}
+
 	dstView := unsafe.Slice((*float32)(dst), count)
 	srcView := unsafe.Slice((*int8)(src), count)
 

@@ -6,11 +6,13 @@ import (
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
-type (
-	Kernel    = kernels.Kernel
-	Signature = kernels.Signature
-)
+// Kernel aliases kernels.Kernel for consolidated registry access.
+type Kernel = kernels.Kernel
 
+// Signature aliases kernels.Signature.
+type Signature = kernels.Signature
+
+// Default re-exports kernels.Default as the package default registry.
 var Default = kernels.Default
 
 /*

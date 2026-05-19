@@ -13,13 +13,3 @@ func SoftmaxRowFillExpsNative(dst, src []float32, maximum float32) float32 {
 
 	return sum
 }
-
-func normalizeRow(row []float32, sum float32) {
-	if sum == 0 {
-		return
-	}
-
-	for index := range row {
-		row[index] /= sum
-	}
-}

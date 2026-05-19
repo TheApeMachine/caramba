@@ -1,6 +1,7 @@
 package attention
 
 import (
+	"math"
 	"unsafe"
 
 	"github.com/theapemachine/caramba/pkg/dtype"
@@ -160,7 +161,7 @@ func scaledDotProductAttentionF32(
 	keyView := unsafe.Slice((*float32)(key), seqK*depth)
 	valueView := unsafe.Slice((*float32)(value), seqK*valueDim)
 	outputView := unsafe.Slice((*float32)(output), seqQ*valueDim)
-	scale := float32(1.0 / float64(depth))
+	scale := float32(1.0 / math.Sqrt(float64(depth)))
 
 	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
 		RunFlashAttentionRowNative(

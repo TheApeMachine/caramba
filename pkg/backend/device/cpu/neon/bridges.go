@@ -51,28 +51,6 @@ func SparseCSRMatMulFloat32Native(
 	matmul.SparseCSRMatMulFloat32Native(outView, valuesView, rightView, rowPtr, colIdx, rows, cols)
 }
 
-type kernelRegistry interface {
-	Lookup(string, Signature) (Kernel, bool)
-}
-
-func bridgeKernel(
-	registry kernelRegistry,
-	name string,
-	inputs, outputs []dtype.DType,
-) func(args ...tensor.Tensor) error {
-	kernel, ok := registry.Lookup(name, Signature{
-		Layout:  tensor.LayoutDense,
-		Inputs:  inputs,
-		Outputs: outputs,
-	})
-
-	if !ok {
-		panic("neon bridge: kernel not found: " + name)
-	}
-
-	return kernel.Run
-}
-
 func runGreedySample(args ...tensor.Tensor) error {
 	if len(args) != 2 {
 		return tensor.ErrShapeMismatch

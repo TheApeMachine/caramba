@@ -66,26 +66,3 @@ func narrowFromF32(arg tensor.Tensor, kind dtype.DType, src []float32) error {
 
 	return nil
 }
-
-func argLen(arg tensor.Tensor, kind dtype.DType) (int, error) {
-	switch kind {
-	case dtype.BFloat16:
-		view, err := arg.BFloat16Native()
-
-		if err != nil {
-			return 0, err
-		}
-
-		return len(view), nil
-	case dtype.Float16:
-		view, err := arg.Float16Native()
-
-		if err != nil {
-			return 0, err
-		}
-
-		return len(view), nil
-	}
-
-	return 0, tensor.ErrShapeMismatch
-}
