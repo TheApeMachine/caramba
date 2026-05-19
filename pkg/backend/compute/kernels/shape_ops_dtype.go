@@ -148,9 +148,7 @@ func runShapeOpWithIntIndex(
 	// Build the rewritten argument list with f32 in place of bf16/fp16.
 	rewritten := make([]tensor.Tensor, 3)
 
-	for index, arg := range args {
-		rewritten[index] = arg
-	}
+	copy(rewritten, args)
 
 	rewritten[paramIndex] = inTemp
 	rewritten[2] = outTemp

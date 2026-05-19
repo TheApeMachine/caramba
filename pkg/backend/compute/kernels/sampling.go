@@ -82,17 +82,8 @@ func runGreedySample(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	maxIndex := 0
-	maxLogit := logits[0]
+	out[0] = greedySampleFloat32Native(logits)
 
-	for index, value := range logits[1:] {
-		if value > maxLogit {
-			maxLogit = value
-			maxIndex = index + 1
-		}
-	}
-
-	out[0] = int32(maxIndex)
 	return nil
 }
 
@@ -131,25 +122,7 @@ func TopKSample(config SamplingConfig, logits, output tensor.Tensor) error {
 		k = len(logitView)
 	}
 
-	probabilities, indices := softmaxAndSort(logitView, config.Temperature)
-
-	cumulative := float32(0)
-
-	for index := 0; index < k; index++ {
-		cumulative += probabilities[index]
-	}
-
-	for index := 0; index < k; index++ {
-		probabilities[index] /= cumulative
-	}
-
-	for index := k; index < len(probabilities); index++ {
-		probabilities[index] = 0
-	}
-
-	rng := newSamplingRNG(config.Seed)
-	choice := drawFrom(probabilities, rng)
-	outView[0] = int32(indices[choice])
+	outView[0] = topKSampleFloat32Native(logitView, config.Temperature, k, config.Seed)
 
 	return nil
 }
@@ -176,39 +149,36 @@ func TopPSample(config SamplingConfig, logits, output tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	probabilities, indices := softmaxAndSort(logitView, config.Temperature)
-
-	cumulative := float32(0)
-	cutoff := len(probabilities)
-
-	for index := 0; index < len(probabilities); index++ {
-		cumulative += probabilities[index]
-
-		if cumulative >= config.TopP {
-			cutoff = index + 1
-			break
-		}
-	}
-
-	cumulative = 0
-
-	for index := 0; index < cutoff; index++ {
-		cumulative += probabilities[index]
-	}
-
-	for index := 0; index < cutoff; index++ {
-		probabilities[index] /= cumulative
-	}
-
-	for index := cutoff; index < len(probabilities); index++ {
-		probabilities[index] = 0
-	}
-
-	rng := newSamplingRNG(config.Seed)
-	choice := drawFrom(probabilities, rng)
-	outView[0] = int32(indices[choice])
+	outView[0] = topPSampleFloat32Native(logitView, config.Temperature, config.TopP, config.Seed)
 
 	return nil
+}
+
+func softmaxAndSortNative(logits []float32, temperature float32) ([]float32, []int) {
+	if temperature == 0 {
+		temperature = 1
+	}
+
+	probabilities := make([]float32, len(logits))
+	indices := make([]int, len(logits))
+
+	samplingSoftmaxRowNative(logits, probabilities, temperature)
+
+	for index := range indices {
+		indices[index] = index
+	}
+
+	sort.SliceStable(indices, func(left, right int) bool {
+		return probabilities[indices[left]] > probabilities[indices[right]]
+	})
+
+	sorted := make([]float32, len(probabilities))
+
+	for resultIndex, originalIndex := range indices {
+		sorted[resultIndex] = probabilities[originalIndex]
+	}
+
+	return sorted, indices
 }
 
 func softmaxAndSort(logits []float32, temperature float32) ([]float32, []int) {

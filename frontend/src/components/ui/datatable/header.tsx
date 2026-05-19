@@ -21,10 +21,17 @@ export const DataTableHeader = <TData,>({
 								style={columnSize ? { width: `${columnSize}px` } : undefined}
 							>
 								{header.isPlaceholder ? null : header.column.getCanSort() ? (
-									<button
-										type="button"
-										className="flex h-full w-full cursor-pointer select-none items-center justify-between gap-2"
+									<div
+										className="flex h-full cursor-pointer select-none items-center justify-between gap-2"
 										onClick={header.column.getToggleSortingHandler()}
+										onKeyDown={(e) => {
+											if (e.key === "Enter" || e.key === " ") {
+												e.preventDefault();
+												header.column.getToggleSortingHandler()?.(e);
+											}
+										}}
+										role="button"
+										tabIndex={0}
 									>
 										{flexRender(
 											header.column.columnDef.header,
@@ -44,7 +51,7 @@ export const DataTableHeader = <TData,>({
 												/>
 											),
 										}[header.column.getIsSorted() as string] ?? null}
-									</button>
+									</div>
 								) : (
 									flexRender(
 										header.column.columnDef.header,

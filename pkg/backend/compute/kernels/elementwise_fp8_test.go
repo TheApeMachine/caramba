@@ -57,7 +57,7 @@ func randomF8E5M2Slice(n int, seed int64) []dtype.F8E5M2 {
 }
 
 func TestAddF8E4M3Parity(t *testing.T) {
-	for _, n := range elementwiseParityNs {
+	for _, n := range parityNs {
 		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
 			left := randomF8E4M3Slice(n, 0x4001+int64(n))
 			right := randomF8E4M3Slice(n, 0x4002+int64(n))
@@ -96,7 +96,7 @@ func TestAddF8E4M3Parity(t *testing.T) {
 }
 
 func TestMulF8E4M3Parity(t *testing.T) {
-	for _, n := range elementwiseParityNs {
+	for _, n := range parityNs {
 		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
 			left := randomF8E4M3Slice(n, 0x5001+int64(n))
 			right := randomF8E4M3Slice(n, 0x5002+int64(n))
@@ -135,7 +135,7 @@ func TestMulF8E4M3Parity(t *testing.T) {
 }
 
 func TestAddF8E5M2Parity(t *testing.T) {
-	for _, n := range elementwiseParityNs {
+	for _, n := range parityNs {
 		t.Run(fmt.Sprintf("N=%d", n), func(t *testing.T) {
 			left := randomF8E5M2Slice(n, 0x6001+int64(n))
 			right := randomF8E5M2Slice(n, 0x6002+int64(n))

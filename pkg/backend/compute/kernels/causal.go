@@ -152,22 +152,10 @@ func runBackdoorAdjustment(args ...tensor.Tensor) error {
 	zCount := dims[1]
 	yCount := dims[2]
 
-	for index := range out {
-		out[index] = 0
-	}
-
-	for xIndex := 0; xIndex < xCount; xIndex++ {
-		for yIndex := 0; yIndex < yCount; yIndex++ {
-			var sum float32
-
-			for zIndex := 0; zIndex < zCount; zIndex++ {
-				condIdx := (xIndex*zCount+zIndex)*yCount + yIndex
-				sum += conditional[condIdx] * marginalZ[zIndex]
-			}
-
-			out[xIndex*yCount+yIndex] = sum
-		}
-	}
+	backdoorAdjustmentFloat32Native(
+		conditional, marginalZ, out,
+		xCount, zCount, yCount,
+	)
 
 	return nil
 }
@@ -208,26 +196,10 @@ func runFrontdoorAdjustment(args ...tensor.Tensor) error {
 		out[index] = 0
 	}
 
-	for xIndex := 0; xIndex < xCount; xIndex++ {
-		for yIndex := 0; yIndex < yCount; yIndex++ {
-			var total float32
-
-			for mIndex := 0; mIndex < mCount; mIndex++ {
-				pmx := mediatorGivenX[xIndex*mCount+mIndex]
-
-				var innerSum float32
-
-				for xPrimeIndex := 0; xPrimeIndex < xCount; xPrimeIndex++ {
-					oIdx := (xPrimeIndex*mCount+mIndex)*yCount + yIndex
-					innerSum += outcomeGivenXM[oIdx] * marginalX[xPrimeIndex]
-				}
-
-				total += pmx * innerSum
-			}
-
-			out[xIndex*yCount+yIndex] = total
-		}
-	}
+	frontdoorAdjustmentFloat32Native(
+		mediatorGivenX, outcomeGivenXM, marginalX, out,
+		xCount, mCount, yCount,
+	)
 
 	return nil
 }
@@ -252,21 +224,7 @@ func runDoIntervene(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	copy(out, adjacency)
-
-	n := dims[0]
-
-	for _, nodeID := range intervened {
-		target := int(nodeID)
-
-		if target < 0 || target >= n {
-			continue
-		}
-
-		for sourceIndex := 0; sourceIndex < n; sourceIndex++ {
-			out[sourceIndex*n+target] = 0
-		}
-	}
+	doInterveneFloat32Native(out, adjacency, intervened, dims[0])
 
 	return nil
 }
@@ -289,9 +247,7 @@ func runCATE(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for index, value := range treated {
-		out[index] = value - control[index]
-	}
+	cateFloat32Native(treated, control, out)
 
 	return nil
 }

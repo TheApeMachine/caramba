@@ -4,102 +4,209 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
-	computecpu "github.com/theapemachine/caramba/pkg/backend/compute/cpu"
-	cpuoperation "github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
-	cpuoptimizer "github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
-	"github.com/theapemachine/caramba/pkg/backend/compute/orchestrator"
-	"github.com/theapemachine/caramba/pkg/backend/compute/runner"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/errnie/validate"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
 
-var ErrBackendRunnerRequired = errors.New("compute: backend runner is required")
-var ErrDeviceRunnerUnavailable = errors.New("compute: dtype-native device graph runner is unavailable")
-
-type BackendType uint
-
-const (
-	CPU BackendType = iota
-	METAL
-	CUDA
-	XLA
-)
+var ErrDeviceNotFound = errors.New("compute: device not found")
+var ErrExecutorUnavailable = errors.New("compute: executor unavailable for device")
 
 /*
-Backend is the complete façade for hardware-local compute in Caramba: forward-graph execution,
-scheduler capability accounting, and first-order optimisation on the matched Location.
-
-Compliant implementations SHOULD wire ResidentGraphOperations, IrGraphRunner, and
-OperationCapabilities onto one handle (or deterministic composition) plus a
-StandardOptimizerRegistry that never crosses Location boundaries implicitly.
+Backend routes manifest and program execution to discovered devices.
+It owns every active Location at once (host SIMD and Metal GPU together).
+Placement policy and parallel scheduling belong in a separate optimizer
+type composed on top of Backend later.
 */
 type Backend struct {
-	Optimizers OptimizerRegistry
-	Operations OperationRegistry
-	Runner     runner.Runner
+	ctx       context.Context
+	cancel    context.CancelFunc
+	devices   []*Device
+	byID      map[DeviceID]*Device
+	mesh      tensor.ShardingMesh
+	pool      *qpool.Q
+	closeOnce sync.Once
 }
 
-func NewBackend(backendType BackendType) (*Backend, error) {
-	switch backendType {
-	case CPU:
-		return &Backend{
-			Optimizers: NewOptimizerRegistry(cpuoptimizer.NewOptimizerRegistry()),
-			Operations: NewOperationRegistry(cpuoperation.NewOperationRegistry()),
-			Runner:     computecpu.NewRunner(),
-		}, nil
-	case CUDA:
-		return nil, fmt.Errorf("compute: cuda: %w", ErrDeviceRunnerUnavailable)
-	case METAL:
-		return nil, fmt.Errorf("compute: metal: %w", ErrDeviceRunnerUnavailable)
-	case XLA:
-		return nil, fmt.Errorf("compute: xla: %w", ErrDeviceRunnerUnavailable)
+func NewBackend(ctx context.Context, pool *qpool.Q) (*Backend, error) {
+	ctx, cancel := context.WithCancel(ctx)
+
+	devices, err := discoverDevices()
+
+	if err != nil {
+		cancel()
+
+		return nil, err
 	}
 
-	return nil, fmt.Errorf("compute: unsupported backend type %d", backendType)
-}
-
-func (backend *Backend) Available() error {
-	if backend == nil || backend.Runner == nil {
-		return ErrBackendRunnerRequired
+	backend := &Backend{
+		ctx:     ctx,
+		cancel:  cancel,
+		devices: devices,
+		byID:    indexDevices(devices),
+		mesh:    buildMesh(devices),
+		pool:    pool,
 	}
 
-	availability, ok := backend.Runner.(interface {
-		Err() error
+	return backend, validate.Require(map[string]any{
+		"ctx":     ctx,
+		"devices": backend.devices,
+		"mesh":    backend.mesh,
 	})
+}
 
-	if !ok {
+func (backend *Backend) Context() context.Context {
+	if backend == nil {
+		return context.Background()
+	}
+
+	return backend.ctx
+}
+
+func (backend *Backend) Pool() *qpool.Q {
+	if backend == nil {
 		return nil
 	}
 
-	return availability.Err()
+	return backend.pool
 }
 
+func (backend *Backend) Mesh() tensor.ShardingMesh {
+	if backend == nil {
+		return tensor.ShardingMesh{}
+	}
+
+	return backend.mesh
+}
+
+func (backend *Backend) Devices() []*Device {
+	if backend == nil {
+		return nil
+	}
+
+	out := make([]*Device, len(backend.devices))
+	copy(out, backend.devices)
+
+	return out
+}
+
+func (backend *Backend) Device(deviceID DeviceID) (*Device, error) {
+	if backend == nil {
+		return nil, ErrDeviceNotFound
+	}
+
+	device, ok := backend.byID[deviceID]
+
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrDeviceNotFound, deviceID)
+	}
+
+	return device, nil
+}
+
+func (backend *Backend) Memory(deviceID DeviceID) (tensor.Backend, error) {
+	device, err := backend.Device(deviceID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if device.memory == nil {
+		return nil, fmt.Errorf("%w: %s has no memory backend", ErrDeviceNotFound, deviceID)
+	}
+
+	return device.memory, nil
+}
+
+/*
+DefaultComputeDevice prefers an accelerator with a live Executor, then host.
+*/
+func (backend *Backend) DefaultComputeDevice() DeviceID {
+	if backend == nil {
+		return DeviceID{Location: tensor.Host, Index: 0}
+	}
+
+	for _, location := range []tensor.Location{tensor.Metal, tensor.CUDA, tensor.XLA} {
+		for _, device := range backend.devices {
+			if device.id.Location != location || device.executor == nil {
+				continue
+			}
+
+			return device.id
+		}
+	}
+
+	return DeviceID{Location: tensor.Host, Index: 0}
+}
+
+/*
+ResolveDevice maps a manifest device string to a discovered DeviceID.
+*/
+func (backend *Backend) ResolveDevice(raw string) (DeviceID, error) {
+	if backend == nil {
+		return DeviceID{}, ErrDeviceNotFound
+	}
+
+	trimmed := raw
+
+	if trimmed == "" || trimmed == "auto" {
+		return backend.DefaultComputeDevice(), nil
+	}
+
+	deviceID, err := ParseDeviceID(trimmed)
+
+	if err != nil {
+		return DeviceID{}, err
+	}
+
+	if _, err := backend.Device(deviceID); err != nil {
+		return DeviceID{}, err
+	}
+
+	return deviceID, nil
+}
+
+/*
+Execute routes one IR graph to the Executor on the requested device.
+*/
 func (backend *Backend) Execute(
-	ctx context.Context, graph *ir.Graph, targets []*ir.Node,
+	ctx context.Context,
+	graph *ir.Graph,
+	targets []*ir.Node,
+	on DeviceID,
 ) (map[string]tensor.Tensor, error) {
-	if backend == nil || backend.Runner == nil {
-		return nil, ErrBackendRunnerRequired
+	device, err := backend.Device(on)
+
+	if err != nil {
+		return nil, err
 	}
 
-	scheduler := orchestrator.NewScheduler()
-	scheduler.RegisterRunner(backend.Runner)
-
-	return scheduler.Execute(ctx, graph, targets, backend.Runner.Location())
-}
-
-func (backend *Backend) Location() tensor.Location {
-	if backend == nil || backend.Runner == nil {
-		return ""
+	if device.executor == nil {
+		return nil, fmt.Errorf("%w: %s", ErrExecutorUnavailable, on)
 	}
 
-	return backend.Runner.Location()
+	return device.executor.Execute(ctx, graph, targets)
 }
 
 func (backend *Backend) Close() error {
-	if backend == nil || backend.Runner == nil {
+	if backend == nil {
 		return nil
 	}
 
-	return backend.Runner.Close()
+	var closeErr error
+
+	backend.closeOnce.Do(func() {
+		backend.cancel()
+
+		for _, device := range backend.devices {
+			if err := device.Close(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+		}
+	})
+
+	return closeErr
 }

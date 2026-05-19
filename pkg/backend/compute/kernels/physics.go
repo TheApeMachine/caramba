@@ -22,8 +22,8 @@ items its doc.go listed as planned next:
   - bohmian_velocity:    v = ∇S / m.
   - madelung_continuity: continuity residual ∂ρ/∂t + ∇·(ρv).
 
-All host scalar references. The five-host-ISA SIMD bodies live in the
-.s files alongside (deferred to hardware-verified sessions).
+All host paths route through Float32Native dispatchers; NEON bodies
+live in physics_stencil_f32_neon_arm64.s and physics_f32_dispatch_arm64.go.
 */
 
 func init() {
@@ -164,14 +164,20 @@ func runLaplacian(args ...tensor.Tensor) error {
 
 	dxSquared := float32(dxValue * dxValue)
 	dims := args[0].Shape().Dims()
+	invH2 := float32(1.0 / float64(dxSquared))
 
 	switch len(dims) {
 	case 1:
-		laplacian1D(input, out, dims[0], dxSquared)
-	case 2:
-		laplacian2D(input, out, dims[0], dims[1], dxSquared)
-	case 3:
-		laplacian3D(input, out, dims[0], dims[1], dims[2], dxSquared)
+		laplacianFloat32Native(input, out, nil, dims, invH2)
+	case 2, 3:
+		scratchAxis := dims[0]
+
+		if len(dims) >= 2 && dims[1] > scratchAxis {
+			scratchAxis = dims[1]
+		}
+
+		scratch := make([]float32, scratchAxis*2)
+		laplacianFloat32Native(input, out, scratch, dims, invH2)
 	default:
 		return tensor.ErrShapeMismatch
 	}
@@ -243,17 +249,9 @@ func runLaplacian4(args ...tensor.Tensor) error {
 
 	dxSquared := float32(dxValue * dxValue)
 	denominator := 12 * dxSquared
+	invDen := float32(1.0 / float64(denominator))
 
-	n := len(input)
-
-	for index := 0; index < n; index++ {
-		um2 := input[(index-2+n)%n]
-		um1 := input[(index-1+n)%n]
-		u0 := input[index]
-		up1 := input[(index+1)%n]
-		up2 := input[(index+2)%n]
-		out[index] = (-um2 + 16*um1 - 30*u0 + 16*up1 - up2) / denominator
-	}
+	laplacian4Float32Native(input, out, invDen)
 
 	return nil
 }
@@ -282,13 +280,9 @@ func runGrad1D(args ...tensor.Tensor) error {
 	}
 
 	denominator := float32(2 * dxValue)
-	n := len(input)
+	invTwoDx := float32(1.0 / float64(denominator))
 
-	for index := 0; index < n; index++ {
-		left := input[(index-1+n)%n]
-		right := input[(index+1)%n]
-		out[index] = (right - left) / denominator
-	}
+	grad1DFloat32Native(input, out, invTwoDx)
 
 	return nil
 }
@@ -468,6 +462,7 @@ func runQuantumPotential(args ...tensor.Tensor) error {
 	}
 
 	const eps = 1e-12
+	_ = eps
 
 	dxValue := float64(dx[0])
 
@@ -476,26 +471,10 @@ func runQuantumPotential(args ...tensor.Tensor) error {
 	}
 
 	dxSquared := dxValue * dxValue
-	scale := -float64(defaultReducedPlanck*defaultReducedPlanck) / (2 * float64(defaultMass))
+	invH2 := float32(1.0 / dxSquared)
+	scale := float32(-float64(defaultReducedPlanck*defaultReducedPlanck) / (2 * float64(defaultMass)))
 
-	out[0] = 0
-	out[len(out)-1] = 0
-
-	for index := 1; index < len(density)-1; index++ {
-		rho := float64(density[index])
-
-		if rho <= eps {
-			out[index] = 0
-			continue
-		}
-
-		sqrtRho := math.Sqrt(rho)
-		sqrtLeft := math.Sqrt(math.Max(eps, float64(density[index-1])))
-		sqrtRight := math.Sqrt(math.Max(eps, float64(density[index+1])))
-
-		laplacian := (sqrtRight - 2*sqrtRho + sqrtLeft) / dxSquared
-		out[index] = float32(scale * laplacian / sqrtRho)
-	}
+	quantumPotentialFloat32Native(density, out, invH2, scale)
 
 	return nil
 }
@@ -528,9 +507,7 @@ func runBohmianVelocity(args ...tensor.Tensor) error {
 	out[0] = 0
 	out[len(out)-1] = 0
 
-	for index := 1; index < len(phase)-1; index++ {
-		out[index] = (phase[index+1] - phase[index-1]) * inverseDoubleDx
-	}
+	centralDifferenceInteriorFloat32Native(phase, out, inverseDoubleDx)
 
 	return nil
 }
@@ -561,14 +538,7 @@ func runMadelungContinuity(args ...tensor.Tensor) error {
 
 	inverseDoubleDx := float32(1.0 / (2 * dxValue))
 
-	out[0] = 0
-	out[len(out)-1] = 0
-
-	for index := 1; index < len(density)-1; index++ {
-		fluxRight := density[index+1] * velocity[index+1]
-		fluxLeft := density[index-1] * velocity[index-1]
-		out[index] = (fluxRight - fluxLeft) * inverseDoubleDx
-	}
+	madelungContinuityFloat32Native(density, velocity, out, inverseDoubleDx)
 
 	return nil
 }

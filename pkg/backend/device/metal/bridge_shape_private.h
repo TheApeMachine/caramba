@@ -6,6 +6,12 @@
 #include <Foundation/Foundation.h>
 #include <Metal/Metal.h>
 
+typedef void (^MetalShapeEncodeBlock)(id<MTLComputeCommandEncoder> encoder);
+typedef void (^MetalShapeValidatedEncodeBlock)(
+    id<MTLComputeCommandEncoder> encoder,
+    id<MTLBuffer> validationBuffer
+);
+
 void metal_shape_status_set(MetalStatus* status, int code, const char* message);
 int metal_shape_kernel_name(
     char* out,
@@ -20,7 +26,15 @@ int metal_shape_dispatch(
     NSUInteger threadCount,
     uint64_t completionToken,
     MetalStatus* status,
-    void (^encode)(id<MTLComputeCommandEncoder> encoder)
+    MetalShapeEncodeBlock encode
+);
+int metal_shape_dispatch_validated(
+    MetalDeviceRef contextRef,
+    const char* kernelName,
+    NSUInteger threadCount,
+    uint64_t completionToken,
+    MetalStatus* status,
+    MetalShapeValidatedEncodeBlock encode
 );
 
 #endif

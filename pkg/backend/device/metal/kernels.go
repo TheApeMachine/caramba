@@ -22,6 +22,9 @@ func init() {
 	registerBinaryFloat32Kernel("le", metalBinaryFloat32Le)
 	registerBinaryFloat32Kernel("gt", metalBinaryFloat32Gt)
 	registerBinaryFloat32Kernel("ge", metalBinaryFloat32Ge)
+	registerBinaryFloat32Kernel("pow", metalBinaryFloat32Pow)
+	registerBinaryFloat32Kernel("atan2", metalBinaryFloat32Atan2)
+	registerBinaryFloat32Kernel("mod", metalBinaryFloat32Mod)
 	registerBinaryFloat16Kernels()
 	registerBinaryBFloat16Kernels()
 }
@@ -138,6 +141,30 @@ func (backend *Backend) GeFloat32(
 	return backend.binaryFloat32(ctx, metalBinaryFloat32Ge, left, right)
 }
 
+func (backend *Backend) PowFloat32(
+	ctx context.Context,
+	left tensor.Tensor,
+	right tensor.Tensor,
+) (tensor.Tensor, error) {
+	return backend.binaryFloat32(ctx, metalBinaryFloat32Pow, left, right)
+}
+
+func (backend *Backend) Atan2Float32(
+	ctx context.Context,
+	left tensor.Tensor,
+	right tensor.Tensor,
+) (tensor.Tensor, error) {
+	return backend.binaryFloat32(ctx, metalBinaryFloat32Atan2, left, right)
+}
+
+func (backend *Backend) ModFloat32(
+	ctx context.Context,
+	left tensor.Tensor,
+	right tensor.Tensor,
+) (tensor.Tensor, error) {
+	return backend.binaryFloat32(ctx, metalBinaryFloat32Mod, left, right)
+}
+
 func registerBinaryFloat32Kernel(name string, operation metalBinaryFloat32Operation) {
 	registerBinaryKernel(name, dtype.Float32, runBinaryFloat32(operation))
 }
@@ -163,6 +190,9 @@ func registerBinaryDTypeKernels(storageDType dtype.DType) {
 	registerBinaryKernel("le", storageDType, runBinaryElementwise(metalBinaryFloat32Le))
 	registerBinaryKernel("gt", storageDType, runBinaryElementwise(metalBinaryFloat32Gt))
 	registerBinaryKernel("ge", storageDType, runBinaryElementwise(metalBinaryFloat32Ge))
+	registerBinaryKernel("pow", storageDType, runBinaryElementwise(metalBinaryFloat32Pow))
+	registerBinaryKernel("atan2", storageDType, runBinaryElementwise(metalBinaryFloat32Atan2))
+	registerBinaryKernel("mod", storageDType, runBinaryElementwise(metalBinaryFloat32Mod))
 }
 
 func registerBinaryKernel(

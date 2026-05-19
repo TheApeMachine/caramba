@@ -98,9 +98,7 @@ func runCounterfactual(args ...tensor.Tensor) error {
 
 	slopeValue := slope[0]
 
-	for index, yValue := range observedY {
-		out[index] = yValue + slopeValue*(counterfactualX[index]-observedX[index])
-	}
+	counterfactualFloat32Native(out, observedY, observedX, counterfactualX, slopeValue)
 
 	return nil
 }
@@ -126,35 +124,8 @@ func runIVEstimate(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	var meanZ, meanX, meanY float64
+	out[0] = ivEstimateFloat32Native(instrument, treatment, outcome)
 
-	for index := 0; index < n; index++ {
-		meanZ += float64(instrument[index])
-		meanX += float64(treatment[index])
-		meanY += float64(outcome[index])
-	}
-
-	meanZ /= float64(n)
-	meanX /= float64(n)
-	meanY /= float64(n)
-
-	var covZY, covZX float64
-
-	for index := 0; index < n; index++ {
-		dz := float64(instrument[index]) - meanZ
-		dy := float64(outcome[index]) - meanY
-		dx := float64(treatment[index]) - meanX
-
-		covZY += dz * dy
-		covZX += dz * dx
-	}
-
-	if math.Abs(covZX) < 1e-12 {
-		out[0] = 0
-		return nil
-	}
-
-	out[0] = float32(covZY / covZX)
 	return nil
 }
 
@@ -238,24 +209,7 @@ func markovFlowDirection(args []tensor.Tensor, targetLabel int32) error {
 
 	n := dims[0]
 
-	for nodeIndex := 0; nodeIndex < n; nodeIndex++ {
-		if partition[nodeIndex] != targetLabel {
-			out[nodeIndex] = 0
-			continue
-		}
-
-		var sum float32
-
-		for otherIndex := 0; otherIndex < n; otherIndex++ {
-			if partition[otherIndex] != 0 {
-				continue
-			}
-
-			sum += mi[nodeIndex*n+otherIndex]
-		}
-
-		out[nodeIndex] = sum
-	}
+	markovFlowFloat32Native(mi, partition, out, n, targetLabel)
 
 	return nil
 }

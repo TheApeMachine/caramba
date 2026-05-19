@@ -71,6 +71,17 @@ func init() {
 		Locations: []tensor.Location{tensor.Host},
 		Run:       runVSAInversePermuteDefault,
 	})
+
+	Default.Register(Kernel{
+		Name: "vsa_similarity",
+		Signature: Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Float32, dtype.Float32},
+			Outputs: []dtype.DType{dtype.Float32},
+		},
+		Locations: []tensor.Location{tensor.Host},
+		Run:       runVSASimilarity,
+	})
 }
 
 func runVSABind(args ...tensor.Tensor) error {
@@ -86,9 +97,7 @@ func runVSABind(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for index, value := range leftView {
-		outView[index] = value * rightView[index]
-	}
+	vsaBindFloat32Native(outView, leftView, rightView)
 
 	return nil
 }
@@ -106,9 +115,7 @@ func runVSABundle(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for index, value := range leftView {
-		outView[index] = value + rightView[index]
-	}
+	vsaBundleFloat32Native(outView, leftView, rightView)
 
 	return nil
 }
@@ -145,10 +152,25 @@ func VSAPermute(config VSAConfig, input, output tensor.Tensor) error {
 		shift += len(inView)
 	}
 
-	for index, value := range inView {
-		target := (index + shift) % len(inView)
-		outView[target] = value
+	vsaPermuteFloat32Native(outView, inView, shift)
+
+	return nil
+}
+
+func runVSASimilarity(args ...tensor.Tensor) error {
+	if len(args) != 3 {
+		return tensor.ErrShapeMismatch
 	}
+
+	leftView, _ := args[0].Float32Native()
+	rightView, _ := args[1].Float32Native()
+	outView, _ := args[2].Float32Native()
+
+	if len(leftView) != len(rightView) || len(outView) < 1 {
+		return tensor.ErrShapeMismatch
+	}
+
+	outView[0] = vsaSimilarityFloat32Native(leftView, rightView)
 
 	return nil
 }

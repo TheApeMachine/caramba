@@ -1,5 +1,7 @@
 #include <metal_stdlib>
 
+#pragma clang fp contract(off)
+
 using namespace metal;
 
 constant uint normalizationThreadCount = 256;
@@ -162,6 +164,124 @@ static inline void rmsnorm_rows(
     }
 }
 
+template <typename Storage, typename Scalar>
+static inline void groupnorm_rows(
+    device const Scalar* input,
+    device const Scalar* scale,
+    device const Scalar* bias,
+    device Scalar* out,
+    threadgroup float* reduction,
+    constant uint& channels,
+    constant uint& spatial,
+    constant uint& groups,
+    uint row,
+    uint threadIndex
+) {
+    uint groupIndex = row % groups;
+    uint batchIndex = row / groups;
+    uint channelsPerGroup = channels / groups;
+    uint channelStart = groupIndex * channelsPerGroup;
+    uint groupSize = channelsPerGroup * spatial;
+    uint groupOffset = (batchIndex * channels + channelStart) * spatial;
+    float mean = reduce_sum<Storage, Scalar>(input, reduction, groupOffset, groupSize, threadIndex) /
+        float(groupSize);
+    float localVariance = 0.0f;
+
+    for (uint offset = threadIndex; offset < groupSize; offset += normalizationThreadCount) {
+        float delta = Storage::load(input, groupOffset + offset) - mean;
+        localVariance += delta * delta;
+    }
+
+    reduction[threadIndex] = localVariance;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint stride = normalizationThreadCount / 2; stride > 0; stride >>= 1) {
+        if (threadIndex < stride) {
+            reduction[threadIndex] += reduction[threadIndex + stride];
+        }
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    float invStdDev = 1.0f / sqrt(reduction[0] / float(groupSize) + layerNormEpsilonMetal);
+
+    for (uint offset = threadIndex; offset < groupSize; offset += normalizationThreadCount) {
+        uint channel = channelStart + offset / spatial;
+        float normalized = (Storage::load(input, groupOffset + offset) - mean) * invStdDev;
+        float value = normalized * Storage::load(scale, channel) + Storage::load(bias, channel);
+        Storage::store(out, groupOffset + offset, value);
+    }
+}
+
+template <typename Storage, typename Scalar>
+static inline void instancenorm_rows(
+    device const Scalar* input,
+    device const Scalar* scale,
+    device const Scalar* bias,
+    device Scalar* out,
+    threadgroup float* reduction,
+    constant uint& channels,
+    constant uint& spatial,
+    uint row,
+    uint threadIndex
+) {
+    uint channel = row % channels;
+    uint rowOffset = row * spatial;
+    float mean = reduce_sum<Storage, Scalar>(input, reduction, rowOffset, spatial, threadIndex) /
+        float(spatial);
+    float localVariance = 0.0f;
+
+    for (uint offset = threadIndex; offset < spatial; offset += normalizationThreadCount) {
+        float delta = Storage::load(input, rowOffset + offset) - mean;
+        localVariance += delta * delta;
+    }
+
+    reduction[threadIndex] = localVariance;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint stride = normalizationThreadCount / 2; stride > 0; stride >>= 1) {
+        if (threadIndex < stride) {
+            reduction[threadIndex] += reduction[threadIndex + stride];
+        }
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    float invStdDev = 1.0f / sqrt(reduction[0] / float(spatial) + layerNormEpsilonMetal);
+
+    for (uint offset = threadIndex; offset < spatial; offset += normalizationThreadCount) {
+        float normalized = (Storage::load(input, rowOffset + offset) - mean) * invStdDev;
+        float value = normalized * Storage::load(scale, channel) + Storage::load(bias, channel);
+        Storage::store(out, rowOffset + offset, value);
+    }
+}
+
+template <typename Storage, typename Scalar>
+static inline void batchnorm_eval_rows(
+    device const Scalar* input,
+    device const Scalar* scale,
+    device const Scalar* bias,
+    device const Scalar* mean,
+    device const Scalar* variance,
+    device Scalar* out,
+    constant uint& channels,
+    constant uint& spatial,
+    uint row,
+    uint threadIndex
+) {
+    uint channel = row % channels;
+    uint rowOffset = row * spatial;
+    float invStdDev = 1.0f / sqrt(Storage::load(variance, channel) + layerNormEpsilonMetal);
+    float channelMean = Storage::load(mean, channel);
+    float channelScale = Storage::load(scale, channel);
+    float channelBias = Storage::load(bias, channel);
+
+    for (uint offset = threadIndex; offset < spatial; offset += normalizationThreadCount) {
+        float normalized = (Storage::load(input, rowOffset + offset) - channelMean) * invStdDev;
+        Storage::store(out, rowOffset + offset, normalized * channelScale + channelBias);
+    }
+}
+
 #define LAYERNORM_KERNEL(name, storage, scalar) \
 kernel void name( \
     device const scalar* input [[buffer(0)]], \
@@ -187,6 +307,59 @@ kernel void name( \
 ) { \
     threadgroup float reduction[256]; \
     rmsnorm_rows<storage, scalar>(input, scale, out, reduction, cols, row, threadIndex); \
+}
+
+#define GROUPNORM_KERNEL(name, storage, scalar) \
+kernel void name( \
+    device const scalar* input [[buffer(0)]], \
+    device const scalar* scale [[buffer(1)]], \
+    device const scalar* bias [[buffer(2)]], \
+    device scalar* out [[buffer(3)]], \
+    constant uint& channels [[buffer(4)]], \
+    constant uint& spatial [[buffer(5)]], \
+    constant uint& groups [[buffer(6)]], \
+    uint row [[threadgroup_position_in_grid]], \
+    uint threadIndex [[thread_position_in_threadgroup]] \
+) { \
+    threadgroup float reduction[256]; \
+    groupnorm_rows<storage, scalar>( \
+        input, scale, bias, out, reduction, channels, spatial, groups, row, threadIndex \
+    ); \
+}
+
+#define INSTANCENORM_KERNEL(name, storage, scalar) \
+kernel void name( \
+    device const scalar* input [[buffer(0)]], \
+    device const scalar* scale [[buffer(1)]], \
+    device const scalar* bias [[buffer(2)]], \
+    device scalar* out [[buffer(3)]], \
+    constant uint& channels [[buffer(4)]], \
+    constant uint& spatial [[buffer(5)]], \
+    uint row [[threadgroup_position_in_grid]], \
+    uint threadIndex [[thread_position_in_threadgroup]] \
+) { \
+    threadgroup float reduction[256]; \
+    instancenorm_rows<storage, scalar>( \
+        input, scale, bias, out, reduction, channels, spatial, row, threadIndex \
+    ); \
+}
+
+#define BATCHNORM_EVAL_KERNEL(name, storage, scalar) \
+kernel void name( \
+    device const scalar* input [[buffer(0)]], \
+    device const scalar* scale [[buffer(1)]], \
+    device const scalar* bias [[buffer(2)]], \
+    device const scalar* mean [[buffer(3)]], \
+    device const scalar* variance [[buffer(4)]], \
+    device scalar* out [[buffer(5)]], \
+    constant uint& channels [[buffer(6)]], \
+    constant uint& spatial [[buffer(7)]], \
+    uint row [[threadgroup_position_in_grid]], \
+    uint threadIndex [[thread_position_in_threadgroup]] \
+) { \
+    batchnorm_eval_rows<storage, scalar>( \
+        input, scale, bias, mean, variance, out, channels, spatial, row, threadIndex \
+    ); \
 }
 
 kernel void layernorm_float32(
@@ -217,7 +390,7 @@ kernel void layernorm_float32(
         }
 
         stats[0] = mean;
-        stats[1] = 1.0f / sqrt(variance / float(cols) + layerNormEpsilonMetal);
+        stats[1] = 1.0f / precise::sqrt(variance / float(cols) + layerNormEpsilonMetal);
     }
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -237,3 +410,109 @@ LAYERNORM_KERNEL(layernorm_bfloat16, BFloat16NormStorage, ushort)
 RMSNORM_KERNEL(rmsnorm_float32, Float32NormStorage, float)
 RMSNORM_KERNEL(rmsnorm_float16, Float16NormStorage, half)
 RMSNORM_KERNEL(rmsnorm_bfloat16, BFloat16NormStorage, ushort)
+
+kernel void groupnorm_float32(
+    device const float* input [[buffer(0)]],
+    device const float* scale [[buffer(1)]],
+    device const float* bias [[buffer(2)]],
+    device float* out [[buffer(3)]],
+    constant uint& channels [[buffer(4)]],
+    constant uint& spatial [[buffer(5)]],
+    constant uint& groups [[buffer(6)]],
+    uint row [[threadgroup_position_in_grid]],
+    uint threadIndex [[thread_position_in_threadgroup]]
+) {
+    threadgroup float stats[2];
+    uint groupIndex = row % groups;
+    uint batchIndex = row / groups;
+    uint channelsPerGroup = channels / groups;
+    uint channelStart = groupIndex * channelsPerGroup;
+    uint groupSize = channelsPerGroup * spatial;
+    uint groupOffset = (batchIndex * channels + channelStart) * spatial;
+
+    if (threadIndex == 0) {
+        float sum = 0.0f;
+
+        for (uint offset = 0; offset < groupSize; offset++) {
+            sum += input[groupOffset + offset];
+        }
+
+        float mean = sum / float(groupSize);
+        float variance = 0.0f;
+
+        for (uint offset = 0; offset < groupSize; offset++) {
+            float delta = input[groupOffset + offset] - mean;
+            variance += delta * delta;
+        }
+
+        stats[0] = mean;
+        stats[1] = 1.0f / precise::sqrt(variance / float(groupSize) + layerNormEpsilonMetal);
+    }
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    float mean = stats[0];
+    float invStdDev = stats[1];
+
+    for (uint offset = threadIndex; offset < groupSize; offset += normalizationThreadCount) {
+        uint channel = channelStart + offset / spatial;
+        float normalized = (input[groupOffset + offset] - mean) * invStdDev;
+        out[groupOffset + offset] = normalized * scale[channel] + bias[channel];
+    }
+}
+
+GROUPNORM_KERNEL(groupnorm_float16, Float16NormStorage, half)
+GROUPNORM_KERNEL(groupnorm_bfloat16, BFloat16NormStorage, ushort)
+
+kernel void instancenorm_float32(
+    device const float* input [[buffer(0)]],
+    device const float* scale [[buffer(1)]],
+    device const float* bias [[buffer(2)]],
+    device float* out [[buffer(3)]],
+    constant uint& channels [[buffer(4)]],
+    constant uint& spatial [[buffer(5)]],
+    uint row [[threadgroup_position_in_grid]],
+    uint threadIndex [[thread_position_in_threadgroup]]
+) {
+    threadgroup float stats[2];
+    uint channel = row % channels;
+    uint rowOffset = row * spatial;
+
+    if (threadIndex == 0) {
+        float sum = 0.0f;
+
+        for (uint offset = 0; offset < spatial; offset++) {
+            sum += input[rowOffset + offset];
+        }
+
+        float mean = sum / float(spatial);
+        float variance = 0.0f;
+
+        for (uint offset = 0; offset < spatial; offset++) {
+            float delta = input[rowOffset + offset] - mean;
+            variance += delta * delta;
+        }
+
+        stats[0] = mean;
+        stats[1] = 1.0f / precise::sqrt(variance / float(spatial) + layerNormEpsilonMetal);
+    }
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    float mean = stats[0];
+    float invStdDev = stats[1];
+    float channelScale = scale[channel];
+    float channelBias = bias[channel];
+
+    for (uint offset = threadIndex; offset < spatial; offset += normalizationThreadCount) {
+        float normalized = (input[rowOffset + offset] - mean) * invStdDev;
+        out[rowOffset + offset] = normalized * channelScale + channelBias;
+    }
+}
+
+INSTANCENORM_KERNEL(instancenorm_float16, Float16NormStorage, half)
+INSTANCENORM_KERNEL(instancenorm_bfloat16, BFloat16NormStorage, ushort)
+
+BATCHNORM_EVAL_KERNEL(batchnorm_eval_float32, Float32NormStorage, float)
+BATCHNORM_EVAL_KERNEL(batchnorm_eval_float16, Float16NormStorage, half)
+BATCHNORM_EVAL_KERNEL(batchnorm_eval_bfloat16, BFloat16NormStorage, ushort)

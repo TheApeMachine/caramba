@@ -71,6 +71,9 @@ const (
 	metalBinaryFloat32Le
 	metalBinaryFloat32Gt
 	metalBinaryFloat32Ge
+	metalBinaryFloat32Pow
+	metalBinaryFloat32Atan2
+	metalBinaryFloat32Mod
 )
 
 func runMetalBinaryFloat32(
@@ -600,6 +603,21 @@ func runMetalLogSumExp(input tensor.Tensor, out tensor.Tensor) error {
 func runMetalOuter(left tensor.Tensor, right tensor.Tensor, out tensor.Tensor) error {
 	_ = left
 	_ = right
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalSampling(operation metalSamplingOp, logits tensor.Tensor, out tensor.Tensor) error {
+	_ = operation
+	_ = logits
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalDropout(input tensor.Tensor, out tensor.Tensor) error {
+	_ = input
 	_ = out
 
 	return tensor.ErrNeedsPlatformSetup

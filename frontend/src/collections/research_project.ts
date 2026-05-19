@@ -16,6 +16,8 @@ export const ResearchProject = z.object({
 	updated_at: z.coerce.date(),
 });
 
+export type ResearchProjectRow = z.infer<typeof ResearchProject>;
+
 const shapeUrl =
 	typeof window !== "undefined"
 		? `${window.location.origin}/api/shape/research-projects`

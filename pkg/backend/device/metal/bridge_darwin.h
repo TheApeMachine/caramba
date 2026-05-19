@@ -31,6 +31,9 @@ typedef enum MetalBinaryFloat32Op {
     MetalBinaryFloat32Le = 9,
     MetalBinaryFloat32Gt = 10,
     MetalBinaryFloat32Ge = 11,
+    MetalBinaryFloat32Pow = 12,
+    MetalBinaryFloat32Atan2 = 13,
+    MetalBinaryFloat32Mod = 14,
 } MetalBinaryFloat32Op;
 
 typedef enum MetalUnaryFloat32Op {
@@ -179,6 +182,66 @@ int metal_dispatch_upsample_nearest2d_bytes(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_gather(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef sourceRef,
+    MetalBufferRef indicesRef,
+    MetalBufferRef outRef,
+    uint32_t sourceRows,
+    uint32_t inner,
+    uint32_t outRows,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_scatter(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef targetRef,
+    MetalBufferRef indicesRef,
+    MetalBufferRef updatesRef,
+    MetalBufferRef outRef,
+    uint32_t targetRows,
+    uint32_t inner,
+    uint32_t updateRows,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_where(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef maskRef,
+    MetalBufferRef positiveRef,
+    MetalBufferRef negativeRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_masked_fill(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef maskRef,
+    MetalBufferRef scalarRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_transpose(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t rank,
+    uint32_t count,
+    const uint32_t* permutation,
+    const uint32_t* inputStrides,
+    const uint32_t* outStrides,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 int metal_dispatch_matmul(
     MetalDeviceRef contextRef,
     int elementDType,
@@ -234,6 +297,48 @@ int metal_dispatch_rmsnorm(
     MetalBufferRef outRef,
     uint32_t rows,
     uint32_t cols,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_groupnorm(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef scaleRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t channels,
+    uint32_t spatial,
+    uint32_t groups,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_instancenorm(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef scaleRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t channels,
+    uint32_t spatial,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_batchnorm_eval(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef scaleRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef meanRef,
+    MetalBufferRef varianceRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t channels,
+    uint32_t spatial,
     uint64_t completionToken,
     MetalStatus* status
 );
@@ -723,6 +828,35 @@ int metal_dispatch_outer(
     uint64_t completionToken,
     MetalStatus* status
 );
+int metal_dispatch_sampling(
+    MetalDeviceRef contextRef,
+    int operation,
+    int elementDType,
+    MetalBufferRef logitsRef,
+    MetalBufferRef scoresRef,
+    MetalBufferRef indicesRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint32_t paddedCount,
+    float target,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_dropout(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    float scale,
+    uint32_t threshold,
+    uint32_t seed0,
+    uint32_t seed1,
+    uint32_t seed2,
+    uint32_t seed3,
+    uint64_t completionToken,
+    MetalStatus* status
+);
 int metal_dispatch_research_unary(
     MetalDeviceRef contextRef,
     int operation,
@@ -987,6 +1121,43 @@ int metal_dispatch_fft1d(
     MetalBufferRef imagOutRef,
     uint32_t count,
     bool inverse,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_checkpoint_encode_float32(
+    MetalDeviceRef contextRef,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t rank,
+    uint32_t count,
+    const uint64_t* dims,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_checkpoint_decode_float32(
+    MetalDeviceRef contextRef,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t headerBytes,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_tokenizer_pack_int32(
+    MetalDeviceRef contextRef,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_weight_freeze_mask(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef maskRef,
+    MetalBufferRef gradientsRef,
+    MetalBufferRef outRef,
+    uint32_t count,
     uint64_t completionToken,
     MetalStatus* status
 );

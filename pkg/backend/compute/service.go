@@ -2,9 +2,6 @@ package compute
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/block"
-	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation"
-	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/optimizer"
 )
 
 /*
@@ -24,9 +21,9 @@ NewService creates a new Service with operation, optimizer, and block sub-servic
 func NewService() *Service {
 	return &Service{
 		handlers: map[string]handler{
-			"operation": operation.NewService(),
-			"optimizer": optimizer.NewService(),
-			"block":     block.NewService(),
+			"operation": nil,
+			"optimizer": nil,
+			"block":     nil,
 		},
 	}
 }

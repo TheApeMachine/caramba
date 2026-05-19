@@ -168,6 +168,21 @@ struct GeBFloat16 {
     float operator()(float left, float right) const { return left >= right ? 1.0 : 0.0; }
 };
 
+struct PowBFloat16 {
+    float4 operator()(float4 left, float4 right) const { return pow(left, right); }
+    float operator()(float left, float right) const { return pow(left, right); }
+};
+
+struct Atan2BFloat16 {
+    float4 operator()(float4 left, float4 right) const { return atan2(left, right); }
+    float operator()(float left, float right) const { return atan2(left, right); }
+};
+
+struct ModBFloat16 {
+    float4 operator()(float4 left, float4 right) const { return fmod(left, right); }
+    float operator()(float left, float right) const { return fmod(left, right); }
+};
+
 struct ReluBFloat16 {
     float4 operator()(float4 value) const { return max(value, float4(0.0)); }
     float operator()(float value) const { return max(value, 0.0); }
@@ -250,6 +265,9 @@ BINARY_BFLOAT16_KERNEL(lt, LtBFloat16)
 BINARY_BFLOAT16_KERNEL(le, LeBFloat16)
 BINARY_BFLOAT16_KERNEL(gt, GtBFloat16)
 BINARY_BFLOAT16_KERNEL(ge, GeBFloat16)
+BINARY_BFLOAT16_KERNEL(pow, PowBFloat16)
+BINARY_BFLOAT16_KERNEL(atan2, Atan2BFloat16)
+BINARY_BFLOAT16_KERNEL(mod, ModBFloat16)
 
 UNARY_BFLOAT16_KERNEL(relu, ReluBFloat16)
 UNARY_BFLOAT16_KERNEL(abs, AbsBFloat16)

@@ -211,18 +211,10 @@ func runAttentionFloat32(args ...tensor.Tensor) error {
 
 	query, key, value, out := args[0], args[1], args[2], args[3]
 
-	queryView, keyView, valueView, outView, seqQ, seqK, depth, valueDim, err := attentionViews(query, key, value, out)
-
-	if err != nil {
-		return err
-	}
-
-	scale := float32(1.0 / math.Sqrt(float64(depth)))
-	scores := computeAttentionScores(queryView, keyView, seqQ, seqK, depth, scale)
-	applySoftmax(scores, seqQ, seqK)
-	computeWeightedOutput(scores, valueView, outView, seqQ, seqK, valueDim)
-
-	return nil
+	return RunFlashAttentionFloat32(
+		DefaultFlashAttentionConfig(),
+		query, key, value, out,
+	)
 }
 
 func attentionViews(
@@ -303,12 +295,7 @@ applySoftmax performs row-wise stable softmax in place on a
 [seqQ, seqK] score matrix.
 */
 func applySoftmax(scores []float32, seqQ, seqK int) {
-	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
-		row := scores[rowIndex*seqK : (rowIndex+1)*seqK]
-		maximum := findRowMax(row)
-		sum := fillShiftedExps(row, row, maximum)
-		normalizeRow(row, sum)
-	}
+	applyAttentionSoftmaxNative(scores, seqQ, seqK)
 }
 
 /*

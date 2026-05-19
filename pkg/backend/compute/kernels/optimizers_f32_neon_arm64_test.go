@@ -5,7 +5,6 @@ package kernels
 import (
 	"fmt"
 	"math"
-	"math/rand"
 	"testing"
 )
 
@@ -175,17 +174,6 @@ func runTwoStateOptimizerParity[C any](
 			assertFloat32SlicesEqual(t, secondNEON, secondScalar)
 		})
 	}
-}
-
-func randFloat32Slice(n int, seed int64) []float32 {
-	rng := rand.New(rand.NewSource(seed))
-	slice := make([]float32, n)
-
-	for index := range slice {
-		slice[index] = float32(rng.NormFloat64()) * 0.1
-	}
-
-	return slice
 }
 
 func assertFloat32SlicesEqual(t *testing.T, got, want []float32) {

@@ -41,6 +41,18 @@ export const getResearcherProfile = createServerFn({ method: "GET" }).handler(
 			},
 		);
 
+		if (response.status === 404) {
+			return {
+				user_id: authenticationState.userId,
+				display_name: "",
+				role_title: "",
+				affiliation: "",
+				bio: "",
+				website: "",
+				research_focus: "",
+			};
+		}
+
 		if (!response.ok) {
 			const text = await response.text();
 			throw new Error(

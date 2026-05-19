@@ -73,7 +73,7 @@ func testKernelRegistryMetalBinaryElementwiseDType(
 
 						err = kernel.Run(left, right, out)
 						convey.So(err, convey.ShouldBeNil)
-						assertDTypeBytesForTest(t, backend, out, storageDType, expectedBytes, 0)
+						assertDTypeBytesForTest(t, backend, out, storageDType, expectedBytes, testCase.dtypeULP)
 					})
 				})
 			}

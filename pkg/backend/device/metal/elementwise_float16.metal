@@ -136,6 +136,30 @@ struct GeFloat16 {
     half operator()(half left, half right) const { return left >= right ? 1.0h : 0.0h; }
 };
 
+struct PowFloat16 {
+    half4 operator()(half4 left, half4 right) const {
+        return half4(pow(float4(left), float4(right)));
+    }
+
+    half operator()(half left, half right) const { return half(pow(float(left), float(right))); }
+};
+
+struct Atan2Float16 {
+    half4 operator()(half4 left, half4 right) const {
+        return half4(atan2(float4(left), float4(right)));
+    }
+
+    half operator()(half left, half right) const { return half(atan2(float(left), float(right))); }
+};
+
+struct ModFloat16 {
+    half4 operator()(half4 left, half4 right) const {
+        return half4(fmod(float4(left), float4(right)));
+    }
+
+    half operator()(half left, half right) const { return half(fmod(float(left), float(right))); }
+};
+
 struct ReluFloat16 {
     half4 operator()(half4 value) const { return max(value, half4(0.0h)); }
     half operator()(half value) const { return max(value, 0.0h); }
@@ -218,6 +242,9 @@ BINARY_FLOAT16_KERNEL(lt, LtFloat16)
 BINARY_FLOAT16_KERNEL(le, LeFloat16)
 BINARY_FLOAT16_KERNEL(gt, GtFloat16)
 BINARY_FLOAT16_KERNEL(ge, GeFloat16)
+BINARY_FLOAT16_KERNEL(pow, PowFloat16)
+BINARY_FLOAT16_KERNEL(atan2, Atan2Float16)
+BINARY_FLOAT16_KERNEL(mod, ModFloat16)
 
 UNARY_FLOAT16_KERNEL(relu, ReluFloat16)
 UNARY_FLOAT16_KERNEL(abs, AbsFloat16)

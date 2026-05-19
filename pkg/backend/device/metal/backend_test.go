@@ -20,6 +20,8 @@ type binaryFloat32Case struct {
 	name      string
 	operation metalBinaryFloat32Operation
 	apply     func(*Backend, context.Context, tensor.Tensor, tensor.Tensor) (tensor.Tensor, error)
+	maxULP    uint32
+	dtypeULP  uint32
 }
 
 var binaryFloat32Cases = []binaryFloat32Case{
@@ -35,6 +37,9 @@ var binaryFloat32Cases = []binaryFloat32Case{
 	{name: "le", operation: metalBinaryFloat32Le, apply: (*Backend).LeFloat32},
 	{name: "gt", operation: metalBinaryFloat32Gt, apply: (*Backend).GtFloat32},
 	{name: "ge", operation: metalBinaryFloat32Ge, apply: (*Backend).GeFloat32},
+	{name: "pow", operation: metalBinaryFloat32Pow, apply: (*Backend).PowFloat32, maxULP: 4, dtypeULP: 2},
+	{name: "atan2", operation: metalBinaryFloat32Atan2, apply: (*Backend).Atan2Float32, maxULP: 8, dtypeULP: 2},
+	{name: "mod", operation: metalBinaryFloat32Mod, apply: (*Backend).ModFloat32},
 }
 
 func TestNewBackend(t *testing.T) {
@@ -230,6 +235,18 @@ func TestBackend_GeFloat32(t *testing.T) {
 	testBackendBinaryFloat32(t, binaryFloat32Cases[11])
 }
 
+func TestBackend_PowFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[12])
+}
+
+func TestBackend_Atan2Float32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[13])
+}
+
+func TestBackend_ModFloat32(t *testing.T) {
+	testBackendBinaryFloat32(t, binaryFloat32Cases[14])
+}
+
 func testBackendBinaryFloat32(t *testing.T, testCase binaryFloat32Case) {
 	backend := newBackendForDeviceTest(t)
 	defer func() {
@@ -271,7 +288,7 @@ func testBackendBinaryFloat32(t *testing.T, testCase binaryFloat32Case) {
 
 				actual := downloadFloat32ForTest(t, backend, out)
 				convey.So(len(actual), convey.ShouldEqual, elementCount)
-				assertFloat32BitwiseEqual(t, actual, expectedValues)
+				assertBinaryFloat32Parity(t, actual, expectedValues, testCase.maxULP)
 			})
 		})
 	}
@@ -434,7 +451,12 @@ func TestKernelRegistry_MetalBinaryFloat32(t *testing.T) {
 
 				err = kernel.Run(left, right, out)
 				convey.So(err, convey.ShouldBeNil)
-				assertFloat32BitwiseEqual(t, downloadFloat32ForTest(t, backend, out), expectedValues)
+				assertBinaryFloat32Parity(
+					t,
+					downloadFloat32ForTest(t, backend, out),
+					expectedValues,
+					testCase.maxULP,
+				)
 			})
 		})
 	}
@@ -644,10 +666,10 @@ func binaryFloat32ParityValues(
 	expectedValues := make([]float32, elementCount)
 
 	for index := range leftValues {
-		leftValues[index] = float32((index % 511) - 255)
-		rightValues[index] = binaryFloat32RightValue(index)
+		leftValues[index] = binaryFloat32LeftValue(index, name)
+		rightValues[index] = binaryFloat32RightValue(index, name)
 
-		if name != "div" && index%13 == 0 && leftValues[index] != 0 {
+		if canUseEqualBinaryInputs(name) && index%13 == 0 && leftValues[index] != 0 {
 			rightValues[index] = leftValues[index]
 		}
 
@@ -661,7 +683,27 @@ func binaryFloat32ParityValues(
 	return leftValues, rightValues, expectedValues
 }
 
-func binaryFloat32RightValue(index int) float32 {
+func binaryFloat32LeftValue(index int, name string) float32 {
+	switch name {
+	case "pow":
+		value := 1 << uint(2*(index%4))
+		return float32(value)
+	case "mod":
+		return float32((index%511)-255) + 0.5
+	}
+
+	return float32((index % 511) - 255)
+}
+
+func binaryFloat32RightValue(index int, name string) float32 {
+	switch name {
+	case "pow":
+		return binaryFloat32PowExponent(index)
+	case "mod":
+		value := 1 << uint(index%4)
+		return float32(value)
+	}
+
 	integerValue := 1 << uint(index%4)
 	value := float32(integerValue)
 
@@ -670,6 +712,20 @@ func binaryFloat32RightValue(index int) float32 {
 	}
 
 	return value
+}
+
+func binaryFloat32PowExponent(index int) float32 {
+	values := []float32{-2, -1, -0.5, 0, 0.5, 1, 2, 3}
+	return values[index%len(values)]
+}
+
+func canUseEqualBinaryInputs(name string) bool {
+	switch name {
+	case "div", "pow", "atan2", "mod":
+		return false
+	}
+
+	return true
 }
 
 func binaryFloat32Expected(name string, left float32, right float32) float32 {
@@ -730,9 +786,31 @@ func binaryFloat32Expected(name string, left float32, right float32) float32 {
 		}
 
 		return 0
+	case "pow":
+		return float32(math.Pow(float64(left), float64(right)))
+	case "atan2":
+		return float32(math.Atan2(float64(left), float64(right)))
+	case "mod":
+		return float32(math.Mod(float64(left), float64(right)))
 	}
 
 	panic("unknown binary float32 operation: " + name)
+}
+
+func assertBinaryFloat32Parity(
+	testingObject testing.TB,
+	actualValues []float32,
+	expectedValues []float32,
+	maxULP uint32,
+) {
+	testingObject.Helper()
+
+	if maxULP == 0 {
+		assertFloat32BitwiseEqual(testingObject, actualValues, expectedValues)
+		return
+	}
+
+	assertFloat32WithinULP(testingObject, actualValues, expectedValues, maxULP)
 }
 
 func assertFloat32BitwiseEqual(

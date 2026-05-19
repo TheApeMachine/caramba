@@ -195,7 +195,7 @@ func runSingleHead(
 	scores := make([]float32, seqK)
 
 	for qIndex := range seqQ {
-		computeHeadScores(
+		computeHeadScoresNative(
 			queryView, keyView,
 			qIndex, seqK, headDim,
 			queryHeadOffset, kvHeadOffset,
@@ -203,91 +203,12 @@ func runSingleHead(
 			scale, scores,
 			config,
 		)
-		stableSoftmaxRow(scores)
-		writeHeadOutput(
+		stableSoftmaxRowNative(scores)
+		writeHeadOutputNative(
 			scores, valueView, outView,
 			qIndex, seqK, headDim,
 			queryHeadOffset, kvHeadOffset,
 			queryStride, kvStride,
 		)
-	}
-}
-
-func computeHeadScores(
-	queryView, keyView []float32,
-	qIndex, seqK, headDim int,
-	queryHeadOffset, kvHeadOffset int,
-	queryStride, kvStride int,
-	scale float32,
-	scores []float32,
-	config MultiHeadAttentionConfig,
-) {
-	for kIndex := range seqK {
-		var dot float32
-
-		for d := range headDim {
-			dot += queryView[qIndex*queryStride+queryHeadOffset+d] *
-				keyView[kIndex*kvStride+kvHeadOffset+d]
-		}
-
-		score := dot * scale
-
-		if config.Causal && kIndex > qIndex {
-			score = float32(math.Inf(-1))
-		}
-
-		if config.WindowSize > 0 && qIndex-kIndex >= config.WindowSize {
-			score = float32(math.Inf(-1))
-		}
-
-		if config.ALiBiSlope != 0 {
-			score += config.ALiBiSlope * float32(kIndex-qIndex)
-		}
-
-		scores[kIndex] = score
-	}
-}
-
-func stableSoftmaxRow(scores []float32) {
-	maximum := scores[0]
-
-	for _, value := range scores[1:] {
-		if value > maximum {
-			maximum = value
-		}
-	}
-
-	var sum float32
-
-	for index, value := range scores {
-		shifted := float32(math.Exp(float64(value - maximum)))
-		scores[index] = shifted
-		sum += shifted
-	}
-
-	if sum == 0 {
-		return
-	}
-
-	for index := range scores {
-		scores[index] /= sum
-	}
-}
-
-func writeHeadOutput(
-	scores, valueView, outView []float32,
-	qIndex, seqK, headDim int,
-	queryHeadOffset, kvHeadOffset int,
-	queryStride, kvStride int,
-) {
-	for d := range headDim {
-		var sum float32
-
-		for kIndex := range seqK {
-			sum += scores[kIndex] *
-				valueView[kIndex*kvStride+kvHeadOffset+d]
-		}
-
-		outView[qIndex*queryStride+queryHeadOffset+d] = sum
 	}
 }

@@ -24,6 +24,497 @@ to the commit message that promotes it.
 
 ## Session test output
 
+### 2026-05-19 Metal binary math expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `pow`
+- `atan2`
+- `mod`
+
+The kernels extend the existing vectorized binary elementwise Metal
+path. `float32` uses `float4` math directly; `float16` promotes to
+`float4` for transcendental computation and stores back to `half4`;
+`bfloat16` uses the existing `ushort4` storage conversion path and
+computes in `float4`. The direct f32 backend methods and the registry
+path both resolve through the same Metal pipeline cache.
+
+The Metal dense registry now has 453 verified signatures: 111
+elementwise, 42 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 33 transformer attention/embedding/masking/positional,
+24 vision, 30 optimizer, 3 quantization, 9 sampling, 3 dropout, 18
+loss, 33 reduction, 9 math utility, 6 checkpoint/tokenizer/model
+utility signatures, 24 research VSA/predictive-coding signatures, 12
+active inference signatures, 21 Hawkes/Markov signatures, 21 causal
+inference signatures, and 27 physics signatures.
+
+Focused binary math parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestBackend_(Pow|Atan2|Mod)Float32|TestKernelRegistry_MetalBinaryFloat32|TestKernelRegistry_MetalBinaryElementwiseDTypes' -count=1 -v
+=== RUN   TestBackend_PowFloat32
+--- PASS: TestBackend_PowFloat32 (0.07s)
+    --- PASS: TestBackend_PowFloat32/N=1 (0.04s)
+    --- PASS: TestBackend_PowFloat32/N=7 (0.00s)
+    --- PASS: TestBackend_PowFloat32/N=64 (0.00s)
+    --- PASS: TestBackend_PowFloat32/N=1024 (0.00s)
+    --- PASS: TestBackend_PowFloat32/N=8192 (0.00s)
+=== RUN   TestBackend_Atan2Float32
+--- PASS: TestBackend_Atan2Float32 (0.01s)
+    --- PASS: TestBackend_Atan2Float32/N=1 (0.01s)
+    --- PASS: TestBackend_Atan2Float32/N=7 (0.00s)
+    --- PASS: TestBackend_Atan2Float32/N=64 (0.00s)
+    --- PASS: TestBackend_Atan2Float32/N=1024 (0.00s)
+    --- PASS: TestBackend_Atan2Float32/N=8192 (0.00s)
+=== RUN   TestBackend_ModFloat32
+--- PASS: TestBackend_ModFloat32 (0.01s)
+    --- PASS: TestBackend_ModFloat32/N=1 (0.01s)
+    --- PASS: TestBackend_ModFloat32/N=7 (0.00s)
+    --- PASS: TestBackend_ModFloat32/N=64 (0.00s)
+    --- PASS: TestBackend_ModFloat32/N=1024 (0.00s)
+    --- PASS: TestBackend_ModFloat32/N=8192 (0.00s)
+=== RUN   TestKernelRegistry_MetalBinaryFloat32
+--- PASS: TestKernelRegistry_MetalBinaryFloat32 (0.01s)
+    --- PASS: TestKernelRegistry_MetalBinaryFloat32/pow (0.00s)
+    --- PASS: TestKernelRegistry_MetalBinaryFloat32/atan2 (0.00s)
+    --- PASS: TestKernelRegistry_MetalBinaryFloat32/mod (0.00s)
+=== RUN   TestKernelRegistry_MetalBinaryElementwiseDTypes
+--- PASS: TestKernelRegistry_MetalBinaryElementwiseDTypes (0.04s)
+    --- PASS: TestKernelRegistry_MetalBinaryElementwiseDTypes/f16/pow (0.00s)
+    --- PASS: TestKernelRegistry_MetalBinaryElementwiseDTypes/f16/atan2 (0.00s)
+    --- PASS: TestKernelRegistry_MetalBinaryElementwiseDTypes/f16/mod (0.00s)
+    --- PASS: TestKernelRegistry_MetalBinaryElementwiseDTypes/bf16/pow (0.00s)
+    --- PASS: TestKernelRegistry_MetalBinaryElementwiseDTypes/bf16/atan2 (0.00s)
+    --- PASS: TestKernelRegistry_MetalBinaryElementwiseDTypes/bf16/mod (0.00s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.789s
+```
+
+Metal binary math benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunBinaryFloat32/(pow|atan2|mod)/N=8192|BenchmarkKernel_RunElementwiseDTypes/(f16|bf16)/(pow|atan2|mod)' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunBinaryFloat32/pow/N=8192-16         	   10156	    113205 ns/op	 868.37 MB/s	    1298 B/op	       4 allocs/op
+BenchmarkKernel_RunBinaryFloat32/atan2/N=8192-16       	   12074	     99679 ns/op	 986.21 MB/s	    1296 B/op	       4 allocs/op
+BenchmarkKernel_RunBinaryFloat32/mod/N=8192-16         	   11515	    103119 ns/op	 953.31 MB/s	    1296 B/op	       4 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/pow-16        	   11944	    100496 ns/op	 489.09 MB/s	    1296 B/op	       4 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/atan2-16      	   12225	     97881 ns/op	 502.16 MB/s	    1296 B/op	       4 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/f16/mod-16        	   10000	    103331 ns/op	 475.67 MB/s	    1296 B/op	       4 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/pow-16       	   10000	    100703 ns/op	 488.09 MB/s	    1296 B/op	       4 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/atan2-16     	   10000	    100598 ns/op	 488.60 MB/s	    1296 B/op	       4 allocs/op
+BenchmarkKernel_RunElementwiseDTypes/bf16/mod-16       	   10000	    100553 ns/op	 488.82 MB/s	    1296 B/op	       4 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	10.506s
+```
+
+Full Metal package sweep:
+
+```
+go test ./pkg/backend/device/metal/... -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	8.994s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.615s
+```
+
+### 2026-05-19 Metal shape/indexing expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `gather`
+- `scatter`
+- `where`
+- `masked_fill`
+- `transpose`
+
+`gather`, `scatter`, and `transpose` use dtype-native storage movement
+and report invalid index/permutation data through the asynchronous
+Metal command completion path. `scatter` preserves last-update-wins
+semantics for duplicate indices by scanning update rows in reverse from
+each output element. `where` and `masked_fill` use vectorized
+`uint4`/`ushort4` lanes with packed-bool mask reads. The validated
+shape dispatch path allocates its validation buffer only for kernels
+that can report index errors, keeping the existing contiguous movement
+kernels on their unvalidated dispatch path.
+
+The Metal dense registry now has 444 verified signatures: 102
+elementwise, 42 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 33 transformer attention/embedding/masking/positional,
+24 vision, 30 optimizer, 3 quantization, 9 sampling, 3 dropout, 18
+loss, 33 reduction, 9 math utility, 6 checkpoint/tokenizer/model
+utility signatures, 24 research VSA/predictive-coding signatures, 12
+active inference signatures, 21 Hawkes/Markov signatures, 21 causal
+inference signatures, and 27 physics signatures.
+
+Focused shape/index parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalShapeIndexDTypes' -count=1 -v
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f32
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f32/N=1
+
+  Given Metal f32 shape-index tensors ✔✔✔✔✔
+
+
+5 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f32/N=7
+
+  Given Metal f32 shape-index tensors ✔✔✔✔✔
+
+
+10 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f32/N=64
+
+  Given Metal f32 shape-index tensors ✔✔✔✔✔
+
+
+15 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f32/N=1024
+
+  Given Metal f32 shape-index tensors ✔✔✔✔✔
+
+
+20 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f32/N=8192
+
+  Given Metal f32 shape-index tensors ✔✔✔✔✔
+
+
+25 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f16
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f16/N=1
+
+  Given Metal f16 shape-index tensors ✔✔✔✔✔
+
+
+30 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f16/N=7
+
+  Given Metal f16 shape-index tensors ✔✔✔✔✔
+
+
+35 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f16/N=64
+
+  Given Metal f16 shape-index tensors ✔✔✔✔✔
+
+
+40 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f16/N=1024
+
+  Given Metal f16 shape-index tensors ✔✔✔✔✔
+
+
+45 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/f16/N=8192
+
+  Given Metal f16 shape-index tensors ✔✔✔✔✔
+
+
+50 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/bf16
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/bf16/N=1
+
+  Given Metal bf16 shape-index tensors ✔✔✔✔✔
+
+
+55 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/bf16/N=7
+
+  Given Metal bf16 shape-index tensors ✔✔✔✔✔
+
+
+60 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/bf16/N=64
+
+  Given Metal bf16 shape-index tensors ✔✔✔✔✔
+
+
+65 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/bf16/N=1024
+
+  Given Metal bf16 shape-index tensors ✔✔✔✔✔
+
+
+70 total assertions
+
+=== RUN   TestKernelRegistry_MetalShapeIndexDTypes/bf16/N=8192
+
+  Given Metal bf16 shape-index tensors ✔✔✔✔✔
+
+
+75 total assertions
+
+--- PASS: TestKernelRegistry_MetalShapeIndexDTypes (0.13s)
+    --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f32 (0.05s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f32/N=1 (0.05s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f32/N=7 (0.00s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f32/N=64 (0.00s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f32/N=1024 (0.00s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f32/N=8192 (0.01s)
+    --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f16 (0.02s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f16/N=1 (0.01s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f16/N=7 (0.00s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f16/N=64 (0.00s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f16/N=1024 (0.00s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/f16/N=8192 (0.01s)
+    --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/bf16 (0.02s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/bf16/N=1 (0.01s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/bf16/N=7 (0.00s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/bf16/N=64 (0.00s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/bf16/N=1024 (0.00s)
+        --- PASS: TestKernelRegistry_MetalShapeIndexDTypes/bf16/N=8192 (0.00s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	1.332s
+```
+
+Metal shape/index benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunShapeIndexDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunShapeIndexDTypes/f32/gather-16  	   10846	    108839 ns/op	2710.36 MB/s	    1377 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/f32/scatter-16 	     945	   1270364 ns/op	 335.45 MB/s	    1400 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/f32/where-16   	   11774	    101471 ns/op	 978.88 MB/s	    1400 B/op	       6 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/f32/masked_fill-16         	   12050	     99701 ns/op	 667.63 MB/s	    1400 B/op	       6 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/f32/transpose-16           	   10000	    107756 ns/op	3649.24 MB/s	    1544 B/op	      15 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/f16/gather-16              	   10000	    105000 ns/op	1560.76 MB/s	    1376 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/f16/scatter-16             	     951	   1297101 ns/op	 176.90 MB/s	    1400 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/f16/where-16               	   11764	    102159 ns/op	 491.16 MB/s	    1400 B/op	       6 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/f16/masked_fill-16         	   10000	    101245 ns/op	 333.79 MB/s	    1400 B/op	       6 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/f16/transpose-16           	   10000	    106006 ns/op	1854.81 MB/s	    1544 B/op	      15 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/bf16/gather-16             	   10000	    104222 ns/op	1572.41 MB/s	    1376 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/bf16/scatter-16            	     960	   1323088 ns/op	 173.42 MB/s	    1400 B/op	       7 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/bf16/where-16              	   12003	     99798 ns/op	 502.78 MB/s	    1400 B/op	       6 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/bf16/masked_fill-16        	   12109	     98813 ns/op	 342.00 MB/s	    1400 B/op	       6 allocs/op
+BenchmarkKernel_RunShapeIndexDTypes/bf16/transpose-16          	   10000	    106899 ns/op	1839.31 MB/s	    1544 B/op	      15 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	17.492s
+```
+
+Full Metal package sweep:
+
+```
+go test ./pkg/backend/device/metal/... -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	8.703s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.215s
+```
+
+### 2026-05-18 Metal dropout and utility expansion
+
+This adds real Metal device kernels for:
+
+- `dropout` across `float32`, `float16`, and `bfloat16`
+- `checkpoint_encode_float32`
+- `checkpoint_decode_float32`
+- `tokenizer_pack_int32`
+- `weight_freeze_mask` across `float32`, `float16`, and `bfloat16`
+
+`dropout` uses indexed GPU xorshift generation with jump-ahead constants
+so each element receives the same deterministic random stream as the
+scalar default seed (`0xc0ffee`) without serializing RNG state.
+Checkpoint encode/decode preserve the exact little-endian wire format:
+rank, byte length, dimensions, then raw float32 bits. Tokenizer pack
+uses vectorized int32 movement. Weight-freeze masking reads packed-bool
+masks and writes dtype-native gradient storage.
+
+The Metal dense registry now has 429 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 33 transformer attention/embedding/masking/positional,
+24 vision, 30 optimizer, 3 quantization, 9 sampling, 3 dropout, 18
+loss, 33 reduction, 9 math utility, 6 checkpoint/tokenizer/model
+utility signatures, 24 research VSA/predictive-coding signatures, 12
+active inference signatures, 21 Hawkes/Markov signatures, 21 causal
+inference signatures, and 27 physics signatures.
+
+Focused dropout parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalDropoutDTypes' -count=1 -v
+=== RUN   TestKernelRegistry_MetalDropoutDTypes
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f32
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f32/N=1
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f32/N=7
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f32/N=64
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f32/N=1024
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f32/N=8192
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f16
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f16/N=1
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f16/N=7
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f16/N=64
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f16/N=1024
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/f16/N=8192
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/bf16
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/bf16/N=1
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/bf16/N=7
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/bf16/N=64
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/bf16/N=1024
+=== RUN   TestKernelRegistry_MetalDropoutDTypes/bf16/N=8192
+--- PASS: TestKernelRegistry_MetalDropoutDTypes (0.22s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.708s
+```
+
+Focused utility parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalUtilityKernels' -count=1 -v
+=== RUN   TestKernelRegistry_MetalUtilityKernels
+=== RUN   TestKernelRegistry_MetalUtilityKernels/N=1
+=== RUN   TestKernelRegistry_MetalUtilityKernels/N=7
+=== RUN   TestKernelRegistry_MetalUtilityKernels/N=64
+=== RUN   TestKernelRegistry_MetalUtilityKernels/N=1024
+=== RUN   TestKernelRegistry_MetalUtilityKernels/N=8192
+--- PASS: TestKernelRegistry_MetalUtilityKernels (0.10s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.456s
+```
+
+Metal dropout benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunDropoutDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunDropoutDTypes/f32-16         	    1226	    922057 ns/op	  71.08 MB/s	    1346 B/op	       6 allocs/op
+BenchmarkKernel_RunDropoutDTypes/f16-16         	    1291	    965005 ns/op	  33.96 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunDropoutDTypes/bf16-16        	    1258	    963687 ns/op	  34.00 MB/s	    1336 B/op	       6 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	4.058s
+```
+
+Metal utility benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunUtilityKernels' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunUtilityKernels/checkpoint_encode_float32-16         	   10756	    106017 ns/op	 618.17 MB/s	    1361 B/op	       9 allocs/op
+BenchmarkKernel_RunUtilityKernels/checkpoint_decode_float32-16         	   10000	    102285 ns/op	 640.72 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunUtilityKernels/tokenizer_pack_int32-16              	   10000	    104061 ns/op	 629.78 MB/s	    1336 B/op	       6 allocs/op
+BenchmarkKernel_RunUtilityKernels/weight_freeze_mask/f32-16            	   10000	    104404 ns/op	 627.72 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunUtilityKernels/weight_freeze_mask/f16-16            	   10000	    102184 ns/op	 320.68 MB/s	    1320 B/op	       5 allocs/op
+BenchmarkKernel_RunUtilityKernels/weight_freeze_mask/bf16-16           	   10000	    102170 ns/op	 320.72 MB/s	    1320 B/op	       5 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	6.581s
+```
+
+Full Metal package sweep:
+
+```
+go test ./pkg/backend/device/metal/... -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	8.356s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.693s
+```
+
+### 2026-05-18 Metal sampling expansion
+
+This adds real Metal device kernels across `float32`, `float16`, and
+`bfloat16` storage for:
+
+- `greedy_sample`
+- `topk_sample`
+- `topp_sample`
+
+`greedy_sample` uses a row-local GPU reduction with stable first-index
+tie handling. `topk_sample` and `topp_sample` initialize device
+scratch, run a GPU bitonic sort over dtype-loaded logits, and perform
+the seeded draw on the device. The registered kernels use the current
+scalar default sampling configuration (`temperature=1`, full top-k,
+full top-p, seed `0xfeedface`) and write an `int32` token id. The
+parity fixtures check all three storage dtypes at
+`N ∈ {1, 7, 64, 1024, 8192}`.
+
+The Metal dense registry now has 420 verified signatures: 102
+elementwise, 27 shape, 6 matmul, 3 softmax, 6 normalization, 12
+projection/model, 33 transformer attention/embedding/masking/positional,
+24 vision, 30 optimizer, 3 quantization, 9 sampling, 18 loss, 33
+reduction, 9 math utility, 24 research VSA/predictive-coding
+signatures, 12 active inference signatures, 21 Hawkes/Markov
+signatures, 21 causal inference signatures, and 27 physics signatures.
+
+Focused parity command:
+
+```
+go test ./pkg/backend/device/metal -run 'TestKernelRegistry_MetalSamplingDTypes' -count=1 -v
+=== RUN   TestKernelRegistry_MetalSamplingDTypes
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f32
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f32/N=1
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f32/N=7
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f32/N=64
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f32/N=1024
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f32/N=8192
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f16
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f16/N=1
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f16/N=7
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f16/N=64
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f16/N=1024
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/f16/N=8192
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/bf16
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/bf16/N=1
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/bf16/N=7
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/bf16/N=64
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/bf16/N=1024
+=== RUN   TestKernelRegistry_MetalSamplingDTypes/bf16/N=8192
+--- PASS: TestKernelRegistry_MetalSamplingDTypes (0.07s)
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	0.760s
+```
+
+Metal sampling benchmark output:
+
+```
+go test ./pkg/backend/device/metal -run '^$' -bench 'BenchmarkKernel_RunSamplingDTypes' -benchmem -count=1
+goos: darwin
+goarch: arm64
+pkg: github.com/theapemachine/caramba/pkg/backend/device/metal
+cpu: Apple M4 Max
+BenchmarkKernel_RunSamplingDTypes/f32/greedy_sample-16         	    9531	    126352 ns/op	 259.34 MB/s	    1657 B/op	       7 allocs/op
+BenchmarkKernel_RunSamplingDTypes/f32/topk_sample-16           	    1286	    930719 ns/op	  35.21 MB/s	    2400 B/op	      14 allocs/op
+BenchmarkKernel_RunSamplingDTypes/f32/topp_sample-16           	    1281	    943160 ns/op	  34.74 MB/s	    2400 B/op	      14 allocs/op
+BenchmarkKernel_RunSamplingDTypes/f16/greedy_sample-16         	   10612	    112670 ns/op	 145.42 MB/s	    1656 B/op	       7 allocs/op
+BenchmarkKernel_RunSamplingDTypes/f16/topk_sample-16           	    1392	    904372 ns/op	  18.12 MB/s	    2400 B/op	      14 allocs/op
+BenchmarkKernel_RunSamplingDTypes/f16/topp_sample-16           	    1297	    938374 ns/op	  17.46 MB/s	    2400 B/op	      14 allocs/op
+BenchmarkKernel_RunSamplingDTypes/bf16/greedy_sample-16        	   10363	    115135 ns/op	 142.30 MB/s	    1656 B/op	       7 allocs/op
+BenchmarkKernel_RunSamplingDTypes/bf16/topk_sample-16          	    1369	    909602 ns/op	  18.01 MB/s	    2400 B/op	      14 allocs/op
+BenchmarkKernel_RunSamplingDTypes/bf16/topp_sample-16          	    1282	    936134 ns/op	  17.50 MB/s	    2400 B/op	      14 allocs/op
+PASS
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	11.218s
+```
+
+Full Metal package sweep:
+
+```
+go test ./pkg/backend/device/metal/... -count=1
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	8.850s
+ok  	github.com/theapemachine/caramba/pkg/backend/device/metal/internal/metallibgen	0.457s
+```
+
 ### 2026-05-18 Metal quantum-hydro physics expansion
 
 This adds real Metal device kernels across `float32`, `float16`, and
@@ -2525,7 +3016,7 @@ the regression bar.
 | 1     | dtype consolidation           | verified       |
 | 2     | SIMD conversion kernels       | scalar verified; SIMD `.s` deferred |
 | 3     | HostBackend end-to-end        | verified       |
-| 4     | Metal device backend          | 411 verified dense elementwise + shape + matmul + softmax + normalization + projection/model + transformer attention/embedding/masking/positional + vision + optimizer + quantization + loss + reduction + math utility + research VSA/predictive-coding + active-inference + Hawkes/Markov + causal + physics signatures |
+| 4     | Metal device backend          | 453 verified dense elementwise + shape/indexing + matmul + softmax + normalization + projection/model + transformer attention/embedding/masking/positional + vision + optimizer + quantization + sampling + dropout + loss + reduction + math utility + checkpoint/tokenizer/model utility + research VSA/predictive-coding + active-inference + Hawkes/Markov + causal + physics signatures |
 | 5     | CUDA device backend           | skeleton + stub returning ErrNeedsPlatformSetup |
 | 6     | XLA device backend            | skeleton + stub returning ErrNeedsPlatformSetup |
 | 7     | legacy kill                   | in progress — first compute/runtime/transport slice migrated |
@@ -2633,6 +3124,7 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_projection_darwin.m` | verified |
 | `pkg/backend/device/metal/bridge_shape_common_darwin.m` | verified    |
 | `pkg/backend/device/metal/bridge_shape_darwin.m` | verified           |
+| `pkg/backend/device/metal/bridge_shape_index_darwin.m` | verified     |
 | `pkg/backend/device/metal/bridge_shape_private.h` | verified          |
 | `pkg/backend/device/metal/bridge_softmax_darwin.m` | verified       |
 | `pkg/backend/device/metal/bridge_transformer_darwin.m` | verified |
@@ -2650,6 +3142,12 @@ invalidation works.
 | `pkg/backend/device/metal/bridge_optimizer_private.h` | verified    |
 | `pkg/backend/device/metal/bridge_quantization_darwin.m` | verified |
 | `pkg/backend/device/metal/bridge_reduction_darwin.m` | verified    |
+| `pkg/backend/device/metal/bridge_sampling_common_darwin.m` | verified |
+| `pkg/backend/device/metal/bridge_sampling_darwin.m` | verified |
+| `pkg/backend/device/metal/bridge_sampling_private.h` | verified |
+| `pkg/backend/device/metal/bridge_sampling_sort_darwin.m` | verified |
+| `pkg/backend/device/metal/bridge_dropout_darwin.m` | verified |
+| `pkg/backend/device/metal/bridge_utility_darwin.m` | verified |
 | `pkg/backend/device/metal/unary_darwin.go`    | verified              |
 | `pkg/backend/device/metal/elementwise_float32.metal` | verified       |
 | `pkg/backend/device/metal/elementwise_float16.metal` | verified       |
@@ -2660,6 +3158,10 @@ invalidation works.
 | `pkg/backend/device/metal/optimizer.metal`    | verified              |
 | `pkg/backend/device/metal/projection.metal`   | verified              |
 | `pkg/backend/device/metal/quantization.metal` | verified              |
+| `pkg/backend/device/metal/sampling.metal`     | verified              |
+| `pkg/backend/device/metal/dropout.metal`      | verified              |
+| `pkg/backend/device/metal/dropout_jump.h`     | verified              |
+| `pkg/backend/device/metal/utility.metal`      | verified              |
 | `pkg/backend/device/metal/shape.metal`        | verified              |
 | `pkg/backend/device/metal/softmax.metal`      | verified              |
 | `pkg/backend/device/metal/transformer.metal`  | verified              |
@@ -2715,6 +3217,22 @@ invalidation works.
 | `pkg/backend/device/metal/quantization_darwin.go` | verified          |
 | `pkg/backend/device/metal/quantization_test.go` | verified            |
 | `pkg/backend/device/metal/quantization_bench_test.go` | verified      |
+| `pkg/backend/device/metal/sampling.go`        | verified              |
+| `pkg/backend/device/metal/sampling_darwin.go` | verified              |
+| `pkg/backend/device/metal/sampling_test.go`   | verified              |
+| `pkg/backend/device/metal/sampling_expected_test.go` | verified      |
+| `pkg/backend/device/metal/sampling_bench_test.go` | verified          |
+| `pkg/backend/device/metal/dropout.go`         | verified              |
+| `pkg/backend/device/metal/dropout_darwin.go`  | verified              |
+| `pkg/backend/device/metal/dropout_test.go`    | verified              |
+| `pkg/backend/device/metal/dropout_expected_test.go` | verified       |
+| `pkg/backend/device/metal/dropout_bench_test.go` | verified           |
+| `pkg/backend/device/metal/utility.go`         | verified              |
+| `pkg/backend/device/metal/utility_darwin.go`  | verified              |
+| `pkg/backend/device/metal/utility_stub.go`    | verified              |
+| `pkg/backend/device/metal/utility_test.go`    | verified              |
+| `pkg/backend/device/metal/utility_expected_test.go` | verified       |
+| `pkg/backend/device/metal/utility_bench_test.go` | verified           |
 | `pkg/backend/device/metal/reduction.go`       | verified              |
 | `pkg/backend/device/metal/reduction_darwin.go` | verified             |
 | `pkg/backend/device/metal/reduction_types.go` | verified              |
@@ -2745,6 +3263,12 @@ invalidation works.
 | `pkg/backend/device/metal/vision_bench_test.go` | verified            |
 | `pkg/backend/device/metal/shape.go`           | verified              |
 | `pkg/backend/device/metal/shape_darwin.go`    | verified              |
+| `pkg/backend/device/metal/shape_index_darwin.go` | verified           |
+| `pkg/backend/device/metal/shape_index_validate_darwin.go` | verified |
+| `pkg/backend/device/metal/shape_index_stub.go` | verified             |
+| `pkg/backend/device/metal/shape_index_test.go` | verified             |
+| `pkg/backend/device/metal/shape_index_expected_test.go` | verified    |
+| `pkg/backend/device/metal/shape_index_bench_test.go` | verified       |
 | `pkg/backend/device/metal/shape_validate_darwin.go` | verified       |
 | `pkg/backend/device/metal/shape_test.go`      | verified              |
 | `pkg/backend/device/metal/shape_test_helpers.go` | verified          |

@@ -395,22 +395,6 @@ func dotFloat32Scalar(left, right []float32) float32 {
 	return sum
 }
 
-func assertFloat32SlicesNear(t *testing.T, got, want []float32, tolerance float64) {
-	t.Helper()
-
-	if len(got) != len(want) {
-		t.Fatalf("length mismatch got=%d want=%d", len(got), len(want))
-	}
-
-	for index := range got {
-		diff := math.Abs(float64(got[index] - want[index]))
-
-		if diff > tolerance {
-			t.Fatalf("lane %d got=%g want=%g diff=%g", index, got[index], want[index], diff)
-		}
-	}
-}
-
 func TestPoolWindowMaxFloat32NativeParity(t *testing.T) {
 	channel := []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9}
 	got := poolWindowMaxFloat32Native(channel, 3, 0, 2, 0, 2)
@@ -671,5 +655,47 @@ func BenchmarkPool2DGeneralFloat32Native(b *testing.B) {
 			batch, channels, inH, inW, outH, outW,
 			true,
 		)
+	}
+}
+
+func BenchmarkFlashAttentionRowNative(b *testing.B) {
+	seqQ, seqK, depth, valueDim := 64, 128, 64, 64
+	query := randFloat32Slice(seqQ*depth, 0xFA0)
+	key := randFloat32Slice(seqK*depth, 0xFB0)
+	value := randFloat32Slice(seqK*valueDim, 0xFC0)
+	output := make([]float32, seqQ*valueDim)
+	scale := float32(1.0 / math.Sqrt(float64(depth)))
+
+	b.ResetTimer()
+
+	for b.Loop() {
+		for rowIndex := range seqQ {
+			runFlashAttentionRowNative(
+				query, key, value, output,
+				rowIndex, seqK, depth, valueDim, scale, false,
+			)
+		}
+	}
+}
+
+func BenchmarkPoolWindowMaxFloat32Native(b *testing.B) {
+	channel := randFloat32Slice(64*64, 0xB000)
+
+	b.ResetTimer()
+
+	for b.Loop() {
+		_ = poolWindowMaxFloat32Native(channel, 64, 4, 12, 8, 20)
+	}
+}
+
+func BenchmarkConvTranspose2dTapNEONAsm(b *testing.B) {
+	input := randFloat32Slice(64*64, 0xC070)
+	output := make([]float32, 64)
+	weightVal := float32(0.5)
+
+	b.ResetTimer()
+
+	for b.Loop() {
+		convTranspose2dTapNEONAsm(&output[0], weightVal, &input[32], 64)
 	}
 }

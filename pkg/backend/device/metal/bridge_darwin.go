@@ -325,6 +325,9 @@ const (
 	metalBinaryFloat32Le
 	metalBinaryFloat32Gt
 	metalBinaryFloat32Ge
+	metalBinaryFloat32Pow
+	metalBinaryFloat32Atan2
+	metalBinaryFloat32Mod
 )
 
 func runMetalBinaryFloat32(

@@ -19,15 +19,85 @@ func init() {
 }
 
 func registerMetalShapeKernels(storageDType dtype.DType) {
+	registerMetalGatherKernel(storageDType)
+	registerMetalScatterKernel(storageDType)
+	registerMetalWhereKernel(storageDType)
+	registerMetalMaskedFillKernel(storageDType)
 	registerMetalUnaryShapeKernel("last_token", storageDType, runMetalLastToken)
 	registerMetalUnaryShapeKernel("merge_heads", storageDType, runMetalMergeHeads)
 	registerMetalUnaryShapeKernel("split_heads", storageDType, runMetalSplitHeads)
 	registerMetalUnaryShapeKernel("reshape", storageDType, runMetalReshape)
+	registerMetalTransposeKernel(storageDType)
 	registerMetalUnaryShapeKernel("transpose2d", storageDType, runMetalTranspose2D)
 	registerMetalUnaryShapeKernel("upsample_nearest2d", storageDType, runMetalUpsampleNearest2D)
 	registerMetalBinaryShapeKernel("concat", storageDType, runMetalConcat)
 	registerMetalSplit2Kernel(storageDType)
 	registerMetalViewAsHeadsKernel(storageDType)
+}
+
+func registerMetalGatherKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "gather",
+		Signature: kernels.Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{storageDType, dtype.Int32},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runGatherShape(runMetalGather),
+	})
+}
+
+func registerMetalScatterKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "scatter",
+		Signature: kernels.Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{storageDType, dtype.Int32, storageDType},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runScatterShape(runMetalScatter),
+	})
+}
+
+func registerMetalWhereKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "where",
+		Signature: kernels.Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{dtype.Bool, storageDType, storageDType},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runWhereShape(runMetalWhere),
+	})
+}
+
+func registerMetalMaskedFillKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "masked_fill",
+		Signature: kernels.Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{storageDType, dtype.Bool, storageDType},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runMaskedFillShape(runMetalMaskedFill),
+	})
+}
+
+func registerMetalTransposeKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "transpose",
+		Signature: kernels.Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{storageDType, dtype.Int32},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runViewAsHeadsShape(runMetalTranspose),
+	})
 }
 
 func registerMetalUnaryShapeKernel(
@@ -135,5 +205,53 @@ func runViewAsHeadsShape(
 		}
 
 		return run(args[0], args[1], args[2])
+	}
+}
+
+func runGatherShape(
+	run func(tensor.Tensor, tensor.Tensor, tensor.Tensor) error,
+) func(...tensor.Tensor) error {
+	return func(args ...tensor.Tensor) error {
+		if len(args) != 3 {
+			return tensor.ErrShapeMismatch
+		}
+
+		return run(args[0], args[1], args[2])
+	}
+}
+
+func runScatterShape(
+	run func(tensor.Tensor, tensor.Tensor, tensor.Tensor, tensor.Tensor) error,
+) func(...tensor.Tensor) error {
+	return func(args ...tensor.Tensor) error {
+		if len(args) != 4 {
+			return tensor.ErrShapeMismatch
+		}
+
+		return run(args[0], args[1], args[2], args[3])
+	}
+}
+
+func runWhereShape(
+	run func(tensor.Tensor, tensor.Tensor, tensor.Tensor, tensor.Tensor) error,
+) func(...tensor.Tensor) error {
+	return func(args ...tensor.Tensor) error {
+		if len(args) != 4 {
+			return tensor.ErrShapeMismatch
+		}
+
+		return run(args[0], args[1], args[2], args[3])
+	}
+}
+
+func runMaskedFillShape(
+	run func(tensor.Tensor, tensor.Tensor, tensor.Tensor, tensor.Tensor) error,
+) func(...tensor.Tensor) error {
+	return func(args ...tensor.Tensor) error {
+		if len(args) != 4 {
+			return tensor.ErrShapeMismatch
+		}
+
+		return run(args[0], args[1], args[2], args[3])
 	}
 }

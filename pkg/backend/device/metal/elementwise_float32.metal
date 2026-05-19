@@ -136,6 +136,21 @@ struct GeFloat32 {
     float operator()(float left, float right) const { return left >= right ? 1.0 : 0.0; }
 };
 
+struct PowFloat32 {
+    float4 operator()(float4 left, float4 right) const { return pow(left, right); }
+    float operator()(float left, float right) const { return pow(left, right); }
+};
+
+struct Atan2Float32 {
+    float4 operator()(float4 left, float4 right) const { return atan2(left, right); }
+    float operator()(float left, float right) const { return atan2(left, right); }
+};
+
+struct ModFloat32 {
+    float4 operator()(float4 left, float4 right) const { return fmod(left, right); }
+    float operator()(float left, float right) const { return fmod(left, right); }
+};
+
 struct ReluFloat32 {
     float4 operator()(float4 value) const { return max(value, float4(0.0)); }
     float operator()(float value) const { return max(value, 0.0); }
@@ -303,6 +318,36 @@ kernel void ge_float32(
     uint index [[thread_position_in_grid]]
 ) {
     binary_float32(leftVector, rightVector, outVector, count, index, GeFloat32{});
+}
+
+kernel void pow_float32(
+    device const float4* leftVector [[buffer(0)]],
+    device const float4* rightVector [[buffer(1)]],
+    device float4* outVector [[buffer(2)]],
+    constant uint& count [[buffer(3)]],
+    uint index [[thread_position_in_grid]]
+) {
+    binary_float32(leftVector, rightVector, outVector, count, index, PowFloat32{});
+}
+
+kernel void atan2_float32(
+    device const float4* leftVector [[buffer(0)]],
+    device const float4* rightVector [[buffer(1)]],
+    device float4* outVector [[buffer(2)]],
+    constant uint& count [[buffer(3)]],
+    uint index [[thread_position_in_grid]]
+) {
+    binary_float32(leftVector, rightVector, outVector, count, index, Atan2Float32{});
+}
+
+kernel void mod_float32(
+    device const float4* leftVector [[buffer(0)]],
+    device const float4* rightVector [[buffer(1)]],
+    device float4* outVector [[buffer(2)]],
+    constant uint& count [[buffer(3)]],
+    uint index [[thread_position_in_grid]]
+) {
+    binary_float32(leftVector, rightVector, outVector, count, index, ModFloat32{});
 }
 
 kernel void relu_float32(

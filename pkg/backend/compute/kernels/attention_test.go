@@ -25,27 +25,21 @@ func TestAttentionFloat32(t *testing.T) {
 		valueView, _ := value.Float32Native()
 
 		// Query row 0 strongly matches key 0; row 1 strongly matches key 1.
-		for index, value := range []float32{
+		copy(queryView, []float32{
 			1, 0, 0,
 			0, 1, 0,
-		} {
-			queryView[index] = value
-		}
+		})
 
-		for index, value := range []float32{
+		copy(keyView, []float32{
 			10, 0, 0,
 			0, 10, 0,
-		} {
-			keyView[index] = value
-		}
+		})
 
 		// Distinct values per key.
-		for index, value := range []float32{
+		copy(valueView, []float32{
 			1, 2, 3, 4,
 			5, 6, 7, 8,
-		} {
-			valueView[index] = value
-		}
+		})
 
 		kernel, _ := Default.Lookup("attention", Signature{
 			Layout:  tensor.LayoutDense,

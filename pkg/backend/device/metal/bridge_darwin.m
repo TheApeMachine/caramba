@@ -98,6 +98,9 @@ static const char* metal_binary_float32_kernel_name(int operation) {
     case MetalBinaryFloat32Le: return "le_float32";
     case MetalBinaryFloat32Gt: return "gt_float32";
     case MetalBinaryFloat32Ge: return "ge_float32";
+    case MetalBinaryFloat32Pow: return "pow_float32";
+    case MetalBinaryFloat32Atan2: return "atan2_float32";
+    case MetalBinaryFloat32Mod: return "mod_float32";
     default:
         return NULL;
     }

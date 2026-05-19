@@ -18,9 +18,7 @@ func TestRoPEFloat32(t *testing.T) {
 		out, _ := tensor.NewZeroed(shape, dtype.Float32)
 
 		inputView, _ := input.Float32Native()
-		for index, value := range []float32{1, 2, 3, 4} {
-			inputView[index] = value
-		}
+		copy(inputView, []float32{1, 2, 3, 4})
 
 		err := RunRoPEFloat32(DefaultRoPEConfig(), input, out)
 		convey.So(err, convey.ShouldBeNil)
@@ -185,9 +183,7 @@ func TestInt8DequantRoundTrip(t *testing.T) {
 		dequantized, _ := tensor.NewZeroed(shape, dtype.Float32)
 
 		floatsView, _ := floats.Float32Native()
-		for index, value := range []float32{0, 1, -1, 50} {
-			floatsView[index] = value
-		}
+		copy(floatsView, []float32{0, 1, -1, 50})
 
 		err := QuantInt8Float32(DequantInt8Config{Scale: 1, ZeroPoint: 0}, floats, quantized)
 		convey.So(err, convey.ShouldBeNil)
@@ -213,9 +209,7 @@ func TestConv2DIdentityKernel(t *testing.T) {
 		out, _ := tensor.NewZeroed(outShape, dtype.Float32)
 
 		inputView, _ := input.Float32Native()
-		for index, value := range []float32{1, 2, 3, 4, 5, 6, 7, 8, 9} {
-			inputView[index] = value
-		}
+		copy(inputView, []float32{1, 2, 3, 4, 5, 6, 7, 8, 9})
 
 		weightView, _ := weight.Float32Native()
 		weightView[0] = 1
@@ -273,9 +267,7 @@ func TestSparseCSRMatMul(t *testing.T) {
 		rightShape, _ := tensor.NewShape([]int{4, 2})
 		right, _ := tensor.NewZeroed(rightShape, dtype.Float32)
 		rightView, _ := right.Float32Native()
-		for index, value := range []float32{1, 2, 3, 4, 5, 6, 7, 8} {
-			rightView[index] = value
-		}
+		copy(rightView, []float32{1, 2, 3, 4, 5, 6, 7, 8})
 
 		// Output: 3×2.
 		outShape, _ := tensor.NewShape([]int{3, 2})

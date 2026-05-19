@@ -1,0 +1,14 @@
+/**
+ * Bento Grid Styles
+ * Automatically creates a bento-style layout with varied item sizes
+ * Items are sized based on their position to create an organic, playful layout
+ */
+
+/* Base bento grid - 6 columns with dense packing */
+.grid-bento {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-flow: dense;
+    gap: 1rem;
+    width: 100%;
+}

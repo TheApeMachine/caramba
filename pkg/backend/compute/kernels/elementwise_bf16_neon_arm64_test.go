@@ -4,7 +4,6 @@ package kernels
 
 import (
 	"fmt"
-	"math/rand"
 	"testing"
 
 	"github.com/theapemachine/caramba/pkg/dtype"
@@ -17,31 +16,6 @@ exactly the same thing in Go. Both are bit-exact, so the test
 asserts bitwise equality on the underlying uint16 representation
 at every lane.
 */
-
-func randomBF16Slice(n int, seed int64) []dtype.BF16 {
-	rng := rand.New(rand.NewSource(seed))
-	out := make([]dtype.BF16, n)
-
-	for index := range out {
-		// Span a wide dynamic range so the kernel exercises normal
-		// values across multiple exponents.
-		bits := uint32(rng.Uint32())
-		// Clamp sign+exponent so we don't accidentally generate NaN
-		// or denormal that confuses the parity check.
-		bits = bits & 0x7FFFFFFF
-		// Push into normal range: bias the exponent into [0x3E, 0x42]
-		// (~roughly [0.25, 8.0]) to avoid inf and tiny denormals.
-		bits = (bits & 0x807FFFFF) | (uint32(0x3E+rng.Intn(5)) << 23)
-		// Random sign:
-		if rng.Intn(2) == 0 {
-			bits |= 0x80000000
-		}
-
-		out[index] = dtype.BF16(bits >> 16)
-	}
-
-	return out
-}
 
 func TestAddBFloat16NEONAsmParity(t *testing.T) {
 	for _, n := range elementwiseParityNs {

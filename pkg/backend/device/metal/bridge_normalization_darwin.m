@@ -231,3 +231,142 @@ int metal_dispatch_rmsnorm(
         }
     );
 }
+
+int metal_dispatch_groupnorm(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef scaleRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t channels,
+    uint32_t spatial,
+    uint32_t groups,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    if (inputRef == NULL || scaleRef == NULL || biasRef == NULL || outRef == NULL) {
+        metal_norm_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    char kernelName[128];
+    int nameCode = metal_norm_kernel_name(
+        kernelName, sizeof(kernelName), "groupnorm", elementDType, status
+    );
+
+    if (nameCode != 0) {
+        return nameCode;
+    }
+
+    return metal_norm_dispatch(
+        contextRef,
+        kernelName,
+        batch * groups,
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)inputRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)scaleRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)biasRef offset:0 atIndex:2];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)outRef offset:0 atIndex:3];
+            [encoder setBytes:&channels length:sizeof(channels) atIndex:4];
+            [encoder setBytes:&spatial length:sizeof(spatial) atIndex:5];
+            [encoder setBytes:&groups length:sizeof(groups) atIndex:6];
+        }
+    );
+}
+
+int metal_dispatch_instancenorm(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef scaleRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t channels,
+    uint32_t spatial,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    if (inputRef == NULL || scaleRef == NULL || biasRef == NULL || outRef == NULL) {
+        metal_norm_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    char kernelName[128];
+    int nameCode = metal_norm_kernel_name(
+        kernelName, sizeof(kernelName), "instancenorm", elementDType, status
+    );
+
+    if (nameCode != 0) {
+        return nameCode;
+    }
+
+    return metal_norm_dispatch(
+        contextRef,
+        kernelName,
+        batch * channels,
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)inputRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)scaleRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)biasRef offset:0 atIndex:2];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)outRef offset:0 atIndex:3];
+            [encoder setBytes:&channels length:sizeof(channels) atIndex:4];
+            [encoder setBytes:&spatial length:sizeof(spatial) atIndex:5];
+        }
+    );
+}
+
+int metal_dispatch_batchnorm_eval(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef scaleRef,
+    MetalBufferRef biasRef,
+    MetalBufferRef meanRef,
+    MetalBufferRef varianceRef,
+    MetalBufferRef outRef,
+    uint32_t batch,
+    uint32_t channels,
+    uint32_t spatial,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    if (inputRef == NULL || scaleRef == NULL || biasRef == NULL ||
+        meanRef == NULL || varianceRef == NULL || outRef == NULL) {
+        metal_norm_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    char kernelName[128];
+    int nameCode = metal_norm_kernel_name(
+        kernelName, sizeof(kernelName), "batchnorm_eval", elementDType, status
+    );
+
+    if (nameCode != 0) {
+        return nameCode;
+    }
+
+    return metal_norm_dispatch(
+        contextRef,
+        kernelName,
+        batch * channels,
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)inputRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)scaleRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)biasRef offset:0 atIndex:2];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)meanRef offset:0 atIndex:3];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)varianceRef offset:0 atIndex:4];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)outRef offset:0 atIndex:5];
+            [encoder setBytes:&channels length:sizeof(channels) atIndex:6];
+            [encoder setBytes:&spatial length:sizeof(spatial) atIndex:7];
+        }
+    );
+}

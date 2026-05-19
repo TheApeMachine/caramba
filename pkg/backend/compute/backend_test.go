@@ -6,20 +6,45 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
+	"github.com/theapemachine/caramba/pkg/backend/compute/runtime"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/dtype"
 	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
+	"github.com/theapemachine/caramba/pkg/qpool"
 )
+
+func TestParseDeviceID(test *testing.T) {
+	Convey("Given device id strings", test, func() {
+		Convey("It should accept host aliases", func() {
+			deviceID, err := ParseDeviceID("cpu")
+			So(err, ShouldBeNil)
+			So(deviceID, ShouldResemble, DeviceID{Location: tensor.Host, Index: 0})
+		})
+
+		Convey("It should parse indexed gpu ids", func() {
+			deviceID, err := ParseDeviceID("metal:2")
+			So(err, ShouldBeNil)
+			So(deviceID, ShouldResemble, DeviceID{Location: tensor.Metal, Index: 2})
+		})
+	})
+}
 
 func TestNewBackend(test *testing.T) {
 	Convey("Given a compute backend", test, func() {
-		backend, err := NewBackend(CPU)
+		backend, err := NewBackend(context.Background(), nil)
 		So(err, ShouldBeNil)
+
 		defer func() {
 			So(backend.Close(), ShouldBeNil)
 		}()
 
-		Convey("It should expose runner execution through the backend facade", func() {
+		Convey("It should always discover host", func() {
+			hostDevice, err := backend.Device(DeviceID{Location: tensor.Host, Index: 0})
+			So(err, ShouldBeNil)
+			So(hostDevice.Executor(), ShouldNotBeNil)
+		})
+
+		Convey("It should route execution to a selected device", func() {
 			shape, err := tensor.NewShape([]int{2})
 			So(err, ShouldBeNil)
 
@@ -28,17 +53,21 @@ func TestNewBackend(test *testing.T) {
 			input.SetMetadata("values", []float64{1, 2})
 			graph.AddNode(input)
 
-			outputs, err := backend.Execute(context.Background(), graph, []*ir.Node{input})
+			outputs, err := backend.Execute(
+				context.Background(),
+				graph,
+				[]*ir.Node{input},
+				DeviceID{Location: tensor.Host, Index: 0},
+			)
 			So(err, ShouldBeNil)
 
 			values, err := tensorFloat64Values(outputs["input"])
 			So(err, ShouldBeNil)
 			So(values, ShouldResemble, []float64{1, 2})
 			So(outputs["input"].Close(), ShouldBeNil)
-			So(backend.Location(), ShouldEqual, tensor.Host)
 		})
 
-		Convey("It should route facade execution through backend lowering", func() {
+		Convey("It should reject precision mismatch before the executor runs", func() {
 			shape, err := tensor.NewShape([]int{2})
 			So(err, ShouldBeNil)
 
@@ -49,18 +78,25 @@ func TestNewBackend(test *testing.T) {
 			graph.AddNode(input)
 			graph.AddNode(relu)
 
-			testRunner := &backendTestRunner{location: tensor.Metal}
-			backend := &Backend{Runner: testRunner}
+			routed := backendWithDevice(&Device{
+				id:       DeviceID{Location: tensor.Metal, Index: 0},
+				memory:   tensor.NewHostBackend(),
+				executor: &testExecutor{location: tensor.Metal},
+			})
 
-			outputs, err := backend.Execute(context.Background(), graph, []*ir.Node{relu})
+			outputs, err := routed.Execute(
+				context.Background(),
+				graph,
+				[]*ir.Node{relu},
+				DeviceID{Location: tensor.Metal, Index: 0},
+			)
 
 			So(outputs, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "requires F64 precision")
-			So(testRunner.called, ShouldBeFalse)
 		})
 
-		Convey("It should call the runner after explicit Metal precision opt-in", func() {
+		Convey("It should call the executor after explicit precision opt-in", func() {
 			shape, err := tensor.NewShape([]int{2})
 			So(err, ShouldBeNil)
 
@@ -78,79 +114,74 @@ func TestNewBackend(test *testing.T) {
 			graph.AddNode(input)
 			graph.AddNode(relu)
 
-			testRunner := &backendTestRunner{location: tensor.Metal}
-			backend := &Backend{Runner: testRunner}
+			testExec := &testExecutor{location: tensor.Metal}
+			routed := backendWithDevice(&Device{
+				id:       DeviceID{Location: tensor.Metal, Index: 0},
+				memory:   tensor.NewHostBackend(),
+				executor: testExec,
+			})
 
-			outputs, err := backend.Execute(context.Background(), graph, []*ir.Node{relu})
+			outputs, err := routed.Execute(
+				context.Background(),
+				graph,
+				[]*ir.Node{relu},
+				DeviceID{Location: tensor.Metal, Index: 0},
+			)
 
 			So(err, ShouldBeNil)
-			So(testRunner.called, ShouldBeTrue)
+			So(testExec.called, ShouldBeTrue)
 			So(outputs["relu"], ShouldNotBeNil)
 			So(outputs["relu"].Close(), ShouldBeNil)
 		})
 
-		Convey("It should reject unsupported backend types instead of silently using CPU", func() {
-			backend, err := NewBackend(BackendType(255))
-
-			So(backend, ShouldBeNil)
+		Convey("It should reject unknown device ids", func() {
+			_, err := backend.Device(DeviceID{Location: tensor.CUDA, Index: 9})
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "unsupported backend type")
+			So(err.Error(), ShouldContainSubstring, "device not found")
 		})
 	})
 }
 
-func BenchmarkNewBackend(benchmark *testing.B) {
-	for benchmark.Loop() {
-		backend, err := NewBackend(CPU)
-		if err != nil {
-			benchmark.Fatal(err)
-		}
+func TestNewBackend_Heterogeneous(test *testing.T) {
+	Convey("Given discovery on a host with optional accelerators", test, func() {
+		backend, err := NewBackend(context.Background(), qpool.NewQ(context.Background(), 1, 1, nil))
+		So(err, ShouldBeNil)
 
-		_ = backend.Close()
+		defer func() {
+			So(backend.Close(), ShouldBeNil)
+		}()
+
+		Convey("It should keep host resident while metal memory is present", func() {
+			locations := make([]tensor.Location, 0, len(backend.Devices()))
+
+			for _, device := range backend.Devices() {
+				locations = append(locations, device.Location())
+			}
+
+			So(locations, ShouldContain, tensor.Host)
+
+			if len(locations) > 1 {
+				So(locations, ShouldContain, tensor.Metal)
+			}
+		})
+	})
+}
+
+func backendWithDevice(device *Device) *Backend {
+	return &Backend{
+		ctx:     context.Background(),
+		devices: []*Device{device},
+		byID:    map[DeviceID]*Device{device.id: device},
+		mesh:    buildMesh([]*Device{device}),
 	}
 }
 
-func BenchmarkBackend_Execute(benchmark *testing.B) {
-	backend, err := NewBackend(CPU)
-	if err != nil {
-		benchmark.Fatal(err)
-	}
-
-	defer func() {
-		_ = backend.Close()
-	}()
-
-	shape, err := tensor.NewShape([]int{2})
-	if err != nil {
-		benchmark.Fatal(err)
-	}
-
-	graph := ir.NewGraph()
-	input := ir.NewNode("input", ir.OpInput, shape)
-	input.SetMetadata("values", []float64{1, 2})
-	graph.AddNode(input)
-
-	benchmark.ResetTimer()
-
-	for benchmark.Loop() {
-		outputs, err := backend.Execute(context.Background(), graph, []*ir.Node{input})
-
-		if err != nil {
-			benchmark.Fatal(err)
-		}
-
-		if err := outputs["input"].Close(); err != nil {
-			benchmark.Fatal(err)
-		}
-	}
-}
-
-type backendTestRunner struct {
+type testExecutor struct {
 	location tensor.Location
 	called   bool
 }
 
-func (testRunner *backendTestRunner) Execute(
+func (testExecutor *testExecutor) Execute(
 	ctx context.Context,
 	graph *ir.Graph,
 	targets []*ir.Node,
@@ -159,12 +190,12 @@ func (testRunner *backendTestRunner) Execute(
 		return nil, err
 	}
 
-	testRunner.called = true
+	testExecutor.called = true
 	outputs := make(map[string]tensor.Tensor, len(targets))
-	hostBackend := tensor.NewHostBackend()
+	hostMemory := tensor.NewHostBackend()
 
 	for _, target := range targets {
-		value, err := hostBackend.Upload(
+		value, err := hostMemory.Upload(
 			target.Shape(),
 			dtype.Float64,
 			dtypeconvert.Float64ToBytes(make([]float64, target.Shape().Len())),
@@ -180,6 +211,16 @@ func (testRunner *backendTestRunner) Execute(
 	return outputs, nil
 }
 
+func (testExecutor *testExecutor) Location() tensor.Location {
+	return testExecutor.location
+}
+
+func (testExecutor *testExecutor) Close() error {
+	return nil
+}
+
+var _ runtime.Executor = (*testExecutor)(nil)
+
 func tensorFloat64Values(value tensor.Tensor) ([]float64, error) {
 	sourceDType, bytes, err := value.RawBytes()
 
@@ -188,12 +229,4 @@ func tensorFloat64Values(value tensor.Tensor) ([]float64, error) {
 	}
 
 	return dtypeconvert.BytesToFloat64(sourceDType, bytes)
-}
-
-func (testRunner *backendTestRunner) Location() tensor.Location {
-	return testRunner.location
-}
-
-func (testRunner *backendTestRunner) Close() error {
-	return nil
 }

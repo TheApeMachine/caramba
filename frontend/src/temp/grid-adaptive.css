@@ -1,0 +1,168 @@
+/**
+ * Adaptive Grid Styles
+ * Inspired by "always great grid" - uses quantity queries to optimize layout
+ * based on the actual number of items in the grid
+ */
+
+/* Base adaptive grid class */
+.grid-adaptive {
+    display: grid;
+    gap: var(--grid-gap, 1.5rem);
+    width: 100%;
+}
+
+/* Quantity queries for optimal layouts based on number of items */
+
+/* 1 item: full width */
+.grid-adaptive:has(> :last-child:nth-child(1)) {
+    grid-template-columns: 1fr;
+}
+
+/* 2 items: 2 columns on mobile and up */
+.grid-adaptive:has(> :last-child:nth-child(2)) {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+/* 3 items: 2 columns, first spans 2 */
+.grid-adaptive:has(> :last-child:nth-child(3)) {
+    grid-template-columns: repeat(2, 1fr);
+}
+.grid-adaptive:has(> :last-child:nth-child(3)) > :first-child {
+    grid-column: span 2;
+}
+
+/* 4 items: 2x2 grid */
+.grid-adaptive:has(> :last-child:nth-child(4)) {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+/* 5 items: 2 columns, first spans 2 */
+.grid-adaptive:has(> :last-child:nth-child(5)) {
+    grid-template-columns: repeat(2, 1fr);
+}
+.grid-adaptive:has(> :last-child:nth-child(5)) > :first-child {
+    grid-column: span 2;
+}
+
+/* 6 items: 2x3 or 3x2 grid depending on viewport */
+.grid-adaptive:has(> :last-child:nth-child(6)) {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+/* 7+ items: first item featured (2x2), rest in grid */
+.grid-adaptive:has(> :last-child:nth-child(n + 7)) {
+    grid-template-columns: repeat(2, 1fr);
+}
+.grid-adaptive:has(> :last-child:nth-child(n + 7)) > :first-child {
+    grid-column: span 2;
+    grid-row: span 2;
+}
+
+/* Medium screens: optimize layouts */
+@media (min-width: 768px) {
+    /* 3 items: 3 columns on md+ */
+    .grid-adaptive:has(> :last-child:nth-child(3)) {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    .grid-adaptive:has(> :last-child:nth-child(3)) > :first-child {
+        grid-column: span 1;
+    }
+
+    /* 4 items: 2x2 */
+    .grid-adaptive:has(> :last-child:nth-child(4)) {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* 5 items: 3 columns, adjust spans */
+    .grid-adaptive:has(> :last-child:nth-child(5)) {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    .grid-adaptive:has(> :last-child:nth-child(5)) > :first-child {
+        grid-column: span 1;
+    }
+
+    /* 6 items: 3x2 grid */
+    .grid-adaptive:has(> :last-child:nth-child(6)) {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    /* 7-9 items: 3 columns */
+    .grid-adaptive:has(> :last-child:nth-child(n + 7)):has(
+            > :last-child:nth-child(-n + 9)
+        ) {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    /* 10+ items: 4 columns */
+    .grid-adaptive:has(> :last-child:nth-child(n + 10)) {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* Large screens: optimize for more columns */
+@media (min-width: 1024px) {
+    /* 4 items: 4 columns */
+    .grid-adaptive:has(> :last-child:nth-child(4)) {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    /* 6 items: 3x2 */
+    .grid-adaptive:has(> :last-child:nth-child(6)) {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    /* 8 items: 4x2 */
+    .grid-adaptive:has(> :last-child:nth-child(8)) {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    /* 9 items: 3x3 */
+    .grid-adaptive:has(> :last-child:nth-child(9)) {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    .grid-adaptive:has(> :last-child:nth-child(9)) > :first-child {
+        grid-column: span 1;
+        grid-row: span 1;
+    }
+
+    /* 10-12 items: 4 columns */
+    .grid-adaptive:has(> :last-child:nth-child(n + 10)):has(
+            > :last-child:nth-child(-n + 12)
+        ) {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* Extra large screens: maximize space usage */
+@media (min-width: 1280px) {
+    /* 6 items: 3x2 or 6x1 depending on preference */
+    .grid-adaptive:has(> :last-child:nth-child(6)) {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    /* 12 items: 6x2 or 4x3 */
+    .grid-adaptive:has(> :last-child:nth-child(12)) {
+        grid-template-columns: repeat(6, 1fr);
+    }
+    .grid-adaptive:has(> :last-child:nth-child(12)) > :first-child {
+        grid-column: span 1;
+        grid-row: span 1;
+    }
+}
+
+/* Container query support (requires @container on parent) */
+@container (min-width: 768px) {
+    .grid-adaptive-container {
+        grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
+    }
+}
+
+@container (orientation: landscape) {
+    /* Optimize for landscape orientation */
+    .grid-adaptive-container:has(> :last-child:nth-child(n + 3)):has(
+            > :last-child:nth-child(-n + 6)
+        ) {
+        grid-auto-flow: column;
+        grid-auto-columns: 1fr;
+    }
+}

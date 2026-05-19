@@ -5,7 +5,6 @@ import (
 	"math"
 	"sync"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/kv"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 )
@@ -20,7 +19,6 @@ type Dict struct {
 	OpShape             []int
 	TargetShape         []int
 	Inputs              [][]float64
-	KVCache             *kv.Cache
 	Source              string
 	File                string
 	Cache               string

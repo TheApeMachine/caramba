@@ -2,6 +2,7 @@
 
 #include "_cgo_export.h"
 #include <stdio.h>
+#include <string.h>
 
 static void metal_shape_status_clear(MetalStatus* status) {
     if (status == NULL) {
@@ -62,27 +63,61 @@ int metal_shape_kernel_name(
 
 static void metal_shape_complete(
     uint64_t completionToken,
-    id<MTLCommandBuffer> completedBuffer
+    id<MTLCommandBuffer> completedBuffer,
+    id<MTLBuffer> validationBuffer
 ) {
     @autoreleasepool {
-        if ([completedBuffer status] == MTLCommandBufferStatusCompleted) {
-            metalCommandCompleted(completionToken, 0, "");
+        if ([completedBuffer status] != MTLCommandBufferStatusCompleted) {
+            NSError* error = [completedBuffer error];
+            NSString* message = @"Metal shape command buffer failed";
+
+            if (error != nil) {
+                message = [NSString
+                    stringWithFormat:@"%@: %@",
+                    message,
+                    [error localizedDescription]
+                ];
+            }
+
+            metalCommandCompleted(completionToken, -5, (char*)[message UTF8String]);
             return;
         }
 
-        NSError* error = [completedBuffer error];
-        NSString* message = @"Metal shape command buffer failed";
+        if (validationBuffer != nil) {
+            uint32_t* validation = (uint32_t*)[validationBuffer contents];
 
-        if (error != nil) {
-            message = [NSString
-                stringWithFormat:@"%@: %@",
-                message,
-                [error localizedDescription]
-            ];
+            if (validation != NULL && validation[0] != 0) {
+                metalCommandCompleted(
+                    completionToken,
+                    -8,
+                    "Metal shape kernel reported invalid index data"
+                );
+                return;
+            }
         }
 
-        metalCommandCompleted(completionToken, -5, (char*)[message UTF8String]);
+        metalCommandCompleted(completionToken, 0, "");
     }
+}
+
+static id<MTLBuffer> metal_shape_validation_buffer(
+    MetalContext* context,
+    MetalStatus* status
+) {
+    id<MTLDevice> device = (__bridge id<MTLDevice>)context->device;
+    id<MTLBuffer> validationBuffer = [device
+        newBufferWithLength:sizeof(uint32_t)
+        options:MTLResourceStorageModeShared
+    ];
+
+    if (validationBuffer == nil) {
+        metal_shape_status_set(status, -9, "validation buffer allocation failed");
+        return nil;
+    }
+
+    uint32_t zero = 0;
+    memcpy([validationBuffer contents], &zero, sizeof(zero));
+    return validationBuffer;
 }
 
 int metal_shape_dispatch(
@@ -91,7 +126,7 @@ int metal_shape_dispatch(
     NSUInteger threadCount,
     uint64_t completionToken,
     MetalStatus* status,
-    void (^encode)(id<MTLComputeCommandEncoder> encoder)
+    MetalShapeEncodeBlock encode
 ) {
     @autoreleasepool {
         metal_shape_status_clear(status);
@@ -144,7 +179,80 @@ int metal_shape_dispatch(
         ];
         [encoder endEncoding];
         [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedBuffer) {
-            metal_shape_complete(completionToken, completedBuffer);
+            metal_shape_complete(completionToken, completedBuffer, nil);
+        }];
+        [commandBuffer commit];
+
+        return 0;
+    }
+}
+
+int metal_shape_dispatch_validated(
+    MetalDeviceRef contextRef,
+    const char* kernelName,
+    NSUInteger threadCount,
+    uint64_t completionToken,
+    MetalStatus* status,
+    MetalShapeValidatedEncodeBlock encode
+) {
+    @autoreleasepool {
+        metal_shape_status_clear(status);
+
+        MetalContext* context = (MetalContext*)contextRef;
+
+        if (context == NULL || context->queue == NULL) {
+            metal_shape_status_set(status, -1, "invalid Metal context");
+            return -1;
+        }
+
+        if (threadCount == 0) {
+            metal_shape_status_set(status, -6, "empty Metal shape dispatch");
+            return -6;
+        }
+
+        id<MTLComputePipelineState> pipeline = metal_get_pipeline(context, kernelName, status);
+
+        if (pipeline == nil) {
+            return status != NULL && status->code != 0 ? status->code : -7;
+        }
+
+        id<MTLBuffer> validationBuffer = metal_shape_validation_buffer(context, status);
+
+        if (validationBuffer == nil) {
+            return -9;
+        }
+
+        id<MTLCommandQueue> queue = (__bridge id<MTLCommandQueue>)context->queue;
+        id<MTLCommandBuffer> commandBuffer = [queue commandBuffer];
+
+        if (commandBuffer == nil) {
+            metal_shape_status_set(status, -3, "commandBuffer returned nil");
+            return -3;
+        }
+
+        id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+
+        if (encoder == nil) {
+            metal_shape_status_set(status, -4, "computeCommandEncoder returned nil");
+            return -4;
+        }
+
+        [encoder setComputePipelineState:pipeline];
+        encode(encoder, validationBuffer);
+
+        NSUInteger threadWidth = [pipeline threadExecutionWidth];
+
+        if (threadWidth == 0) {
+            threadWidth = 1;
+        }
+
+        [encoder
+            dispatchThreads:MTLSizeMake(threadCount, 1, 1)
+            threadsPerThreadgroup:MTLSizeMake(threadWidth, 1, 1)
+        ];
+        [encoder endEncoding];
+        [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedBuffer) {
+            metal_shape_complete(completionToken, completedBuffer, validationBuffer);
         }];
         [commandBuffer commit];
 

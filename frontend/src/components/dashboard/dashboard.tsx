@@ -211,8 +211,12 @@ export const Dashboard = ({ widgets, initialLayout }: DashboardProps = {}) => {
 								const widgetEl = (
 									<Widget
 										descriptor={byKind.get(widget.kind)}
-										onRemove={editing ? () => removeWidget(widget.id) : undefined}
-										overlay={editing ? <ResizeHandle widgetId={widget.id} /> : null}
+										onRemove={
+											editing ? () => removeWidget(widget.id) : undefined
+										}
+										overlay={
+											editing ? <ResizeHandle widgetId={widget.id} /> : null
+										}
 									/>
 								);
 

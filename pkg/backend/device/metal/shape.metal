@@ -17,6 +17,192 @@ static inline void copy_tail_bytes(
     }
 }
 
+static inline bool shape_mask_bit(device const uchar* mask, uint index) {
+    return ((mask[index >> 3u] >> (index & 7u)) & 1u) != 0u;
+}
+
+static inline void shape_set_error(device atomic_uint* errorFlag) {
+    atomic_store_explicit(errorFlag, 1u, memory_order_relaxed);
+}
+
+template <typename Storage>
+static inline void gather_kernel(
+    device const Storage* source,
+    device const int* indices,
+    device Storage* out,
+    device atomic_uint* errorFlag,
+    constant uint& sourceRows,
+    constant uint& inner,
+    constant uint& outRows,
+    uint index
+) {
+    uint count = outRows * inner;
+
+    if (index >= count) {
+        return;
+    }
+
+    uint outRow = index / inner;
+    uint col = index - outRow * inner;
+    int sourceRow = indices[outRow];
+
+    if (sourceRow < 0 || uint(sourceRow) >= sourceRows) {
+        shape_set_error(errorFlag);
+        return;
+    }
+
+    out[index] = source[uint(sourceRow) * inner + col];
+}
+
+template <typename Storage>
+static inline void scatter_kernel(
+    device const Storage* target,
+    device const int* indices,
+    device const Storage* updates,
+    device Storage* out,
+    device atomic_uint* errorFlag,
+    constant uint& targetRows,
+    constant uint& inner,
+    constant uint& updateRows,
+    uint index
+) {
+    uint count = targetRows * inner;
+
+    if (index >= count) {
+        return;
+    }
+
+    uint targetRow = index / inner;
+    uint col = index - targetRow * inner;
+    Storage value = target[index];
+
+    for (int updateRow = int(updateRows) - 1; updateRow >= 0; updateRow--) {
+        int indexedRow = indices[uint(updateRow)];
+
+        if (indexedRow < 0 || uint(indexedRow) >= targetRows) {
+            shape_set_error(errorFlag);
+            continue;
+        }
+
+        if (uint(indexedRow) == targetRow) {
+            value = updates[uint(updateRow) * inner + col];
+            break;
+        }
+    }
+
+    out[index] = value;
+}
+
+template <typename Scalar, typename Vec>
+static inline void where_kernel(
+    device const uchar* mask,
+    device const Vec* positive,
+    device const Vec* negative,
+    device Vec* out,
+    constant uint& count,
+    uint index
+) {
+    uint base = index * 4u;
+    Vec positiveValues = positive[index];
+    Vec negativeValues = negative[index];
+    Vec result = negativeValues;
+
+    if (base < count && shape_mask_bit(mask, base)) {
+        result.x = positiveValues.x;
+    }
+
+    if (base + 1u < count && shape_mask_bit(mask, base + 1u)) {
+        result.y = positiveValues.y;
+    }
+
+    if (base + 2u < count && shape_mask_bit(mask, base + 2u)) {
+        result.z = positiveValues.z;
+    }
+
+    if (base + 3u < count && shape_mask_bit(mask, base + 3u)) {
+        result.w = positiveValues.w;
+    }
+
+    out[index] = result;
+}
+
+template <typename Scalar, typename Vec>
+static inline void masked_fill_kernel(
+    device const Vec* input,
+    device const uchar* mask,
+    device const Scalar* scalar,
+    device Vec* out,
+    constant uint& count,
+    uint index
+) {
+    uint base = index * 4u;
+    Vec result = input[index];
+    Scalar fillValue = scalar[0];
+
+    if (base < count && shape_mask_bit(mask, base)) {
+        result.x = fillValue;
+    }
+
+    if (base + 1u < count && shape_mask_bit(mask, base + 1u)) {
+        result.y = fillValue;
+    }
+
+    if (base + 2u < count && shape_mask_bit(mask, base + 2u)) {
+        result.z = fillValue;
+    }
+
+    if (base + 3u < count && shape_mask_bit(mask, base + 3u)) {
+        result.w = fillValue;
+    }
+
+    out[index] = result;
+}
+
+template <typename Storage>
+static inline void transpose_kernel(
+    device const Storage* input,
+    device Storage* out,
+    device atomic_uint* errorFlag,
+    constant uint& rank,
+    constant uint& count,
+    constant uint* permutation,
+    constant uint* inputStrides,
+    constant uint* outStrides,
+    uint index
+) {
+    if (index >= count) {
+        return;
+    }
+
+    if (rank == 0u) {
+        shape_set_error(errorFlag);
+        return;
+    }
+
+    uint remainder = index;
+    uint outIndex = 0u;
+
+    for (uint inAxis = 0u; inAxis < rank; inAxis++) {
+        uint stride = inputStrides[inAxis];
+
+        if (stride == 0u) {
+            shape_set_error(errorFlag);
+            return;
+        }
+
+        uint coordinate = remainder / stride;
+        remainder -= coordinate * stride;
+
+        for (uint outAxis = 0u; outAxis < rank; outAxis++) {
+            if (permutation[outAxis] == inAxis) {
+                outIndex += coordinate * outStrides[outAxis];
+            }
+        }
+    }
+
+    out[outIndex] = input[index];
+}
+
 static inline void copy_bytes_kernel(
     device const uint4* inputVector,
     device uint4* outVector,
@@ -268,6 +454,96 @@ kernel void name( \
         input, out, channels, inHeight, inWidth, outHeight, outWidth, outElements, index \
     ); \
 }
+
+#define GATHER_KERNEL(name, storage) \
+kernel void name( \
+    device const storage* source [[buffer(0)]], \
+    device const int* indices [[buffer(1)]], \
+    device storage* out [[buffer(2)]], \
+    device atomic_uint* errorFlag [[buffer(3)]], \
+    constant uint& sourceRows [[buffer(4)]], \
+    constant uint& inner [[buffer(5)]], \
+    constant uint& outRows [[buffer(6)]], \
+    uint index [[thread_position_in_grid]] \
+) { \
+    gather_kernel<storage>(source, indices, out, errorFlag, sourceRows, inner, outRows, index); \
+}
+
+#define SCATTER_KERNEL(name, storage) \
+kernel void name( \
+    device const storage* target [[buffer(0)]], \
+    device const int* indices [[buffer(1)]], \
+    device const storage* updates [[buffer(2)]], \
+    device storage* out [[buffer(3)]], \
+    device atomic_uint* errorFlag [[buffer(4)]], \
+    constant uint& targetRows [[buffer(5)]], \
+    constant uint& inner [[buffer(6)]], \
+    constant uint& updateRows [[buffer(7)]], \
+    uint index [[thread_position_in_grid]] \
+) { \
+    scatter_kernel<storage>(target, indices, updates, out, errorFlag, targetRows, inner, updateRows, index); \
+}
+
+#define WHERE_KERNEL(name, scalar, vec) \
+kernel void name( \
+    device const uchar* mask [[buffer(0)]], \
+    device const vec* positive [[buffer(1)]], \
+    device const vec* negative [[buffer(2)]], \
+    device vec* out [[buffer(3)]], \
+    constant uint& count [[buffer(4)]], \
+    uint index [[thread_position_in_grid]] \
+) { \
+    where_kernel<scalar, vec>(mask, positive, negative, out, count, index); \
+}
+
+#define MASKED_FILL_KERNEL(name, scalar, vec) \
+kernel void name( \
+    device const vec* input [[buffer(0)]], \
+    device const uchar* mask [[buffer(1)]], \
+    device const scalar* fill [[buffer(2)]], \
+    device vec* out [[buffer(3)]], \
+    constant uint& count [[buffer(4)]], \
+    uint index [[thread_position_in_grid]] \
+) { \
+    masked_fill_kernel<scalar, vec>(input, mask, fill, out, count, index); \
+}
+
+#define TRANSPOSE_KERNEL(name, storage) \
+kernel void name( \
+    device const storage* input [[buffer(0)]], \
+    device storage* out [[buffer(1)]], \
+    device atomic_uint* errorFlag [[buffer(2)]], \
+    constant uint& rank [[buffer(3)]], \
+    constant uint& count [[buffer(4)]], \
+    constant uint* permutation [[buffer(5)]], \
+    constant uint* inputStrides [[buffer(6)]], \
+    constant uint* outStrides [[buffer(7)]], \
+    uint index [[thread_position_in_grid]] \
+) { \
+    transpose_kernel<storage>( \
+        input, out, errorFlag, rank, count, permutation, inputStrides, outStrides, index \
+    ); \
+}
+
+GATHER_KERNEL(gather_float32, uint)
+GATHER_KERNEL(gather_float16, ushort)
+GATHER_KERNEL(gather_bfloat16, ushort)
+
+SCATTER_KERNEL(scatter_float32, uint)
+SCATTER_KERNEL(scatter_float16, ushort)
+SCATTER_KERNEL(scatter_bfloat16, ushort)
+
+WHERE_KERNEL(where_float32, uint, uint4)
+WHERE_KERNEL(where_float16, ushort, ushort4)
+WHERE_KERNEL(where_bfloat16, ushort, ushort4)
+
+MASKED_FILL_KERNEL(masked_fill_float32, uint, uint4)
+MASKED_FILL_KERNEL(masked_fill_float16, ushort, ushort4)
+MASKED_FILL_KERNEL(masked_fill_bfloat16, ushort, ushort4)
+
+TRANSPOSE_KERNEL(transpose_float32, uint)
+TRANSPOSE_KERNEL(transpose_float16, ushort)
+TRANSPOSE_KERNEL(transpose_bfloat16, ushort)
 
 COPY_KERNEL(copy_float32)
 COPY_KERNEL(copy_float16)

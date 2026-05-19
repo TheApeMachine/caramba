@@ -5,7 +5,6 @@ import (
 	"math"
 	"math/rand"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/cpu/operation/active_inference"
 	"github.com/theapemachine/caramba/pkg/backend/compute/state"
 )
 
@@ -28,7 +27,7 @@ to balance exploration and exploitation across the available arms.
 type Bandit struct {
 	strategy  string
 	arms      []Arm
-	efe       *active_inference.ExpectedFreeEnergy
+	efe       *ExpectedFreeEnergy
 	posterior []float64
 	means     []float64
 	m2        []float64
@@ -59,7 +58,7 @@ func NewBandit(strategy string, arms []Arm, seed int64) (*Bandit, error) {
 	return &Bandit{
 		strategy:  strategy,
 		arms:      arms,
-		efe:       active_inference.NewExpectedFreeEnergy(),
+		efe:       NewExpectedFreeEnergy(),
 		posterior: posterior,
 		means:     make([]float64, len(arms)),
 		m2:        make([]float64, len(arms)),

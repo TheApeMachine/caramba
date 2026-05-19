@@ -43,6 +43,9 @@ static const char* metal_binary_operation_name(int operation) {
     case MetalBinaryFloat32Le: return "le";
     case MetalBinaryFloat32Gt: return "gt";
     case MetalBinaryFloat32Ge: return "ge";
+    case MetalBinaryFloat32Pow: return "pow";
+    case MetalBinaryFloat32Atan2: return "atan2";
+    case MetalBinaryFloat32Mod: return "mod";
     default: return NULL;
     }
 }

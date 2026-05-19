@@ -1,458 +1,419 @@
-import { cva, type VariantProps } from "class-variance-authority";
-import {
-	type HTMLMotionProps,
-	type Transition,
-	motion,
-} from "motion/react";
+import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-const springPanel: Transition = {
-	type: "spring",
-	stiffness: 380,
-	damping: 32,
-	mass: 0.7,
-};
-const easeFast: Transition = { duration: 0.18, ease: [0.22, 1, 0.36, 1] };
+const colsClasses = Array.from(
+    { length: 12 },
+    (_, i) => `grid-cols-${i + 1}`
+).concat("grid-cols-none");
 
-type AppearVariant =
-	| "fade"
-	| "fadeUp"
-	| "fadeDown"
-	| "scaleIn";
+const rowsClasses = Array.from(
+    { length: 6 },
+    (_, i) => `grid-rows-${i + 1}`
+).concat("grid-rows-none");
 
-const appearPresets: Record<
-	AppearVariant,
-	Pick<HTMLMotionProps<"div">, "initial" | "animate" | "exit" | "transition">
-> = {
-	fade: {
-		initial: { opacity: 0 },
-		animate: { opacity: 1 },
-		exit: { opacity: 0 },
-		transition: easeFast,
-	},
-	fadeUp: {
-		initial: { opacity: 0, y: 8 },
-		animate: { opacity: 1, y: 0 },
-		exit: { opacity: 0, y: -8 },
-		transition: easeFast,
-	},
-	fadeDown: {
-		initial: { opacity: 0, y: -8 },
-		animate: { opacity: 1, y: 0 },
-		exit: { opacity: 0, y: 8 },
-		transition: easeFast,
-	},
-	scaleIn: {
-		initial: { opacity: 0, scale: 0.9 },
-		animate: { opacity: 1, scale: 1 },
-		exit: { opacity: 0, scale: 0.9 },
-		transition: springPanel,
-	},
-};
+const gapClasses = Array.from({ length: 16 }, (_, i) => `gap-${i}`).concat(
+    "gap-0"
+);
 
-export const gridVariants = cva("grid", {
-	variants: {
-		cols: {
-			1: "grid-cols-1",
-			2: "grid-cols-2",
-			3: "grid-cols-3",
-			4: "grid-cols-4",
-			5: "grid-cols-5",
-			6: "grid-cols-6",
-			7: "grid-cols-7",
-			8: "grid-cols-8",
-			9: "grid-cols-9",
-			10: "grid-cols-10",
-			11: "grid-cols-11",
-			12: "grid-cols-12",
-			none: "grid-cols-none",
-		},
-		rows: {
-			1: "grid-rows-1",
-			2: "grid-rows-2",
-			3: "grid-rows-3",
-			4: "grid-rows-4",
-			5: "grid-rows-5",
-			6: "grid-rows-6",
-			none: "grid-rows-none",
-		},
-		flow: {
-			row: "grid-flow-row",
-			col: "grid-flow-col",
-			dense: "grid-flow-dense",
-			rowDense: "grid-flow-row-dense",
-			colDense: "grid-flow-col-dense",
-		},
-		justify: {
-			start: "justify-items-start",
-			center: "justify-items-center",
-			end: "justify-items-end",
-			stretch: "justify-items-stretch",
-		},
-		align: {
-			start: "items-start",
-			center: "items-center",
-			end: "items-end",
-			stretch: "items-stretch",
-			baseline: "items-baseline",
-		},
-		justifyContent: {
-			start: "justify-start",
-			center: "justify-center",
-			end: "justify-end",
-			between: "justify-between",
-			around: "justify-around",
-			evenly: "justify-evenly",
-		},
-		alignContent: {
-			start: "content-start",
-			center: "content-center",
-			end: "content-end",
-			between: "content-between",
-			around: "content-around",
-			evenly: "content-evenly",
-			stretch: "content-stretch",
-		},
-		gap: {
-			1: "gap-1",
-			2: "gap-2",
-			3: "gap-3",
-			4: "gap-4",
-			5: "gap-5",
-			6: "gap-6",
-			7: "gap-7",
-			8: "gap-8",
-			9: "gap-9",
-			10: "gap-10",
-			11: "gap-11",
-			12: "gap-12",
-		},
-		gapX: {
-			1: "gap-x-1",
-			2: "gap-x-2",
-			3: "gap-x-3",
-			4: "gap-x-4",
-			5: "gap-x-5",
-			6: "gap-x-6",
-			7: "gap-x-7",
-			8: "gap-x-8",
-			9: "gap-x-9",
-			10: "gap-x-10",
-			11: "gap-x-11",
-			12: "gap-x-12",
-		},
-		gapY: {
-			1: "gap-y-1",
-			2: "gap-y-2",
-			3: "gap-y-3",
-			4: "gap-y-4",
-			5: "gap-y-5",
-			6: "gap-y-6",
-			7: "gap-y-7",
-			8: "gap-y-8",
-			9: "gap-y-9",
-			10: "gap-y-10",
-			11: "gap-y-11",
-			12: "gap-y-12",
-		},
-		padding: {
-			1: "p-1",
-			2: "p-2",
-			3: "p-3",
-			4: "p-4",
-			5: "p-5",
-			6: "p-6",
-			7: "p-7",
-			8: "p-8",
-			9: "p-9",
-			10: "p-10",
-			11: "p-11",
-			12: "p-12",
-		},
-		margin: {
-			1: "m-1",
-			2: "m-2",
-			3: "m-3",
-			4: "m-4",
-			5: "m-5",
-			6: "m-6",
-			7: "m-7",
-			8: "m-8",
-			9: "m-9",
-			10: "m-10",
-			11: "m-11",
-			12: "m-12",
-		},
-		grow: {
-			grow: "grow",
-			shrink: "shrink",
-			growShrink: "grow shrink",
-		},
-		fullHeight: {
-			fullHeight: "h-full",
-		},
-		fullWidth: {
-			fullWidth: "w-full",
-		},
-	},
-});
+const padClasses = Array.from({ length: 16 }, (_, i) => `p-${i}`).concat("p-0");
 
-type GridVariantProps = VariantProps<typeof gridVariants>;
+const flowClasses = {
+    col: "grid-flow-col",
+    "col-dense": "grid-flow-col-dense",
+    dense: "grid-flow-dense",
+    row: "grid-flow-row",
+    "row-dense": "grid-flow-row-dense"
+} as const;
 
-type ColCount = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
-type RowCount = 1 | 2 | 3 | 4 | 5 | 6;
-type Spacing = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+const alignClasses = {
+    baseline: "items-baseline",
+    center: "items-center",
+    end: "items-end",
+    start: "items-start",
+    stretch: "items-stretch"
+} as const;
 
+const justifyClasses = {
+    center: "justify-items-center",
+    end: "justify-items-end",
+    start: "justify-items-start",
+    stretch: "justify-items-stretch"
+} as const;
+
+const placeClasses = {
+    around: "place-content-around",
+    between: "place-content-between",
+    center: "place-content-center",
+    end: "place-content-end",
+    evenly: "place-content-evenly",
+    start: "place-content-start",
+    stretch: "place-content-stretch"
+} as const;
+
+export type SegmentsType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+type PadType = keyof typeof padClasses;
+type GapType = keyof typeof gapClasses;
+type FlowType = keyof typeof flowClasses;
+type AlignType = keyof typeof alignClasses;
+type JustifyType = keyof typeof justifyClasses;
+type PlaceType = keyof typeof placeClasses;
+
+interface GridProps extends HTMLAttributes<HTMLDivElement> {
+    cols?: SegmentsType;
+    rows?: SegmentsType;
+    pad?: PadType;
+    gap?: GapType;
+    gapX?: GapType;
+    gapY?: GapType;
+    flow?: FlowType;
+    align?: AlignType;
+    justify?: JustifyType;
+    place?: PlaceType;
+    fullWidth?: boolean;
+    fullHeight?: boolean;
+    style?: CSSProperties;
+    responsive?: boolean;
+    autoRows?: CSSProperties["gridAutoRows"];
+}
+
+// Base Grid component
 export const Grid = ({
-	children,
-	className,
-	cols,
-	rows,
-	flow,
-	justify,
-	align,
-	justifyContent,
-	alignContent,
-	gap,
-	gapX,
-	gapY,
-	padding,
-	margin,
-	grow,
-	fullHeight,
-	fullWidth,
-	appear,
-	...props
-}: HTMLMotionProps<"div"> &
-	Omit<GridVariantProps, "fullHeight" | "fullWidth"> & {
-		cols?: ColCount | "none";
-		rows?: RowCount | "none";
-		flow?: "row" | "col" | "dense" | "rowDense" | "colDense";
-		justify?: "start" | "center" | "end" | "stretch";
-		align?: "start" | "center" | "end" | "stretch" | "baseline";
-		justifyContent?:
-			| "start"
-			| "center"
-			| "end"
-			| "between"
-			| "around"
-			| "evenly";
-		alignContent?:
-			| "start"
-			| "center"
-			| "end"
-			| "between"
-			| "around"
-			| "evenly"
-			| "stretch";
-		gap?: Spacing;
-		gapX?: Spacing;
-		gapY?: Spacing;
-		padding?: Spacing;
-		margin?: Spacing;
-		grow?: "grow" | "shrink" | "growShrink";
-		fullHeight?: boolean;
-		fullWidth?: boolean;
-		appear?: AppearVariant;
-	}) => {
-	const preset = appear ? appearPresets[appear] : undefined;
+    children,
+    className,
+    cols = 6,
+    rows,
+    pad,
+    gap,
+    gapX,
+    gapY,
+    flow = "row",
+    align = "stretch",
+    justify = "stretch",
+    place,
+    fullWidth = false,
+    fullHeight = false,
+    style,
+    responsive = true,
+    autoRows,
+    ...props
+}: GridProps) => {
+    // Generate responsive classes when responsive is true
+    const getResponsiveColsClass = () => {
+        if (!responsive || !cols)
+            return cols ? colsClasses[cols - 1] : undefined;
 
-	return (
-		<motion.div
-			className={cn(
-				gridVariants({
-					cols,
-					rows,
-					flow,
-					justify,
-					align,
-					justifyContent,
-					alignContent,
-					gap,
-					gapX,
-					gapY,
-					padding,
-					margin,
-					grow,
-					fullHeight: fullHeight ? "fullHeight" : undefined,
-					fullWidth: fullWidth ? "fullWidth" : undefined,
-				}),
-				className,
-			)}
-			{...preset}
-			{...props}
-		>
-			{children}
-		</motion.div>
-	);
+        // Responsive approach: mobile -> tablet -> desktop
+        // This ensures items display in a grid at reasonable breakpoints
+        if (cols <= 2) {
+            return "grid-cols-1 md:grid-cols-2";
+        }
+        if (cols <= 3) {
+            return "grid-cols-1 md:grid-cols-2 lg:grid-cols-3";
+        }
+        if (cols <= 4) {
+            return "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
+        }
+        if (cols <= 6) {
+            return "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6";
+        }
+        // For cols > 6
+        return "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6";
+    };
+
+    return (
+        <div
+            className={cn(
+                "grid",
+                "@container",
+                getResponsiveColsClass(),
+                rows ? rowsClasses[rows - 1] : undefined,
+                gap && gapClasses[gap],
+                pad && padClasses[pad],
+                fullWidth && "w-full",
+                fullHeight && "h-full",
+                // Make grid items stretch horizontally to fill available space
+                "*:min-w-0",
+                "*:w-full",
+                className
+            )}
+            // style={gridStyle}
+            {...props}
+        >
+            {children}
+        </div>
+    );
 };
 
-export const gridItemVariants = cva("", {
-	variants: {
-		colSpan: {
-			1: "col-span-1",
-			2: "col-span-2",
-			3: "col-span-3",
-			4: "col-span-4",
-			5: "col-span-5",
-			6: "col-span-6",
-			7: "col-span-7",
-			8: "col-span-8",
-			9: "col-span-9",
-			10: "col-span-10",
-			11: "col-span-11",
-			12: "col-span-12",
-			full: "col-span-full",
-		},
-		rowSpan: {
-			1: "row-span-1",
-			2: "row-span-2",
-			3: "row-span-3",
-			4: "row-span-4",
-			5: "row-span-5",
-			6: "row-span-6",
-			full: "row-span-full",
-		},
-		colStart: {
-			1: "col-start-1",
-			2: "col-start-2",
-			3: "col-start-3",
-			4: "col-start-4",
-			5: "col-start-5",
-			6: "col-start-6",
-			7: "col-start-7",
-			8: "col-start-8",
-			9: "col-start-9",
-			10: "col-start-10",
-			11: "col-start-11",
-			12: "col-start-12",
-			13: "col-start-13",
-			auto: "col-start-auto",
-		},
-		colEnd: {
-			1: "col-end-1",
-			2: "col-end-2",
-			3: "col-end-3",
-			4: "col-end-4",
-			5: "col-end-5",
-			6: "col-end-6",
-			7: "col-end-7",
-			8: "col-end-8",
-			9: "col-end-9",
-			10: "col-end-10",
-			11: "col-end-11",
-			12: "col-end-12",
-			13: "col-end-13",
-			auto: "col-end-auto",
-		},
-		rowStart: {
-			1: "row-start-1",
-			2: "row-start-2",
-			3: "row-start-3",
-			4: "row-start-4",
-			5: "row-start-5",
-			6: "row-start-6",
-			7: "row-start-7",
-			auto: "row-start-auto",
-		},
-		rowEnd: {
-			1: "row-end-1",
-			2: "row-end-2",
-			3: "row-end-3",
-			4: "row-end-4",
-			5: "row-end-5",
-			6: "row-end-6",
-			7: "row-end-7",
-			auto: "row-end-auto",
-		},
-		justifySelf: {
-			start: "justify-self-start",
-			center: "justify-self-center",
-			end: "justify-self-end",
-			stretch: "justify-self-stretch",
-			auto: "justify-self-auto",
-		},
-		alignSelf: {
-			start: "self-start",
-			center: "self-center",
-			end: "self-end",
-			stretch: "self-stretch",
-			baseline: "self-baseline",
-			auto: "self-auto",
-		},
-		padding: {
-			1: "p-1",
-			2: "p-2",
-			3: "p-3",
-			4: "p-4",
-			5: "p-5",
-			6: "p-6",
-			7: "p-7",
-			8: "p-8",
-			9: "p-9",
-			10: "p-10",
-			11: "p-11",
-			12: "p-12",
-		},
-	},
-});
+interface GridSpanProps extends HTMLAttributes<HTMLDivElement> {
+    cols: SegmentsType;
+    rows: SegmentsType;
+    colStart?: number;
+    rowStart?: number;
+    className?: string;
+    children: ReactNode;
+}
 
-type GridItemVariantProps = VariantProps<typeof gridItemVariants>;
+Grid.Span = ({
+    cols,
+    rows,
+    colStart,
+    rowStart,
+    className,
+    children,
+    style,
+    ...rest
+}: GridSpanProps) => {
+    return (
+        <div
+            {...rest}
+            className={cn(
+                "flex flex-col h-full",
+                // Responsive span classes - mobile (2 cols) -> tablet (4/6 cols) -> desktop (6/12 cols)
+                cols === 1 && "col-span-1",
+                cols === 2 && "col-span-2 md:col-span-2 lg:col-span-2",
+                cols === 3 && "col-span-2 md:col-span-3 lg:col-span-3",
+                cols === 4 && "col-span-2 md:col-span-4 lg:col-span-4",
+                cols === 5 && "col-span-2 md:col-span-4 lg:col-span-5",
+                cols === 6 && "col-span-2 md:col-span-4 lg:col-span-6",
+                cols === 7 && "col-span-2 md:col-span-4 lg:col-span-7",
+                cols === 8 && "col-span-2 md:col-span-4 lg:col-span-8",
+                cols === 9 && "col-span-2 md:col-span-6 lg:col-span-9",
+                cols === 10 && "col-span-2 md:col-span-6 lg:col-span-10",
+                cols === 11 && "col-span-2 md:col-span-6 lg:col-span-11",
+                cols === 12 && "col-span-2 md:col-span-6 lg:col-span-12",
+                rows === 1 && "row-span-1",
+                rows === 2 && "row-span-2",
+                rows === 3 && "row-span-3",
+                rows === 4 && "row-span-4",
+                rows === 5 && "row-span-5",
+                rows === 6 && "row-span-6",
+                className
+            )}
+            style={{
+                minHeight: 0,
+                minWidth: 0,
+                ...style
+            }}
+        >
+            {children}
+        </div>
+    );
+};
 
-type ColSpan = ColCount | "full";
-type RowSpan = RowCount | "full";
-type ColLine = ColCount | 13 | "auto";
-type RowLine = RowCount | 7 | "auto";
+// Responsive grid that adjusts columns based on min item width
+// Uses auto-fit to ensure items stretch to fill available space
+Grid.Auto = ({
+    minWidth = "16rem",
+    ...props
+}: Omit<GridProps, "cols"> & { minWidth?: string }) => (
+    <Grid
+        responsive={false}
+        className={cn(
+            `grid-cols-[repeat(auto-fit,minmax(min(${minWidth},100%),1fr))]`,
+            props.className
+        )}
+        {...props}
+    />
+);
 
-Grid.Item = ({
-	children,
-	className,
-	colSpan,
-	rowSpan,
-	colStart,
-	colEnd,
-	rowStart,
-	rowEnd,
-	justifySelf,
-	alignSelf,
-	padding,
-	appear,
-	...props
-}: HTMLMotionProps<"div"> &
-	GridItemVariantProps & {
-		colSpan?: ColSpan;
-		rowSpan?: RowSpan;
-		colStart?: ColLine;
-		colEnd?: ColLine;
-		rowStart?: RowLine;
-		rowEnd?: RowLine;
-		justifySelf?: "start" | "center" | "end" | "stretch" | "auto";
-		alignSelf?: "start" | "center" | "end" | "stretch" | "baseline" | "auto";
-		padding?: Spacing;
-		appear?: AppearVariant;
-	}) => {
-	const preset = appear ? appearPresets[appear] : undefined;
+// Smart grid that adapts layout based on number of items and container size
+// Inspired by "always great grid" - uses container queries for optimal layouts
+Grid.Smart = ({
+    minItemWidth = "250px",
+    maxCols = 6,
+    ...props
+}: Omit<GridProps, "cols"> & { minItemWidth?: string; maxCols?: number }) => (
+    <Grid
+        responsive={false}
+        className={cn(
+            // Base auto-fit grid that adapts to container
+            `grid-cols-[repeat(auto-fit,minmax(min(${minItemWidth},100%),1fr))]`,
+            // Ensure items stretch to fill space
+            "auto-cols-fr",
+            props.className
+        )}
+        style={{
+            gridTemplateColumns: `repeat(auto-fit, minmax(min(${minItemWidth}, 100%), 1fr))`,
+            ...props.style
+        }}
+        {...props}
+    />
+);
 
-	return (
-		<motion.div
-			className={cn(
-				gridItemVariants({
-					colSpan,
-					rowSpan,
-					colStart,
-					colEnd,
-					rowStart,
-					rowEnd,
-					justifySelf,
-					alignSelf,
-					padding,
-				}),
-				className,
-			)}
-			{...preset}
-			{...props}
-		>
-			{children}
-		</motion.div>
-	);
+// Common 2-column layouts
+Grid.Halves = (props: Omit<GridProps, "cols">) => (
+    <Grid cols={2} gap={props.gap || 4} {...props} />
+);
+
+// Common 3-column layouts
+Grid.Thirds = (props: Omit<GridProps, "cols">) => (
+    <Grid cols={3} gap={props.gap || 4} {...props} />
+);
+
+// Common 4-column layouts
+Grid.Quarters = (props: Omit<GridProps, "cols">) => (
+    <Grid cols={4} gap={props.gap || 4} {...props} />
+);
+
+// Sidebar + main content layout
+Grid.Sidebar = (props: Omit<GridProps, "cols"> & { sidebarWidth?: string }) => (
+    <Grid
+        cols={2}
+        className={cn(
+            props.sidebarWidth
+                ? `grid-cols-[${props.sidebarWidth}_1fr]`
+                : "grid-cols-[16rem_1fr]",
+            props.className
+        )}
+        gap={0}
+        {...props}
+    />
+);
+
+// Card grid with responsive columns
+Grid.Cards = (props: Omit<GridProps, "cols">) => (
+    <Grid
+        className={cn(
+            "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
+            props.className
+        )}
+        gap={props.gap || 4}
+        {...props}
+    />
+);
+
+// Form grid with label/input pairs
+Grid.Form = (props: Omit<GridProps, "cols" | "align">) => (
+    <Grid
+        cols={1}
+        gap={props.gap || 4}
+        className={cn("max-w-2xl", props.className)}
+        {...props}
+    />
+);
+
+// Gallery grid with square aspect ratio items
+Grid.Gallery = (props: Omit<GridProps, "cols">) => (
+    <Grid
+        className={cn(
+            "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5",
+            "*:aspect-square",
+            props.className
+        )}
+        gap={props.gap || 2}
+        {...props}
+    />
+);
+
+// Masonry-like layout (with dense packing)
+Grid.Masonry = (props: Omit<GridProps, "flow">) => (
+    <Grid flow="row-dense" gap={props.gap || 4} {...props} />
+);
+
+// Dashboard grid with defined areas
+Grid.Dashboard = (props: GridProps) => (
+    <Grid
+        className={cn(
+            "grid-cols-1 md:grid-cols-4 lg:grid-cols-6",
+            "grid-rows-[auto_1fr_auto]",
+            "min-h-screen",
+            props.className
+        )}
+        gap={props.gap || 4}
+        {...props}
+    />
+);
+
+// Feature grid for landing pages
+Grid.Features = (props: Omit<GridProps, "cols">) => (
+    <Grid
+        className={cn(
+            "grid-cols-1 md:grid-cols-2 lg:grid-cols-3",
+            "text-center",
+            props.className
+        )}
+        gap={props.gap || 8}
+        {...props}
+    />
+);
+
+// Adaptive grid that uses quantity queries to optimize layout
+// Based on "always great grid" - automatically adjusts based on number of items
+// This ensures items always fill the horizontal space optimally
+Grid.Adaptive = (props: Omit<GridProps, "cols" | "responsive">) => (
+    <Grid
+        responsive={false}
+        className={cn("grid-adaptive", props.className)}
+        {...props}
+    />
+);
+
+// Balanced grid that automatically sizes items based on content
+// Items wrap naturally and fill available space, with rows sizing to fit content height
+// Perfect for dashboards where items have varying content sizes
+// Automatically adapts to any screen size without explicit column/row values
+Grid.Balanced = ({
+    minItemWidth = "min(300px, 100%)",
+    ...props
+}: Omit<GridProps, "cols" | "responsive"> & {
+    minItemWidth?: string;
+}) => (
+    <Grid
+        responsive={false}
+        flow="row"
+        className={cn(
+            `grid-cols-[repeat(auto-fit,minmax(${minItemWidth},1fr))]`,
+            props.className
+        )}
+        style={{
+            gridAutoRows: "min-content",
+            gridTemplateColumns: `repeat(auto-fit, minmax(${minItemWidth}, 1fr))`,
+            ...props.style
+        }}
+        {...props}
+    />
+);
+
+// Bento-style grid with automatic size assignment
+// Creates a playful bento-box layout with varied item sizes
+// Responsive and adaptive to screen size with dense packing
+Grid.Bento = ({
+    cols = 6,
+    rows,
+    gap = 4,
+    pad,
+    fullWidth = true,
+    fullHeight = false,
+    className,
+    style,
+    children,
+    ...props
+}: Omit<GridProps, "responsive">) => {
+    return (
+        <div
+            className={cn(
+                "grid w-full p-4",
+                // Dense packing to fill gaps on larger screens only
+                "lg:grid-flow-dense",
+                // Responsive columns: mobile (2) -> tablet (4) -> desktop (6)
+                cols === 12 && "grid-cols-2 md:grid-cols-6 lg:grid-cols-12",
+                cols === 6 && "grid-cols-2 md:grid-cols-4 lg:grid-cols-6",
+                cols === 4 && "grid-cols-2 md:grid-cols-4",
+                cols === 3 && "grid-cols-2 md:grid-cols-3",
+                cols === 2 && "grid-cols-2",
+                cols === 1 && "grid-cols-1",
+                gap && gapClasses[gap],
+                pad && padClasses[pad],
+                fullHeight && "h-full",
+                className
+            )}
+            style={{
+                gridAutoRows: "minmax(150px, auto)",
+                ...style
+            }}
+            {...props}
+        >
+            {children}
+        </div>
+    );
 };

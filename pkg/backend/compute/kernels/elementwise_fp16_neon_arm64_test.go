@@ -4,7 +4,6 @@ package kernels
 
 import (
 	"fmt"
-	"math/rand"
 	"testing"
 
 	"github.com/theapemachine/caramba/pkg/dtype"
@@ -17,23 +16,6 @@ and (*F16).Float32() which produce IEEE 754 round-to-nearest-even
 results — same rounding mode as the hardware FCVTL/FCVTN. The two
 paths should agree bit-for-bit at the f16 representation.
 */
-
-func randomF16Slice(n int, seed int64) []dtype.F16 {
-	rng := rand.New(rand.NewSource(seed))
-	out := make([]dtype.F16, n)
-
-	for index := range out {
-		// FP16 has 5-bit exponent (bias 15), so the normal range is
-		// roughly [2^-14, 2^15]. We constrain to mid-range values so
-		// arithmetic doesn't underflow/overflow into special cases.
-		bits := uint16(rng.Uint32())
-		// Force a moderate exponent into [0x0E, 0x12] (bias 15 ≈ neutral).
-		bits = (bits & 0x83FF) | (uint16(0x0E+rng.Intn(5)) << 10)
-		out[index] = dtype.F16(bits)
-	}
-
-	return out
-}
 
 func assertF16Equal(t *testing.T, op string, scalar, neon []dtype.F16) {
 	t.Helper()

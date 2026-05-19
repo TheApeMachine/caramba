@@ -21,10 +21,10 @@ Operating on the core philosophy that **a manifest is a model**, Caramba allows 
   - [x] Attention (SDPA, MQA, GQA, sliding window, softmax)
   - [x] Convolution (Conv1D, Conv2D, Conv3D, ConvTranspose2D)
   - [x] Embedding (token, RoPE, ALiBi, tied)
-  - [x] Math (matmul, add/mul, exp/log, rmsnorm, layernorm, groupnorm, softmax, logsumexp, dropout, sin, cos)
+  - [x] Math (matmul, add/mul/pow/atan2/mod, exp/log, rmsnorm, layernorm, groupnorm, softmax, logsumexp, dropout, sin, cos)
   - [x] Pooling (avg, max, adaptive avg, adaptive max)
   - [x] Projection (linear, fused QKV, tied embedding)
-  - [x] Shape (reshape, transpose, concat, split, view_as_heads, merge_heads, last_token, nearest upsample)
+  - [x] Shape (reshape, transpose, gather, scatter, where, masked fill, concat, split, view_as_heads, merge_heads, last_token, nearest upsample)
   - [x] Masking (causal mask, apply mask)
   - [x] Active Inference (free energy, expected free energy, belief update, precision weighting)
   - [x] Energy-Based Model Blocks (Boltzmann distribution, EBM free energy, Langevin step, contrastive phase)
@@ -120,12 +120,16 @@ go build -tags "cgo xla" ./pkg/backend/device/xla/...
 The Metal backend embeds `pkg/backend/device/metal/kernels.metallib`
 from `pkg/backend/device/metal/*.metal`. Dense elementwise binary and
 unary kernels cover `float32`, `float16`, and `bfloat16`, including
-extended unary math and activation kernels for `rsqrt`, `exp`, `log`,
+binary `add`, `sub`, `mul`, `div`, `max`, `min`, comparisons, `pow`,
+`atan2`, and `mod`, plus extended unary math and activation kernels
+for `rsqrt`, `exp`, `log`,
 `sin`, `cos`, `tanh`, `sigmoid`, `silu`, `swish`, `softsign`, `elu`,
 `selu`, `leaky_relu`, `hardsigmoid`, and `hardswish`; Metal shape
-kernels cover concat/split/head reshape/last-token/transpose/upsample
-movement across the same storage dtypes with dtype-specific shader
-entry points and `uint4` movement for aligned contiguous ranges.
+kernels cover gather/scatter/where/masked-fill/general transpose plus
+concat/split/head reshape/last-token/transpose2d/upsample movement
+across the same storage dtypes with dtype-specific shader entry points,
+`uint4` movement for aligned contiguous ranges, and device-side index
+validation surfaced through async command completion.
 Metal matmul kernels cover `matmul` and fused `matmul_add` for the
 same storage dtypes with tiled threadgroup execution. Metal projection
 and model kernels cover `linear`, `fused_qkv`, `lora_merge`, and
@@ -154,7 +158,18 @@ Metal optimizer kernels cover `adam_step`, `adamw_step`,
 reduced-dtype params/gradients/output and float32 optimizer state.
 Metal quantization kernels cover `int8_dequant`, `int4_dequant`, and
 `int8_quant` with default scale/zero-point semantics matching the
-scalar registry. Metal loss kernels cover `mse_loss`, `mae_loss`,
+scalar registry. Metal sampling kernels cover `greedy_sample`,
+`topk_sample`, and `topp_sample` for `float32`, `float16`, and
+`bfloat16`; greedy uses a row-local GPU reduction and top-k/top-p sort
+device-resident logits before the seeded draw. Metal dropout kernels
+cover `float32`, `float16`, and `bfloat16` with indexed GPU xorshift
+generation matching the scalar default seed and inverted-dropout scale.
+Metal utility kernels cover `checkpoint_encode_float32`,
+`checkpoint_decode_float32`, `tokenizer_pack_int32`, and
+`weight_freeze_mask`; checkpoint and tokenizer kernels preserve exact
+wire bytes, and weight-freeze masking supports `float32`, `float16`,
+and `bfloat16` gradients with packed-bool masks. Metal loss kernels
+cover `mse_loss`, `mae_loss`,
 `huber_loss`, `binary_cross_entropy`, `cross_entropy`, and
 `kl_divergence` for `float32`, `float16`, and `bfloat16`; pair losses
 run chunked partial reductions and cross-entropy runs one row-local
