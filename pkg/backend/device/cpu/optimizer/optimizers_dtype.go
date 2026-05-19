@@ -1,9 +1,17 @@
 package optimizer
 
 import (
+	"github.com/theapemachine/caramba/pkg/backend/compute/kernels"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
+
+type (
+	Kernel    = kernels.Kernel
+	Signature = kernels.Signature
+)
+
+var Default = kernels.Default
 
 /*
 Mixed-precision optimizer dispatchers. Standard AMP/bf16 training

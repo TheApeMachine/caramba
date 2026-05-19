@@ -7,10 +7,6 @@ import (
 	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
-func loadF32(pointer unsafe.Pointer, index int) float32 {
-	return *(*float32)(unsafe.Add(pointer, uintptr(index)*4))
-}
-
 func loadF16(pointer unsafe.Pointer, index int) float32 {
 	bits := *(*uint16)(unsafe.Add(pointer, uintptr(index)*2))
 	return dtype.Frombits(bits).Float32()
@@ -83,7 +79,7 @@ func dispatchReduceMin(values unsafe.Pointer, count int, format dtype.DType) flo
 	case dtype.Float16, dtype.BFloat16:
 		var minimum float32
 
-		for index := 0; index < count; index++ {
+		for index := range count {
 			var value float32
 
 			if format == dtype.Float16 {
@@ -116,7 +112,7 @@ func dispatchReduceMax(values unsafe.Pointer, count int, format dtype.DType) flo
 	case dtype.Float16, dtype.BFloat16:
 		var maximum float32
 
-		for index := 0; index < count; index++ {
+		for index := range count {
 			var value float32
 
 			if format == dtype.Float16 {
@@ -149,7 +145,7 @@ func dispatchL1Norm(values unsafe.Pointer, count int, format dtype.DType) float3
 	case dtype.Float16, dtype.BFloat16:
 		var norm float32
 
-		for index := 0; index < count; index++ {
+		for index := range count {
 			var value float32
 
 			if format == dtype.Float16 {

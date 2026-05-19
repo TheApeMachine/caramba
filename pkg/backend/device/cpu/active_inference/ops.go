@@ -3,12 +3,23 @@ package active_inference
 import (
 	"math"
 	"unsafe"
+
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
+
+func requireActiveInferenceFloat32(format dtype.DType) {
+	if format != dtype.Float32 {
+		panic("active_inference: unsupported dtype")
+	}
+}
 
 func FreeEnergy(
 	likelihood, posterior, prior, output unsafe.Pointer,
 	count int,
+	format dtype.DType,
 ) {
+	requireActiveInferenceFloat32(format)
+
 	if count == 0 {
 		return
 	}
@@ -37,7 +48,10 @@ func FreeEnergy(
 func ExpectedFreeEnergy(
 	predictedObs, preferredObs, predictedState, output unsafe.Pointer,
 	obsCount, stateCount int,
+	format dtype.DType,
 ) {
+	requireActiveInferenceFloat32(format)
+
 	if obsCount == 0 {
 		return
 	}
@@ -66,7 +80,9 @@ func ExpectedFreeEnergy(
 	outputView[0] = float32(pragmatic + epistemic)
 }
 
-func BeliefUpdate(likelihood, prior, output unsafe.Pointer, count int) {
+func BeliefUpdate(likelihood, prior, output unsafe.Pointer, count int, format dtype.DType) {
+	requireActiveInferenceFloat32(format)
+
 	if count == 0 {
 		return
 	}
@@ -94,7 +110,9 @@ func BeliefUpdate(likelihood, prior, output unsafe.Pointer, count int) {
 	}
 }
 
-func PrecisionWeight(errors, precision, output unsafe.Pointer, count int) {
+func PrecisionWeight(errors, precision, output unsafe.Pointer, count int, format dtype.DType) {
+	requireActiveInferenceFloat32(format)
+
 	if count == 0 {
 		return
 	}

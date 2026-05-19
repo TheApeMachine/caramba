@@ -1,11 +1,24 @@
 package predictive_coding
 
-import "unsafe"
+import (
+	"unsafe"
+
+	"github.com/theapemachine/caramba/pkg/dtype"
+)
+
+func requirePredictiveCodingFloat32(format dtype.DType) {
+	if format != dtype.Float32 {
+		panic("predictive_coding: unsupported dtype")
+	}
+}
 
 func Prediction(
 	weights, representation, output unsafe.Pointer,
 	outDim, inDim int,
+	format dtype.DType,
 ) {
+	requirePredictiveCodingFloat32(format)
+
 	if outDim == 0 || inDim == 0 {
 		return
 	}
@@ -28,7 +41,10 @@ func Prediction(
 func PredictionError(
 	observed, predicted, output unsafe.Pointer,
 	count int,
+	format dtype.DType,
 ) {
+	requirePredictiveCodingFloat32(format)
+
 	if count == 0 {
 		return
 	}
@@ -46,7 +62,10 @@ func UpdateRepresentation(
 	config PredictiveCodingConfig,
 	weights, representation, predictionError, output unsafe.Pointer,
 	outDim, inDim int,
+	format dtype.DType,
 ) {
+	requirePredictiveCodingFloat32(format)
+
 	if outDim == 0 || inDim == 0 {
 		return
 	}
@@ -70,7 +89,10 @@ func UpdateWeights(
 	config PredictiveCodingConfig,
 	weights, representation, predictionError, output unsafe.Pointer,
 	outDim, inDim int,
+	format dtype.DType,
 ) {
+	requirePredictiveCodingFloat32(format)
+
 	if outDim == 0 || inDim == 0 {
 		return
 	}

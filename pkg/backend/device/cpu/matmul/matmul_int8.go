@@ -2,9 +2,11 @@ package matmul
 
 import (
 	"sync"
+	"unsafe"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/dot"
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
 /*
@@ -99,7 +101,12 @@ func RunMatMulInt8(args ...tensor.Tensor) error {
 
 		for col := range cols {
 			colSlice := packed[col*inner : col*inner+inner]
-			outRow[col] = dot.DotInt8Native(rowSlice, colSlice)
+			outRow[col] = int32(dot.Dot(
+				unsafe.Pointer(&rowSlice[0]),
+				unsafe.Pointer(&colSlice[0]),
+				inner,
+				dtype.Int8,
+			))
 		}
 	}
 

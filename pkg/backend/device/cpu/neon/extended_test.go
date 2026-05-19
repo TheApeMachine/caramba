@@ -98,7 +98,7 @@ func TestGreedySample(t *testing.T) {
 		logitView, _ := logits.Float32Native()
 		copy(logitView, []float32{0.1, 0.2, 0.9, 0.3, 0.4})
 
-		token := sampling.GreedySample(unsafe.Pointer(&logitView[0]), len(logitView))
+		token := sampling.GreedySample(unsafe.Pointer(&logitView[0]), len(logitView), dtype.Float32)
 		convey.So(token, convey.ShouldEqual, int32(2))
 	})
 }

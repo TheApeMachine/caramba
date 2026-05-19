@@ -164,65 +164,6 @@ func RunFlashAttentionFloat32(
 	return nil
 }
 
-func runFlashAttentionRow(
-	queryView, keyView, valueView, outView []float32,
-	rowIndex, seqK, depth, valueDim int,
-	scale float32,
-	causal bool,
-) {
-	maxScore := float32(math.Inf(-1))
-	normalizer := float32(0)
-	accumulator := make([]float32, valueDim)
-	scaleScratch := BorrowFloat32Buffer(valueDim)
-	valueScratch := BorrowFloat32Buffer(valueDim)
-
-	defer ReleaseFloat32Buffer(scaleScratch)
-	defer ReleaseFloat32Buffer(valueScratch)
-
-	for keyIndex := 0; keyIndex < seqK; keyIndex++ {
-		if causal && keyIndex > rowIndex {
-			continue
-		}
-
-		queryRow := queryView[rowIndex*depth : (rowIndex+1)*depth]
-		keyRow := keyView[keyIndex*depth : (keyIndex+1)*depth]
-		score := DotFloat32Native(queryRow, keyRow) * scale
-		oldMax := maxScore
-
-		if score > maxScore {
-			maxScore = score
-		}
-
-		alpha := flashExpFloat32(oldMax - maxScore)
-		shifted := flashExpFloat32(score - maxScore)
-		normalizer = normalizer*alpha + shifted
-
-		fillScaleScratch(scaleScratch, alpha, valueDim)
-		MulFloat32Native(accumulator, accumulator, scaleScratch)
-
-		valueRow := valueView[keyIndex*valueDim : (keyIndex+1)*valueDim]
-		fillScaleScratch(valueScratch, shifted, valueDim)
-		MulFloat32Native(valueScratch, valueScratch, valueRow)
-		AddFloat32Native(accumulator, accumulator, valueScratch)
-	}
-
-	if normalizer == 0 {
-		for dimIndex := 0; dimIndex < valueDim; dimIndex++ {
-			outView[rowIndex*valueDim+dimIndex] = 0
-		}
-
-		return
-	}
-
-	invNormalizer := float32(1) / normalizer
-	fillScaleScratch(scaleScratch, invNormalizer, valueDim)
-	MulFloat32Native(
-		outView[rowIndex*valueDim:(rowIndex+1)*valueDim],
-		accumulator,
-		scaleScratch,
-	)
-}
-
 func flashExpFloat32(value float32) float32 {
 	if math.IsInf(float64(value), -1) || value < -88 {
 		return 0
@@ -241,17 +182,4 @@ func flashExpFloat32(value float32) float32 {
 	)
 
 	return scratch[0]
-}
-
-func fillScaleScratch(scratch []float32, value float32, count int) {
-	for index := 0; index < count; index++ {
-		scratch[index] = value
-	}
-}
-
-func computeDot(queryView, keyView []float32, rowIndex, keyIndex, depth int) float32 {
-	queryRow := queryView[rowIndex*depth : (rowIndex+1)*depth]
-	keyRow := keyView[keyIndex*depth : (keyIndex+1)*depth]
-
-	return DotFloat32Native(queryRow, keyRow)
 }

@@ -1,56 +1,40 @@
 package attention
 
-import "unsafe"
+import (
+	"unsafe"
+
+	"github.com/theapemachine/caramba/pkg/dtype"
+)
 
 func ScaledDotProductAttention(
 	config FlashAttentionConfig,
 	query, key, value, output unsafe.Pointer,
 	seqQ, seqK, depth, valueDim int,
+	format dtype.DType,
 ) {
-	if seqQ == 0 || seqK == 0 {
-		return
-	}
-
-	queryView := unsafe.Slice((*float32)(query), seqQ*depth)
-	keyView := unsafe.Slice((*float32)(key), seqK*depth)
-	valueView := unsafe.Slice((*float32)(value), seqK*valueDim)
-	outputView := unsafe.Slice((*float32)(output), seqQ*valueDim)
-	scale := float32(1.0 / float64(depth))
-
-	for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
-		RunFlashAttentionRowNative(
-			queryView, keyView, valueView, outputView,
-			rowIndex, seqK, depth, valueDim, scale, config.Causal,
-		)
-	}
+	dispatchScaledDotProductAttention(
+		config, query, key, value, output,
+		seqQ, seqK, depth, valueDim, format,
+	)
 }
 
 func FlashAttention(
 	config FlashAttentionConfig,
 	query, key, value, output unsafe.Pointer,
 	seqQ, seqK, depth, valueDim int,
+	format dtype.DType,
 ) {
-	ScaledDotProductAttention(config, query, key, value, output, seqQ, seqK, depth, valueDim)
+	ScaledDotProductAttention(
+		config, query, key, value, output,
+		seqQ, seqK, depth, valueDim, format,
+	)
 }
 
 func MultiHeadAttention(
 	config MultiHeadAttentionConfig,
 	query, key, value, output unsafe.Pointer,
 	seqQ, seqK int,
+	format dtype.DType,
 ) {
-	kvHeads := config.KVHeadCount
-
-	if kvHeads <= 0 {
-		kvHeads = config.NumHeads
-	}
-
-	queryFeatures := config.NumHeads * config.HeadDim
-	kvFeatures := kvHeads * config.HeadDim
-
-	queryView := unsafe.Slice((*float32)(query), seqQ*queryFeatures)
-	keyView := unsafe.Slice((*float32)(key), seqK*kvFeatures)
-	valueView := unsafe.Slice((*float32)(value), seqK*kvFeatures)
-	outputView := unsafe.Slice((*float32)(output), seqQ*queryFeatures)
-
-	multiHeadAttentionSlices(config, queryView, keyView, valueView, outputView, seqQ, seqK, kvHeads)
+	dispatchMultiHeadAttention(config, query, key, value, output, seqQ, seqK, format)
 }

@@ -1,12 +1,25 @@
 package physics
 
-import "unsafe"
+import (
+	"unsafe"
+
+	"github.com/theapemachine/caramba/pkg/dtype"
+)
+
+func requirePhysicsFloat32(format dtype.DType) {
+	if format != dtype.Float32 {
+		panic("physics: unsupported dtype")
+	}
+}
 
 func Laplacian(
 	input, output unsafe.Pointer,
 	dims []int,
 	spacing float32,
+	format dtype.DType,
 ) {
+	requirePhysicsFloat32(format)
+
 	elementCount := denseElementCount(dims)
 
 	if elementCount == 0 {
@@ -39,7 +52,9 @@ func Laplacian(
 	}
 }
 
-func Laplacian4(input, output unsafe.Pointer, count int, spacing float32) {
+func Laplacian4(input, output unsafe.Pointer, count int, spacing float32, format dtype.DType) {
+	requirePhysicsFloat32(format)
+
 	if count == 0 {
 		return
 	}
@@ -59,7 +74,9 @@ func Laplacian4(input, output unsafe.Pointer, count int, spacing float32) {
 	Laplacian4Float32Native(inputView, outputView, invDen)
 }
 
-func Grad1D(input, output unsafe.Pointer, count int, spacing float32) {
+func Grad1D(input, output unsafe.Pointer, count int, spacing float32, format dtype.DType) {
+	requirePhysicsFloat32(format)
+
 	if count == 0 {
 		return
 	}
@@ -78,14 +95,17 @@ func Grad1D(input, output unsafe.Pointer, count int, spacing float32) {
 	Grad1DFloat32Native(inputView, outputView, invTwoDx)
 }
 
-func Divergence1D(input, output unsafe.Pointer, count int, spacing float32) {
-	Grad1D(input, output, count, spacing)
+func Divergence1D(input, output unsafe.Pointer, count int, spacing float32, format dtype.DType) {
+	Grad1D(input, output, count, spacing, format)
 }
 
 func FFT1D(
 	realIn, imagIn, realOut, imagOut unsafe.Pointer,
 	count int,
+	format dtype.DType,
 ) {
+	requirePhysicsFloat32(format)
+
 	if count == 0 {
 		return
 	}
@@ -102,7 +122,10 @@ func FFT1D(
 func IFFT1D(
 	realIn, imagIn, realOut, imagOut unsafe.Pointer,
 	count int,
+	format dtype.DType,
 ) {
+	requirePhysicsFloat32(format)
+
 	if count == 0 {
 		return
 	}
@@ -120,7 +143,10 @@ func QuantumPotential(
 	density, output unsafe.Pointer,
 	count int,
 	spacing float32,
+	format dtype.DType,
 ) {
+	requirePhysicsFloat32(format)
+
 	if count == 0 {
 		return
 	}
@@ -143,7 +169,10 @@ func BohmianVelocity(
 	phase, output unsafe.Pointer,
 	count int,
 	spacing float32,
+	format dtype.DType,
 ) {
+	requirePhysicsFloat32(format)
+
 	if count == 0 {
 		return
 	}
@@ -168,7 +197,10 @@ func MadelungContinuity(
 	density, velocity, residual unsafe.Pointer,
 	count int,
 	spacing float32,
+	format dtype.DType,
 ) {
+	requirePhysicsFloat32(format)
+
 	if count == 0 {
 		return
 	}

@@ -117,7 +117,7 @@ func ReduceMinFloat32Native(values []float32) float32 {
 		return 0
 	}
 
-	return Min(
+	return ReduceMin(
 		unsafe.Pointer(&values[0]),
 		len(values),
 		dtype.Float32,
@@ -129,7 +129,7 @@ func ReduceMaxFloat32Native(values []float32) float32 {
 		return 0
 	}
 
-	return Max(
+	return ReduceMax(
 		unsafe.Pointer(&values[0]),
 		len(values),
 		dtype.Float32,

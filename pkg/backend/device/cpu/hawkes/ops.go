@@ -1,12 +1,25 @@
 package hawkes
 
-import "unsafe"
+import (
+	"unsafe"
+
+	"github.com/theapemachine/caramba/pkg/dtype"
+)
+
+func requireHawkesFloat32(format dtype.DType) {
+	if format != dtype.Float32 {
+		panic("hawkes: unsupported dtype")
+	}
+}
 
 func HawkesIntensity(
 	eventTimes, queryTimes, output unsafe.Pointer,
 	eventCount, queryCount int,
+	format dtype.DType,
 	mu, alpha, beta float32,
 ) {
+	requireHawkesFloat32(format)
+
 	if queryCount == 0 {
 		return
 	}
@@ -21,8 +34,11 @@ func HawkesIntensity(
 func HawkesKernelMatrix(
 	eventTimes, output unsafe.Pointer,
 	eventCount int,
+	format dtype.DType,
 	alpha, beta float32,
 ) {
+	requireHawkesFloat32(format)
+
 	if eventCount == 0 {
 		return
 	}
@@ -38,7 +54,10 @@ func HawkesLogLikelihood(
 	eventCount int,
 	totalT, mu, alpha, beta float32,
 	output unsafe.Pointer,
+	format dtype.DType,
 ) {
+	requireHawkesFloat32(format)
+
 	if eventCount == 0 {
 		return
 	}
@@ -52,7 +71,10 @@ func HawkesLogLikelihood(
 func MarkovMutualInformation(
 	joint, output unsafe.Pointer,
 	xCount, yCount int,
+	format dtype.DType,
 ) {
+	requireHawkesFloat32(format)
+
 	if xCount == 0 || yCount == 0 {
 		return
 	}
@@ -66,7 +88,10 @@ func MarkovMutualInformation(
 func MarkovBlanketPartition(
 	adjacency, internal, output unsafe.Pointer,
 	nodeCount, internalCount int,
+	format dtype.DType,
 ) {
+	requireHawkesFloat32(format)
+
 	if nodeCount == 0 {
 		return
 	}

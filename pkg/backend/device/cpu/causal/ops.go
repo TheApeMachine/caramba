@@ -3,9 +3,19 @@ package causal
 import (
 	"math"
 	"unsafe"
+
+	"github.com/theapemachine/caramba/pkg/dtype"
 )
 
-func Cholesky(input, output unsafe.Pointer, matrixOrder int) {
+func requireCausalFloat32(format dtype.DType) {
+	if format != dtype.Float32 {
+		panic("causal: unsupported dtype")
+	}
+}
+
+func Cholesky(input, output unsafe.Pointer, matrixOrder int, format dtype.DType) {
+	requireCausalFloat32(format)
+
 	if matrixOrder == 0 {
 		return
 	}
@@ -45,7 +55,10 @@ func Cholesky(input, output unsafe.Pointer, matrixOrder int) {
 func BackdoorAdjustment(
 	conditional, marginalZ, output unsafe.Pointer,
 	xCount, zCount, yCount int,
+	format dtype.DType,
 ) {
+	requireCausalFloat32(format)
+
 	if xCount == 0 || zCount == 0 || yCount == 0 {
 		return
 	}
@@ -63,7 +76,10 @@ func BackdoorAdjustment(
 func FrontdoorAdjustment(
 	mediatorGivenX, outcomeGivenXM, marginalX, output unsafe.Pointer,
 	xCount, mediatorCount, yCount int,
+	format dtype.DType,
 ) {
+	requireCausalFloat32(format)
+
 	if xCount == 0 || mediatorCount == 0 || yCount == 0 {
 		return
 	}
@@ -86,7 +102,10 @@ func FrontdoorAdjustment(
 func DoIntervene(
 	adjacency, intervened, output unsafe.Pointer,
 	nodeCount, intervenedCount int,
+	format dtype.DType,
 ) {
+	requireCausalFloat32(format)
+
 	if nodeCount == 0 {
 		return
 	}
@@ -98,7 +117,9 @@ func DoIntervene(
 	DoInterveneFloat32Native(outputView, adjacencyView, intervenedView, nodeCount)
 }
 
-func CATE(treated, control, output unsafe.Pointer, count int) {
+func CATE(treated, control, output unsafe.Pointer, count int, format dtype.DType) {
+	requireCausalFloat32(format)
+
 	if count == 0 {
 		return
 	}
@@ -113,8 +134,11 @@ func CATE(treated, control, output unsafe.Pointer, count int) {
 func Counterfactual(
 	observedY, observedX, counterfactualX, output unsafe.Pointer,
 	count int,
+	format dtype.DType,
 	slope float32,
 ) {
+	requireCausalFloat32(format)
+
 	if count == 0 {
 		return
 	}
@@ -133,7 +157,10 @@ func IVEstimate(
 	instrument, treatment, outcome unsafe.Pointer,
 	count int,
 	output unsafe.Pointer,
+	format dtype.DType,
 ) {
+	requireCausalFloat32(format)
+
 	if count < 2 {
 		return
 	}
@@ -150,7 +177,10 @@ func DAGMarkovFactorization(
 	conditionals unsafe.Pointer,
 	conditionalCount int,
 	output unsafe.Pointer,
+	format dtype.DType,
 ) {
+	requireCausalFloat32(format)
+
 	if conditionalCount == 0 {
 		return
 	}
@@ -170,26 +200,27 @@ func DAGMarkovFactorization(
 func MarkovFlowActive(
 	mutualInformation, partition, output unsafe.Pointer,
 	nodeCount int,
+	format dtype.DType,
 ) {
-	markovFlow(
-		mutualInformation, partition, output, nodeCount, 2,
-	)
+	markovFlow(mutualInformation, partition, output, nodeCount, 2, format)
 }
 
 func MarkovFlowInternal(
 	mutualInformation, partition, output unsafe.Pointer,
 	nodeCount int,
+	format dtype.DType,
 ) {
-	markovFlow(
-		mutualInformation, partition, output, nodeCount, 0,
-	)
+	markovFlow(mutualInformation, partition, output, nodeCount, 0, format)
 }
 
 func markovFlow(
 	mutualInformation, partition, output unsafe.Pointer,
 	nodeCount int,
 	targetLabel int32,
+	format dtype.DType,
 ) {
+	requireCausalFloat32(format)
+
 	if nodeCount == 0 {
 		return
 	}

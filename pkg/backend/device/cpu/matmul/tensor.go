@@ -104,7 +104,13 @@ func runMatMulFloat64(args ...tensor.Tensor) error {
 		outView[index] = 0
 	}
 
-	MatmulFloat64Native(outView, leftView, rightView, rows, inner, cols)
+	Matmul(
+		unsafe.Pointer(&outView[0]),
+		unsafe.Pointer(&leftView[0]),
+		unsafe.Pointer(&rightView[0]),
+		rows, inner, cols,
+		dtype.Float64,
+	)
 
 	return nil
 }

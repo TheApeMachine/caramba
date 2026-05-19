@@ -115,11 +115,12 @@ func runAddFloat64(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	AddFloat64(
+	Add(
 		unsafe.Pointer(&out[0]),
 		unsafe.Pointer(&left[0]),
 		unsafe.Pointer(&right[0]),
 		len(out),
+		dtype.Float64,
 	)
 
 	return nil

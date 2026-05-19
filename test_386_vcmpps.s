@@ -1,4 +1,0 @@
-TEXT ·test(SB),0,$0
-	VMOVAPS Y0, Y2
-	VCMPPS $6, Y9, Y2
-	RET
