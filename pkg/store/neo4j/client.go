@@ -3,10 +3,10 @@ package neo4j
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	ndriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"github.com/theapemachine/caramba/pkg/config"
 )
 
 /*
@@ -51,13 +51,15 @@ func NewClient(cfg Config) (*Client, error) {
 }
 
 /*
-ConfigFromEnv loads NEO4J_URI, NEO4J_USERNAME, and NEO4J_PASSWORD (and optional NEO4J_DATABASE for Store).
+ConfigFromEnv loads store.neo4j.* from config.yml (see pkg/config).
 */
 func ConfigFromEnv() Config {
+	appConfig := config.NewNeo4jStoreConfig()
+
 	return Config{
-		URI:      os.Getenv("NEO4J_URI"),
-		Username: os.Getenv("NEO4J_USERNAME"),
-		Password: os.Getenv("NEO4J_PASSWORD"),
+		URI:      appConfig.URI,
+		Username: appConfig.Username,
+		Password: appConfig.Password,
 	}
 }
 

@@ -169,40 +169,18 @@ func MarkovMutualInformationNative(joint []float32, xCount, yCount int, out []fl
 	}
 
 	const epsilon = 1e-12
-	ratioScratch := BorrowFloat32Buffer(yCount)
-	weightScratch := BorrowFloat32Buffer(yCount)
-	defer ReleaseFloat32Buffer(ratioScratch)
-	defer ReleaseFloat32Buffer(weightScratch)
-
 	var mutualInformation float64
 
 	for xIndex := 0; xIndex < xCount; xIndex++ {
-		rowStart := xIndex * yCount
-		rowView := joint[rowStart : rowStart+yCount]
-		marginalXValue := float32(marginalX[xIndex])
-
 		for yIndex := 0; yIndex < yCount; yIndex++ {
-			ratioScratch[yIndex] = 1
-			weightScratch[yIndex] = 0
-
-			jointValue := rowView[yIndex]
+			jointValue := float64(joint[xIndex*yCount+yIndex])
 
 			if jointValue <= epsilon {
 				continue
 			}
 
-			denominator := marginalXValue*float32(marginalY[yIndex]) + epsilon
-			ratioScratch[yIndex] = jointValue / denominator
-			weightScratch[yIndex] = jointValue
-		}
-
-		for yIndex := range yCount {
-			if rowView[yIndex] <= epsilon {
-				continue
-			}
-
-			mutualInformation += float64(rowView[yIndex]) *
-				math.Log(float64(ratioScratch[yIndex]))
+			denominator := marginalX[xIndex]*marginalY[yIndex] + epsilon
+			mutualInformation += jointValue * math.Log(jointValue/denominator)
 		}
 	}
 

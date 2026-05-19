@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 
 	fiberclient "github.com/gofiber/fiber/v3/client"
+	"github.com/theapemachine/caramba/pkg/config"
 )
 
 const defaultBaseURL = "https://api.deeplake.ai"
@@ -93,17 +93,18 @@ func NewClient(cfg Config) (*Client, error) {
 }
 
 /*
-ConfigFromEnv loads settings from DEEPLAKE_API_URL (optional), DEEPLAKE_API_KEY,
-DEEPLAKE_ORG_ID, and DEEPLAKE_WORKSPACE.
+ConfigFromEnv loads store.deeplake.* from config.yml (see pkg/config).
 
 Empty strings are passed through; NewClient rejects missing required fields.
 */
 func ConfigFromEnv() Config {
+	appConfig := config.NewDeeplakeStoreConfig()
+
 	return Config{
-		BaseURL:   os.Getenv("DEEPLAKE_API_URL"),
-		APIKey:    os.Getenv("DEEPLAKE_API_KEY"),
-		OrgID:     os.Getenv("DEEPLAKE_ORG_ID"),
-		Workspace: os.Getenv("DEEPLAKE_WORKSPACE"),
+		BaseURL:   appConfig.APIURL,
+		APIKey:    appConfig.APIKey,
+		OrgID:     appConfig.OrgID,
+		Workspace: appConfig.Workspace,
 	}
 }
 

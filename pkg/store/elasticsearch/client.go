@@ -2,10 +2,10 @@ package elasticsearch
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	esv8 "github.com/elastic/go-elasticsearch/v8"
+	"github.com/theapemachine/caramba/pkg/config"
 )
 
 /*
@@ -68,12 +68,27 @@ func NewClient(cfg Config) (*Client, error) {
 }
 
 /*
-ConfigFromEnv loads settings from ELASTICSEARCH_ADDRESSES (comma-separated hosts, optional), or
-ELASTICSEARCH_URL as a single address, plus ELASTICSEARCH_USERNAME, ELASTICSEARCH_PASSWORD, and
-ELASTICSEARCH_API_KEY.
+ConfigFromEnv loads store.elasticsearch.* from config.yml (see pkg/config).
 */
 func ConfigFromEnv() Config {
-	raw := os.Getenv("ELASTICSEARCH_ADDRESSES")
+	appConfig := config.NewElasticsearchStoreConfig()
+	addrs := splitCommaAddresses(appConfig.Addresses)
+
+	if len(addrs) == 0 {
+		if urlAddress := strings.TrimSpace(appConfig.URL); urlAddress != "" {
+			addrs = []string{urlAddress}
+		}
+	}
+
+	return Config{
+		Addresses: addrs,
+		Username:  appConfig.Username,
+		Password:  appConfig.Password,
+		APIKey:    appConfig.APIKey,
+	}
+}
+
+func splitCommaAddresses(raw string) []string {
 	var addrs []string
 
 	for _, part := range strings.Split(raw, ",") {
@@ -84,16 +99,7 @@ func ConfigFromEnv() Config {
 		}
 	}
 
-	if u := strings.TrimSpace(os.Getenv("ELASTICSEARCH_URL")); u != "" && len(addrs) == 0 {
-		addrs = []string{u}
-	}
-
-	return Config{
-		Addresses: addrs,
-		Username:  os.Getenv("ELASTICSEARCH_USERNAME"),
-		Password:  os.Getenv("ELASTICSEARCH_PASSWORD"),
-		APIKey:    os.Getenv("ELASTICSEARCH_API_KEY"),
-	}
+	return addrs
 }
 
 /*

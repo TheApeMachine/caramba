@@ -3,11 +3,11 @@ package qdrant
 import (
 	"fmt"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 
 	qc "github.com/qdrant/go-client/qdrant"
+	"github.com/theapemachine/caramba/pkg/config"
 )
 
 const (
@@ -72,37 +72,41 @@ func NewClient(cfg Config) (*Client, error) {
 }
 
 /*
-ConfigFromEnv loads QDRANT_HOST, QDRANT_GRPC_PORT or QDRANT_PORT, QDRANT_API_KEY, QDRANT_USE_TLS,
-QDRANT_POOL_SIZE, and optionally QDRANT_URL or QDRANT_BASE_URL.
+ConfigFromEnv loads store.qdrant.* from config.yml (see pkg/config).
 
 When a URL uses port 6333 (the common REST port in examples), the gRPC port defaults to 6334 unless
-overridden by QDRANT_GRPC_PORT / QDRANT_PORT. Scheme https sets UseTLS to true.
+overridden by grpc_port / port. Scheme https sets UseTLS to true.
 */
 func ConfigFromEnv() Config {
-	rawURL := strings.TrimSpace(os.Getenv("QDRANT_URL"))
+	return configFromApp(config.NewQdrantStoreConfig())
+}
+
+func configFromApp(appConfig config.QdrantStoreConfig) Config {
+	rawURL := strings.TrimSpace(appConfig.URL)
 
 	if rawURL == "" {
-		rawURL = strings.TrimSpace(os.Getenv("QDRANT_BASE_URL"))
+		rawURL = strings.TrimSpace(appConfig.BaseURL)
 	}
 
-	host := strings.TrimSpace(os.Getenv("QDRANT_HOST"))
-	port := envIntDefault0("QDRANT_GRPC_PORT")
+	port := appConfig.GRPCPort
 
 	if port == 0 {
-		port = envIntDefault0("QDRANT_PORT")
+		port = appConfig.Port
 	}
 
-	useTLS := strings.EqualFold(strings.TrimSpace(os.Getenv("QDRANT_USE_TLS")), "true")
-	poolSize := uint(envIntDefault0("QDRANT_POOL_SIZE"))
-
-	host, port, useTLS = mergeURLOverrides(rawURL, host, port, useTLS)
+	host, port, useTLS := mergeURLOverrides(
+		rawURL,
+		strings.TrimSpace(appConfig.Host),
+		port,
+		appConfig.UseTLS,
+	)
 
 	return Config{
 		Host:     host,
 		Port:     port,
-		APIKey:   os.Getenv("QDRANT_API_KEY"),
+		APIKey:   strings.TrimSpace(appConfig.APIKey),
 		UseTLS:   useTLS,
-		PoolSize: poolSize,
+		PoolSize: uint(appConfig.PoolSize),
 	}
 }
 
@@ -181,20 +185,4 @@ func mergeURLOverrides(rawURL, host string, port int, useTLS bool) (string, int,
 	}
 
 	return host, port, useTLS
-}
-
-func envIntDefault0(key string) int {
-	raw := strings.TrimSpace(os.Getenv(key))
-
-	if raw == "" {
-		return 0
-	}
-
-	v, err := strconv.Atoi(raw)
-
-	if err != nil {
-		return 0
-	}
-
-	return v
 }

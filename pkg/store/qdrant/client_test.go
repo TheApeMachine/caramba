@@ -4,16 +4,17 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/spf13/viper"
 )
 
-func TestConfigFromEnv(t *testing.T) {
-	Convey("ConfigFromEnv", t, func() {
-		t.Setenv("QDRANT_HOST", "")
-		t.Setenv("QDRANT_GRPC_PORT", "")
-		t.Setenv("QDRANT_PORT", "")
-		t.Setenv("QDRANT_URL", "http://example:6333")
-		t.Setenv("QDRANT_USE_TLS", "")
-		t.Setenv("QDRANT_API_KEY", "")
+func TestConfigFromEnv(test *testing.T) {
+	Convey("ConfigFromEnv", test, func() {
+		setQdrantConfigValue(test, "store.qdrant.host", "")
+		setQdrantConfigValue(test, "store.qdrant.grpc_port", 0)
+		setQdrantConfigValue(test, "store.qdrant.port", 0)
+		setQdrantConfigValue(test, "store.qdrant.url", "http://example:6333")
+		setQdrantConfigValue(test, "store.qdrant.use_tls", false)
+		setQdrantConfigValue(test, "store.qdrant.api_key", "")
 
 		cfg := ConfigFromEnv()
 		So(cfg.Host, ShouldEqual, "example")
@@ -21,32 +22,29 @@ func TestConfigFromEnv(t *testing.T) {
 		So(cfg.UseTLS, ShouldBeFalse)
 	})
 
-	Convey("HTTPS URL enables TLS", t, func() {
-		t.Setenv("QDRANT_URL", "https://example:6334")
-		t.Setenv("QDRANT_GRPC_PORT", "")
-		t.Setenv("QDRANT_PORT", "")
-		t.Setenv("QDRANT_USE_TLS", "")
+	Convey("HTTPS URL enables TLS", test, func() {
+		setQdrantConfigValue(test, "store.qdrant.url", "https://example:6334")
+		setQdrantConfigValue(test, "store.qdrant.grpc_port", 0)
+		setQdrantConfigValue(test, "store.qdrant.port", 0)
+		setQdrantConfigValue(test, "store.qdrant.use_tls", false)
 
 		cfg := ConfigFromEnv()
 		So(cfg.UseTLS, ShouldBeTrue)
 		So(cfg.Host, ShouldEqual, "example")
 	})
 
-	Convey("explicit gRPC port wins over URL", t, func() {
-		t.Setenv("QDRANT_URL", "http://h:6333")
-		t.Setenv("QDRANT_GRPC_PORT", "7777")
-		t.Setenv("QDRANT_PORT", "")
+	Convey("explicit gRPC port wins over URL", test, func() {
+		setQdrantConfigValue(test, "store.qdrant.url", "http://h:6333")
+		setQdrantConfigValue(test, "store.qdrant.grpc_port", 7777)
+		setQdrantConfigValue(test, "store.qdrant.port", 0)
 
 		cfg := ConfigFromEnv()
 		So(cfg.Port, ShouldEqual, 7777)
 	})
 
-	Convey("default host and port without env", t, func() {
-		for _, k := range []string{
-			"QDRANT_URL", "QDRANT_BASE_URL", "QDRANT_HOST", "QDRANT_GRPC_PORT", "QDRANT_PORT",
-		} {
-			t.Setenv(k, "")
-		}
+	Convey("default host and port without config", test, func() {
+		viper.Reset()
+		test.Cleanup(viper.Reset)
 
 		cfg := ConfigFromEnv()
 		So(cfg.Host, ShouldEqual, defaultGRPCHost)
@@ -54,21 +52,33 @@ func TestConfigFromEnv(t *testing.T) {
 	})
 }
 
-func TestNewClient(t *testing.T) {
-	Convey("NewClient uses defaults for host and port", t, func() {
-		c, err := NewClient(Config{})
+func TestNewClient(test *testing.T) {
+	Convey("NewClient uses defaults for host and port", test, func() {
+		client, err := NewClient(Config{})
 		So(err, ShouldBeNil)
-		So(c, ShouldNotBeNil)
-		So(c.Native(), ShouldNotBeNil)
-		So(c.Close(), ShouldBeNil)
+		So(client, ShouldNotBeNil)
+		So(client.Native(), ShouldNotBeNil)
+		So(client.Close(), ShouldBeNil)
 	})
 }
 
-func TestMergeURLOverrides_preservesExplicitGRPCPortFromURL(t *testing.T) {
-	Convey("non-6333 URL port is kept", t, func() {
-		h, p, tls := mergeURLOverrides("http://x:9999", "", 0, false)
-		So(h, ShouldEqual, "x")
-		So(p, ShouldEqual, 9999)
-		So(tls, ShouldBeFalse)
+func TestMergeURLOverrides_preservesExplicitGRPCPortFromURL(test *testing.T) {
+	Convey("non-6333 URL port is kept", test, func() {
+		host, port, useTLS := mergeURLOverrides("http://x:9999", "", 0, false)
+		So(host, ShouldEqual, "x")
+		So(port, ShouldEqual, 9999)
+		So(useTLS, ShouldBeFalse)
+	})
+}
+
+func setQdrantConfigValue(testingHandle interface {
+	Helper()
+	Cleanup(func())
+}, key string, value any) {
+	testingHandle.Helper()
+
+	viper.Set(key, value)
+	testingHandle.Cleanup(func() {
+		viper.Set(key, nil)
 	})
 }

@@ -198,8 +198,7 @@ mp22_done:
 //     outRow *float32, input *float32,
 //     outCols, inWidth, ihStart int,
 // )
-// Each output averages four inputs in poolWindow order (row-major
-// kernel loops) then multiplies by 0.25f, matching poolWindow scalar.
+// 2×2 avg pool, stride 2 — four output columns per vector pass.
 TEXT ·AvgPool2x2Stride2RowNEONAsm(SB), NOSPLIT, $0-40
     MOVD outRow+0(FP), R0
     MOVD input+8(FP), R1
@@ -212,23 +211,26 @@ TEXT ·AvgPool2x2Stride2RowNEONAsm(SB), NOSPLIT, $0-40
     ADD  R6, R1, R1
     ADD  R5, R1, R7
 
-    FMOVS poolQuarter<>(SB), F16
+    MOVD $0x3E800000, R8
+    VMOV R8, V31.S[0]
+    VDUP V31.S[0], V31.S4
 
 ap22_col_loop:
-    CBZ  R2, ap22_done
-    FMOVS (R1), F0
-    FMOVS 4(R1), F1
-    FADDS F1, F0, F0
-    FMOVS (R7), F1
-    FADDS F1, F0, F0
-    FMOVS 4(R7), F1
-    FADDS F1, F0, F0
-    FMULS F16, F0, F0
-    FMOVS F0, (R0)
-    ADD  $8, R1
-    ADD  $8, R7
-    ADD  $4, R0
-    SUB  $1, R2
+    CMP  $4, R2
+    BLT  ap22_done
+    VLD2 (R1), [V0.S4, V1.S4]
+    VLD2 (R7), [V2.S4, V3.S4]
+    VEOR V4.B16, V4.B16, V4.B16
+    VFADD_S4(0, 4, 4)
+    VFADD_S4(1, 4, 4)
+    VFADD_S4(2, 4, 4)
+    VFADD_S4(3, 4, 4)
+    VFMUL_S4(31, 4, 4)
+    VST1 [V4.S4], (R0)
+    ADD  $32, R1
+    ADD  $32, R7
+    ADD  $16, R0
+    SUB  $4, R2
     B    ap22_col_loop
 
 ap22_done:

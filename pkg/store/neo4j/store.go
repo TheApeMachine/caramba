@@ -3,10 +3,10 @@ package neo4j
 import (
 	"context"
 	"fmt"
-	"os"
 	"unicode"
 
 	ndriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"github.com/theapemachine/caramba/pkg/config"
 )
 
 const mergeDocumentCypher = `
@@ -41,10 +41,10 @@ func NewStoreFromClient(client *Client, database string) *Store {
 }
 
 /*
-DatabaseFromEnv reads NEO4J_DATABASE or returns an empty string for the default database.
+DatabaseFromEnv reads store.neo4j.database from config.yml or returns an empty string for the default database.
 */
 func DatabaseFromEnv() string {
-	return os.Getenv("NEO4J_DATABASE")
+	return config.NewNeo4jStoreConfig().Database
 }
 
 /*

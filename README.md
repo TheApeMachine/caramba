@@ -96,7 +96,7 @@ research/project/my-ablation-study/
 └── paper/              # write-up
 ```
 
-Configuration lives in [cmd/asset/config.yml](cmd/asset/config.yml) and is loaded through [pkg/config](pkg/config). The resolver tries `--config`, then `./cmd/asset/config.yml`, `./config.yml`, `$HOME/.caramba/config.yml`, and finally the binary's embedded default.
+Configuration lives in [cmd/asset/config.yml](cmd/asset/config.yml) and is loaded through [pkg/config](pkg/config). The resolver tries `--config`, then `./cmd/asset/config.yml`, `./config.yml`, `$HOME/.caramba/config.yml`, and finally the binary's embedded default. Data-store clients (`pkg/store/*`) read `store.qdrant`, `store.neo4j`, `store.elasticsearch`, and `store.deeplake` from that file (secrets may use `${...}` expansion); they do not call `os.Getenv` directly.
 
 → [Getting Started](./docs/getting-started.md)
 

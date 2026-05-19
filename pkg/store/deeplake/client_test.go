@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/spf13/viper"
 )
 
 // testRespondJSON writes a Fiber-friendly response from httptest servers (Connection: close).
@@ -78,12 +79,12 @@ func TestNewClient(t *testing.T) {
 	})
 }
 
-func TestConfigFromEnv(t *testing.T) {
-	Convey("ConfigFromEnv reads variables", t, func() {
-		t.Setenv("DEEPLAKE_API_URL", "https://custom.example")
-		t.Setenv("DEEPLAKE_API_KEY", "key")
-		t.Setenv("DEEPLAKE_ORG_ID", "org")
-		t.Setenv("DEEPLAKE_WORKSPACE", "space")
+func TestConfigFromEnv(test *testing.T) {
+	Convey("ConfigFromEnv reads config.yml store.deeplake settings", test, func() {
+		setDeeplakeConfigValue(test, "store.deeplake.api_url", "https://custom.example")
+		setDeeplakeConfigValue(test, "store.deeplake.api_key", "key")
+		setDeeplakeConfigValue(test, "store.deeplake.org_id", "org")
+		setDeeplakeConfigValue(test, "store.deeplake.workspace", "space")
 
 		cfg := ConfigFromEnv()
 		So(cfg.BaseURL, ShouldEqual, "https://custom.example")
@@ -93,11 +94,23 @@ func TestConfigFromEnv(t *testing.T) {
 	})
 }
 
-func TestNewClientFromEnv(t *testing.T) {
-	Convey("NewClientFromEnv delegates to NewClient", t, func() {
-		t.Setenv("DEEPLAKE_API_KEY", "")
+func TestNewClientFromEnv(test *testing.T) {
+	Convey("NewClientFromEnv delegates to NewClient", test, func() {
+		setDeeplakeConfigValue(test, "store.deeplake.api_key", "")
 		_, err := NewClientFromEnv()
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func setDeeplakeConfigValue(testingHandle interface {
+	Helper()
+	Cleanup(func())
+}, key string, value any) {
+	testingHandle.Helper()
+
+	viper.Set(key, value)
+	testingHandle.Cleanup(func() {
+		viper.Set(key, nil)
 	})
 }
 

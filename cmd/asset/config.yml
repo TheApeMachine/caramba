@@ -51,6 +51,33 @@ hub:
   xet:
     active: true
 
+store:
+  qdrant:
+    url: ""
+    base_url: ""
+    host: ""
+    grpc_port: 0
+    port: 0
+    api_key: ${QDRANT_API_KEY}
+    use_tls: false
+    pool_size: 0
+  neo4j:
+    uri: ${NEO4J_URI}
+    username: ${NEO4J_USERNAME}
+    password: ${NEO4J_PASSWORD}
+    database: ${NEO4J_DATABASE}
+  elasticsearch:
+    addresses: ""
+    url: ${ELASTICSEARCH_URL}
+    username: ${ELASTICSEARCH_USERNAME}
+    password: ${ELASTICSEARCH_PASSWORD}
+    api_key: ${ELASTICSEARCH_API_KEY}
+  deeplake:
+    api_url: ${DEEPLAKE_API_URL}
+    api_key: ${DEEPLAKE_API_KEY}
+    org_id: ${DEEPLAKE_ORG_ID}
+    workspace: ${DEEPLAKE_WORKSPACE}
+
 errnie:
   level: debug
   file: 

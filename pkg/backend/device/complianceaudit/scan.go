@@ -1,7 +1,6 @@
 package complianceaudit
 
 import (
-	"bufio"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -18,10 +17,11 @@ FindingKind classifies a backend compliance violation.
 type FindingKind string
 
 const (
-	FindingForbiddenPhrase FindingKind = "forbidden_phrase"
-	FindingCrossISACall    FindingKind = "cross_isa_call"
-	FindingScalarTailLoop  FindingKind = "scalar_tail_loop"
-	FindingLooseTolerance  FindingKind = "loose_tolerance"
+	FindingForbiddenPhrase    FindingKind = "forbidden_phrase"
+	FindingCrossISACall       FindingKind = "cross_isa_call"
+	FindingScalarTailLoop     FindingKind = "scalar_tail_loop"
+	FindingScalarInSIMDKernel FindingKind = "scalar_in_simd_kernel"
+	FindingLooseTolerance     FindingKind = "loose_tolerance"
 )
 
 /*
@@ -176,27 +176,25 @@ func scanGoFile(path string) ([]Finding, error) {
 }
 
 func scanAssemblyFile(path string) ([]Finding, error) {
-	if !strings.HasSuffix(path, "_amd64.s") {
+	isAmd64 := strings.HasSuffix(path, "_amd64.s")
+	isArm64NEON := strings.HasSuffix(path, "_neon_arm64.s") ||
+		strings.HasSuffix(path, "_arm64.s")
+
+	if !isAmd64 && !isArm64NEON {
 		return nil, nil
 	}
 
-	fileHandle, openErr := os.Open(path)
-	if openErr != nil {
-		return nil, openErr
+	contentBytes, readErr := os.ReadFile(path)
+	if readErr != nil {
+		return nil, readErr
 	}
-	defer fileHandle.Close()
 
+	lines := strings.Split(string(contentBytes), "\n")
 	findings := make([]Finding, 0)
-	scanner := bufio.NewScanner(fileHandle)
 	fileISA := isaFromAssemblyPath(path)
 
-	var lineNumber int
-	var inScalarBlock bool
-	var scalarLabel string
-
-	for scanner.Scan() {
-		lineNumber++
-		line := scanner.Text()
+	for lineIndex, line := range lines {
+		lineNumber := lineIndex + 1
 		trimmed := strings.TrimSpace(line)
 
 		if strings.HasPrefix(trimmed, "//") {
@@ -216,6 +214,27 @@ func scanAssemblyFile(path string) ([]Finding, error) {
 				})
 			}
 		}
+	}
+
+	if isAmd64 {
+		findings = append(findings, scanAmd64ScalarTailLoops(path, lines)...)
+	}
+
+	if isArm64NEON {
+		findings = append(findings, scanNEONScalarHotLoops(path, lines)...)
+	}
+
+	return findings, nil
+}
+
+func scanAmd64ScalarTailLoops(path string, lines []string) []Finding {
+	findings := make([]Finding, 0)
+	var inScalarBlock bool
+	var scalarLabel string
+
+	for lineIndex, line := range lines {
+		lineNumber := lineIndex + 1
+		trimmed := strings.TrimSpace(line)
 
 		if strings.HasSuffix(trimmed, "_scalar:") || strings.HasSuffix(trimmed, "_sloop:") {
 			inScalarBlock = true
@@ -223,24 +242,152 @@ func scanAssemblyFile(path string) ([]Finding, error) {
 			continue
 		}
 
-		if inScalarBlock {
-			if strings.Contains(trimmed, "MOVSS") || strings.Contains(trimmed, "MOVSD") {
-				findings = append(findings, Finding{
-					Kind:    FindingScalarTailLoop,
-					Path:    path,
-					Line:    lineNumber,
-					Summary: "scalar tail loop at " + scalarLabel,
-				})
-				inScalarBlock = false
-			}
+		if !inScalarBlock {
+			continue
+		}
 
-			if strings.HasSuffix(trimmed, "_done:") {
-				inScalarBlock = false
+		if strings.Contains(trimmed, "MOVSS") || strings.Contains(trimmed, "MOVSD") {
+			findings = append(findings, Finding{
+				Kind:    FindingScalarTailLoop,
+				Path:    path,
+				Line:    lineNumber,
+				Summary: "scalar tail loop at " + scalarLabel,
+			})
+			inScalarBlock = false
+		}
+
+		if strings.HasSuffix(trimmed, "_done:") {
+			inScalarBlock = false
+		}
+	}
+
+	return findings
+}
+
+func scanNEONScalarHotLoops(path string, lines []string) []Finding {
+	findings := make([]Finding, 0)
+
+	for lineIndex, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if !strings.HasSuffix(trimmed, ":") {
+			continue
+		}
+
+		if strings.Contains(trimmed, "_tail:") ||
+			strings.Contains(trimmed, "_scalar_loop:") ||
+			strings.Contains(trimmed, "_done:") ||
+			strings.Contains(trimmed, "_reduce:") ||
+			strings.Contains(trimmed, "_finalize:") {
+			continue
+		}
+
+		if !neonHotLoopLabel(trimmed) {
+			continue
+		}
+
+		block := collectBackwardBranchBlock(lines, lineIndex)
+		if neonBlockIsScalarHotLoop(block) {
+			findings = append(findings, Finding{
+				Kind:    FindingScalarInSIMDKernel,
+				Path:    path,
+				Line:    lineIndex + 1,
+				Summary: "scalar FP hot loop at " + trimmed,
+			})
+		}
+	}
+
+	return findings
+}
+
+func neonHotLoopLabel(label string) bool {
+	if strings.Contains(label, "_loop") {
+		return true
+	}
+
+	if strings.Contains(label, "_col_loop:") {
+		return true
+	}
+
+	return strings.Contains(label, "_kh_loop:") ||
+		strings.Contains(label, "_kw_loop:")
+}
+
+func collectBackwardBranchBlock(lines []string, startIndex int) []string {
+	block := make([]string, 0, 32)
+	startLabel := strings.TrimSuffix(strings.TrimSpace(lines[startIndex]), ":")
+
+	for offset := 1; offset < len(lines) && offset < 48; offset++ {
+		lineIndex := startIndex + offset
+		trimmed := strings.TrimSpace(lines[lineIndex])
+
+		block = append(block, trimmed)
+
+		if strings.HasPrefix(trimmed, "B ") || strings.HasPrefix(trimmed, "CBNZ ") ||
+			strings.HasPrefix(trimmed, "CBZ ") {
+			if strings.Contains(trimmed, startLabel) {
+				break
 			}
 		}
 	}
 
-	return findings, scanner.Err()
+	return block
+}
+
+func neonBlockIsScalarHotLoop(block []string) bool {
+	hasVectorLoad := false
+	hasVectorAccum := false
+	hasScalarHotAccum := false
+
+	for _, line := range block {
+		if neonLineHasVectorLoad(line) {
+			hasVectorLoad = true
+		}
+
+		if neonLineHasVectorAccum(line) {
+			hasVectorAccum = true
+		}
+
+		if neonLineHasScalarHotAccum(line) {
+			hasScalarHotAccum = true
+		}
+	}
+
+	if !hasVectorLoad || hasVectorAccum {
+		return false
+	}
+
+	return hasScalarHotAccum
+}
+
+func neonLineHasVectorLoad(line string) bool {
+	return strings.Contains(line, "VLD1") ||
+		strings.Contains(line, "VLD2") ||
+		strings.Contains(line, "VLD3") ||
+		strings.Contains(line, "VLD4")
+}
+
+func neonLineHasVectorAccum(line string) bool {
+	if strings.Contains(line, "VFADD") ||
+		strings.Contains(line, "VFMUL") ||
+		strings.Contains(line, "VFMLA") ||
+		strings.Contains(line, "VFMAX") ||
+		strings.Contains(line, "VFMIN") {
+		return true
+	}
+
+	return strings.Contains(line, "WORD $") &&
+		(strings.Contains(line, "0x4E20") ||
+			strings.Contains(line, "0x6E20") ||
+			strings.Contains(line, "0x4E21"))
+}
+
+func neonLineHasScalarHotAccum(line string) bool {
+	if strings.Contains(line, "FADDS") || strings.Contains(line, "FMULS") {
+		return true
+	}
+
+	return strings.Contains(line, "FMOVS (R") && strings.Contains(line, "F1")
 }
 
 func matchForbiddenPhrase(path string, lineNumber int, line string) *Finding {

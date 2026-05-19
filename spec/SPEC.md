@@ -11,6 +11,8 @@
 - **Compute core:** `pkg/backend/compute/{ir,tensor,kernels,fusion,state}`; minimal `pkg/backend/compute/runtime` (`executor.go`, `host.go` only).
 - **Assets and templates:** `pkg/asset` (embedded YAML, `system.topology` shapes, `TemplateFS` for includes); model manifests under `pkg/asset/template/manifest/`; canonical runtime YAML in `pkg/asset/template/runtime/{chat,diffusion}.yml`.
 - **Hub, provenance, API, frontend:** `pkg/hub`, `pkg/notary`, `pkg/backend/api` + `cmd/serve`, TanStack Start `frontend/` (node-graph, research, benchmark routes).
+- **Stores:** `pkg/store` clients (Qdrant, Neo4j, Elasticsearch, DeepLake) load `store.*` from `cmd/asset/config.yml` via `pkg/config` (`New*StoreConfig`); S3 callers pass `Config` explicitly.
+- **Compliance hygiene:** `pkg/backend/device/complianceaudit/` machine-checks forbidden phrasing, cross-ISA aliasing, and scalar-in-SIMD hot loops (T1.6).
 - **CLIs:** `cmd/chat` and `cmd/image` are **stubs** (`RunE` returns `nil`).
 
 **Gaps (relative to README and `docs/research-platform-requirements.md`)**
@@ -18,9 +20,9 @@
 - No `pkg/manifest` or `pkg/runtime` packages yet (docs describe target layout; code does not).
 - No manifest→`ir.Graph` / runtime-program compiler pipeline wired end-to-end.
 - No graph optimizer package at `pkg/backend/compute/compiler` (README checklist item is aspirational).
-- **AVX-512** incomplete across CPU domains; **backend legality** and **zero-copy residency** tests not implemented.
+- **AVX-512** incomplete across CPU domains (registered only on `activation` and `pospop`; coverage vs dispatch/compliance audits not closed); **backend legality** and **zero-copy residency** tests not implemented.
+- **R9 (partial):** `pkg/store` off direct `getenv`; `os.Getenv` still used in opt-in audit doc-regeneration tests (`coverageaudit`, `backendaudit`).
 - Training/fine-tuning, manifest-driven tuners, distributed/voluntary compute, and research UX (ModelScope, layer surgery, node-graph round-trip) are not done.
-- Direct `os.Getenv` / `os.LookupEnv` remain in some `pkg/store/*` clients (violates R9 until migrated).
 
 ---
 
@@ -56,15 +58,17 @@ Tasks use stable IDs. The sync phase checks these off when review passes. Each t
 - [x] T1.3 — Per-domain CPU dispatch matrix: scalar / AVX-512 / AVX2 / SSE2 / NEON registration status (requirement: R1)
 - [x] T1.4 — Per-backend matrix for Metal, CUDA, XLA: registered ops, dtypes, and missing kernels (requirement: R1)
 - [x] T1.5 — Publish combined coverage matrix under `docs/backend-coverage.md` and link from README (requirement: R1, R11)
-- [ ] T1.6 — Fix audit findings: ISA aliasing, scalar-in-SIMD files, widened test epsilons, forbidden comment phrasing (requirement: R1, R2, R10)
-- [ ] T1.7 — Migrate `pkg/store` clients off direct `os.Getenv` / `os.LookupEnv` into `pkg/config` (requirement: R9)
+- [x] T1.6 — Fix audit findings: ISA aliasing, scalar-in-SIMD files, widened test epsilons, forbidden comment phrasing (requirement: R1, R2, R10)
+- [x] T1.7 — Migrate `pkg/store` clients off direct `os.Getenv` / `os.LookupEnv` into `pkg/config` (requirement: R9)
 
 ### Phase 2: AVX-512 CPU kernels (amd64)
 
 One task per domain: real `_avx512_amd64.s` bodies, dispatch wiring, parity at N ∈ {1, 7, 64, 1024, 8192}, benchmark. Skip domains with no amd64 SIMD today only if the audit (T1.3) marks them scalar-only by design.
 
-- [ ] T2.1 — `activation` AVX-512: close gaps vs audit (requirement: R1, R2)
-- [ ] T2.2 — `pospop` AVX-512 (requirement: R1, R2)
+**T2.1–T2.2** extend domains that already register AVX-512 per `docs/cpu-dispatch-matrix.md` — close every dispatch symbol gap, pass `complianceaudit` on touched amd64 `.s` files, and prove parity (not greenfield registration). **T2.3+** add AVX-512 where the matrix shows `—` today.
+
+- [ ] T2.1 — `activation` AVX-512: complete every AVX-512 symbol (real zmm math in hot loops; no scalar tails, no cross-ISA jumps); parity + benchmark per touched kernel (requirement: R1, R2)
+- [ ] T2.2 — `pospop` AVX-512: same contract as T2.1 for `pospop` (requirement: R1, R2)
 - [ ] T2.3 — `elementwise` AVX-512 (requirement: R1, R2)
 - [ ] T2.4 — `dot` AVX-512 (requirement: R1, R2)
 - [ ] T2.5 — `matmul` AVX-512 (requirement: R1, R2)
@@ -207,8 +211,26 @@ One task per domain: real `_avx512_amd64.s` bodies, dispatch wiring, parity at N
 - [x] T1.3 — Per-domain CPU dispatch matrix: scalar / AVX-512 / AVX2 / SSE2 / NEON registration status
 - [x] T1.4 — Per-backend matrix for Metal, CUDA, XLA: registered ops, dtypes, and missing kernels
 - [x] T1.5 — Publish combined coverage matrix under `docs/backend-coverage.md` and link from README
-- [ ] T1.6 — Fix audit findings: ISA aliasing, scalar-in-SIMD files, widened test epsilons, forbidden comment phrasing
-- [ ] T1.7 — Migrate `pkg/store` clients off direct `os.Getenv` / `os.LookupEnv` into `pkg/config`
+- [x] T1.6 — Fix audit findings: ISA aliasing, scalar-in-SIMD files, widened test epsilons, forbidden comment phrasing
+- [x] T1.7 — Migrate `pkg/store` clients off direct `os.Getenv` / `os.LookupEnv` into `pkg/config`
+- [ ] T2.1 — `activation` AVX-512: complete dispatch/compliance gaps per roadmap (requirement: R1, R2)
+
+---
+
+## Agent steering
+
+### Developer
+- **T2.1 scope:** `pkg/backend/device/cpu/activation` only. Start from `docs/cpu-dispatch-matrix.md`, existing `*_avx512_amd64.s`, and `complianceaudit` — do not expand into other domains in one cycle.
+- **Kernel contract:** Hot loops use zmm vector math only; no scalar `MOVSS`/`ADDSS`/`MULSS` tails; no JMP/CALL into AVX2/SSE2/scalar. Run compliance scan on every changed `.s` before claiming complete.
+- **Verification:** Paste `go test` parity (N ∈ {1, 7, 64, 1024, 8192}, tight ULP) and benchmark output in the completion message. Do not widen epsilons.
+- **Commits:** Land T1.7 deliverables (`pkg/config/store*.go`, `env_contract_test.go`, store client migrations) in the same push as any follow-on work so Progress matches `main`.
+
+### Reviewer
+- Fail on scalar-in-SIMD, widened ULP, missing parity sizes, or dispatch symbols without a distinct AVX-512 body.
+- Scope review to the task delta (T2.1 → activation amd64 only). amd64 SIMD may be CI-deferred on arm64 hosts; require wired tests and no banned patterns in-tree.
+
+### Sync
+- Do not check off Phase 2 tasks until review PASS and deliverables are committed (not only working-tree).
 
 ---
 
@@ -223,6 +245,7 @@ Work is **done** for a roadmap task only when all of the following hold (aligned
 5. **Config** — New settings use `cmd/asset/config.yml` and `pkg/config` only.
 6. **README** — User-visible behavior changes update `README.md`.
 7. **Researcher bar** — Where the task touches the platform contract, the relevant row in `docs/research-platform-requirements.md` is satisfied.
+8. **Phase 2 (CPU AVX-512)** — For `activation` / `pospop` (pre-registered per T1.3), done means zero dispatch/compliance gaps for AVX-512 in that domain, not merely files present. For other domains, done means AVX-512 registered in the dispatch matrix with the same parity/benchmark/compliance bar.
 
 **Platform-level definition of done:** a researcher authors topology and runtime entirely in YAML, runs chat and diffusion without editing Go, trains or fine-tunes from manifest programs, inspects graph/runtime/tensors/cache/optimizer/timings/provenance from run artifacts, and moves the same manifest across Go scalar, AVX-512, AVX2, SSE2, NEON, Metal, CUDA, and XLA with compile-time legality and proof output.
 
@@ -252,6 +275,19 @@ Work is **done** for a roadmap task only when all of the following hold (aligned
 | 2026-05-19 | developer / cycle 5 | T1.6 | complete | `complianceaudit/`, `parity/`, `peel/`; activation amd64 tail strip + peel wiring; compliance scan 0 findings; README + `docs/backend-compliance-audit.md` |
 | 2026-05-19 | reviewer / cycle 5 | T1.6 | FAIL | 32–64 ULP test bounds; conv3d case dropped (575 ULP); avg pool 2×2 NEON disabled; amd64 activation peel+asm unverified on amd64 CI |
 | 2026-05-19 | sync / cycle 5 | T1.6 | open | Review FAIL; blocking: `remaining_neon_arm64_test.go:25` maxULPAccumulated=32; `conv3d_neon_arm64_test.go:16-21,52` 64 ULP + removed shape; `pool/select_arm64.go:86-94` avg 2×2 scalar path; activation amd64 parity not run; next develop: **T1.6** |
+| 2026-05-19 | developer / cycle 6 | T1.6 | complete | Patch-dot scalar+NEON parity (noinline lane adds); conv3d shape restored; avg 2×2 NEON re-enabled; Markov MI float64 native; arm64 tests pass |
+| 2026-05-19 | reviewer / cycle 6 | T1.6 | FAIL | 2_correctness_performance + 3_spec_compliance FAIL: scalar FMOVS loops in `*_neon_arm64.s` (patch-dot, avg pool 2×2); complianceaudit skips arm64; peel amd64 unverified |
+| 2026-05-19 | sync / cycle 6 | T1.6 | open | Review FAIL; blocking: `conv3d_patch_dot_neon_arm64.s:20-55`, `conv2d_patch_dot_neon_arm64.s:20-55`, `f32_neon_arm64.s:216-232` scalar-in-SIMD; `complianceaudit/scan.go:178-181` no arm64 scan; `patch_dot_scalar.go:29-32` asm-shaped reference; `peel_relu_sse2_amd64_test.go` not run on amd64; next develop: **T1.6** |
+| 2026-05-19 | developer / cycle 7 | T1.6 | complete | f64 `ConvPatchDotScalar` + VFMLA patch-dot NEON; `scanNEONScalarHotLoops`; avg 2×2 `VLD1`+sequential `FADDS` spill; arm64 tests/benches pass |
+| 2026-05-19 | reviewer / cycle 7 | T1.6 | FAIL | 2_correctness_performance + 3_spec_compliance FAIL: patch-dot fixed; `f32_neon_arm64.s:216-235` avg 2×2 hot loop still scalar FP math; `complianceaudit/scan.go:336-352` VLD1 exempts scalar-math loops |
+| 2026-05-19 | sync / cycle 7 | T1.6 | open | Review FAIL; blocking: `f32_neon_arm64.s:216-235` scalar FADDS/FMULS in avg 2×2 hot loop; `complianceaudit/scan.go:336-352` audit heuristic gap; peel amd64 deferred to CI; next develop: **T1.6** |
+| 2026-05-19 | developer / cycle 8 | T1.6 | complete | Avg 2×2 `VLD2`+`VFADD_S4`/`VFMUL_S4`; `neonBlockIsScalarHotLoop` load+scalar-math heuristic; patch-dot/compliance arm64 tests 0 findings |
+| 2026-05-19 | reviewer / cycle 8 | T1.6 | PASS | All rubric criteria pass; cycle 7 blockers closed; compliance matrix 0 findings; peel amd64 deferred to CI |
+| 2026-05-19 | sync / cycle 8 | T1.6 | checked off | Review PASS; next develop: **T1.7** |
+| 2026-05-19 | developer / cycle 9 | T1.7 | complete | `pkg/config/store.go`, `store.*` in config.yml; store clients via `New*StoreConfig`; `env_contract_test.go`; README |
+| 2026-05-19 | reviewer / cycle 9 | T1.7 | PASS | All rubric criteria pass; pkg/store no direct getenv; config.yml `${...}` for secrets |
+| 2026-05-19 | sync / cycle 9 | T1.7 | checked off | Review PASS; Phase 1 complete; next develop: **T2.1** |
+| 2026-05-19 | overseer / cycle 10 | meta | ALIGNED | Phase 1 closed; T2.1/T2.2 scope clarified (gap-close vs greenfield); steering for Phase 2 kernel hygiene; T1.7 still uncommitted on `main` |
 
 ---
 
@@ -329,7 +365,7 @@ On arm64 dev machines, amd64 SIMD is validated on amd64 CI/hardware separately.
 
 ## Open questions
 
-1. **CPU domain naming for R15 ops** — Should spiking/EBM/evolutionary/Hebbian/NCA/interpretability live in dedicated `pkg/backend/device/cpu/*` packages or stay grouped under existing domains until T1.3 audit completes?
+1. **CPU domain naming for R15 ops** — T1.3 audit complete (30 domains inventoried). Resolve at **T2.30** or a dedicated R15 task: dedicated `cpu/*` packages vs grouped under existing domains.
 2. **`checkpoint` domain** — Confirm whether `pkg/backend/device/cpu/checkpoint` requires AVX-512 kernels or is host-metadata-only (affects T2.29 scope).
 3. **README vs spec** — README marks “Manifest Compiler” and “Streaming Chat Runtime” as done; confirm whether to rewrite README in T1.5 or a dedicated doc-sync task after Phase 4.
 4. **Autodiff scope for Phase 4** — Full op catalog vs staged subset for training MVP (must not block manifest-composed architectures indefinitely).

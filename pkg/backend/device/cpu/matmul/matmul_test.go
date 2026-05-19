@@ -2,7 +2,6 @@ package matmul
 
 import (
 	"fmt"
-	"math"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
