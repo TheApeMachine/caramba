@@ -13,7 +13,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | ISA path | Domains registered |
 |----------|-------------------:|
 | Scalar (Go) | 30 / 30 |
-| AVX-512 (amd64) | 16 / 30 |
+| AVX-512 (amd64) | 17 / 30 |
 | AVX2 (amd64) | 2 / 30 |
 | SSE2 (amd64) | 2 / 30 |
 | NEON (arm64) | 20 / 30 |
@@ -49,7 +49,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | reduction | yes | yes | — | — | yes |
 | rope | yes | yes | — | — | yes |
 | sampling | yes | yes | — | — | — |
-| shape | yes | — | — | — | — |
+| shape | yes | yes | — | — | — |
 | tokenizer | yes | — | — | — | — |
 | vsa | yes | — | — | — | yes |
 
@@ -71,6 +71,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 - `reduction`
 - `rope`
 - `sampling`
+- `shape`
 
 ## Registration rules
 

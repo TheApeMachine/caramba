@@ -55,7 +55,7 @@ func runGatherFloat32Int32(args ...tensor.Tensor) error {
 			return tensor.ErrShapeMismatch
 		}
 
-		copy(
+		CopyContiguousFloat32Native(
 			out[resultIndex*innerDim:(resultIndex+1)*innerDim],
 			source[int(sourceRow)*innerDim:(int(sourceRow)+1)*innerDim],
 		)
@@ -109,14 +109,14 @@ func runScatterFloat32Int32(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	copy(out, target)
+	CopyContiguousFloat32Native(out, target)
 
 	for updateIndex, targetRow := range indices {
 		if int(targetRow) < 0 || int(targetRow) >= targetDims[0] {
 			return tensor.ErrShapeMismatch
 		}
 
-		copy(
+		CopyContiguousFloat32Native(
 			out[int(targetRow)*innerDim:(int(targetRow)+1)*innerDim],
 			updates[updateIndex*innerDim:(updateIndex+1)*innerDim],
 		)
@@ -164,14 +164,8 @@ func runWhereFloat32(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for index := range out {
-		if mask.Get(index) {
-			out[index] = positive[index]
-			continue
-		}
-
-		out[index] = negative[index]
-	}
+	maskBytes := bitVectorMaskBytes(mask)
+	WhereFloat32Native(out, positive, negative, maskBytes)
 
 	return nil
 }
@@ -215,14 +209,8 @@ func runMaskedFillFloat32(args ...tensor.Tensor) error {
 	}
 
 	fillValue := scalar[0]
-
-	for index := range out {
-		out[index] = input[index]
-
-		if mask.Get(index) {
-			out[index] = fillValue
-		}
-	}
+	maskBytes := bitVectorMaskBytes(mask)
+	MaskedFillFloat32Native(out, input, fillValue, maskBytes)
 
 	return nil
 }
@@ -299,8 +287,8 @@ func runConcatFloat32(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	copy(out, left)
-	copy(out[len(left):], right)
+	CopyContiguousFloat32Native(out[:len(left)], left)
+	CopyContiguousFloat32Native(out[len(left):], right)
 
 	return nil
 }
