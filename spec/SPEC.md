@@ -6,7 +6,7 @@
 
 **What exists today**
 
-- **Low-level compute:** `pkg/backend/device/cpu` — 30 operation domains (`activation` … `vsa`, excluding shared `cpu/neon`) with Go scalar on all; **NEON** registered in 20/30 domains; **amd64 AVX-512** in `activation`, `dot`, `elementwise`, `matmul`, and `pospop` (5/30); **AVX2/SSE2** only in `activation` and `pospop`. Legacy **386** paths removed; CPU targets **amd64** and **arm64** only (`GOARCH=386` unsupported).
+- **Low-level compute:** `pkg/backend/device/cpu` — 30 operation domains (`activation` … `vsa`, excluding shared `cpu/neon`) with Go scalar on all; **NEON** registered in 20/30 domains; **amd64 AVX-512** in `activation`, `dot`, `elementwise`, `matmul`, `pospop`, and `reduction` (6/30); **AVX2/SSE2** only in `activation` and `pospop`. Legacy **386** paths removed; CPU targets **amd64** and **arm64** only (`GOARCH=386` unsupported).
 - **Device backends:** `pkg/backend/device/{metal,cuda,xla}` — **Metal** has 462 `kernels.Default` registrations (158 unique names, 68/119 required ops); **CUDA** and **XLA** are tensor upload/download only (0 kernel registrations). **`device.Backend` ↔ `ir.RequiredOperationIDs()` inventory** in `docs/backend-inventory.md` and `pkg/backend/device/inventory*.go` (151 methods, 119 required ops cross-linked). **CPU dispatch matrix** in `docs/cpu-dispatch-matrix.md` and `pkg/backend/device/cpu/dispatchaudit/`. **Device backend matrix** in `docs/device-backend-matrix.md` and `pkg/backend/device/backendaudit/`. **Combined backend coverage** in `docs/backend-coverage.md` and `pkg/backend/device/coverageaudit/` (T1.2–T1.4 registration snapshot, R1 execution-target summary).
 - **Compute core:** `pkg/backend/compute/{ir,tensor,kernels,fusion,state}`; minimal `pkg/backend/compute/runtime` (`executor.go`, `host.go` only).
 - **Assets and templates:** `pkg/asset` (embedded YAML, `system.topology` shapes, `TemplateFS` for includes); model manifests under `pkg/asset/template/manifest/`; canonical runtime YAML in `pkg/asset/template/runtime/{chat,diffusion}.yml`.
@@ -20,7 +20,7 @@
 - No `pkg/manifest` or `pkg/runtime` packages yet (docs describe target layout; code does not).
 - No manifest→`ir.Graph` / runtime-program compiler pipeline wired end-to-end.
 - No graph optimizer package at `pkg/backend/compute/compiler` (README checklist item is aspirational).
-- **AVX-512** incomplete across CPU domains (registered on `activation`, `dot`, `elementwise`, `matmul`, `pospop` — 5/30 per dispatch matrix; **T2.1/T2.2** gap-close await human §10b only); `dispatchaudit` `TestValidateCPUDispatchMatrix` still fails 30 vs 32 domain invariant (pre-existing); **backend legality** and **zero-copy residency** tests not implemented.
+- **AVX-512** incomplete across CPU domains (registered on `activation`, `dot`, `elementwise`, `matmul`, `pospop`, `reduction` — 6/30 per dispatch matrix; **T2.1/T2.2** gap-close await human §10b only); `dispatchaudit` `TestValidateCPUDispatchMatrix` still fails 30 vs 32 domain invariant (pre-existing); **backend legality** and **zero-copy residency** tests not implemented.
 - **R9 (partial):** `pkg/store` off direct `getenv`; `os.Getenv` still used in opt-in audit doc-regeneration tests (`coverageaudit`, `backendaudit`).
 - Training/fine-tuning, manifest-driven tuners, distributed/voluntary compute, and research UX (ModelScope, layer surgery, node-graph round-trip) are not done.
 
@@ -72,7 +72,7 @@ One task per domain: real `_avx512_amd64.s` bodies, dispatch wiring, parity at N
 - [x] T2.3 — `elementwise` AVX-512 (requirement: R1, R2)
 - [x] T2.4 — `dot` AVX-512 (requirement: R1, R2)
 - [x] T2.5 — `matmul` AVX-512 (requirement: R1, R2)
-- [ ] T2.6 — `reduction` AVX-512 (requirement: R1, R2)
+- [x] T2.6 — `reduction` AVX-512 (requirement: R1, R2)
 - [ ] T2.7 — `pool` AVX-512 (requirement: R1, R2)
 - [ ] T2.8 — `dropout` AVX-512 (requirement: R1, R2)
 - [ ] T2.9 — `losses` AVX-512 (requirement: R1, R2)
@@ -218,7 +218,8 @@ One task per domain: real `_avx512_amd64.s` bodies, dispatch wiring, parity at N
 - [x] T2.3 — `elementwise` AVX-512: greenfield `f32_avx512_amd64.{s,go}` (12 f32 kernels, masked tails); `select_amd64.go` dispatch; `elementwise_avx512_{parity,compliance,bench}_test.go` at `parity.Lengths`; cycle 21 review PASS; `GOARCH=amd64 go build ./pkg/backend/device/cpu/elementwise/` exit 0; arm64 `go test ./pkg/backend/device/cpu/elementwise/...` pass; docs matrix **3/30**; optional human amd64+AVX512F: `Test.*F32AVX512` / `Benchmark.*F32AVX512` (requirement: R1, R2)
 - [x] T2.4 — `dot` AVX-512: greenfield `f32_avx512_amd64.{s,go}` (f64 widen-multiply-accumulate, masked `dot_w4_tail`); `select_amd64.go` dispatch; `dot_avx512_{parity,compliance,bench}_test.go` at `parity.Lengths`; cycle 22 review PASS; `GOARCH=amd64 go build ./pkg/backend/device/cpu/dot/` exit 0; arm64 `go test ./pkg/backend/device/cpu/dot/...` + `complianceaudit` pass (0 findings on `f32_avx512_amd64.s`); docs matrix **4/30**; optional human amd64+AVX512F: `TestDotF32AVX512` / `TestDotAVX512AssemblyCompliance` / `BenchmarkDotF32AVX512` (requirement: R1, R2)
 - [x] T2.5 — `matmul` AVX-512: greenfield `f32_avx512_amd64.{s,go}` (row outer-product, w16/w8/w4/masked `mm_col_w4_tail` with `MOVQ DX,CX` before `SHLQ CL`); `select_amd64.go` dispatch; `matmul_avx512_{parity,compliance,bench}_test.go` at `parity.Lengths`; cycles 23–24 review PASS; `GOARCH=amd64 go build ./pkg/backend/device/cpu/matmul/` exit 0; arm64 `go test ./pkg/backend/device/cpu/matmul/...` + `complianceaudit` pass; docs matrix **5/30**; optional human amd64+AVX512F: `TestMatMulF32AVX512` / `TestMatmulAVX512AssemblyCompliance` / `BenchmarkMatMulF32AVX512` (requirement: R1, R2)
-- [ ] T2.6 — `reduction` AVX-512 (requirement: R1, R2)
+- [x] T2.6 — `reduction` AVX-512: greenfield `f32_avx512_amd64.{s,go}` (sum/prod/max/min/l1; masked `w4_tail` with `MOVQ CX,DX` before `SHLQ CL`); `select_amd64.go` dispatch; `reduction_avx512_{parity,compliance,bench}_test.go` at `parity.Lengths`; cycle 25 review PASS; `GOARCH=amd64 go build ./pkg/backend/device/cpu/reduction/` exit 0; arm64 `go test ./pkg/backend/device/cpu/reduction/...` + `complianceaudit` pass; docs matrix **6/30**; optional human amd64+AVX512F: `Test*F32AVX512Parity` / `Benchmark*F32AVX512` (requirement: R1, R2)
+- [ ] T2.7 — `pool` AVX-512 (requirement: R1, R2)
 
 ---
 
@@ -346,6 +347,9 @@ Work is **done** for a roadmap task only when all of the following hold (aligned
 | 2026-05-19 | reviewer / cycle 24 | T2.5 | PASS | All rubric criteria pass; tail mask fix verified at `f32_avx512_amd64.s:118-122`; full T2.5 package in WT; amd64+AVX512F parity not run on arm64 |
 | 2026-05-19 | sync / cycle 24 | T2.5 | checked off | Review PASS; T2.1/T2.2 §10b still open; next develop: **T2.6** |
 | 2026-05-19 | overseer / cycle 25 | meta | DRIFT | T2.5 checkoff valid (WT: `f32_avx512_amd64.{s,go}`, tail `MOVQ DX,CX` at `:118`, docs **5/30**); acceptance §9 “branch tip” contradicted binding workflow → verification loop T2.1 cycles 15–19; steering stale (T2.2 default); §9/§10a/steering aligned to WT review; next develop **T2.6** |
+| 2026-05-19 | developer / cycle 25 | T2.6 | complete | `reduction/`: `f32_avx512_amd64.{s,go}` (5 kernels); `select_amd64.go` dispatch; `reduction_avx512_{parity,compliance,bench}_test.go`; `dispatchaudit/matrix_test.go` + docs **6/30**; `GOARCH=amd64 go build ./pkg/backend/device/cpu/reduction/` exit 0; arm64 reduction + complianceaudit pass; WT `f32_avx512_amd64.s` tail-mask delta uncommitted |
+| 2026-05-19 | reviewer / cycle 25 | T2.6 | PASS | All rubric criteria pass; five ops at `parity.Lengths`; masked tails `MOVQ CX,DX`; amd64 build/test -c pass; native AVX-512F tests not run on arm64 |
+| 2026-05-19 | sync / cycle 25 | T2.6 | checked off | Review PASS; T2.1/T2.2 §10b still open; next develop: **T2.7** |
 
 ---
 
