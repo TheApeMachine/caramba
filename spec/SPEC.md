@@ -6,7 +6,7 @@
 
 **What exists today**
 
-- **Low-level compute:** `pkg/backend/device/cpu` — 30 operation domains (`activation` … `vsa`, excluding shared `cpu/neon`) with Go scalar on all; **NEON** registered in 20/30 domains; **amd64 AVX-512** in `activation`, `attention`, `convolution`, `dot`, `dropout`, `elementwise`, `losses`, `matmul`, `pool`, `pospop`, and `reduction` (11/30); **AVX2/SSE2** only in `activation` and `pospop`. Legacy **386** paths removed; CPU targets **amd64** and **arm64** only (`GOARCH=386` unsupported).
+- **Low-level compute:** `pkg/backend/device/cpu` — 30 operation domains (`activation` … `vsa`, excluding shared `cpu/neon`) with Go scalar on all; **NEON** registered in 20/30 domains; **amd64 AVX-512** in `activation`, `attention`, `convolution`, `dot`, `dropout`, `elementwise`, `embedding`, `layernorm`, `losses`, `matmul`, `pool`, `pospop`, and `reduction` (13/30); **AVX2/SSE2** only in `activation` and `pospop`. Legacy **386** paths removed; CPU targets **amd64** and **arm64** only (`GOARCH=386` unsupported).
 - **Device backends:** `pkg/backend/device/{metal,cuda,xla}` — **Metal** has 462 `kernels.Default` registrations (158 unique names, 68/119 required ops); **CUDA** and **XLA** are tensor upload/download only (0 kernel registrations). **`device.Backend` ↔ `ir.RequiredOperationIDs()` inventory** in `docs/backend-inventory.md` and `pkg/backend/device/inventory*.go` (151 methods, 119 required ops cross-linked). **CPU dispatch matrix** in `docs/cpu-dispatch-matrix.md` and `pkg/backend/device/cpu/dispatchaudit/`. **Device backend matrix** in `docs/device-backend-matrix.md` and `pkg/backend/device/backendaudit/`. **Combined backend coverage** in `docs/backend-coverage.md` and `pkg/backend/device/coverageaudit/` (T1.2–T1.4 registration snapshot, R1 execution-target summary).
 - **Compute core:** `pkg/backend/compute/{ir,tensor,kernels,fusion,state}`; minimal `pkg/backend/compute/runtime` (`executor.go`, `host.go` only).
 - **Assets and templates:** `pkg/asset` (embedded YAML, `system.topology` shapes, `TemplateFS` for includes); model manifests under `pkg/asset/template/manifest/`; canonical runtime YAML in `pkg/asset/template/runtime/{chat,diffusion}.yml`.
@@ -20,7 +20,7 @@
 - No `pkg/manifest` or `pkg/runtime` packages yet (docs describe target layout; code does not).
 - No manifest→`ir.Graph` / runtime-program compiler pipeline wired end-to-end.
 - No graph optimizer package at `pkg/backend/compute/compiler` (README checklist item is aspirational).
-- **AVX-512** incomplete across CPU domains (registered on `activation`, `attention`, `convolution`, `dot`, `dropout`, `elementwise`, `losses`, `matmul`, `pool`, `pospop`, `reduction` — 11/30 per dispatch matrix; **T2.1/T2.2** gap-close await human §10b only); `dispatchaudit` `TestValidateCPUDispatchMatrix` still fails 30 vs 32 domain invariant (pre-existing); **backend legality** and **zero-copy residency** tests not implemented.
+- **AVX-512** incomplete across CPU domains (registered on `activation`, `attention`, `convolution`, `dot`, `dropout`, `elementwise`, `embedding`, `layernorm`, `losses`, `matmul`, `pool`, `pospop`, `reduction` — 13/30 per dispatch matrix; **T2.1/T2.2** gap-close await human §10b only); `dispatchaudit` `TestValidateCPUDispatchMatrix` still fails 30 vs 32 domain invariant (pre-existing); **backend legality** and **zero-copy residency** tests not implemented.
 - **R9 (partial):** `pkg/store` off direct `getenv`; `os.Getenv` still used in opt-in audit doc-regeneration tests (`coverageaudit`, `backendaudit`).
 - Training/fine-tuning, manifest-driven tuners, distributed/voluntary compute, and research UX (ModelScope, layer surgery, node-graph round-trip) are not done.
 
@@ -78,8 +78,8 @@ One task per domain: real `_avx512_amd64.s` bodies, dispatch wiring, parity at N
 - [x] T2.9 — `losses` AVX-512 (requirement: R1, R2)
 - [x] T2.10 — `convolution` AVX-512 (requirement: R1, R2)
 - [x] T2.11 — `attention` AVX-512 (requirement: R1, R2)
-- [ ] T2.12 — `embedding` AVX-512 (requirement: R1, R2)
-- [ ] T2.13 — `layernorm` AVX-512 (requirement: R1, R2)
+- [x] T2.12 — `embedding` AVX-512 (requirement: R1, R2)
+- [x] T2.13 — `layernorm` AVX-512 (requirement: R1, R2)
 - [ ] T2.14 — `normalization` AVX-512 (requirement: R1, R2)
 - [ ] T2.15 — `rope` AVX-512 (requirement: R1, R2)
 - [ ] T2.16 — `sampling` AVX-512 (requirement: R1, R2)
@@ -224,17 +224,20 @@ One task per domain: real `_avx512_amd64.s` bodies, dispatch wiring, parity at N
 - [x] T2.9 — `losses` AVX-512: greenfield `f32_avx512_amd64.{s,go}` (MSE/MAE f64 widen-accumulate, masked tails `f32_avx512_amd64.s:93-109`/`:206-222`); `select_amd64.go` dispatch; `losses_avx512_{parity,compliance,bench}_test.go` at `parity.Lengths`; cycle 30 review PASS; `GOARCH=amd64 go build ./pkg/backend/device/cpu/losses/` exit 0; arm64 `go test ./pkg/backend/device/cpu/losses/...` + `complianceaudit` pass; docs/dispatchaudit **9/30** (WT uncommitted); optional human amd64+AVX512F: `TestMseSumF32AVX512Parity` / `TestMaeSumF32AVX512Parity` / `Benchmark*F32AVX512` (requirement: R1, R2)
 - [x] T2.10 — `convolution` AVX-512: greenfield `f32_avx512_amd64.{s,go}` (patch-dot f64 widen-accumulate, masked tail `f32_avx512_amd64.s:54-69`); `select_amd64.go` + `select_generic.go` `!amd64`; `convolution_avx512_{parity,compliance,bench}_test.go` at `parity.Lengths`; cycle 31 review PASS; `GOARCH=amd64 go build ./pkg/backend/device/cpu/convolution/` exit 0; arm64 `go test ./pkg/backend/device/cpu/convolution/...` + `complianceaudit` pass; docs/dispatchaudit **10/30** (WT uncommitted); optional human amd64+AVX512F: `TestConvPatchDotF32AVX512Parity` / `BenchmarkConvPatchDotF32AVX512` (requirement: R1, R2)
 - [x] T2.11 — `attention` AVX-512: greenfield `f32_avx512_amd64.{s,go}` (flash online-update + scale; dest-last `VMULPS`/`VADDPS` `f32_avx512_amd64.s:24-26,:47-49,:63-65,:84-86`); `select_amd64.go`, `select_flash_amd64.go`; `attention_avx512_{parity,compliance,bench}_test.go` at `parity.Lengths` (0 ULP); cycles 32–33 review PASS; `GOARCH=amd64 go build ./pkg/backend/device/cpu/attention/` exit 0; arm64 `go test ./pkg/backend/device/cpu/attention/...` + `complianceaudit` pass; docs/dispatchaudit **11/30** (WT uncommitted); optional human amd64+AVX512F: `TestFlashAttention*AVX512*` / `BenchmarkFlashAttention*AVX512*` (requirement: R1, R2)
+- [x] T2.12 — `embedding` AVX-512: greenfield `f32_avx512_amd64.{s,go}` (`CopyRowFloat32AVX512Asm`, `AddRowFloat32AVX512Asm`; masked tails `f32_avx512_amd64.s:47-57,:114-126`); `f32_generic.go`, `select_amd64.go`, `select_other.go`; `embedding_avx512_{parity,compliance,bench}_test.go` at `parity.Lengths` on hidden (0 ULP); cycle 34 review PASS; `GOARCH=amd64 go build ./pkg/backend/device/cpu/embedding/` exit 0; arm64 `go test ./pkg/backend/device/cpu/embedding/...` + `complianceaudit` pass; docs/dispatchaudit **12/30** (branch tip `751157d`); optional human amd64+AVX512F: `TestLookupF32AVX512Parity` / `TestBagF32AVX512Parity` / `Benchmark*F32AVX512*` (requirement: R1, R2)
+- [x] T2.13 — `layernorm` AVX-512: greenfield `f32_avx512_amd64.{s,go}` (`LayerNormSquaredDiffSumFloat32AVX512Asm`, `LayerNormApplyRowFloat32AVX512Asm`; masked tails `f32_avx512_amd64.s:89-100,:200-213`); `f32_generic.go`, `select_amd64.go`, `select_other.go` `!arm64 && !amd64`; `layernorm_avx512_{parity,compliance,bench}_test.go` at `parity.Lengths` (apply 0 ULP); cycle 35 review PASS; `GOARCH=amd64 go build ./pkg/backend/device/cpu/layernorm/` exit 0; arm64 `go test ./pkg/backend/device/cpu/layernorm/...` + `complianceaudit` pass; docs/dispatchaudit **13/30** (WT uncommitted); optional human amd64+AVX512F: `TestLayerNormSquaredDiffSumF32AVX512Parity` / `TestLayerNormApplyRowF32AVX512Parity` / `BenchmarkLayerNorm*AVX512*` (requirement: R1, R2)
 
 ---
 
 ## Agent steering
 
 ### Developer
-- **Default next task: T2.9** (`losses` AVX-512 greenfield — same contract as T2.3–T2.8: `f32_avx512_amd64.{s,go}`, `select_amd64.go` dispatch, `losses_avx512_{parity,compliance,bench}_test.go`, `dispatchaudit` + `docs/cpu-dispatch-matrix.md` → **9/30**). Mirror NEON pair-sum kernels (`mse`/`mae` in `f32_neon_arm64.s`); amd64 today is generic-only (`losses/select_amd64.go`).
+- **Default next task: T2.13** (`layernorm` AVX-512 greenfield — same contract as T2.3–T2.12: `f32_avx512_amd64.{s,go}`, `select_amd64.go`, `select_other.go` `!amd64`, `layernorm_avx512_{parity,compliance,bench}_test.go`, `dispatchaudit` + `docs/cpu-dispatch-matrix.md` → **13/30**). Mirror NEON row helpers in `f32_neon_arm64.s` (`LayerNormSquaredDiffSumNEONAsm`, `LayerNormApplyRowNEONAsm`); amd64 today is scalar-only via `select_other.go` (`//go:build !arm64`).
 - **Do not** reopen verification-only **T2.1** when activation WT is empty vs HEAD; §10a on `13aebf6`. **T2.1/T2.2 §10b** = human/sync only (native amd64+AVX512F paste or CI URL).
-- **Tail opmask:** remainder count in **CX** before `SHLQ CL` when building K7 (`matmul` `:118-122`, `dropout/drop_apply_tail` `:132-145`); unmasked `VMOVUPS` on 1–3 lanes failed T2.8 cycle 28.
+- **Tail opmask:** remainder count in **CX** before `SHLQ CL` when building K7 (`embedding/emb_copy_w4_tail` `:47-57`, `matmul` `:118-122`, `dropout/drop_apply_tail` `:132-145`); unmasked `VMOVUPS` on 1–3 lanes failed T2.8 cycle 28.
+- **In-place accum / fused row ops:** dest-last `VADDPS` / `VMULPS` (`attention` online-update `:24-26`; `embedding` AddRow `:74-78`); wrong operand order failed T2.11 cycle 32.
 - **RNG / stateful ops:** no GPR xorshift in `*_avx512*.s` (T2.8 cycle 27); masked `VMOVDQU32` load/store on tails; full `count` must hit asm at `parity.Lengths` (direct symbol subtest when peel skips N=1,7).
-- **Kernel contract:** zmm hot loops; masked `w4_tail` on `*avx512*` (not `JL *_done`); no `VEXTRACTF128` from Z; `parity.Lengths` + tight ULP only.
+- **Kernel contract:** ymm/zmm hot loops; masked `w4_tail` on `*avx512*` (not `JL *_done`); no `VEXTRACTF128` from Z; `parity.Lengths` + tight ULP only.
 
 ### Reviewer
 - On **arm64 Curious host:** `5_verification` PASS when deliverables are in the **working tree**, host-runnable tests pass, and `GOARCH=amd64 go build` (or `go test -c`) succeeds for touched packages; **do not** FAIL for uncommitted deliverables, absent `HEAD` delta, or missing native amd64+AVX512F paste (§10b is human/sync for T2.1/T2.2 only).
@@ -380,6 +383,13 @@ Work is **done** for a roadmap task only when all of the following hold (aligned
 | 2026-05-19 | developer / cycle 33 | T2.11 | complete | `attention/`: dest-last `VMULPS`/`VADDPS` online-update (`f32_avx512_amd64.s:24-26,:47-49,:63-65,:84-86`); `attention_avx512_parity_test.go` `parity.AssertFloat32SlicesWithinULP` 0 ULP; `GOARCH=amd64 go build ./pkg/backend/device/cpu/attention/` exit 0; arm64 attention + complianceaudit pass; WT uncommitted |
 | 2026-05-19 | reviewer / cycle 33 | T2.11 | PASS | All rubric criteria pass; cycle-32 operand-order blocker closed; masked tail K7+VMOVDQU32; amd64 build pass; amd64+AVX512F parity not run on arm64 |
 | 2026-05-19 | sync / cycle 33 | T2.11 | checked off | Review PASS; T2.1/T2.2 §10b still open; next develop: **T2.12** |
+| 2026-05-19 | developer / cycle 34 | T2.12 | complete | `embedding/`: `f32_avx512_amd64.{s,go}` (CopyRow/AddRow ymm kernels); `f32_generic.go`, `select_amd64.go`, `select_other.go`; `embedding_avx512_{parity,compliance,bench}_test.go`; docs/dispatchaudit **12/30**; `GOARCH=amd64 go build ./pkg/backend/device/cpu/embedding/` exit 0; arm64 embedding + complianceaudit pass; WT uncommitted |
+| 2026-05-19 | reviewer / cycle 34 | T2.12 | PASS | All rubric criteria pass; masked w4_tail K7+VMOVDQU32; parity.Lengths on hidden; amd64 build/test -c pass; amd64+AVX512F parity not run on arm64 |
+| 2026-05-19 | sync / cycle 34 | T2.12 | checked off | Review PASS; T2.1/T2.2 §10b still open; next develop: **T2.13** |
+| 2026-05-19 | overseer / cycle 35 | meta | ALIGNED | T2.12 checkoff valid (`embedding/f32_avx512_amd64.{s,go}`, docs/dispatchaudit **12/30** on `751157d`); steering stale (T2.9) → **T2.13**; greenfield Phase 2 healthy; T2.1/T2.2 §10b human-only; next develop: **T2.13** |
+| 2026-05-19 | developer / cycle 35 | T2.13 | complete | `layernorm/`: `f32_avx512_amd64.{s,go}` (SquaredDiffSum f64 widen-accumulate, ApplyRow dest-last VMULPS/VADDPS); `f32_generic.go`, `select_amd64.go`, `select_other.go` `!arm64 && !amd64`; `layernorm_avx512_{parity,compliance,bench}_test.go`; docs/dispatchaudit **13/30**; `GOARCH=amd64 go build ./pkg/backend/device/cpu/layernorm/` exit 0; arm64 layernorm + complianceaudit pass; WT uncommitted |
+| 2026-05-19 | reviewer / cycle 35 | T2.13 | PASS | All rubric criteria pass; masked tails K7+VMOVDQU32; parity.Lengths; apply 0 ULP; amd64 build/test -c pass; amd64+AVX512F parity not run on arm64 |
+| 2026-05-19 | sync / cycle 35 | T2.13 | checked off | Review PASS; T2.1/T2.2 §10b still open; next develop: **T2.14** |
 
 ---
 

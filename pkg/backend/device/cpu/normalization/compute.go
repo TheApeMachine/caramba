@@ -248,31 +248,23 @@ func normalizeGroup(
 	inputSlice, outSlice, scaleSlice, biasSlice []float32,
 	channelsPerGroup, spatial int,
 ) {
-	var sum float64
-
-	for _, value := range inputSlice {
-		sum += float64(value)
-	}
-
-	mean := sum / float64(len(inputSlice))
-
-	var variance float64
-
-	for _, value := range inputSlice {
-		delta := float64(value) - mean
-		variance += delta * delta
-	}
-
-	variance /= float64(len(inputSlice))
+	elementCount := len(inputSlice)
+	mean := float64(SumFloat32Native(inputSlice)) / float64(elementCount)
+	variance := float64(NormSquaredDiffSumNative(inputSlice, float32(mean))) / float64(elementCount)
 	invStdDev := 1.0 / math.Sqrt(variance+normEpsilon)
+	meanF32 := float32(mean)
+	invStdDevF32 := float32(invStdDev)
 
 	for channelIndex := 0; channelIndex < channelsPerGroup; channelIndex++ {
-		for spatialIndex := 0; spatialIndex < spatial; spatialIndex++ {
-			localIndex := channelIndex*spatial + spatialIndex
-			value := float64(inputSlice[localIndex])
-			normalized := (value - mean) * invStdDev
-			outSlice[localIndex] = float32(normalized)*scaleSlice[channelIndex] + biasSlice[channelIndex]
-		}
+		channelStart := channelIndex * spatial
+		row := inputSlice[channelStart : channelStart+spatial]
+		outRow := outSlice[channelStart : channelStart+spatial]
+
+		NormApplyConstScaleBiasNative(
+			outRow, row,
+			meanF32, invStdDevF32,
+			scaleSlice[channelIndex], biasSlice[channelIndex],
+		)
 	}
 }
 
@@ -283,28 +275,15 @@ func instanceNormSlices(input, scale, bias, output []float32, batch, channels, s
 			row := input[start : start+spatial]
 			outRow := output[start : start+spatial]
 
-			var sum float64
-
-			for _, value := range row {
-				sum += float64(value)
-			}
-
-			mean := sum / float64(spatial)
-
-			var variance float64
-
-			for _, value := range row {
-				delta := float64(value) - mean
-				variance += delta * delta
-			}
-
-			variance /= float64(spatial)
+			mean := float64(SumFloat32Native(row)) / float64(spatial)
+			variance := float64(NormSquaredDiffSumNative(row, float32(mean))) / float64(spatial)
 			invStdDev := 1.0 / math.Sqrt(variance+normEpsilon)
 
-			for spatialIndex, value := range row {
-				normalized := (float64(value) - mean) * invStdDev
-				outRow[spatialIndex] = float32(normalized)*scale[channelIndex] + bias[channelIndex]
-			}
+			NormApplyConstScaleBiasNative(
+				outRow, row,
+				float32(mean), float32(invStdDev),
+				scale[channelIndex], bias[channelIndex],
+			)
 		}
 	}
 }
@@ -315,15 +294,20 @@ func batchNormEvalSlices(
 ) {
 	for channelIndex := 0; channelIndex < channels; channelIndex++ {
 		invStdDev := 1.0 / float32(math.Sqrt(float64(variance[channelIndex])+normEpsilon))
+		channelMean := mean[channelIndex]
+		channelScale := scale[channelIndex]
+		channelBias := bias[channelIndex]
 
 		for batchIndex := 0; batchIndex < batch; batchIndex++ {
 			start := (batchIndex*channels + channelIndex) * spatial
+			row := input[start : start+spatial]
+			outRow := output[start : start+spatial]
 
-			for spatialIndex := 0; spatialIndex < spatial; spatialIndex++ {
-				value := input[start+spatialIndex]
-				normalized := (value - mean[channelIndex]) * invStdDev
-				output[start+spatialIndex] = normalized*scale[channelIndex] + bias[channelIndex]
-			}
+			NormApplyConstScaleBiasNative(
+				outRow, row,
+				channelMean, invStdDev,
+				channelScale, channelBias,
+			)
 		}
 	}
 }
