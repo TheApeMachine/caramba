@@ -1,0 +1,449 @@
+// SPDX-License-Identifier: Apache-2.0
+// AVX-512 float32 math kernels: inv_sqrt_dim_scale, logsumexp row parts, outer.
+#include "textflag.h"
+
+DATA mathOneF32<>+0(SB)/4, $0x3f800000
+GLOBL mathOneF32<>(SB), RODATA|NOPTR, $4
+
+DATA mathExpC<>+0(SB)/4, $1.4426950408889634
+DATA mathExpC<>+4(SB)/4, $0.6931471805599453
+DATA mathExpC<>+12(SB)/4, $0.00019841270
+DATA mathExpC<>+16(SB)/4, $0.0013888889
+DATA mathExpC<>+20(SB)/4, $0.008333334
+DATA mathExpC<>+24(SB)/4, $0.041666667
+DATA mathExpC<>+28(SB)/4, $0.16666667
+DATA mathExpC<>+32(SB)/4, $0.5
+DATA mathExpC<>+36(SB)/4, $1.0
+DATA mathExpC<>+40(SB)/4, $1.0
+GLOBL mathExpC<>(SB), RODATA|NOPTR, $44
+
+DATA mathExpBias127<>+0(SB)/4, $127
+GLOBL mathExpBias127<>(SB), RODATA|NOPTR, $4
+
+DATA mathSoftmaxClamp<>+0(SB)/4, $-87.0
+GLOBL mathSoftmaxClamp<>(SB), RODATA|NOPTR, $4
+
+// func InvSqrtDimScaleFloat32AVX512Asm(out, input *float32, scale float32, count int)
+TEXT ·InvSqrtDimScaleFloat32AVX512Asm(SB), NOSPLIT, $0-28
+	MOVQ out+0(FP), DI
+	MOVQ input+8(FP), SI
+	MOVSS scale+16(FP), X15
+	VBROADCASTSS X15, Z15
+	MOVQ count+20(FP), CX
+
+inv_sqrt_w16:
+	CMPQ CX, $16
+	JL   inv_sqrt_w8
+
+	VMOVUPS (SI), Z0
+	VMULPS  Z15, Z0, Z0
+	VMOVUPS Z0, (DI)
+
+	ADDQ $64, SI
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP  inv_sqrt_w16
+
+inv_sqrt_w8:
+	CMPQ CX, $8
+	JL   inv_sqrt_w4
+
+	VMOVUPS (SI), Y0
+	VMULPS  Y15, Y0, Y0
+	VMOVUPS Y0, (DI)
+
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP  inv_sqrt_w8
+
+inv_sqrt_w4:
+	CMPQ CX, $4
+	JL   inv_sqrt_w4_tail
+
+	VMOVUPS (SI), X0
+	VMULPS  X15, X0, X0
+	VMOVUPS X0, (DI)
+
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP  inv_sqrt_w4
+
+inv_sqrt_w4_tail:
+	TESTQ CX, CX
+	JZ   inv_sqrt_done
+
+	MOVQ  CX, DX
+	MOVQ  $1, AX
+	SHLQ  CL, AX
+	DECQ  AX
+	KMOVQ AX, K7
+
+	VMOVDQU32 (SI), K7, Y0
+	VMULPS  Y15, Y0, K7, Y0
+	VMOVDQU32 Y0, K7, (DI)
+
+inv_sqrt_done:
+	RET
+
+// func LogSumExpRowPartsFloat32AVX512Asm(row *float32, cols int, maximum, expSum *float32)
+TEXT ·LogSumExpRowPartsFloat32AVX512Asm(SB), NOSPLIT, $64-32
+	MOVQ row+0(FP), SI
+	MOVQ cols+8(FP), CX
+	TESTQ CX, CX
+	JZ   lse_zero
+
+	MOVSS (SI), X0
+	VBROADCASTSS X0, Z0
+	ADDQ $4, SI
+	DECQ CX
+
+lse_max_w16:
+	CMPQ CX, $16
+	JL   lse_max_w8
+
+	VMOVUPS (SI), Z1
+	VMAXPS  Z1, Z0, Z0
+
+	ADDQ $64, SI
+	SUBQ $16, CX
+	JMP  lse_max_w16
+
+lse_max_w8:
+	CMPQ CX, $8
+	JL   lse_max_w4
+
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVUPS (SI), Y1
+	VMAXPS  Y1, Y0, Y0
+	VMOVUPS Y0, (R15)
+	VMOVUPS (R15), Z0
+
+	ADDQ $32, SI
+	SUBQ $8, CX
+	JMP  lse_max_w8
+
+lse_max_w4:
+	CMPQ CX, $4
+	JL   lse_max_w4_tail
+
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVUPS (SI), Y1
+	VMAXPS  Y1, Y0, Y0
+	VMOVUPS Y0, (R15)
+	VMOVUPS (R15), Z0
+
+	ADDQ $16, SI
+	SUBQ $4, CX
+	JMP  lse_max_w4
+
+lse_max_w4_tail:
+	TESTQ CX, CX
+	JZ   lse_max_reduce
+
+	MOVQ  CX, DX
+	MOVQ  $1, AX
+	SHLQ  CL, AX
+	DECQ  AX
+	KMOVQ AX, K7
+
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVDQU32 (SI), K7, Y1
+	VMAXPS  Y1, Y0, K7, Y0
+	VMOVUPS Y0, (R15)
+	VMOVUPS (R15), Z0
+
+lse_max_reduce:
+	LEAQ -64(SP), R15
+	VMOVUPS Z0, (R15)
+	VMOVUPS (R15), Y0
+	VMOVUPS 32(R15), Y1
+	VMAXPS  Y1, Y0, Y0
+	VHADDPS Y0, Y0, Y0
+	VHADDPS Y0, Y0, Y0
+	VEXTRACTF128 $0, Y0, X6
+
+	MOVQ row+0(FP), SI
+	MOVQ cols+8(FP), CX
+
+	MOVQ $mathExpC<>(SB), AX
+	VMOVSS (AX), X8
+	VBROADCASTSS X8, Y8
+	VMOVSS 4(AX), X9
+	VBROADCASTSS X9, Y9
+	VMOVSS 12(AX), X11
+	VBROADCASTSS X11, Y11
+	VMOVSS 16(AX), X12
+	VBROADCASTSS X12, Y12
+	VMOVSS 20(AX), X13
+	VBROADCASTSS X13, Y13
+	VMOVSS 24(AX), X14
+	VBROADCASTSS X14, Y14
+	VMOVSS 28(AX), X15
+	VBROADCASTSS X15, Y15
+	VMOVSS 32(AX), X16
+	VBROADCASTSS X16, Y16
+	VMOVSS 36(AX), X17
+	VBROADCASTSS X17, Y17
+	VPBROADCASTD mathExpBias127<>(SB), Y20
+	VMOVSS mathSoftmaxClamp<>(SB), X8
+	VBROADCASTSS X8, Y4
+	VBROADCASTSS X6, Y6
+	VBROADCASTSS mathOneF32<>(SB), Y10
+	VXORPS Y5, Y5, Y5
+
+lse_exp_w16:
+	CMPQ CX, $16
+	JL   lse_exp_w8
+
+	VMOVUPS (SI), Y0
+	VSUBPS Y6, Y0, Y0
+	VDIVPS Y10, Y0, Y0
+	VMAXPS Y4, Y0, Y0
+	VMULPS Y8, Y0, Y1
+	VROUNDPS $8, Y1, Y1
+	VMULPS Y1, Y9, Y2
+	VSUBPS Y2, Y0, Y0
+	VMOVAPS Y11, Y3
+	VFMADD213PS Y3, Y0, Y11
+	VMOVAPS Y12, Y3
+	VFMADD213PS Y3, Y0, Y12
+	VMOVAPS Y13, Y3
+	VFMADD213PS Y3, Y0, Y13
+	VMOVAPS Y14, Y3
+	VFMADD213PS Y3, Y0, Y14
+	VMOVAPS Y15, Y3
+	VFMADD213PS Y3, Y0, Y15
+	VMOVAPS Y16, Y3
+	VFMADD213PS Y3, Y0, Y16
+	VMOVAPS Y17, Y7
+	VFMADD213PS Y7, Y0, Y17
+	VCVTPS2DQ Y1, Y1
+	VPADDD Y20, Y1, Y1
+	VPSLLD $23, Y1, Y1
+	VPADDD Y1, Y7, Y7
+	VADDPS Y5, Y7, Y5
+
+	ADDQ $64, SI
+	SUBQ $16, CX
+	JMP  lse_exp_w16
+
+lse_exp_w8:
+	CMPQ CX, $8
+	JL   lse_exp_w4
+
+	VMOVUPS (SI), Y0
+	VSUBPS Y6, Y0, Y0
+	VDIVPS Y10, Y0, Y0
+	VMAXPS Y4, Y0, Y0
+	VMULPS Y8, Y0, Y1
+	VROUNDPS $8, Y1, Y1
+	VMULPS Y1, Y9, Y2
+	VSUBPS Y2, Y0, Y0
+	VMOVAPS Y11, Y3
+	VFMADD213PS Y3, Y0, Y11
+	VMOVAPS Y12, Y3
+	VFMADD213PS Y3, Y0, Y12
+	VMOVAPS Y13, Y3
+	VFMADD213PS Y3, Y0, Y13
+	VMOVAPS Y14, Y3
+	VFMADD213PS Y3, Y0, Y14
+	VMOVAPS Y15, Y3
+	VFMADD213PS Y3, Y0, Y15
+	VMOVAPS Y16, Y3
+	VFMADD213PS Y3, Y0, Y16
+	VMOVAPS Y17, Y7
+	VFMADD213PS Y7, Y0, Y17
+	VCVTPS2DQ Y1, Y1
+	VPADDD Y20, Y1, Y1
+	VPSLLD $23, Y1, Y1
+	VPADDD Y1, Y7, Y7
+	VADDPS Y5, Y7, Y5
+
+	ADDQ $32, SI
+	SUBQ $8, CX
+	JMP  lse_exp_w8
+
+lse_exp_w4:
+	CMPQ CX, $4
+	JL   lse_exp_w4_tail
+
+	VMOVUPS (SI), X0
+	VSUBPS X6, X0, X0
+	VDIVPS X10, X0, X0
+	VMAXPS X4, X0, X0
+	VMULPS X8, X0, X1
+	VROUNDPS $8, X1, X1
+	VMULPS X1, X9, X2
+	VSUBPS X2, X0, X0
+	VMOVAPS X11, X3
+	VFMADD213PS X3, X0, X11
+	VMOVAPS X12, X3
+	VFMADD213PS X3, X0, X12
+	VMOVAPS X13, X3
+	VFMADD213PS X3, X0, X13
+	VMOVAPS X14, X3
+	VFMADD213PS X3, X0, X14
+	VMOVAPS X15, X3
+	VFMADD213PS X3, X0, X15
+	VMOVAPS X16, X3
+	VFMADD213PS X3, X0, X16
+	VMOVAPS X17, X7
+	VFMADD213PS X7, X0, X17
+	VCVTPS2DQ X1, X1
+	VPADDD X20, X1, X1
+	VPSLLD $23, X1, X1
+	VPADDD X1, X7, X7
+	VADDPS X5, X7, X5
+
+	ADDQ $16, SI
+	SUBQ $4, CX
+	JMP  lse_exp_w4
+
+lse_exp_w4_tail:
+	TESTQ CX, CX
+	JZ   lse_exp_reduce
+
+	MOVQ  CX, DX
+	MOVQ  $1, AX
+	SHLQ  CL, AX
+	DECQ  AX
+	KMOVQ AX, K7
+
+	VMOVDQU32 (SI), K7, Y0
+	VSUBPS Y6, Y0, Y0
+	VDIVPS Y10, Y0, Y0
+	VMAXPS Y4, Y0, Y0
+	VMULPS Y8, Y0, Y1
+	VROUNDPS $8, Y1, Y1
+	VMULPS Y1, Y9, Y2
+	VSUBPS Y2, Y0, Y0
+	VMOVAPS Y11, Y3
+	VFMADD213PS Y3, Y0, Y11
+	VMOVAPS Y12, Y3
+	VFMADD213PS Y3, Y0, Y12
+	VMOVAPS Y13, Y3
+	VFMADD213PS Y3, Y0, Y13
+	VMOVAPS Y14, Y3
+	VFMADD213PS Y3, Y0, Y14
+	VMOVAPS Y15, Y3
+	VFMADD213PS Y3, Y0, Y15
+	VMOVAPS Y16, Y3
+	VFMADD213PS Y3, Y0, Y16
+	VMOVAPS Y17, Y7
+	VFMADD213PS Y7, Y0, Y17
+	VCVTPS2DQ Y1, Y1
+	VPADDD Y20, Y1, Y1
+	VPSLLD $23, Y1, Y1
+	VPADDD Y1, Y7, Y7
+	VXORPS Y24, Y24, Y24
+	VBLENDMPS Y7, Y24, K7, Y24
+	VADDPS Y24, Y5, Y5
+
+lse_exp_reduce:
+	VHADDPS Y5, Y5, Y5
+	VHADDPS Y5, Y5, Y5
+	VEXTRACTF128 $0, Y5, X0
+
+	MOVQ maximum+16(FP), DI
+	MOVQ expSum+24(FP), SI
+	MOVSS X6, (DI)
+	MOVSS X0, (SI)
+	RET
+
+lse_zero:
+	MOVQ maximum+16(FP), DI
+	MOVQ expSum+24(FP), SI
+	XORPS X0, X0
+	MOVSS X0, (DI)
+	MOVSS X0, (SI)
+	RET
+
+// func OuterFloat32AVX512Asm(out, left, right *float32, leftCount, rightCount int)
+TEXT ·OuterFloat32AVX512Asm(SB), NOSPLIT, $0-40
+	MOVQ out+0(FP), DI
+	MOVQ left+8(FP), SI
+	MOVQ right+16(FP), R8
+	MOVQ leftCount+24(FP), R9
+	MOVQ rightCount+32(FP), R10
+
+	MOVQ R10, R11
+	SHLQ $2, R11
+
+outer_row:
+	TESTQ R9, R9
+	JZ   outer_done
+
+	MOVSS (SI), X0
+	VBROADCASTSS X0, Z0
+	MOVQ R8, BX
+	MOVQ R10, CX
+
+outer_col_w16:
+	CMPQ CX, $16
+	JL   outer_col_w8
+
+	VMOVUPS (BX), Z1
+	VMULPS  Z0, Z1, Z1
+	VMOVUPS Z1, (DI)
+
+	ADDQ $64, BX
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP  outer_col_w16
+
+outer_col_w8:
+	CMPQ CX, $8
+	JL   outer_col_w4
+
+	VMOVUPS (BX), Y1
+	VMULPS  Y0, Y1, Y1
+	VMOVUPS Y1, (DI)
+
+	ADDQ $32, BX
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP  outer_col_w8
+
+outer_col_w4:
+	CMPQ CX, $4
+	JL   outer_col_w4_tail
+
+	VMOVUPS (BX), X1
+	VMULPS  X0, X1, X1
+	VMOVUPS X1, (DI)
+
+	ADDQ $16, BX
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP  outer_col_w4
+
+outer_col_w4_tail:
+	TESTQ CX, CX
+	JZ   outer_next_row
+
+	MOVQ  CX, DX
+	MOVQ  $1, AX
+	SHLQ  CL, AX
+	DECQ  AX
+	KMOVQ AX, K7
+
+	VMOVDQU32 (BX), K7, Y1
+	VMULPS  Y0, Y1, K7, Y1
+	VMOVDQU32 Y1, K7, (DI)
+
+outer_next_row:
+	ADDQ $4, SI
+	ADDQ R11, DI
+	DECQ R9
+	JMP  outer_row
+
+outer_done:
+	RET
