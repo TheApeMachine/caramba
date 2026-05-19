@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/theapemachine/caramba/pkg/dtype"
+	"golang.org/x/sys/cpu"
 )
 
 func DotFloat32Native(left, right []float32) float32 {
@@ -62,6 +63,7 @@ func DotInt8Native(left, right []int8) int32 {
 
 var (
 	dotF32Funcs = []f32DotKernelImpl{
+		{DotF32AVX512, "avx512", cpu.X86.HasAVX512F},
 		{DotF32Generic, "generic", true},
 	}
 	dotBF16Funcs = []bf16DotKernelImpl{

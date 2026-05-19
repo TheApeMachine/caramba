@@ -156,12 +156,15 @@ func TestAbsF32AVX512Parity(t *testing.T) {
 
 	convey.Convey("Given AbsF32AVX512", t, func() {
 		for _, length := range parity.Lengths {
-			convey.Convey(fmt.Sprintf("It should match AbsF32Generic for N=%d", length), func() {
+			convey.Convey(fmt.Sprintf("It should match math.Abs scalar for N=%d", length), func() {
 				source := parityRandomFloat32Slice(length, 0xABBA+int64(length))
 				want := make([]float32, length)
 				got := make([]float32, length)
 
-				AbsF32Generic(&want[0], &source[0], length)
+				for index, value := range source {
+					want[index] = float32(math.Abs(float64(value)))
+				}
+
 				AbsF32AVX512(&got[0], &source[0], length)
 
 				parity.AssertFloat32SlicesWithinULP(t, got, want, 0)

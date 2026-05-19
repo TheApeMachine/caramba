@@ -2,7 +2,15 @@
 
 package matmul
 
+import "golang.org/x/sys/cpu"
+
 func MatmulFloat32Native(out, left, right []float32, rows, inner, cols int) {
+	if cpu.X86.HasAVX512F {
+		MatmulFloat32AVX512(out, left, right, rows, inner, cols)
+
+		return
+	}
+
 	matmulFloat32Scalar(out, left, right, rows, inner, cols)
 }
 

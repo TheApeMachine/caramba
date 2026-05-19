@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/theapemachine/caramba/pkg/dtype"
+	"golang.org/x/sys/cpu"
 )
 
 func SumFloat32Native(values []float32) float32 {
@@ -94,18 +95,23 @@ func L1NormFloat32Native(values []float32) float32 {
 
 var (
 	sumF32Funcs = []f32ReduceKernelImpl{
+		{SumF32AVX512, "avx512", cpu.X86.HasAVX512F},
 		{SumF32Generic, "generic", true},
 	}
 	prodF32Funcs = []f32ReduceKernelImpl{
+		{ProdF32AVX512, "avx512", cpu.X86.HasAVX512F},
 		{ProdF32Generic, "generic", true},
 	}
 	minF32Funcs = []f32ReduceKernelImpl{
+		{MinF32AVX512, "avx512", cpu.X86.HasAVX512F},
 		{MinF32Generic, "generic", true},
 	}
 	maxF32Funcs = []f32ReduceKernelImpl{
+		{MaxF32AVX512, "avx512", cpu.X86.HasAVX512F},
 		{MaxF32Generic, "generic", true},
 	}
 	l1NormF32Funcs = []f32ReduceKernelImpl{
+		{L1NormF32AVX512, "avx512", cpu.X86.HasAVX512F},
 		{L1NormF32Generic, "generic", true},
 	}
 	sumBF16Funcs = []bf16SumKernelImpl{

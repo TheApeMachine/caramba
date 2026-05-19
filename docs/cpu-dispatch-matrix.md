@@ -13,7 +13,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | ISA path | Domains registered |
 |----------|-------------------:|
 | Scalar (Go) | 30 / 30 |
-| AVX-512 (amd64) | 2 / 30 |
+| AVX-512 (amd64) | 6 / 30 |
 | AVX2 (amd64) | 2 / 30 |
 | SSE2 (amd64) | 2 / 30 |
 | NEON (arm64) | 20 / 30 |
@@ -29,7 +29,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | checkpoint | yes | — | — | — | — |
 | convolution | yes | — | — | — | yes |
 | dequant | yes | — | — | — | yes |
-| dot | yes | — | — | — | yes |
+| dot | yes | yes | — | — | yes |
 | dropout | yes | — | — | — | yes |
 | elementwise | yes | yes | — | — | yes |
 | embedding | yes | — | — | — | — |
@@ -38,7 +38,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | losses | yes | — | — | — | yes |
 | masking | yes | — | — | — | — |
 | math | yes | — | — | — | — |
-| matmul | yes | — | — | — | yes |
+| matmul | yes | yes | — | — | yes |
 | normalization | yes | — | — | — | — |
 | optimizer | yes | — | — | — | yes |
 | physics | yes | — | — | — | yes |
@@ -46,7 +46,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | pospop | yes | yes | yes | yes | yes |
 | predictive_coding | yes | — | — | — | — |
 | quant | yes | — | — | — | yes |
-| reduction | yes | — | — | — | yes |
+| reduction | yes | yes | — | — | yes |
 | rope | yes | — | — | — | yes |
 | sampling | yes | — | — | — | — |
 | shape | yes | — | — | — | — |
@@ -56,7 +56,11 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 ### AVX-512 registered domains
 
 - `activation`
+- `dot`
+- `elementwise`
+- `matmul`
 - `pospop`
+- `reduction`
 
 ## Registration rules
 

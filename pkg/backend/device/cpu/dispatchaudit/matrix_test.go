@@ -26,7 +26,7 @@ func TestBuildCPUDispatchMatrix(t *testing.T) {
 		Convey("It should match expected AVX-512 registration counts", func() {
 			counts := summarize(matrix)
 
-			So(counts[ISAPathAVX512], ShouldEqual, 3)
+			So(counts[ISAPathAVX512], ShouldEqual, 6)
 		})
 
 		Convey("It should match expected AVX2 and SSE2 registration counts", func() {
@@ -51,7 +51,7 @@ func TestBuildCPUDispatchMatrix(t *testing.T) {
 		Convey("It should register AVX-512 only on activation and pospop", func() {
 			avx512Domains := domainNamesWith(matrix, ISAPathAVX512)
 
-			So(avx512Domains, ShouldResemble, []string{"activation", "elementwise", "pospop"})
+			So(avx512Domains, ShouldResemble, []string{"activation", "dot", "elementwise", "matmul", "pospop", "reduction"})
 		})
 
 		Convey("It should register NEON and AVX-512 on elementwise", func() {
@@ -63,10 +63,31 @@ func TestBuildCPUDispatchMatrix(t *testing.T) {
 			So(row.SSE2, ShouldEqual, ISANotRegistered)
 		})
 
-		Convey("It should register scalar-only amd64 on dot", func() {
+		Convey("It should register AVX-512 and NEON on dot", func() {
 			row := rowByDomain(matrix, "dot")
 
 			So(row.Scalar, ShouldEqual, ISARegistered)
+			So(row.AVX512, ShouldEqual, ISARegistered)
+			So(row.NEON, ShouldEqual, ISARegistered)
+			So(row.AVX2, ShouldEqual, ISANotRegistered)
+			So(row.SSE2, ShouldEqual, ISANotRegistered)
+		})
+
+		Convey("It should register AVX-512 and NEON on matmul", func() {
+			row := rowByDomain(matrix, "matmul")
+
+			So(row.Scalar, ShouldEqual, ISARegistered)
+			So(row.AVX512, ShouldEqual, ISARegistered)
+			So(row.NEON, ShouldEqual, ISARegistered)
+			So(row.AVX2, ShouldEqual, ISANotRegistered)
+			So(row.SSE2, ShouldEqual, ISANotRegistered)
+		})
+
+		Convey("It should register AVX-512 and NEON on reduction", func() {
+			row := rowByDomain(matrix, "reduction")
+
+			So(row.Scalar, ShouldEqual, ISARegistered)
+			So(row.AVX512, ShouldEqual, ISARegistered)
 			So(row.NEON, ShouldEqual, ISARegistered)
 			So(row.AVX2, ShouldEqual, ISANotRegistered)
 			So(row.SSE2, ShouldEqual, ISANotRegistered)

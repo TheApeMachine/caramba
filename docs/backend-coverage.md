@@ -44,7 +44,7 @@ Equal standing per `AGENTS.md` §1. **Applicable** is the audit denominator for 
 | ISA path | Domains registered |
 |----------|-------------------:|
 | Scalar (Go) | 30 / 30 |
-| AVX-512 (amd64) | 2 / 30 |
+| AVX-512 (amd64) | 6 / 30 |
 | AVX2 (amd64) | 2 / 30 |
 | SSE2 (amd64) | 2 / 30 |
 | NEON (arm64) | 20 / 30 |
