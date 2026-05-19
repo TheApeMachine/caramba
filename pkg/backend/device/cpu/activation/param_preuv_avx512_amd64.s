@@ -40,6 +40,18 @@ preuv_avx512_w8:
 preuv_avx512_w4:
 	CMPQ CX, $4
 	JL preuv_avx512_w4_tail
+	VMOVUPS (SI), X0
+	VMOVUPS (R8), X10
+	VCMPPS $6, X15, X0, K1
+	VMULPS X10, X0, X4
+	VBLENDMPS X4, X0, K1, X7
+	VMOVUPS X7, (DI)
+	ADDQ $16, SI
+	ADDQ $16, DI
+	ADDQ $16, R8
+	SUBQ $4, CX
+	JMP preuv_avx512_w4
+preuv_avx512_w4_tail:
 	TESTQ CX, CX
 	JZ preuv_avx512_done
 	MOVQ $1, AX
@@ -48,12 +60,14 @@ preuv_avx512_w4:
 	KMOVQ AX, K7
 
 	VMOVDQU32 (SI), K7, Y0
-	VMOVDQU32 (R8), K7, (R8)
+	VMOVDQU32 (R8), K7, Y10
 	VCMPPS $6, Y15, Y0, K1
 	KANDQ K7, K1, K1
 	VMULPS Y10, Y0, Y4
 	VBLENDMPS Y4, Y0, K1, Y7
 	VMOVDQU32 Y7, K7, (DI)
-preuv_avx512_w4_tail:
+	ADDQ $16, SI
+	ADDQ $16, R8
+	ADDQ $16, DI
 preuv_avx512_done:
 	RET
