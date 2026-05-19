@@ -1,7 +1,6 @@
 package masking
 
 import (
-	"math"
 	"unsafe"
 
 	"github.com/theapemachine/caramba/pkg/dtype"
@@ -14,13 +13,7 @@ func ApplyMask(input, mask, output unsafe.Pointer, count int, format dtype.DType
 
 	switch format {
 	case dtype.Float32:
-		inputView := unsafe.Slice((*float32)(input), count)
-		maskView := unsafe.Slice((*float32)(mask), count)
-		outputView := unsafe.Slice((*float32)(output), count)
-
-		for index, value := range inputView {
-			outputView[index] = value + maskView[index]
-		}
+		ApplyMaskFloat32Native(input, mask, output, count)
 	case dtype.BFloat16:
 		inputView := unsafe.Slice((*dtype.BF16)(input), count)
 		maskView := unsafe.Slice((*dtype.BF16)(mask), count)
@@ -52,18 +45,7 @@ func CausalMask(output unsafe.Pointer, seqQ, seqK int, format dtype.DType) {
 
 	switch format {
 	case dtype.Float32:
-		outputView := unsafe.Slice((*float32)(output), seqQ*seqK)
-
-		for rowIndex := 0; rowIndex < seqQ; rowIndex++ {
-			for colIndex := 0; colIndex < seqK; colIndex++ {
-				if colIndex > rowIndex {
-					outputView[rowIndex*seqK+colIndex] = float32(math.Inf(-1))
-					continue
-				}
-
-				outputView[rowIndex*seqK+colIndex] = 0
-			}
-		}
+		CausalMaskFloat32Native(output, seqQ, seqK)
 	case dtype.BFloat16:
 		outputView := unsafe.Slice((*dtype.BF16)(output), seqQ*seqK)
 		const bf16NegInf = dtype.BF16(0xFF80)
@@ -108,34 +90,13 @@ func ALiBiBias(
 
 	switch format {
 	case dtype.Float32:
-		alibiBiasF32(scores, slope, output, seqQ, seqK)
+		ALiBiBiasFloat32Native(scores, slope, output, seqQ, seqK)
 	case dtype.BFloat16:
 		alibiBiasBF16(scores, slope, output, seqQ, seqK)
 	case dtype.Float16:
 		alibiBiasF16(scores, slope, output, seqQ, seqK)
 	default:
 		panic("masking: ALiBiBias unsupported dtype")
-	}
-}
-
-func alibiBiasF32(scores, slope, output unsafe.Pointer, seqQ, seqK int) {
-	scoresView := unsafe.Slice((*float32)(scores), seqQ*seqK)
-	slopeView := unsafe.Slice((*float32)(slope), 1)
-	outputView := unsafe.Slice((*float32)(output), seqQ*seqK)
-	slopeValue := slopeView[0]
-
-	for rowIndex := range seqQ {
-		for colIndex := range seqK {
-			index := rowIndex*seqK + colIndex
-			distance := rowIndex - colIndex
-
-			if distance < 0 {
-				outputView[index] = scoresView[index]
-				continue
-			}
-
-			outputView[index] = scoresView[index] - slopeValue*float32(distance)
-		}
 	}
 }
 
