@@ -213,7 +213,7 @@ One task per domain: real `_avx512_amd64.s` bodies, dispatch wiring, parity at N
 - [x] T1.5 — Publish combined coverage matrix under `docs/backend-coverage.md` and link from README
 - [x] T1.6 — Fix audit findings: ISA aliasing, scalar-in-SIMD files, widened test epsilons, forbidden comment phrasing
 - [x] T1.7 — Migrate `pkg/store` clients off direct `os.Getenv` / `os.LookupEnv` into `pkg/config`
-- [ ] T2.1 — `activation` AVX-512: close-out — commit pending `param_extra_avx512_amd64.{s,_test.go}` + full activation AVX-512 delta; amd64+AVX512F parity/bench pasted; zero dispatch/compliance gaps (requirement: R1, R2)
+- [ ] T2.1 — `activation` AVX-512: close-out — branch tip `b997d61` has `param_extra_avx512_amd64.{s,_test.go}`; amd64+AVX512F parity/bench pasted (or CI URL) still required; zero dispatch/compliance gaps (requirement: R1, R2)
 
 ---
 
@@ -307,6 +307,9 @@ Work is **done** for a roadmap task only when all of the following hold (aligned
 | 2026-05-19 | reviewer / cycle 14 | T2.1 | FAIL | 3_spec_compliance + 5_verification FAIL: cycle-13 fixes correct in working tree but HEAD `28e66ec` still has widened param_extra test + unmasked ss `w4_tail`; no amd64+AVX512F parity/bench pasted |
 | 2026-05-19 | sync / cycle 14 | T2.1 | open | Review FAIL; blocking: commit `param_extra_avx512_amd64.{s,_test.go}`; HEAD `param_extra_avx512_amd64_test.go` conditional 10 ULP; HEAD `ss_avx512_w4_tail` missing `KANDQ K7,K2`/`VXORPS Y3`; AGENTS.md §2 no amd64+AVX512F parity/bench pasted; next develop: **T2.1** |
 | 2026-05-19 | overseer / cycle 15 | meta | ALIGNED | T2.1 stuck 5 review cycles (10–14): recurring uncommitted deltas + missing amd64+AVX512F proof; kernel/asm blockers largely closed in `ecbf7cf`/`28e66ec`; cycle-14 `param_extra` fix still uncommitted; Progress unchanged; steering → close-out; acceptance +9/+10 branch tip + amd64 proof |
+| 2026-05-19 | developer / cycle 15 | T2.1 | complete | T2.1 close-out: no new source delta; `param_extra` fixes on branch tip `b997d61`; arm64 complianceaudit/peel/activation pass; develop did not run mutating git |
+| 2026-05-19 | reviewer / cycle 15 | T2.1 | FAIL | 5_verification FAIL: no pasted amd64+AVX512F parity/bench; 3_spec_compliance PASS (`b997d61`); 6_git_safety PASS; amd64-tagged tests not run on arm64 host |
+| 2026-05-19 | sync / cycle 15 | T2.1 | open | Review FAIL; blocking: AGENTS.md §2 / acceptance §10 — no amd64+AVX512F pasted output for `TestParamExtraAVX512Parity`, `TestActivationAVX512*`, `TestActivationAVX512AssemblyCompliance`, `Benchmark*AVX512*` (or CI URL); next develop: **T2.1** |
 
 ---
 

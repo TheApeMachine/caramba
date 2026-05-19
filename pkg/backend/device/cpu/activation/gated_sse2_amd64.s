@@ -56,14 +56,9 @@ swiglu_sse2_w8:
 	
 	MOVAPS X0, X1
 	MULPS X8, X1
-	
-	// CVTPS2DQ rounds to nearest (using MXCSR)
-	CVTPS2DQ X1, X1
-	CVTDQ2PS X1, X1
-	
-	MOVAPS X1, X2
+	CVTPS2PL X1, X1
+	CVTPL2PS X1, X2
 	MULPS X9, X2
-	
 	SUBPS X2, X0 // X0 is now reduced x (r)
 	
 	// Now polynomial evaluation: P(r) = ExpC[9]*r^9 + ... + ExpC[0]
@@ -114,25 +109,14 @@ swiglu_sse2_w8:
 	SHUFPS $0, X7, X7
 	ADDPS X3, X7
 	
-	// Now calculate 2^k
-	// k is in X1 (float). CVTPS2DQ back to int
-	CVTPS2DQ X1, X1
-	// Add bias 127
-	MOVD actX86Bias127<>(SB), X20
-	PSHUFD $0, X20, X20
-	PADDD X20, X1
-	// Shift left 23
-	PSLLD $23, X1
-	
-	// Multiply polynomial result by 2^k
-	// wait, wait, the original did:
-	// VCVTPS2DQ X1, X1
-	// VPADDD X20, X1, X1
-	// VPSLLD $23, X1, X1
-	// VPADDD X1, X7, X7   <-- integer add! because X7 was float but we add exponents!
-	// Wait, VPADDD X1, X7, X7 is integer add!
-	PADDD X1, X7
-	
+	// k is in X1 (float); pack exponent bits into the polynomial result.
+	CVTPS2PL X1, X1
+	MOVD actX86Bias127<>(SB), X4
+	PSHUFD $0, X4, X4
+	PADDL X4, X1
+	PSLLL $23, X1
+	PADDL X1, X7
+
 	// Now X7 is exp(x).
 	// Next step in original:
 	// VADDPS X7, X26, X6
@@ -202,62 +186,57 @@ swiglu_sse2_w4:
 	
 	MOVAPS X0, X1
 	MULPS X8, X1
-	
-	CVTPS2DQ X1, X1
-	CVTDQ2PS X1, X1
-	
-	MOVAPS X1, X2
+	CVTPS2PL X1, X1
+	CVTPL2PS X1, X2
 	MULPS X9, X2
-	
 	SUBPS X2, X0 // X0 is now reduced x (r)
-	
+
 	MOVSS 36(AX), X7
 	SHUFPS $0, X7, X7
-	
+
 	MOVAPS X7, X3
 	MULPS X0, X3
 	MOVSS 32(AX), X7
 	SHUFPS $0, X7, X7
 	ADDPS X3, X7
-	
+
 	MOVAPS X7, X3
 	MULPS X0, X3
 	MOVSS 28(AX), X7
 	SHUFPS $0, X7, X7
 	ADDPS X3, X7
-	
+
 	MOVAPS X7, X3
 	MULPS X0, X3
 	MOVSS 24(AX), X7
 	SHUFPS $0, X7, X7
 	ADDPS X3, X7
-	
+
 	MOVAPS X7, X3
 	MULPS X0, X3
 	MOVSS 20(AX), X7
 	SHUFPS $0, X7, X7
 	ADDPS X3, X7
-	
+
 	MOVAPS X7, X3
 	MULPS X0, X3
 	MOVSS 16(AX), X7
 	SHUFPS $0, X7, X7
 	ADDPS X3, X7
-	
+
 	MOVAPS X7, X3
 	MULPS X0, X3
 	MOVSS 12(AX), X7
 	SHUFPS $0, X7, X7
 	ADDPS X3, X7
-	
-	CVTPS2DQ X1, X1
-	MOVD actX86Bias127<>(SB), X20
-	PSHUFD $0, X20, X20
-	PADDD X20, X1
-	PSLLD $23, X1
-	
-	PADDD X1, X7
-	
+
+	CVTPS2PL X1, X1
+	MOVD actX86Bias127<>(SB), X4
+	PSHUFD $0, X4, X4
+	PADDL X4, X1
+	PSLLL $23, X1
+	PADDL X1, X7
+
 	MOVSS 4(DX), X6 // actX86LogC[1] is 1.0
 	SHUFPS $0, X6, X6
 	MOVAPS X7, X2
