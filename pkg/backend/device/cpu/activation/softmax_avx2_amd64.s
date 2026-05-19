@@ -71,7 +71,7 @@ smexp_avx2_w8:
 	JMP smexp_avx2_w8
 smexp_avx2_w4:
 	CMPQ CX, $4
-	JL smexp_avx2_done
+	JL smexp_avx2_reduce
 	VMOVUPS (SI), X0
 	VSUBPS X6, X0, X0
 	VMAXPS X4, X0, X0
@@ -103,7 +103,42 @@ smexp_avx2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP smexp_avx2_w4
-smscale_avx2_done:
+smexp_avx2_reduce:
+	VHADDPS Y5, Y5, Y5
+	VHADDPS Y5, Y5, Y5
+	VEXTRACTF128 $0, Y5, X0
+smexp_avx2_done:
+	MOVSS X0, ret+32(FP)
+	RET
+
+// func scaleF32AVX2(dst, src *float32, scale float32, count int)
+TEXT ·scaleF32AVX2(SB), NOSPLIT, $0-28
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	VMOVSS scale+16(FP), X8
+	VBROADCASTSS X8, Y8
+	MOVQ count+24(FP), CX
+scale_avx2_w8:
+	CMPQ CX, $8
+	JL scale_avx2_w4
+	VMOVUPS (SI), Y0
+	VMULPS Y8, Y0, Y7
+	VMOVUPS Y7, (DI)
+	ADDQ $32, SI
+	ADDQ $32, DI
+	SUBQ $8, CX
+	JMP scale_avx2_w8
+scale_avx2_w4:
+	CMPQ CX, $4
+	JL scale_avx2_done
+	VMOVUPS (SI), X0
+	VMULPS X8, X0, X7
+	VMOVUPS X7, (DI)
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP scale_avx2_w4
+scale_avx2_done:
 	RET
 
 // func logSoftmaxShiftF32AVX2(dst, src *float32, maxValue, logSum float32, count int)

@@ -254,7 +254,7 @@ reduce_max_avx512_w4:
 	CMPQ CX, $4
 	JL reduce_max_avx512_w4_tail
 	VMOVUPS (SI), X1
-	VMAXPS X1, X0, Y0
+	VMAXPS X1, X0, X0
 	ADDQ $16, SI
 	SUBQ $4, CX
 	JMP reduce_max_avx512_w4

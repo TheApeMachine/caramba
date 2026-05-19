@@ -6,7 +6,7 @@ DATA actSoftmaxClamp<>+0(SB)/4, $-87.0
 GLOBL actSoftmaxClamp<>(SB), 8, $4
 
 // func softmaxExpSumF32SSE2(dst, src *float32, maxValue float32, count int) float32
-TEXT ·softmaxExpSumF32SSE2(SB), NOSPLIT, $0-32
+TEXT ·softmaxExpSumF32SSE2(SB), NOSPLIT, $32-32
 	MOVQ dst+0(FP), DI
 	MOVQ src+8(FP), SI
 	MOVSS maxValue+16(FP), X6
@@ -27,13 +27,12 @@ TEXT ·softmaxExpSumF32SSE2(SB), NOSPLIT, $0-32
 	SHUFPS $0, X14, X14
 	MOVSS 28(AX), X15
 	SHUFPS $0, X15, X15
-	MOVSS 32(AX), X16
-	SHUFPS $0, X16, X16
-	MOVSS 36(AX), X17
-	SHUFPS $0, X17, X17
-	// VPBROADCASTD -> MOVD + PSHUFD
-	MOVSS actX86Bias127<>(SB), X20
-	PSHUFD $0, X20, X20
+	MOVSS 32(AX), X0
+	SHUFPS $0, X0, X0
+	MOVAPS X0, smexp_c8+0(SP)
+	MOVSS 36(AX), X0
+	SHUFPS $0, X0, X0
+	MOVAPS X0, smexp_c9+16(SP)
 	MOVSS actSoftmaxClamp<>+0(SB), X8
 	MOVAPS X8, X4
 	SHUFPS $0, X4, X4
@@ -65,14 +64,15 @@ smexp_sse2_w8:
 	MOVAPS X15, X3
 	MULPS X0, X15
 	ADDPS X3, X15
-	MOVAPS X16, X3
-	MULPS X0, X16
-	ADDPS X3, X16
-	MOVAPS X17, X7
-	MULPS X0, X17
-	ADDPS X7, X17
+	MOVAPS X15, X7
+	MULPS X0, X7
+	ADDPS smexp_c8+0(SP), X7
+	MULPS X0, X7
+	ADDPS smexp_c9+16(SP), X7
 	CVTPS2PL X1, X1
-	PADDL X20, X1
+	MOVD actX86Bias127<>(SB), X3
+	PSHUFD $0, X3, X3
+	PADDL X3, X1
 	PSLLL $23, X1
 	PADDL X1, X7
 	ADDPS X7, X5
@@ -83,7 +83,7 @@ smexp_sse2_w8:
 	JMP smexp_sse2_w8
 smexp_sse2_w4:
 	CMPQ CX, $4
-	JL smexp_sse2_done
+	JL smexp_sse2_reduce
 	MOVUPS (SI), X0
 	SUBPS X6, X0
 	MAXPS X4, X0
@@ -108,16 +108,16 @@ smexp_sse2_w4:
 	MOVAPS X15, X3
 	MULPS X0, X15
 	ADDPS X3, X15
-	MOVAPS X16, X3
-	MULPS X0, X16
-	ADDPS X3, X16
-	MOVAPS X17, X7
-	MULPS X0, X17
-	ADDPS X7, X17
+	MOVAPS X15, X7
+	MULPS X0, X7
+	ADDPS smexp_c8+0(SP), X7
+	MULPS X0, X7
+	ADDPS smexp_c9+16(SP), X7
 	CVTPS2PL X1, X1
-	PADDL X20, X1
+	MOVD actX86Bias127<>(SB), X3
+	PSHUFD $0, X3, X3
+	PADDL X3, X1
 	PSLLL $23, X1
-	MOVAPS X17, X7
 	PADDL X1, X7
 	ADDPS X7, X5
 	MOVUPS X7, (DI)
@@ -125,7 +125,35 @@ smexp_sse2_w4:
 	ADDQ $16, DI
 	SUBQ $4, CX
 	JMP smexp_sse2_w4
-smscale_sse2_done:
+smexp_sse2_reduce:
+	MOVAPS X5, X0
+	SHUFPS $1, X5, X5
+	ADDPS X5, X0
+	MOVAPS X0, X5
+	SHUFPS $2, X0, X0
+	ADDPS X5, X0
+smexp_sse2_done:
+	MOVSS X0, ret+32(FP)
+	RET
+
+// func scaleF32SSE2(dst, src *float32, scale float32, count int)
+TEXT ·scaleF32SSE2(SB), NOSPLIT, $0-28
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVSS scale+16(FP), X8
+	SHUFPS $0, X8, X8
+	MOVQ count+24(FP), CX
+scale_sse2_w4:
+	CMPQ CX, $4
+	JL scale_sse2_done
+	MOVUPS (SI), X0
+	MULPS X8, X0
+	MOVUPS X0, (DI)
+	ADDQ $16, SI
+	ADDQ $16, DI
+	SUBQ $4, CX
+	JMP scale_sse2_w4
+scale_sse2_done:
 	RET
 
 // func logSoftmaxShiftF32SSE2(dst, src *float32, maxValue, logSum float32, count int)
