@@ -252,3 +252,461 @@ int metal_dispatch_weight_freeze_mask(
         }
     );
 }
+
+int metal_dispatch_activation_steer_float32(
+    MetalDeviceRef contextRef,
+    MetalBufferRef destinationRef,
+    MetalBufferRef baseRef,
+    MetalBufferRef directionRef,
+    MetalBufferRef coefficientRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    if (destinationRef == NULL || baseRef == NULL || directionRef == NULL || coefficientRef == NULL) {
+        metal_utility_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    return metal_utility_dispatch(
+        contextRef,
+        "activation_steer_float32",
+        (NSUInteger)((count + 3u) / 4u),
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)destinationRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)baseRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)directionRef offset:0 atIndex:2];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)coefficientRef offset:0 atIndex:3];
+            [encoder setBytes:&count length:sizeof(count) atIndex:4];
+        }
+    );
+}
+
+int metal_dispatch_weight_graft_add_float32(
+    MetalDeviceRef contextRef,
+    MetalBufferRef weightsRef,
+    MetalBufferRef injectionRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    if (weightsRef == NULL || injectionRef == NULL) {
+        metal_utility_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    return metal_utility_dispatch(
+        contextRef,
+        "weight_graft_add_float32",
+        (NSUInteger)((count + 3u) / 4u),
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)weightsRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)injectionRef offset:0 atIndex:1];
+            [encoder setBytes:&count length:sizeof(count) atIndex:2];
+        }
+    );
+}
+
+static const char* metal_swiglu_kernel_name(int elementDType) {
+    switch (elementDType) {
+    case MetalElementDTypeFloat32:
+        return "swiglu_float32";
+    case MetalElementDTypeFloat16:
+        return "swiglu_float16";
+    case MetalElementDTypeBFloat16:
+        return "swiglu_bfloat16";
+    default:
+        return NULL;
+    }
+}
+
+int metal_dispatch_swiglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    const char* kernelName = metal_swiglu_kernel_name(elementDType);
+
+    if (destinationRef == NULL || gateRef == NULL || upRef == NULL) {
+        metal_utility_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    if (kernelName == NULL) {
+        metal_utility_status_set(status, -6, "unknown Metal swiglu dtype");
+        return -6;
+    }
+
+    return metal_utility_dispatch(
+        contextRef,
+        kernelName,
+        (NSUInteger)((count + 3u) / 4u),
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)destinationRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)gateRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)upRef offset:0 atIndex:2];
+            [encoder setBytes:&count length:sizeof(count) atIndex:3];
+        }
+    );
+}
+
+static const char* metal_geglu_kernel_name(int elementDType) {
+    switch (elementDType) {
+    case MetalElementDTypeFloat32:
+        return "geglu_float32";
+    case MetalElementDTypeFloat16:
+        return "geglu_float16";
+    case MetalElementDTypeBFloat16:
+        return "geglu_bfloat16";
+    default:
+        return NULL;
+    }
+}
+
+int metal_dispatch_geglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    const char* kernelName = metal_geglu_kernel_name(elementDType);
+
+    if (destinationRef == NULL || gateRef == NULL || upRef == NULL) {
+        metal_utility_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    if (kernelName == NULL) {
+        metal_utility_status_set(status, -6, "unknown Metal geglu dtype");
+        return -6;
+    }
+
+    return metal_utility_dispatch(
+        contextRef,
+        kernelName,
+        (NSUInteger)((count + 3u) / 4u),
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)destinationRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)gateRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)upRef offset:0 atIndex:2];
+            [encoder setBytes:&count length:sizeof(count) atIndex:3];
+        }
+    );
+}
+
+static const char* metal_glu_kernel_name(int elementDType) {
+    switch (elementDType) {
+    case MetalElementDTypeFloat32:
+        return "glu_float32";
+    case MetalElementDTypeFloat16:
+        return "glu_float16";
+    case MetalElementDTypeBFloat16:
+        return "glu_bfloat16";
+    default:
+        return NULL;
+    }
+}
+
+int metal_dispatch_glu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    const char* kernelName = metal_glu_kernel_name(elementDType);
+
+    if (destinationRef == NULL || gateRef == NULL || upRef == NULL) {
+        metal_utility_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    if (kernelName == NULL) {
+        metal_utility_status_set(status, -6, "unknown Metal glu dtype");
+        return -6;
+    }
+
+    return metal_utility_dispatch(
+        contextRef,
+        kernelName,
+        (NSUInteger)((count + 3u) / 4u),
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)destinationRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)gateRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)upRef offset:0 atIndex:2];
+            [encoder setBytes:&count length:sizeof(count) atIndex:3];
+        }
+    );
+}
+
+static const char* metal_reglu_kernel_name(int elementDType) {
+    switch (elementDType) {
+    case MetalElementDTypeFloat32:
+        return "reglu_float32";
+    case MetalElementDTypeFloat16:
+        return "reglu_float16";
+    case MetalElementDTypeBFloat16:
+        return "reglu_bfloat16";
+    default:
+        return NULL;
+    }
+}
+
+int metal_dispatch_reglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    const char* kernelName = metal_reglu_kernel_name(elementDType);
+
+    if (destinationRef == NULL || gateRef == NULL || upRef == NULL) {
+        metal_utility_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    if (kernelName == NULL) {
+        metal_utility_status_set(status, -6, "unknown Metal reglu dtype");
+        return -6;
+    }
+
+    return metal_utility_dispatch(
+        contextRef,
+        kernelName,
+        (NSUInteger)((count + 3u) / 4u),
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)destinationRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)gateRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)upRef offset:0 atIndex:2];
+            [encoder setBytes:&count length:sizeof(count) atIndex:3];
+        }
+    );
+}
+
+static const char* metal_siglu_kernel_name(int elementDType) {
+    switch (elementDType) {
+    case MetalElementDTypeFloat32:
+        return "siglu_float32";
+    case MetalElementDTypeFloat16:
+        return "siglu_float16";
+    case MetalElementDTypeBFloat16:
+        return "siglu_bfloat16";
+    default:
+        return NULL;
+    }
+}
+
+int metal_dispatch_siglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    const char* kernelName = metal_siglu_kernel_name(elementDType);
+
+    if (destinationRef == NULL || gateRef == NULL || upRef == NULL) {
+        metal_utility_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    if (kernelName == NULL) {
+        metal_utility_status_set(status, -6, "unknown Metal siglu dtype");
+        return -6;
+    }
+
+    return metal_utility_dispatch(
+        contextRef,
+        kernelName,
+        (NSUInteger)((count + 3u) / 4u),
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)destinationRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)gateRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)upRef offset:0 atIndex:2];
+            [encoder setBytes:&count length:sizeof(count) atIndex:3];
+        }
+    );
+}
+
+static const char* metal_seglu_kernel_name(int elementDType) {
+    switch (elementDType) {
+    case MetalElementDTypeFloat32:
+        return "seglu_float32";
+    case MetalElementDTypeFloat16:
+        return "seglu_float16";
+    case MetalElementDTypeBFloat16:
+        return "seglu_bfloat16";
+    default:
+        return NULL;
+    }
+}
+
+int metal_dispatch_seglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    const char* kernelName = metal_seglu_kernel_name(elementDType);
+
+    if (destinationRef == NULL || gateRef == NULL || upRef == NULL) {
+        metal_utility_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    if (kernelName == NULL) {
+        metal_utility_status_set(status, -6, "unknown Metal seglu dtype");
+        return -6;
+    }
+
+    return metal_utility_dispatch(
+        contextRef,
+        kernelName,
+        (NSUInteger)((count + 3u) / 4u),
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)destinationRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)gateRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)upRef offset:0 atIndex:2];
+            [encoder setBytes:&count length:sizeof(count) atIndex:3];
+        }
+    );
+}
+
+static const char* metal_linglu_kernel_name(int elementDType) {
+    switch (elementDType) {
+    case MetalElementDTypeFloat32:
+        return "linglu_float32";
+    case MetalElementDTypeFloat16:
+        return "linglu_float16";
+    case MetalElementDTypeBFloat16:
+        return "linglu_bfloat16";
+    default:
+        return NULL;
+    }
+}
+
+int metal_dispatch_linglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    const char* kernelName = metal_linglu_kernel_name(elementDType);
+
+    if (destinationRef == NULL || gateRef == NULL || upRef == NULL) {
+        metal_utility_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    if (kernelName == NULL) {
+        metal_utility_status_set(status, -6, "unknown Metal linglu dtype");
+        return -6;
+    }
+
+    return metal_utility_dispatch(
+        contextRef,
+        kernelName,
+        (NSUInteger)((count + 3u) / 4u),
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)destinationRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)gateRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)upRef offset:0 atIndex:2];
+            [encoder setBytes:&count length:sizeof(count) atIndex:3];
+        }
+    );
+}
+
+static const char* metal_geglu_tanh_kernel_name(int elementDType) {
+    switch (elementDType) {
+    case MetalElementDTypeFloat32:
+        return "geglu_tanh_float32";
+    case MetalElementDTypeFloat16:
+        return "geglu_tanh_float16";
+    case MetalElementDTypeBFloat16:
+        return "geglu_tanh_bfloat16";
+    default:
+        return NULL;
+    }
+}
+
+int metal_dispatch_geglu_tanh(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+) {
+    const char* kernelName = metal_geglu_tanh_kernel_name(elementDType);
+
+    if (destinationRef == NULL || gateRef == NULL || upRef == NULL) {
+        metal_utility_status_set(status, -2, "nil Metal buffer");
+        return -2;
+    }
+
+    if (kernelName == NULL) {
+        metal_utility_status_set(status, -6, "unknown Metal geglu_tanh dtype");
+        return -6;
+    }
+
+    return metal_utility_dispatch(
+        contextRef,
+        kernelName,
+        (NSUInteger)((count + 3u) / 4u),
+        completionToken,
+        status,
+        ^(id<MTLComputeCommandEncoder> encoder) {
+            [encoder setBuffer:(__bridge id<MTLBuffer>)destinationRef offset:0 atIndex:0];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)gateRef offset:0 atIndex:1];
+            [encoder setBuffer:(__bridge id<MTLBuffer>)upRef offset:0 atIndex:2];
+            [encoder setBytes:&count length:sizeof(count) atIndex:3];
+        }
+    );
+}

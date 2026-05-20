@@ -14,14 +14,26 @@ var Lengths = []int{1, 7, 64, 1024, 8192}
 Float32ULPDistance returns the ULP gap between two float32 values.
 */
 func Float32ULPDistance(left, right float32) int {
-	leftBits := math.Float32bits(left)
-	rightBits := math.Float32bits(right)
+	leftBits := float32BitsOrdered(left)
+	rightBits := float32BitsOrdered(right)
 
 	if leftBits > rightBits {
 		leftBits, rightBits = rightBits, leftBits
 	}
 
 	return int(rightBits - leftBits)
+}
+
+func float32BitsOrdered(value float32) uint32 {
+	bits := math.Float32bits(value)
+
+	const signBit = uint32(1) << 31
+
+	if bits&signBit != 0 {
+		return signBit - bits
+	}
+
+	return bits
 }
 
 const nearZeroFloat32 = 1e-11

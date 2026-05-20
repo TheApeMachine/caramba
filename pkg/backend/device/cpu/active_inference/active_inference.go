@@ -1,8 +1,6 @@
 package active_inference
 
 import (
-	"math"
-
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
 
@@ -17,6 +15,9 @@ loop:
   - belief_update: posterior q(s|o) ∝ p(o|s) × q(s).
   - precision_weight: applies the learned precision γ to a prediction
     error tensor.
+
+Host tensor paths route through Float32Native dispatchers; AVX-512
+bodies live in f32_avx512_amd64.s and select_amd64.go.
 */
 
 /*
@@ -39,20 +40,7 @@ func runFreeEnergy(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	const eps = 1e-12
-
-	var crossEntropy, kl float64
-
-	for index, posteriorValue := range posterior {
-		clampedLike := math.Max(eps, float64(likelihood[index]))
-		clampedPosterior := math.Max(eps, float64(posteriorValue))
-		clampedPrior := math.Max(eps, float64(prior[index]))
-
-		crossEntropy += -float64(posteriorValue) * math.Log(clampedLike)
-		kl += float64(posteriorValue) * (math.Log(clampedPosterior) - math.Log(clampedPrior))
-	}
-
-	out[0] = float32(crossEntropy + kl)
+	out[0] = FreeEnergyFloat32Native(likelihood, posterior, prior)
 	return nil
 }
 
@@ -77,23 +65,9 @@ func runExpectedFreeEnergy(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	const eps = 1e-12
-
-	var pragmatic, epistemic float64
-
-	for index, predicted := range predictedObs {
-		predictedClamped := math.Max(eps, float64(predicted))
-		preferredClamped := math.Max(eps, float64(preferredObs[index]))
-
-		pragmatic += float64(predicted) * (math.Log(predictedClamped) - math.Log(preferredClamped))
-	}
-
-	for _, stateValue := range predictedState {
-		clamped := math.Max(eps, float64(stateValue))
-		epistemic += -float64(stateValue) * math.Log(clamped)
-	}
-
-	out[0] = float32(pragmatic + epistemic)
+	out[0] = ExpectedFreeEnergyFloat32Native(
+		predictedObs, preferredObs, predictedState,
+	)
 	return nil
 }
 
@@ -114,24 +88,7 @@ func runBeliefUpdate(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	var sum float64
-
-	for index, likeValue := range likelihood {
-		product := likeValue * prior[index]
-		out[index] = product
-		sum += float64(product)
-	}
-
-	if sum == 0 {
-		return nil
-	}
-
-	normalizer := 1.0 / float32(sum)
-
-	for index := range out {
-		out[index] *= normalizer
-	}
-
+	BeliefUpdateFloat32Native(likelihood, prior, out)
 	return nil
 }
 
@@ -152,9 +109,6 @@ func runPrecisionWeight(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for index, value := range errors {
-		out[index] = value * precision[index]
-	}
-
+	PrecisionWeightFloat32Native(errors, precision, out)
 	return nil
 }

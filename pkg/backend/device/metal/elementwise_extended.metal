@@ -1,11 +1,11 @@
 #include <metal_stdlib>
+#include "elementwise_gelu_f64.metalinc"
 
 using namespace metal;
 
 constant float metalSELUAlpha = 1.67326324235437728482f;
 constant float metalSELUScale = 1.05070098735548049342f;
 constant float metalLeakyReLUSlope = 0.01f;
-
 static inline float extended_bf16_to_float(ushort value) {
     return as_type<float>(uint(value) << 16);
 }
@@ -143,6 +143,16 @@ struct TanhOp {
     float operator()(float value) const { return precise::tanh(value); }
 };
 
+struct GeluOp {
+    float4 operator()(float4 value) const {
+        return metal_gelu_float4(value);
+    }
+
+    float operator()(float value) const {
+        return metal_gelu_softfloat_scalar(value);
+    }
+};
+
 struct SigmoidOp {
     float4 operator()(float4 value) const { return float4(1.0f) / (float4(1.0f) + precise::exp(-value)); }
     float operator()(float value) const { return 1.0f / (1.0f + precise::exp(-value)); }
@@ -250,6 +260,7 @@ dtype_macro(log, LogOp) \
 dtype_macro(sin, SinOp) \
 dtype_macro(cos, CosOp) \
 dtype_macro(tanh, TanhOp) \
+dtype_macro(gelu, GeluOp) \
 dtype_macro(sigmoid, SigmoidOp) \
 dtype_macro(silu, SiluOp) \
 dtype_macro(swish, SiluOp) \

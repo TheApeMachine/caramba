@@ -65,6 +65,7 @@ static const char* metal_unary_operation_name(int operation) {
     case MetalUnaryFloat32Sin: return "sin";
     case MetalUnaryFloat32Cos: return "cos";
     case MetalUnaryFloat32Tanh: return "tanh";
+    case MetalUnaryFloat32Gelu: return "gelu";
     case MetalUnaryFloat32Sigmoid: return "sigmoid";
     case MetalUnaryFloat32Silu: return "silu";
     case MetalUnaryFloat32Swish: return "swish";

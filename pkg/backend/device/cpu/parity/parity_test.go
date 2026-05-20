@@ -13,6 +13,7 @@ func TestFloat32ULPDistance(t *testing.T) {
 			So(Float32ULPDistance(1.0, math.Nextafter32(1.0, 2)), ShouldEqual, 1)
 		})
 	})
+
 }
 
 func TestAssertFloat32SlicesWithinULP(t *testing.T) {

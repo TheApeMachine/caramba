@@ -7,6 +7,7 @@ import (
 
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	cpumath "github.com/theapemachine/caramba/pkg/backend/device/cpu/math"
 	"github.com/theapemachine/caramba/pkg/dtype"
 	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
 )
@@ -25,6 +26,7 @@ var extendedUnaryCases = []extendedUnaryCase{
 	{name: "sin", operation: metalUnaryFloat32Sin, f32MaxULP: 8, dtypeMaxULP: 2},
 	{name: "cos", operation: metalUnaryFloat32Cos, f32MaxULP: 8, dtypeMaxULP: 2},
 	{name: "tanh", operation: metalUnaryFloat32Tanh, f32MaxULP: 8, dtypeMaxULP: 2},
+	{name: "gelu", operation: metalUnaryFloat32Gelu, f32MaxULP: 2, dtypeMaxULP: 2},
 	{name: "sigmoid", operation: metalUnaryFloat32Sigmoid, f32MaxULP: 8, dtypeMaxULP: 2},
 	{name: "silu", operation: metalUnaryFloat32Silu, f32MaxULP: 8, dtypeMaxULP: 2},
 	{name: "swish", operation: metalUnaryFloat32Swish, f32MaxULP: 8, dtypeMaxULP: 2},
@@ -201,6 +203,10 @@ func extendedUnaryInputValue(index int, name string) float32 {
 		return float32(index%161)/16 - 5
 	}
 
+	if name == "gelu" {
+		return float32(1+index%240)/12 - 4
+	}
+
 	return float32(index%257)/16 - 8
 }
 
@@ -228,6 +234,8 @@ func extendedUnaryExpected(value float32, name string) float32 {
 		return float32(math.Cos(float64(value)))
 	case "tanh":
 		return float32(math.Tanh(float64(value)))
+	case "gelu":
+		return cpumath.FastGelu32(value)
 	case "sigmoid":
 		return 1 / (1 + float32(math.Exp(float64(-value))))
 	case "silu", "swish":

@@ -41,3 +41,7 @@ func RunSplit2(args ...tensor.Tensor) error {
 func RunViewAsHeads(args ...tensor.Tensor) error {
 	return runViewAsHeads(args...)
 }
+
+func RunSlice(args ...tensor.Tensor) error {
+	return runSlice(args...)
+}

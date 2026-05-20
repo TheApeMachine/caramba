@@ -37,7 +37,9 @@ func Laplacian1DFloat32Native(input, out []float32, invH2 float32) {
 			left := input[index-1]
 			center := input[index]
 			right := input[index+1]
-			out[index] = (left - 2*center + right) * invH2
+			sum := left + right
+			twiceCenter := center + center
+			out[index] = (sum - twiceCenter) * invH2
 		}
 	}
 
@@ -123,15 +125,7 @@ func Laplacian4Float32Native(input, out []float32, invDen float32) {
 	}
 
 	if elementCount < 5 {
-		for index := 0; index < elementCount; index++ {
-			um2 := input[(index-2+elementCount)%elementCount]
-			um1 := input[(index-1+elementCount)%elementCount]
-			u0 := input[index]
-			up1 := input[(index+1)%elementCount]
-			up2 := input[(index+2)%elementCount]
-			out[index] = (-um2 + 16*um1 - 30*u0 + 16*up1 - up2) * invDen
-		}
-
+		Laplacian4Float32Scalar(input, out, invDen)
 		return
 	}
 
@@ -141,7 +135,7 @@ func Laplacian4Float32Native(input, out []float32, invDen float32) {
 		u0 := input[index]
 		up1 := input[(index+1)%elementCount]
 		up2 := input[(index+2)%elementCount]
-		out[index] = (-um2 + 16*um1 - 30*u0 + 16*up1 - up2) * invDen
+		out[index] = laplacian4StencilFloat32(um2, um1, u0, up1, up2, invDen)
 	}
 
 	interiorCount := elementCount - 4
@@ -167,7 +161,7 @@ func Laplacian4Float32Native(input, out []float32, invDen float32) {
 		u0 := input[index]
 		up1 := input[index+1]
 		up2 := input[index+2]
-		out[index] = (-um2 + 16*um1 - 30*u0 + 16*up1 - up2) * invDen
+		out[index] = laplacian4StencilFloat32(um2, um1, u0, up1, up2, invDen)
 	}
 
 	for index := elementCount - 2; index < elementCount; index++ {
@@ -176,7 +170,7 @@ func Laplacian4Float32Native(input, out []float32, invDen float32) {
 		u0 := input[index]
 		up1 := input[(index+1)%elementCount]
 		up2 := input[(index+2)%elementCount]
-		out[index] = (-um2 + 16*um1 - 30*u0 + 16*up1 - up2) * invDen
+		out[index] = laplacian4StencilFloat32(um2, um1, u0, up1, up2, invDen)
 	}
 }
 

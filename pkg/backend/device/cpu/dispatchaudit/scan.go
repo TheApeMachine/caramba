@@ -71,7 +71,7 @@ func isExcludedDomain(name string) bool {
 	}
 
 	switch name {
-	case "neon", "dispatchaudit":
+	case "neon", "dispatchaudit", "parity", "peel":
 		return true
 	default:
 		return false

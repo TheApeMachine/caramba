@@ -1,0 +1,43 @@
+package metal
+
+import (
+	"github.com/theapemachine/caramba/pkg/backend/compute/kernels"
+	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/caramba/pkg/dtype"
+)
+
+var metalSwiGLUDTypes = []dtype.DType{
+	dtype.Float32,
+	dtype.Float16,
+	dtype.BFloat16,
+}
+
+func init() {
+	for _, storageDType := range metalSwiGLUDTypes {
+		registerMetalSwiGLUKernel(storageDType)
+	}
+}
+
+func registerMetalSwiGLUKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "swiglu",
+		Signature: kernels.Signature{
+			Layout: tensor.LayoutDense,
+			Inputs: []dtype.DType{
+				storageDType,
+				storageDType,
+			},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runMetalSwiGLUKernel,
+	})
+}
+
+func runMetalSwiGLUKernel(args ...tensor.Tensor) error {
+	if len(args) != 3 {
+		return tensor.ErrShapeMismatch
+	}
+
+	return runMetalSwiGLU(args[0], args[1], args[2])
+}

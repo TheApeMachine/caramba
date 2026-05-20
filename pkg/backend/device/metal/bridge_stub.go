@@ -129,6 +129,7 @@ const (
 	metalUnaryFloat32LeakyReLU
 	metalUnaryFloat32HardSigmoid
 	metalUnaryFloat32HardSwish
+	metalUnaryFloat32Gelu
 )
 
 func runMetalUnaryFloat32(
@@ -202,6 +203,22 @@ func runMetalSplit2(input tensor.Tensor, left tensor.Tensor, right tensor.Tensor
 
 func runMetalLastToken(input tensor.Tensor, out tensor.Tensor) error {
 	_ = input
+	_ = out
+
+	return tensor.ErrNeedsPlatformSetup
+}
+
+func runMetalSlice(
+	input tensor.Tensor,
+	dim tensor.Tensor,
+	start tensor.Tensor,
+	end tensor.Tensor,
+	out tensor.Tensor,
+) error {
+	_ = input
+	_ = dim
+	_ = start
+	_ = end
 	_ = out
 
 	return tensor.ErrNeedsPlatformSetup

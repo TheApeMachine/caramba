@@ -398,6 +398,10 @@ func mapBackendMethodToKernelName(methodName string) string {
 		return "conv2d"
 	case "Conv3D":
 		return "conv3d"
+	case "ConvTranspose2D":
+		return "conv_transpose2d"
+	case "MaxPool2D":
+		return "max_pool2d"
 	case "LayerNorm":
 		return "layernorm"
 	case "RMSNorm":
@@ -481,8 +485,10 @@ var knownKernelNames = map[ir.OpType][]string{
 	"train.loss.cross_entropy": {"cross_entropy"},
 	"convolution.conv1d":       {"conv1d"},
 	"convolution.conv2d":       {"conv2d"},
-	"convolution.conv3d":       {"conv3d"},
-	"math.sin":                 {"sin"},
+	"convolution.conv3d":            {"conv3d"},
+	"convolution.conv_transpose2d":  {"conv_transpose2d"},
+	"pooling.max_pool2d":            {"max_pool2d"},
+	"math.sin":                      {"sin"},
 	"math.cos":                 {"cos"},
 	"math.logsumexp":           {"logsumexp"},
 	"math.outer":               {"outer"},
@@ -493,4 +499,5 @@ var knownKernelNames = map[ir.OpType][]string{
 	"shape.split":              {"split2"},
 	"shape.view_as_heads":      {"view_as_heads"},
 	"shape.merge_heads":        {"merge_heads"},
+	"shape.slice":              {"slice"},
 }

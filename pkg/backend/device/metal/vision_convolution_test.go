@@ -88,10 +88,11 @@ func runConvTranspose2DParityCase(
 	storageDType dtype.DType,
 	width int,
 ) {
+	inputWidth := convTransposeInputWidthForTest(width)
 	inputBytes, weightBytes, biasBytes, expectedBytes :=
 		convTranspose2DDTypeBytes(width, storageDType)
 	input, weight, bias, out := convTranspose2DTensorsForTest(
-		testingObject, backend, width, storageDType, inputBytes, weightBytes, biasBytes,
+		testingObject, backend, inputWidth, storageDType, inputBytes, weightBytes, biasBytes,
 	)
 	defer closeBenchmarkTensors(input, weight, bias, out)
 

@@ -27,6 +27,7 @@ func registerMetalShapeKernels(storageDType dtype.DType) {
 	registerMetalUnaryShapeKernel("merge_heads", storageDType, runMetalMergeHeads)
 	registerMetalUnaryShapeKernel("split_heads", storageDType, runMetalSplitHeads)
 	registerMetalUnaryShapeKernel("reshape", storageDType, runMetalReshape)
+	registerMetalSliceKernel(storageDType)
 	registerMetalTransposeKernel(storageDType)
 	registerMetalUnaryShapeKernel("transpose2d", storageDType, runMetalTranspose2D)
 	registerMetalUnaryShapeKernel("upsample_nearest2d", storageDType, runMetalUpsampleNearest2D)
@@ -147,6 +148,24 @@ func registerMetalSplit2Kernel(storageDType dtype.DType) {
 	})
 }
 
+func registerMetalSliceKernel(storageDType dtype.DType) {
+	kernels.Default.Register(kernels.Kernel{
+		Name: "slice",
+		Signature: kernels.Signature{
+			Layout: tensor.LayoutDense,
+			Inputs: []dtype.DType{
+				storageDType,
+				dtype.Int32,
+				dtype.Int32,
+				dtype.Int32,
+			},
+			Outputs: []dtype.DType{storageDType},
+		},
+		Locations: []tensor.Location{tensor.Metal},
+		Run:       runSliceShape(runMetalSlice),
+	})
+}
+
 func registerMetalViewAsHeadsKernel(storageDType dtype.DType) {
 	kernels.Default.Register(kernels.Kernel{
 		Name: "view_as_heads",
@@ -205,6 +224,24 @@ func runViewAsHeadsShape(
 		}
 
 		return run(args[0], args[1], args[2])
+	}
+}
+
+func runSliceShape(
+	run func(
+		tensor.Tensor,
+		tensor.Tensor,
+		tensor.Tensor,
+		tensor.Tensor,
+		tensor.Tensor,
+	) error,
+) func(...tensor.Tensor) error {
+	return func(args ...tensor.Tensor) error {
+		if len(args) != 5 {
+			return tensor.ErrShapeMismatch
+		}
+
+		return run(args[0], args[1], args[2], args[3], args[4])
 	}
 }
 

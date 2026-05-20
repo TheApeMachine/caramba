@@ -2,7 +2,6 @@ package checkpoint
 
 import (
 	"encoding/binary"
-	"math"
 
 	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 )
@@ -41,9 +40,7 @@ func RunCheckpointEncodeFloat32(args ...tensor.Tensor) error {
 
 	dataOffset := headerBytes
 
-	for index, value := range input {
-		binary.LittleEndian.PutUint32(out[dataOffset+index*4:], math.Float32bits(value))
-	}
+	EncodeFloat32DataNative(out[dataOffset:], input)
 
 	return nil
 }
@@ -77,9 +74,7 @@ func RunCheckpointDecodeFloat32(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for index := range out {
-		out[index] = math.Float32frombits(binary.LittleEndian.Uint32(in[headerBytes+index*4:]))
-	}
+	DecodeFloat32DataNative(out, in[headerBytes:])
 
 	return nil
 }

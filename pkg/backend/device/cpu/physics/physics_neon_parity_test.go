@@ -12,6 +12,9 @@ import (
 
 const physicsNEONMaxULP = 2
 
+// Madelung composes elementwise mul and grad NEON kernels.
+const physicsNEONCompositeMaxULP = 2
+
 func TestLaplacianFloat32NEONParityLengths(t *testing.T) {
 	convey.Convey("Given LaplacianFloat32Native 1-D", t, func() {
 		for _, length := range parity.Lengths {
@@ -99,7 +102,7 @@ func TestMadelungContinuityFloat32NEONParityLengths(t *testing.T) {
 				MadelungContinuityFloat32Scalar(density, velocity, want, invTwoDx)
 				MadelungContinuityFloat32Native(density, velocity, got, invTwoDx)
 
-				parity.AssertFloat32SlicesWithinULP(t, got, want, physicsNEONMaxULP)
+				parity.AssertFloat32SlicesWithinULP(t, got, want, physicsNEONCompositeMaxULP)
 			})
 		}
 	})

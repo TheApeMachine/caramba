@@ -23,6 +23,6 @@ func RunTokenizerPackInt32(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	copy(out, in)
+	PackInt32Native(out[:len(in)], in)
 	return nil
 }

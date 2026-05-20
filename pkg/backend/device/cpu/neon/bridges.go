@@ -164,6 +164,8 @@ var (
 
 	runViewAsHeads = shape.RunViewAsHeads
 
+	runSlice = shape.RunSlice
+
 	runVSABind = vsa.RunVSABind
 
 	runVSABundle = vsa.RunVSABundle

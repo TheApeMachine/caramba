@@ -17,6 +17,7 @@ var metalExtendedUnaryOperations = []metalExtendedUnaryOperation{
 	{name: "sin", operation: metalUnaryFloat32Sin},
 	{name: "cos", operation: metalUnaryFloat32Cos},
 	{name: "tanh", operation: metalUnaryFloat32Tanh},
+	{name: "gelu", operation: metalUnaryFloat32Gelu},
 	{name: "sigmoid", operation: metalUnaryFloat32Sigmoid},
 	{name: "silu", operation: metalUnaryFloat32Silu},
 	{name: "swish", operation: metalUnaryFloat32Swish},

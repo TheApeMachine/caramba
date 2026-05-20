@@ -59,6 +59,7 @@ typedef enum MetalUnaryFloat32Op {
     MetalUnaryFloat32LeakyReLU = 19,
     MetalUnaryFloat32HardSigmoid = 20,
     MetalUnaryFloat32HardSwish = 21,
+    MetalUnaryFloat32Gelu = 22,
 } MetalUnaryFloat32Op;
 
 typedef enum MetalElementDType {
@@ -154,6 +155,19 @@ int metal_dispatch_last_token_bytes(
     MetalBufferRef outRef,
     uint32_t seq,
     uint32_t hiddenBytes,
+    uint32_t outBytes,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_slice_bytes(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef inputRef,
+    MetalBufferRef outRef,
+    uint32_t sliceLen,
+    uint32_t inputDimSize,
+    uint32_t innerBytes,
+    uint32_t start,
     uint32_t outBytes,
     uint64_t completionToken,
     MetalStatus* status
@@ -1157,6 +1171,104 @@ int metal_dispatch_weight_freeze_mask(
     MetalBufferRef maskRef,
     MetalBufferRef gradientsRef,
     MetalBufferRef outRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_activation_steer_float32(
+    MetalDeviceRef contextRef,
+    MetalBufferRef destinationRef,
+    MetalBufferRef baseRef,
+    MetalBufferRef directionRef,
+    MetalBufferRef coefficientRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_weight_graft_add_float32(
+    MetalDeviceRef contextRef,
+    MetalBufferRef weightsRef,
+    MetalBufferRef injectionRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_swiglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_geglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_glu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_reglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_siglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_seglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_linglu(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
+    uint32_t count,
+    uint64_t completionToken,
+    MetalStatus* status
+);
+int metal_dispatch_geglu_tanh(
+    MetalDeviceRef contextRef,
+    int elementDType,
+    MetalBufferRef destinationRef,
+    MetalBufferRef gateRef,
+    MetalBufferRef upRef,
     uint32_t count,
     uint64_t completionToken,
     MetalStatus* status

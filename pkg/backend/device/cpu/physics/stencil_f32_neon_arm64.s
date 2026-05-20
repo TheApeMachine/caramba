@@ -98,7 +98,7 @@ grad_done:
 
 // func Laplacian4StencilF32NEONAsm(out, um2, um1, u0, up1, up2 *float32, invDen float32, n int)
 // out[i] = (-um2 + 16*um1 - 30*u0 + 16*up1 - up2) * invDen
-TEXT ·Laplacian4StencilF32NEONAsm(SB), NOSPLIT, $8-64
+TEXT ·Laplacian4StencilF32NEONAsm(SB), NOSPLIT, $16-64
 	MOVD  out+0(FP), R0
 	MOVD  um2+8(FP), R1
 	MOVD  um1+16(FP), R2
@@ -112,9 +112,13 @@ TEXT ·Laplacian4StencilF32NEONAsm(SB), NOSPLIT, $8-64
 	MOVD  $0x41800000, R7
 	VMOV  R7, V29.S[0]
 	VDUP  V29.S[0], V29.S4
+	VMOV  V29.S[0], R7
+	MOVD  R7, 4(RSP)
 	MOVD  $0xC1F00000, R7
 	VMOV  R7, V28.S[0]
 	VDUP  V28.S[0], V28.S4
+	VMOV  V28.S[0], R7
+	MOVD  R7, 8(RSP)
 	MOVD  $0xBF800000, R7
 	VMOV  R7, V27.S[0]
 	VDUP  V27.S[0], V27.S4
@@ -122,25 +126,52 @@ TEXT ·Laplacian4StencilF32NEONAsm(SB), NOSPLIT, $8-64
 
 lap4_loop4:
 	CMP  $4, R6
-	BLT  lap4_done
+	BLT  lap4_scalar_tail
 	VLD1.P 16(R2), [V0.S4]
 	VFMUL_S4(29, 0, 0)
 	VLD1.P 16(R3), [V1.S4]
-	VFMUL_S4(28, 1, 1)
-	VFADD_S4(1, 0, 0)
+	VFMLA_S4(28, 1, 0)
 	VLD1.P 16(R4), [V2.S4]
-	VFMUL_S4(29, 2, 2)
-	VFADD_S4(2, 0, 0)
+	VFMLA_S4(29, 2, 0)
 	VLD1.P 16(R1), [V3.S4]
-	VFMUL_S4(27, 3, 3)
-	VFADD_S4(3, 0, 0)
+	VFMLA_S4(27, 3, 0)
 	VLD1.P 16(R5), [V4.S4]
-	VFMUL_S4(27, 4, 4)
-	VFADD_S4(4, 0, 0)
+	VFMLA_S4(27, 4, 0)
 	VFMUL_S4(31, 0, 0)
 	VST1.P [V0.S4], 16(R0)
 	SUB  $4, R6
 	B    lap4_loop4
+
+lap4_scalar_tail:
+	CBZ  R6, lap4_done
+	FMOVS (R2), F1
+	FMOVS 4(RSP), F2
+	FMULS F2, F1, F1
+	FMOVS (R3), F0
+	FMOVS 8(RSP), F2
+	FMULS F2, F0, F0
+	FADDS F0, F1, F0
+	FMOVS (R4), F1
+	FMOVS 4(RSP), F2
+	FMULS F2, F1, F1
+	FADDS F1, F0, F0
+	FMOVS (R1), F1
+	FNEGS F1, F1
+	FADDS F1, F0, F0
+	FMOVS (R5), F1
+	FNEGS F1, F1
+	FADDS F1, F0, F0
+	FMOVS 0(RSP), F2
+	FMULS F2, F0, F0
+	FMOVS F0, (R0)
+	ADD  $4, R1
+	ADD  $4, R2
+	ADD  $4, R3
+	ADD  $4, R4
+	ADD  $4, R5
+	ADD  $4, R0
+	SUB  $1, R6
+	B    lap4_scalar_tail
 
 lap4_done:
 	RET

@@ -46,28 +46,6 @@ func conv3DDTypeBytes(width int, storageDType dtype.DType) ([]byte, []byte, []by
 	return inputBytes, weightBytes, biasBytes, encodeProjectionValuesAsDType(expected, storageDType)
 }
 
-func convTranspose2DDTypeBytes(width int, storageDType dtype.DType) ([]byte, []byte, []byte, []byte) {
-	batch, inChannels, outChannels := 2, 2, 3
-	inputHeight, kernelHeight, kernelWidth := 3, 2, 3
-	outputHeight, outputWidth := inputHeight+kernelHeight-1, width+kernelWidth-1
-	inputValues := projectionValues(batch*inChannels*inputHeight*width, 73, 64)
-	weightValues := projectionValues(outChannels*inChannels*kernelHeight*kernelWidth, 43, 128)
-	biasValues := projectionValues(outChannels, 23, 32)
-	inputBytes := encodeProjectionValuesAsDType(inputValues, storageDType)
-	weightBytes := encodeProjectionValuesAsDType(weightValues, storageDType)
-	biasBytes := encodeProjectionValuesAsDType(biasValues, storageDType)
-	inputStored := decodeDTypeBytesToFloat32(inputBytes, storageDType)
-	weightStored := decodeDTypeBytesToFloat32(weightBytes, storageDType)
-	biasStored := decodeDTypeBytesToFloat32(biasBytes, storageDType)
-	expected := convTranspose2DExpectedValues(
-		inputStored, weightStored, biasStored,
-		batch, inChannels, inputHeight, width,
-		outChannels, kernelHeight, kernelWidth, outputHeight, outputWidth,
-	)
-
-	return inputBytes, weightBytes, biasBytes, encodeProjectionValuesAsDType(expected, storageDType)
-}
-
 func conv1DExpectedValues(
 	input []float32,
 	weight []float32,
@@ -191,91 +169,6 @@ func conv3DExpectedCell(
 						kernelPlane)*kernelHeight+kernelRow)*kernelWidth + kernelCol
 					accumulator += input[inputIndex] * weight[weightIndex]
 				}
-			}
-		}
-	}
-
-	return accumulator
-}
-
-func convTranspose2DExpectedValues(
-	input []float32,
-	weight []float32,
-	bias []float32,
-	batch int,
-	inChannels int,
-	inputHeight int,
-	inputWidth int,
-	outChannels int,
-	kernelHeight int,
-	kernelWidth int,
-	outputHeight int,
-	outputWidth int,
-) []float32 {
-	out := make([]float32, batch*outChannels*outputHeight*outputWidth)
-
-	for batchIndex := range batch {
-		for outChannel := range outChannels {
-			for outRow := range outputHeight {
-				for outCol := range outputWidth {
-					outIndex := ((batchIndex*outChannels+outChannel)*outputHeight+outRow)*
-						outputWidth + outCol
-					out[outIndex] = convTranspose2DExpectedCell(
-						input, weight, bias, batchIndex, outChannel, outRow, outCol,
-						inChannels, inputHeight, inputWidth, outChannels,
-						kernelHeight, kernelWidth,
-					)
-				}
-			}
-		}
-	}
-
-	return out
-}
-
-func convTranspose2DExpectedCell(
-	input []float32,
-	weight []float32,
-	bias []float32,
-	batchIndex int,
-	outChannel int,
-	outRow int,
-	outCol int,
-	inChannels int,
-	inputHeight int,
-	inputWidth int,
-	outChannels int,
-	kernelHeight int,
-	kernelWidth int,
-) float32 {
-	accumulator := bias[outChannel]
-
-	for inChannel := range inChannels {
-		for kernelRow := range kernelHeight {
-			if outRow < kernelRow {
-				continue
-			}
-
-			inputRow := outRow - kernelRow
-			if inputRow >= inputHeight {
-				continue
-			}
-
-			for kernelCol := range kernelWidth {
-				if outCol < kernelCol {
-					continue
-				}
-
-				inputCol := outCol - kernelCol
-				if inputCol >= inputWidth {
-					continue
-				}
-
-				inputIndex := ((batchIndex*inChannels+inChannel)*inputHeight+inputRow)*
-					inputWidth + inputCol
-				weightIndex := ((inChannel*outChannels+outChannel)*kernelHeight+kernelRow)*
-					kernelWidth + kernelCol
-				accumulator += input[inputIndex] * weight[weightIndex]
 			}
 		}
 	}

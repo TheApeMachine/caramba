@@ -43,7 +43,9 @@ func laplacian4StencilReference(
 	out []float32,
 ) {
 	for index := range out {
-		out[index] = (-um2[index] + 16*um1[index] - 30*u0[index] + 16*up1[index] - up2[index]) * invDen
+		out[index] = laplacian4StencilFloat32(
+			um2[index], um1[index], u0[index], up1[index], up2[index], invDen,
+		)
 	}
 }
 

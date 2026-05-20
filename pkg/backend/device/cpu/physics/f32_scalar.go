@@ -13,6 +13,18 @@ func LaplacianFloat32Scalar(input, out, scratch []float32, dims []int, invH2 flo
 	}
 }
 
+func laplacian4StencilFloat32(
+	um2, um1, u0, up1, up2, invDen float32,
+) float32 {
+	accumulator := um1 * 16
+	accumulator += u0 * (-30)
+	accumulator += up1 * 16
+	accumulator += um2 * (-1)
+	accumulator += up2 * (-1)
+
+	return accumulator * invDen
+}
+
 func Laplacian4Float32Scalar(input, out []float32, invDen float32) {
 	elementCount := len(input)
 
@@ -22,7 +34,7 @@ func Laplacian4Float32Scalar(input, out []float32, invDen float32) {
 		u0 := input[index]
 		up1 := input[(index+1)%elementCount]
 		up2 := input[(index+2)%elementCount]
-		out[index] = (-um2 + 16*um1 - 30*u0 + 16*up1 - up2) * invDen
+		out[index] = laplacian4StencilFloat32(um2, um1, u0, up1, up2, invDen)
 	}
 }
 
@@ -32,7 +44,8 @@ func Grad1DFloat32Scalar(input, out []float32, invTwoDx float32) {
 	for index := 0; index < elementCount; index++ {
 		left := input[(index-1+elementCount)%elementCount]
 		right := input[(index+1)%elementCount]
-		out[index] = (right - left) * invTwoDx
+		diff := right - left
+		out[index] = diff * invTwoDx
 	}
 }
 
@@ -64,18 +77,28 @@ func QuantumPotentialFloat32Scalar(
 	const eps = float32(1e-12)
 
 	for index := 1; index < elementCount-1; index++ {
-		rho := float64(density[index])
+		rho := density[index]
 
-		if rho <= float64(eps) {
+		if rho <= eps {
 			out[index] = 0
 			continue
 		}
 
-		sqrtRho := math.Sqrt(rho)
-		sqrtLeft := math.Sqrt(math.Max(float64(eps), float64(density[index-1])))
-		sqrtRight := math.Sqrt(math.Max(float64(eps), float64(density[index+1])))
-		laplacian := (sqrtRight - 2*sqrtRho + sqrtLeft) * float64(invH2)
-		out[index] = float32(float64(scale) * laplacian / sqrtRho)
+		sqrtRho := float32(math.Sqrt(float64(rho)))
+		leftDensity := density[index-1]
+		if leftDensity < eps {
+			leftDensity = eps
+		}
+		rightDensity := density[index+1]
+		if rightDensity < eps {
+			rightDensity = eps
+		}
+		sqrtLeft := float32(math.Sqrt(float64(leftDensity)))
+		sqrtRight := float32(math.Sqrt(float64(rightDensity)))
+		sum := sqrtLeft + sqrtRight
+		twiceCenter := sqrtRho + sqrtRho
+		laplacian := (sum - twiceCenter) * invH2
+		out[index] = scale * laplacian / sqrtRho
 	}
 }
 
@@ -96,18 +119,25 @@ func MadelungContinuityFloat32Scalar(
 		return
 	}
 
+	flux := make([]float32, elementCount)
+
+	for index := 0; index < elementCount; index++ {
+		flux[index] = density[index] * velocity[index]
+	}
+
 	for index := 1; index < elementCount-1; index++ {
-		fluxRight := density[index+1] * velocity[index+1]
-		fluxLeft := density[index-1] * velocity[index-1]
-		out[index] = (fluxRight - fluxLeft) * invTwoDx
+		out[index] = (flux[index+1] - flux[index-1]) * invTwoDx
 	}
 }
 
 func laplacian1DScalar(input, out []float32, n int, invH2 float32) {
 	for index := 0; index < n; index++ {
 		left := input[(index-1+n)%n]
+		center := input[index]
 		right := input[(index+1)%n]
-		out[index] = (left - 2*input[index] + right) * invH2
+		sum := left + right
+		twiceCenter := center + center
+		out[index] = (sum - twiceCenter) * invH2
 	}
 }
 

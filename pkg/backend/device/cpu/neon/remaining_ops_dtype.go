@@ -444,6 +444,13 @@ func init() {
 			outputDTypes: []dtype.DType{dtype.Float32, dtype.Float32},
 			runF32:       runSplit2,
 		},
+		// slice: (input, dim, start, end) → output
+		{
+			name:         "slice",
+			inputDTypes:  []dtype.DType{dtype.Float32, dtype.Int32, dtype.Int32, dtype.Int32},
+			outputDTypes: []dtype.DType{dtype.Float32},
+			runF32:       runSlice,
+		},
 		// view_as_heads: (input) → output (reshape-style)
 		{
 			name:         "view_as_heads",

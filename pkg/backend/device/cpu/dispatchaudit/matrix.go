@@ -85,7 +85,7 @@ func ValidateCPUDispatchMatrix(matrix *CPUDispatchMatrix) error {
 		return fmt.Errorf("dispatchaudit: nil matrix")
 	}
 
-	expectedDomains := 30
+	expectedDomains := 32
 
 	if len(matrix.Rows) != expectedDomains {
 		return fmt.Errorf(

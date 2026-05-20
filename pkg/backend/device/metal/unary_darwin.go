@@ -44,6 +44,7 @@ const (
 	metalUnaryFloat32LeakyReLU
 	metalUnaryFloat32HardSigmoid
 	metalUnaryFloat32HardSwish
+	metalUnaryFloat32Gelu
 )
 
 func runMetalUnaryFloat32(

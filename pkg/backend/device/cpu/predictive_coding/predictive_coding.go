@@ -12,6 +12,8 @@ Friston-style hierarchical predictive coding model:
   - prediction_error:     e = observed - p̂
   - update_representation: s ← s + lr × W^T × e
   - update_weights:       W ← W + lr × outer(e, s)
+
+Host tensor paths route through Float32Native dispatchers (AVX-512 on amd64 when available).
 */
 
 type PredictiveCodingConfig struct {
@@ -41,15 +43,7 @@ func runPCPrediction(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for outIndex := 0; outIndex < wDims[0]; outIndex++ {
-		var sum float32
-
-		for inIndex := 0; inIndex < wDims[1]; inIndex++ {
-			sum += wView[outIndex*wDims[1]+inIndex] * sView[inIndex]
-		}
-
-		outView[outIndex] = sum
-	}
+	PredictionFloat32Native(wView, sView, outView, wDims[0], wDims[1])
 
 	return nil
 }
@@ -67,9 +61,7 @@ func runPCPredictionError(args ...tensor.Tensor) error {
 		return tensor.ErrShapeMismatch
 	}
 
-	for index, value := range observed {
-		out[index] = value - predicted[index]
-	}
+	PredictionErrorFloat32Native(observed, predicted, out)
 
 	return nil
 }
@@ -103,14 +95,10 @@ func PCUpdateRepresentation(
 		return tensor.ErrShapeMismatch
 	}
 
-	copy(outView, sView)
-
-	for outIndex := 0; outIndex < wDims[0]; outIndex++ {
-		for inIndex := 0; inIndex < wDims[1]; inIndex++ {
-			outView[inIndex] += config.LearningRate *
-				wView[outIndex*wDims[1]+inIndex] * eView[outIndex]
-		}
-	}
+	UpdateRepresentationFloat32Native(
+		wView, sView, eView, outView,
+		config.LearningRate, wDims[0], wDims[1],
+	)
 
 	return nil
 }
@@ -143,14 +131,10 @@ func PCUpdateWeights(
 		return tensor.ErrShapeMismatch
 	}
 
-	copy(outView, wView)
-
-	for outIndex := 0; outIndex < wDims[0]; outIndex++ {
-		for inIndex := 0; inIndex < wDims[1]; inIndex++ {
-			outView[outIndex*wDims[1]+inIndex] +=
-				config.LearningRate * eView[outIndex] * sView[inIndex]
-		}
-	}
+	UpdateWeightsFloat32Native(
+		wView, sView, eView, outView,
+		config.LearningRate, wDims[0], wDims[1],
+	)
 
 	return nil
 }

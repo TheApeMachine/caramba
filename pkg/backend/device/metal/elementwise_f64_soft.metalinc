@@ -1,0 +1,642 @@
+// IEEE-754 softfloat64 (Go runtime/softfloat64.go) for exact parity with Go math on Metal.
+
+#ifndef ELEMENTWISE_F64_SOFT_METALINC
+#define ELEMENTWISE_F64_SOFT_METALINC
+
+#include <metal_stdlib>
+using namespace metal;
+
+constant uint SF64_MANTBITS = 52;
+constant uint SF64_EXPBITS = 11;
+constant int SF64_BIAS64 = -1023;
+constant uint SF64_MANTBITS32 = 23;
+constant uint SF64_EXPBITS32 = 8;
+constant int SF64_BIAS32 = -127;
+constant ulong SF64_INF64 = 0x7FF0000000000000u;
+constant ulong SF64_NAN64 = 0x7FF8000000000001u;
+constant uint SF64_INF32 = 0x7F800000u;
+constant uint SF64_NAN32 = 0x7FC00001u;
+
+static inline void metal_sf64_unpack64(
+    ulong value,
+    thread ulong& signWord,
+    thread ulong& mantissa,
+    thread int& exponent,
+    thread bool& isInf,
+    thread bool& isNaN
+) {
+    signWord = value & (1ul << 63);
+    mantissa = value & ((1ul << SF64_MANTBITS) - 1);
+    uint expField = uint((value >> SF64_MANTBITS) & ((1ul << SF64_EXPBITS) - 1));
+
+    if (expField == (1u << SF64_EXPBITS) - 1) {
+        if (mantissa != 0) {
+            isInf = false;
+            isNaN = true;
+            exponent = 0;
+            return;
+        }
+        isInf = true;
+        isNaN = false;
+        exponent = 0;
+        return;
+    }
+
+    if (expField == 0) {
+        isInf = false;
+        isNaN = false;
+        if (mantissa != 0) {
+            exponent = SF64_BIAS64 + 1;
+            while (mantissa < (1ul << SF64_MANTBITS)) {
+                mantissa <<= 1;
+                exponent--;
+            }
+        } else {
+            exponent = 0;
+        }
+        return;
+    }
+
+    isInf = false;
+    isNaN = false;
+    mantissa |= 1ul << SF64_MANTBITS;
+    exponent = int(expField) + SF64_BIAS64;
+}
+
+static inline void metal_sf64_unpack32(
+    uint value,
+    thread uint& signWord,
+    thread uint& mantissa,
+    thread int& exponent,
+    thread bool& isInf,
+    thread bool& isNaN
+) {
+    signWord = value & (1u << 31);
+    mantissa = value & ((1u << SF64_MANTBITS32) - 1);
+    uint expField = (value >> SF64_MANTBITS32) & ((1u << SF64_EXPBITS32) - 1);
+
+    if (expField == (1u << SF64_EXPBITS32) - 1) {
+        if (mantissa != 0) {
+            isInf = false;
+            isNaN = true;
+            exponent = 0;
+            return;
+        }
+        isInf = true;
+        isNaN = false;
+        exponent = 0;
+        return;
+    }
+
+    if (expField == 0) {
+        isInf = false;
+        isNaN = false;
+        if (mantissa != 0) {
+            exponent = SF64_BIAS32 + 1;
+            while (mantissa < (1u << SF64_MANTBITS32)) {
+                mantissa <<= 1;
+                exponent--;
+            }
+        } else {
+            exponent = 0;
+        }
+        return;
+    }
+
+    isInf = false;
+    isNaN = false;
+    mantissa |= 1u << SF64_MANTBITS32;
+    exponent = int(expField) + SF64_BIAS32;
+}
+
+static inline ulong metal_sf64_pack64(
+    ulong signWord,
+    ulong mantissa,
+    int exponent,
+    ulong trunc
+) {
+    ulong mantissa0 = mantissa;
+    int exponent0 = exponent;
+    ulong trunc0 = trunc;
+
+    if (mantissa == 0) {
+        return signWord;
+    }
+
+    while (mantissa < (1ul << SF64_MANTBITS)) {
+        mantissa <<= 1;
+        exponent--;
+    }
+    while (mantissa >= (4ul << SF64_MANTBITS)) {
+        trunc |= mantissa & 1;
+        mantissa >>= 1;
+        exponent++;
+    }
+    if (mantissa >= (2ul << SF64_MANTBITS)) {
+        if ((mantissa & 1) != 0 && (trunc != 0 || (mantissa & 2) != 0)) {
+            mantissa++;
+            if (mantissa >= (4ul << SF64_MANTBITS)) {
+                mantissa >>= 1;
+                exponent++;
+            }
+        }
+        mantissa >>= 1;
+        exponent++;
+    }
+    if (exponent >= int((1 << SF64_EXPBITS) - 1) + SF64_BIAS64) {
+        return signWord ^ SF64_INF64;
+    }
+    if (exponent < SF64_BIAS64 + 1) {
+        if (exponent < SF64_BIAS64 - int(SF64_MANTBITS)) {
+            return signWord;
+        }
+        mantissa = mantissa0;
+        exponent = exponent0;
+        trunc = trunc0;
+        while (exponent < SF64_BIAS64) {
+            trunc |= mantissa & 1;
+            mantissa >>= 1;
+            exponent++;
+        }
+        if ((mantissa & 1) != 0 && (trunc != 0 || (mantissa & 2) != 0)) {
+            mantissa++;
+        }
+        mantissa >>= 1;
+        exponent++;
+        if (mantissa < (1ul << SF64_MANTBITS)) {
+            return signWord | mantissa;
+        }
+    }
+    return signWord | ulong(exponent - SF64_BIAS64) << SF64_MANTBITS | (mantissa & ((1ul << SF64_MANTBITS) - 1));
+}
+
+static inline uint metal_sf64_pack32(
+    uint signWord,
+    uint mantissa,
+    int exponent,
+    uint trunc
+) {
+    uint mantissa0 = mantissa;
+    int exponent0 = exponent;
+    uint trunc0 = trunc;
+
+    if (mantissa == 0) {
+        return signWord;
+    }
+
+    while (mantissa < (1u << SF64_MANTBITS32)) {
+        mantissa <<= 1;
+        exponent--;
+    }
+    while (mantissa >= (4u << SF64_MANTBITS32)) {
+        trunc |= mantissa & 1;
+        mantissa >>= 1;
+        exponent++;
+    }
+    if (mantissa >= (2u << SF64_MANTBITS32)) {
+        if ((mantissa & 1) != 0 && (trunc != 0 || (mantissa & 2) != 0)) {
+            mantissa++;
+            if (mantissa >= (4u << SF64_MANTBITS32)) {
+                mantissa >>= 1;
+                exponent++;
+            }
+        }
+        mantissa >>= 1;
+        exponent++;
+    }
+    if (exponent >= int((1 << SF64_EXPBITS32) - 1) + SF64_BIAS32) {
+        return signWord ^ SF64_INF32;
+    }
+    if (exponent < SF64_BIAS32 + 1) {
+        if (exponent < SF64_BIAS32 - int(SF64_MANTBITS32)) {
+            return signWord;
+        }
+        mantissa = mantissa0;
+        exponent = exponent0;
+        trunc = trunc0;
+        while (exponent < SF64_BIAS32) {
+            trunc |= mantissa & 1;
+            mantissa >>= 1;
+            exponent++;
+        }
+        if ((mantissa & 1) != 0 && (trunc != 0 || (mantissa & 2) != 0)) {
+            mantissa++;
+        }
+        mantissa >>= 1;
+        exponent++;
+        if (mantissa < (1u << SF64_MANTBITS32)) {
+            return signWord | mantissa;
+        }
+    }
+    return signWord | uint(exponent - SF64_BIAS32) << SF64_MANTBITS32 | (mantissa & ((1u << SF64_MANTBITS32) - 1));
+}
+
+static inline void metal_sf64_mullu(ulong left, ulong right, thread ulong& lo, thread ulong& hi) {
+    const ulong mask = (1ul << 32) - 1;
+    ulong leftLow = left & mask;
+    ulong leftHigh = left >> 32;
+    ulong rightLow = right & mask;
+    ulong rightHigh = right >> 32;
+    ulong word0 = leftLow * rightLow;
+    ulong temp = leftHigh * rightLow + (word0 >> 32);
+    ulong word1 = temp & mask;
+    ulong word2 = temp >> 32;
+    word1 += leftLow * rightHigh;
+    lo = left * right;
+    hi = leftHigh * rightHigh + word2 + (word1 >> 32);
+}
+
+struct metal_sf64_divlu_result {
+    ulong quotient;
+    ulong remainder;
+};
+
+static inline metal_sf64_divlu_result metal_sf64_divlu(ulong high, ulong low, ulong divisor) {
+    const ulong base = 1ul << 32;
+    metal_sf64_divlu_result result;
+    result.quotient = 0;
+    result.remainder = 0;
+
+    if (high >= divisor) {
+        result.quotient = 0xFFFFFFFFFFFFFFFFul;
+        result.remainder = 0xFFFFFFFFFFFFFFFFul;
+        return result;
+    }
+
+    uint shift = 0;
+    ulong scaledDivisor = divisor;
+    while ((scaledDivisor & (1ul << 63)) == 0) {
+        shift++;
+        scaledDivisor <<= 1;
+    }
+
+    ulong divisorHigh = scaledDivisor >> 32;
+    ulong divisorLow = scaledDivisor & (base - 1);
+    ulong numeratorHigh = high << shift | low >> (64 - shift);
+    ulong numeratorMid = low << shift;
+    ulong numeratorTop = numeratorMid >> 32;
+    ulong numeratorBottom = numeratorMid & (base - 1);
+    ulong quotientHigh = numeratorHigh / divisorHigh;
+    ulong remainderHigh = numeratorHigh - quotientHigh * divisorHigh;
+
+    while (true) {
+        if (quotientHigh >= base || quotientHigh * divisorLow > base * remainderHigh + numeratorTop) {
+            quotientHigh--;
+            remainderHigh += divisorHigh;
+            if (remainderHigh < base) {
+                continue;
+            }
+        }
+        break;
+    }
+
+    ulong numeratorLow = numeratorHigh * base + numeratorTop - quotientHigh * scaledDivisor;
+    ulong quotientLow = numeratorLow / divisorHigh;
+    ulong remainderLow = numeratorLow - quotientLow * divisorHigh;
+
+    while (true) {
+        if (quotientLow >= base || quotientLow * divisorLow > base * remainderLow + numeratorBottom) {
+            quotientLow--;
+            remainderLow += divisorHigh;
+            if (remainderLow < base) {
+                continue;
+            }
+        }
+        break;
+    }
+
+    result.quotient = quotientHigh * base + quotientLow;
+    result.remainder = (numeratorLow * base + numeratorBottom - quotientLow * scaledDivisor) >> shift;
+    return result;
+}
+
+static inline ulong metal_sf32_to64(uint value) {
+    const uint widen = SF64_MANTBITS - SF64_MANTBITS32;
+    uint signWord;
+    uint mantissa;
+    int exponent;
+    bool isInf;
+    bool isNaN;
+    metal_sf64_unpack32(value, signWord, mantissa, exponent, isInf, isNaN);
+    if (isNaN) {
+        return SF64_NAN64;
+    }
+    ulong sign64 = ulong(signWord) << 32;
+    if (isInf) {
+        return sign64 ^ SF64_INF64;
+    }
+    return metal_sf64_pack64(sign64, ulong(mantissa) << widen, exponent, 0);
+}
+
+static inline uint metal_sf64_to32(ulong value) {
+    const uint drop = SF64_MANTBITS - SF64_MANTBITS32 - 1;
+    ulong signWord;
+    ulong mantissa;
+    int exponent;
+    bool isInf;
+    bool isNaN;
+    metal_sf64_unpack64(value, signWord, mantissa, exponent, isInf, isNaN);
+    if (isNaN) {
+        return SF64_NAN32;
+    }
+    uint sign32 = uint(signWord >> 32);
+    if (isInf) {
+        return sign32 ^ SF64_INF32;
+    }
+    return metal_sf64_pack32(sign32, uint(mantissa >> drop), exponent - 1, uint(mantissa & ((1ul << drop) - 1)));
+}
+
+static inline ulong metal_sf64_add(ulong left, ulong right) {
+    ulong leftSign;
+    ulong leftMantissa;
+    int leftExponent;
+    bool leftInf;
+    bool leftNaN;
+    metal_sf64_unpack64(left, leftSign, leftMantissa, leftExponent, leftInf, leftNaN);
+
+    ulong rightSign;
+    ulong rightMantissa;
+    int rightExponent;
+    bool rightInf;
+    bool rightNaN;
+    metal_sf64_unpack64(right, rightSign, rightMantissa, rightExponent, rightInf, rightNaN);
+
+    if (leftNaN || rightNaN) {
+        return SF64_NAN64;
+    }
+    if (leftInf && rightInf && leftSign != rightSign) {
+        return SF64_NAN64;
+    }
+    if (leftInf) {
+        return left;
+    }
+    if (rightInf) {
+        return right;
+    }
+    if (leftMantissa == 0 && rightMantissa == 0 && leftSign != 0 && rightSign != 0) {
+        return left;
+    }
+    if (leftMantissa == 0) {
+        if (rightMantissa == 0) {
+            right ^= rightSign;
+        }
+        return right;
+    }
+    if (rightMantissa == 0) {
+        return left;
+    }
+
+    if (leftExponent < rightExponent || (leftExponent == rightExponent && leftMantissa < rightMantissa)) {
+        ulong tempValue = left;
+        left = right;
+        right = tempValue;
+        ulong tempSign = leftSign;
+        leftSign = rightSign;
+        rightSign = tempSign;
+        ulong tempMantissa = leftMantissa;
+        leftMantissa = rightMantissa;
+        rightMantissa = tempMantissa;
+        int tempExponent = leftExponent;
+        leftExponent = rightExponent;
+        rightExponent = tempExponent;
+    }
+
+    uint shift = uint(leftExponent - rightExponent);
+    leftMantissa <<= 2;
+    rightMantissa <<= 2;
+    ulong trunc = rightMantissa & ((1ul << shift) - 1);
+    rightMantissa >>= shift;
+
+    if (leftSign == rightSign) {
+        leftMantissa += rightMantissa;
+    } else {
+        leftMantissa -= rightMantissa;
+        if (trunc != 0) {
+            leftMantissa--;
+        }
+    }
+
+    if (leftMantissa == 0) {
+        leftSign = 0;
+    }
+
+    return metal_sf64_pack64(leftSign, leftMantissa, leftExponent - 2, trunc);
+}
+
+static inline ulong metal_sf64_mul(ulong left, ulong right) {
+    ulong leftSign;
+    ulong leftMantissa;
+    int leftExponent;
+    bool leftInf;
+    bool leftNaN;
+    metal_sf64_unpack64(left, leftSign, leftMantissa, leftExponent, leftInf, leftNaN);
+
+    ulong rightSign;
+    ulong rightMantissa;
+    int rightExponent;
+    bool rightInf;
+    bool rightNaN;
+    metal_sf64_unpack64(right, rightSign, rightMantissa, rightExponent, rightInf, rightNaN);
+
+    if (leftNaN || rightNaN) {
+        return SF64_NAN64;
+    }
+    if (leftInf && rightInf) {
+        return left ^ rightSign;
+    }
+    if ((leftInf && rightMantissa == 0) || (leftMantissa == 0 && rightInf)) {
+        return SF64_NAN64;
+    }
+    if (leftMantissa == 0) {
+        return left ^ rightSign;
+    }
+    if (rightMantissa == 0) {
+        return right ^ leftSign;
+    }
+
+    ulong lo;
+    ulong hi;
+    metal_sf64_mullu(leftMantissa, rightMantissa, lo, hi);
+    uint shift = SF64_MANTBITS - 1;
+    ulong trunc = lo & ((1ul << shift) - 1);
+    ulong mantissa = hi << (64 - shift) | lo >> shift;
+    return metal_sf64_pack64(leftSign ^ rightSign, mantissa, leftExponent + rightExponent - 1, trunc);
+}
+
+static inline ulong metal_sf64_div(ulong left, ulong right) {
+    ulong leftSign;
+    ulong leftMantissa;
+    int leftExponent;
+    bool leftInf;
+    bool leftNaN;
+    metal_sf64_unpack64(left, leftSign, leftMantissa, leftExponent, leftInf, leftNaN);
+
+    ulong rightSign;
+    ulong rightMantissa;
+    int rightExponent;
+    bool rightInf;
+    bool rightNaN;
+    metal_sf64_unpack64(right, rightSign, rightMantissa, rightExponent, rightInf, rightNaN);
+
+    if (leftNaN || rightNaN) {
+        return SF64_NAN64;
+    }
+    if (leftInf && rightInf) {
+        return SF64_NAN64;
+    }
+    if (!leftInf && !rightInf && leftMantissa == 0 && rightMantissa == 0) {
+        return SF64_NAN64;
+    }
+    if (leftInf || (!rightInf && rightMantissa == 0)) {
+        return leftSign ^ rightSign ^ SF64_INF64;
+    }
+    if (rightInf || leftMantissa == 0) {
+        return leftSign ^ rightSign;
+    }
+
+    uint shift = SF64_MANTBITS + 2;
+    metal_sf64_divlu_result division = metal_sf64_divlu(
+        leftMantissa >> (64 - shift),
+        leftMantissa << shift,
+        rightMantissa
+    );
+    return metal_sf64_pack64(leftSign ^ rightSign, division.quotient, leftExponent - rightExponent - 2, division.remainder);
+}
+
+static inline bool metal_sf64_isnan(ulong value) {
+    ulong signWord;
+    ulong mantissa;
+    int exponent;
+    bool isInf;
+    bool isNaN;
+    metal_sf64_unpack64(value, signWord, mantissa, exponent, isInf, isNaN);
+    return isNaN;
+}
+
+static inline bool metal_sf64_isinf_pos(ulong value) {
+    ulong signWord;
+    ulong mantissa;
+    int exponent;
+    bool isInf;
+    bool isNaN;
+    metal_sf64_unpack64(value, signWord, mantissa, exponent, isInf, isNaN);
+    return isInf && signWord == 0;
+}
+
+static inline bool metal_sf64_isinf_neg(ulong value) {
+    ulong signWord;
+    ulong mantissa;
+    int exponent;
+    bool isInf;
+    bool isNaN;
+    metal_sf64_unpack64(value, signWord, mantissa, exponent, isInf, isNaN);
+    return isInf && signWord != 0;
+}
+
+static inline ulong metal_sf64_neg(ulong value) {
+    return value ^ (1ul << 63);
+}
+
+static inline ulong metal_sf64_abs(ulong value) {
+    return value & 0x7FFFFFFFFFFFFFFFul;
+}
+
+static inline bool metal_sf64_lt(ulong left, ulong right) {
+    ulong leftSign;
+    ulong leftMantissa;
+    int leftExponent;
+    bool leftInf;
+    bool leftNaN;
+    metal_sf64_unpack64(left, leftSign, leftMantissa, leftExponent, leftInf, leftNaN);
+
+    ulong rightSign;
+    ulong rightMantissa;
+    int rightExponent;
+    bool rightInf;
+    bool rightNaN;
+    metal_sf64_unpack64(right, rightSign, rightMantissa, rightExponent, rightInf, rightNaN);
+
+    if (leftNaN || rightNaN) {
+        return false;
+    }
+    if (!leftInf && !rightInf && leftMantissa == 0 && rightMantissa == 0) {
+        return false;
+    }
+    if (leftSign > rightSign) {
+        return true;
+    }
+    if (leftSign < rightSign) {
+        return false;
+    }
+    if (leftSign == 0 && left < right) {
+        return true;
+    }
+    if (leftSign != 0 && left > right) {
+        return true;
+    }
+    return false;
+}
+
+static inline int metal_sf64_to_int(ulong value) {
+    ulong signWord;
+    ulong mantissa;
+    int exponent;
+    bool isInf;
+    bool isNaN;
+    metal_sf64_unpack64(value, signWord, mantissa, exponent, isInf, isNaN);
+
+    if (isInf || isNaN) {
+        return 0;
+    }
+    if (exponent < -1) {
+        return 0;
+    }
+    if (exponent > 63) {
+        if (signWord != 0 && mantissa == 0) {
+            return int(0x80000000);
+        }
+        return 0;
+    }
+
+    while (exponent > int(SF64_MANTBITS)) {
+        exponent--;
+        mantissa <<= 1;
+    }
+    while (exponent < int(SF64_MANTBITS)) {
+        exponent++;
+        mantissa >>= 1;
+    }
+
+    long mantInt = long(mantissa);
+    if (signWord != 0) {
+        mantInt = -mantInt;
+    }
+    return int(mantInt);
+}
+
+static inline ulong metal_sf64_ldexp(ulong value, int exponent) {
+    ulong signWord;
+    ulong mantissa;
+    int valueExponent;
+    bool isInf;
+    bool isNaN;
+    metal_sf64_unpack64(value, signWord, mantissa, valueExponent, isInf, isNaN);
+    if (isInf || isNaN) {
+        return value;
+    }
+    return metal_sf64_pack64(signWord, mantissa, valueExponent + exponent, 0);
+}
+
+static inline ulong metal_sf64_int_to64(int value) {
+    ulong signWord = 0;
+    ulong mantissa = 0;
+    if (value < 0) {
+        signWord = 1ul << 63;
+        mantissa = ulong(-value);
+    } else {
+        mantissa = ulong(value);
+    }
+    return metal_sf64_pack64(signWord, mantissa, int(SF64_MANTBITS), 0);
+}
+
+#endif

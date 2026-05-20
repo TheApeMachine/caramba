@@ -301,6 +301,57 @@ static inline void split2_bytes_kernel(
     }
 }
 
+static inline void slice_bytes_kernel(
+    device const uint4* inputVector,
+    device uint4* outVector,
+    constant uint& sliceLen,
+    constant uint& inputDimSize,
+    constant uint& innerBytes,
+    constant uint& start,
+    constant uint& outBytes,
+    uint index
+) {
+    uint base = index * 16;
+
+    if (base >= outBytes) {
+        return;
+    }
+
+    uint blockBytes = sliceLen * innerBytes;
+    uint inputBlockStride = inputDimSize * innerBytes;
+    device const uchar* input = reinterpret_cast<device const uchar*>(inputVector);
+    device uchar* out = reinterpret_cast<device uchar*>(outVector);
+
+    if (innerBytes >= 16u && innerBytes % 16u == 0u) {
+        uint outIndex = base;
+        uint outerIdx = outIndex / blockBytes;
+        uint within = outIndex - outerIdx * blockBytes;
+        uint sliceCoord = within / innerBytes;
+        uint innerOff = within - sliceCoord * innerBytes;
+        uint inIndex = outerIdx * inputBlockStride + (start + sliceCoord) * innerBytes + innerOff;
+
+        if (base + 15 < outBytes && innerOff + 16u <= innerBytes) {
+            outVector[index] = inputVector[inIndex / 16u];
+            return;
+        }
+    }
+
+    for (uint offset = 0; offset < 16; offset++) {
+        uint outIndex = base + offset;
+
+        if (outIndex >= outBytes) {
+            continue;
+        }
+
+        uint outerIdx = outIndex / blockBytes;
+        uint within = outIndex - outerIdx * blockBytes;
+        uint sliceCoord = within / innerBytes;
+        uint innerOff = within - sliceCoord * innerBytes;
+        uint inIndex = outerIdx * inputBlockStride + (start + sliceCoord) * innerBytes + innerOff;
+        out[outIndex] = input[inIndex];
+    }
+}
+
 static inline void last_token_bytes_kernel(
     device const uint4* inputVector,
     device uint4* outVector,
@@ -427,6 +478,22 @@ kernel void name( \
     last_token_bytes_kernel(inputVector, outVector, seq, hiddenBytes, outBytes, index); \
 }
 
+#define SLICE_KERNEL(name) \
+kernel void name( \
+    device const uint4* inputVector [[buffer(0)]], \
+    device uint4* outVector [[buffer(1)]], \
+    constant uint& sliceLen [[buffer(2)]], \
+    constant uint& inputDimSize [[buffer(3)]], \
+    constant uint& innerBytes [[buffer(4)]], \
+    constant uint& start [[buffer(5)]], \
+    constant uint& outBytes [[buffer(6)]], \
+    uint index [[thread_position_in_grid]] \
+) { \
+    slice_bytes_kernel( \
+        inputVector, outVector, sliceLen, inputDimSize, innerBytes, start, outBytes, index \
+    ); \
+}
+
 #define TRANSPOSE2D_KERNEL(name, storage) \
 kernel void name( \
     device const storage* input [[buffer(0)]], \
@@ -544,6 +611,10 @@ MASKED_FILL_KERNEL(masked_fill_bfloat16, ushort, ushort4)
 TRANSPOSE_KERNEL(transpose_float32, uint)
 TRANSPOSE_KERNEL(transpose_float16, ushort)
 TRANSPOSE_KERNEL(transpose_bfloat16, ushort)
+
+SLICE_KERNEL(slice_float32)
+SLICE_KERNEL(slice_float16)
+SLICE_KERNEL(slice_bfloat16)
 
 COPY_KERNEL(copy_float32)
 COPY_KERNEL(copy_float16)

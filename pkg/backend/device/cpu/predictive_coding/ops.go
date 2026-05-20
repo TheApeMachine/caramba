@@ -27,15 +27,7 @@ func Prediction(
 	representationView := unsafe.Slice((*float32)(representation), inDim)
 	outputView := unsafe.Slice((*float32)(output), outDim)
 
-	for outIndex := 0; outIndex < outDim; outIndex++ {
-		var sum float32
-
-		for inIndex := 0; inIndex < inDim; inIndex++ {
-			sum += weightsView[outIndex*inDim+inIndex] * representationView[inIndex]
-		}
-
-		outputView[outIndex] = sum
-	}
+	PredictionFloat32Native(weightsView, representationView, outputView, outDim, inDim)
 }
 
 func PredictionError(
@@ -53,9 +45,7 @@ func PredictionError(
 	predictedView := unsafe.Slice((*float32)(predicted), count)
 	outputView := unsafe.Slice((*float32)(output), count)
 
-	for index, value := range observedView {
-		outputView[index] = value - predictedView[index]
-	}
+	PredictionErrorFloat32Native(observedView, predictedView, outputView)
 }
 
 func UpdateRepresentation(
@@ -75,14 +65,10 @@ func UpdateRepresentation(
 	errorView := unsafe.Slice((*float32)(predictionError), outDim)
 	outputView := unsafe.Slice((*float32)(output), inDim)
 
-	copy(outputView, representationView)
-
-	for outIndex := 0; outIndex < outDim; outIndex++ {
-		for inIndex := 0; inIndex < inDim; inIndex++ {
-			outputView[inIndex] += config.LearningRate *
-				weightsView[outIndex*inDim+inIndex] * errorView[outIndex]
-		}
-	}
+	UpdateRepresentationFloat32Native(
+		weightsView, representationView, errorView, outputView,
+		config.LearningRate, outDim, inDim,
+	)
 }
 
 func UpdateWeights(
@@ -102,12 +88,8 @@ func UpdateWeights(
 	errorView := unsafe.Slice((*float32)(predictionError), outDim)
 	outputView := unsafe.Slice((*float32)(output), outDim*inDim)
 
-	copy(outputView, weightsView)
-
-	for outIndex := 0; outIndex < outDim; outIndex++ {
-		for inIndex := 0; inIndex < inDim; inIndex++ {
-			outputView[outIndex*inDim+inIndex] +=
-				config.LearningRate * errorView[outIndex] * representationView[inIndex]
-		}
-	}
+	UpdateWeightsFloat32Native(
+		weightsView, representationView, errorView, outputView,
+		config.LearningRate, outDim, inDim,
+	)
 }

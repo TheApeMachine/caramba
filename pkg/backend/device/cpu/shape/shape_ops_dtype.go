@@ -145,6 +145,36 @@ func runScatterMixed(args []tensor.Tensor, kind dtype.DType) error {
 	return narrowFromF32(args[3], kind, outView)
 }
 
+// runSliceMixed handles slice: (input, dim, start, end) → output.
+func runSliceMixed(args []tensor.Tensor, kind dtype.DType) error {
+	if len(args) != 5 {
+		return tensor.ErrShapeMismatch
+	}
+
+	inTemp, err := tensor.NewZeroed(args[0].Shape(), dtype.Float32)
+	if err != nil {
+		return err
+	}
+
+	outTemp, err := tensor.NewZeroed(args[4].Shape(), dtype.Float32)
+	if err != nil {
+		return err
+	}
+
+	inView, _ := inTemp.Float32Native()
+
+	if err := widenToF32(args[0], kind, inView); err != nil {
+		return err
+	}
+
+	if err := runSlice(inTemp, args[1], args[2], args[3], outTemp); err != nil {
+		return err
+	}
+
+	outView, _ := outTemp.Float32Native()
+	return narrowFromF32(args[4], kind, outView)
+}
+
 // runConcatMixed handles concat: (a, b) → output, all at paramDType.
 func runConcatMixed(args []tensor.Tensor, kind dtype.DType) error {
 	if len(args) != 3 {

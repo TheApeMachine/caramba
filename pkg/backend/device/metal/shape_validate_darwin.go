@@ -71,6 +71,33 @@ func requireMetalSplit2(
 	return inputTensor, leftTensor, rightTensor, nil
 }
 
+func requireMetalSlice(
+	input tensor.Tensor,
+	dim tensor.Tensor,
+	start tensor.Tensor,
+	end tensor.Tensor,
+	out tensor.Tensor,
+) (*metalTensor, *metalTensor, error) {
+	inputTensor, outTensor, err := requireMetalShapeSameDType(input, out)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if _, err := requireMetalTensor(dim); err != nil {
+		return nil, nil, err
+	}
+
+	if _, err := requireMetalTensor(start); err != nil {
+		return nil, nil, err
+	}
+
+	if _, err := requireMetalTensor(end); err != nil {
+		return nil, nil, err
+	}
+
+	return inputTensor, outTensor, nil
+}
+
 func requireMetalLastToken(
 	input tensor.Tensor,
 	out tensor.Tensor,

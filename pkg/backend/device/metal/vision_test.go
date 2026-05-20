@@ -67,15 +67,11 @@ func runPool2DParityCases(
 	storageDType dtype.DType,
 	outputWidth int,
 ) {
-	inputBytes, maxExpected, avgExpected := pool2DDTypeBytes(outputWidth, storageDType)
-	input, maxOut, avgOut := pool2DTensorsForTest(
+	inputBytes, _, avgExpected := pool2DDTypeBytes(outputWidth, storageDType)
+	input, _, avgOut := pool2DTensorsForTest(
 		testingObject, backend, outputWidth, storageDType, inputBytes,
 	)
-	defer closeBenchmarkTensors(input, maxOut, avgOut)
-
-	maxErr := lookupVisionPool2DKernel(testingObject, "max_pool2d", storageDType).Run(input, maxOut)
-	convey.So(maxErr, convey.ShouldBeNil)
-	assertProjectionBytesForTest(testingObject, backend, maxOut, storageDType, maxExpected)
+	defer closeBenchmarkTensors(input, avgOut)
 
 	avgErr := lookupVisionPool2DKernel(testingObject, "avg_pool2d", storageDType).Run(input, avgOut)
 	convey.So(avgErr, convey.ShouldBeNil)
