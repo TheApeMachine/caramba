@@ -402,6 +402,12 @@ func mapBackendMethodToKernelName(methodName string) string {
 		return "conv_transpose2d"
 	case "MaxPool2D":
 		return "max_pool2d"
+	case "AvgPool2D":
+		return "avg_pool2d"
+	case "AdaptiveAvgPool2D":
+		return "adaptive_avg_pool2d"
+	case "AdaptiveMaxPool2D":
+		return "adaptive_max_pool2d"
 	case "LayerNorm":
 		return "layernorm"
 	case "RMSNorm":
@@ -488,6 +494,9 @@ var knownKernelNames = map[ir.OpType][]string{
 	"convolution.conv3d":            {"conv3d"},
 	"convolution.conv_transpose2d":  {"conv_transpose2d"},
 	"pooling.max_pool2d":            {"max_pool2d"},
+	"pooling.avg_pool2d":            {"avg_pool2d"},
+	"pooling.adaptive_avg_pool2d":   {"adaptive_avg_pool2d"},
+	"pooling.adaptive_max_pool2d":   {"adaptive_max_pool2d"},
 	"math.sin":                      {"sin"},
 	"math.cos":                 {"cos"},
 	"math.logsumexp":           {"logsumexp"},

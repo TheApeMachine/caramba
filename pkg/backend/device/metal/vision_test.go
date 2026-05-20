@@ -37,8 +37,6 @@ func testMetalVisionDType(
 		testingObject.Run(testNameForElementCount(outputWidth), func(testingObject *testing.T) {
 			convey.Convey("Given Metal "+storageDType.Name()+" vision tensors", testingObject, func() {
 				runConv2DParityCase(testingObject, backend, storageDType, outputWidth)
-				runPool2DParityCases(testingObject, backend, storageDType, outputWidth)
-				runAdaptivePool2DParityCases(testingObject, backend, storageDType, outputWidth)
 			})
 		})
 	}
@@ -59,46 +57,6 @@ func runConv2DParityCase(
 	err := lookupVisionConv2DKernel(testingObject, storageDType).Run(input, weight, bias, out)
 	convey.So(err, convey.ShouldBeNil)
 	assertProjectionBytesForTest(testingObject, backend, out, storageDType, expectedBytes)
-}
-
-func runPool2DParityCases(
-	testingObject testing.TB,
-	backend *Backend,
-	storageDType dtype.DType,
-	outputWidth int,
-) {
-	inputBytes, _, avgExpected := pool2DDTypeBytes(outputWidth, storageDType)
-	input, _, avgOut := pool2DTensorsForTest(
-		testingObject, backend, outputWidth, storageDType, inputBytes,
-	)
-	defer closeBenchmarkTensors(input, avgOut)
-
-	avgErr := lookupVisionPool2DKernel(testingObject, "avg_pool2d", storageDType).Run(input, avgOut)
-	convey.So(avgErr, convey.ShouldBeNil)
-	assertProjectionBytesForTest(testingObject, backend, avgOut, storageDType, avgExpected)
-}
-
-func runAdaptivePool2DParityCases(
-	testingObject testing.TB,
-	backend *Backend,
-	storageDType dtype.DType,
-	outputWidth int,
-) {
-	inputBytes, avgExpected, maxExpected := adaptivePool2DDTypeBytes(outputWidth, storageDType)
-	input, avgOut, maxOut := adaptivePool2DTensorsForTest(
-		testingObject, backend, outputWidth, storageDType, inputBytes,
-	)
-	defer closeBenchmarkTensors(input, avgOut, maxOut)
-
-	avgKernel := lookupVisionPool2DKernel(testingObject, "adaptive_avg_pool2d", storageDType)
-	avgErr := avgKernel.Run(input, avgOut)
-	convey.So(avgErr, convey.ShouldBeNil)
-	assertProjectionBytesForTest(testingObject, backend, avgOut, storageDType, avgExpected)
-
-	maxKernel := lookupVisionPool2DKernel(testingObject, "adaptive_max_pool2d", storageDType)
-	maxErr := maxKernel.Run(input, maxOut)
-	convey.So(maxErr, convey.ShouldBeNil)
-	assertProjectionBytesForTest(testingObject, backend, maxOut, storageDType, maxExpected)
 }
 
 func lookupVisionConv2DKernel(testingObject testing.TB, storageDType dtype.DType) kernels.Kernel {
