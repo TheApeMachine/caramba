@@ -32,6 +32,7 @@ main:
           - in: logits
             op: sampling.topk_sample
             config:
+              vocab_size: 128256
               temperature: 0.8
               top_k: 50
               top_p: 0.95
@@ -39,8 +40,12 @@ main:
 
           - in: next_token
             op: io.emit_token
+            config:
+              tokenizer: hf://meta-llama/Llama-3.2-1B-Instruct
             out: _
 
           - in: next_token
-            op: value.assign
+            op: value.append
+            config:
+              target: input_ids
             out: input_ids

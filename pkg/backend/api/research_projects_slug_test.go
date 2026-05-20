@@ -21,7 +21,7 @@ func TestDeriveProjectSlug(t *testing.T) {
 		})
 
 		Convey("It should trim to the maximum slug length", func() {
-			longName := "abcdefghijklmnopqrstuvwxyz-0123456789-extra-tail"
+			longName := "abcdefghijklmnopqrstuvwxyz-0123456789-abcdefghijklmnopqrstuvwxyz-0123456789-extra-tail"
 			slug := deriveProjectSlug(longName)
 
 			So(len(slug), ShouldBeLessThanOrEqualTo, 64)

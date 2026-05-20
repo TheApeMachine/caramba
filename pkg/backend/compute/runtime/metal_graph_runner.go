@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 
 	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/manifesto/dtype"
@@ -18,14 +19,22 @@ import (
 MetalGraphRunner executes lowered IR graphs on Metal through direct kernel dispatch.
 */
 type MetalGraphRunner struct {
-	memory *metal.Backend
+	memory       *metal.Backend
+	weightsCache map[string]tensor.Tensor
 }
 
 /*
 NewMetalGraphRunner constructs a MetalGraphRunner.
 */
 func NewMetalGraphRunner(memory *metal.Backend) *MetalGraphRunner {
-	return &MetalGraphRunner{memory: memory}
+	return &MetalGraphRunner{
+		memory:       memory,
+		weightsCache: make(map[string]tensor.Tensor),
+	}
+}
+
+func (runner *MetalGraphRunner) Memory() *metal.Backend {
+	return runner.memory
 }
 
 /*
@@ -57,24 +66,53 @@ func (runner *MetalGraphRunner) Execute(
 	runner.memory.BeginBatch()
 	defer runner.memory.EndBatch()
 
+	var temporaries []tensor.Tensor
+	defer func() {
+		for _, temp := range temporaries {
+			_ = temp.Close()
+		}
+	}()
+
 	for _, layer := range layers {
 		for _, node := range layer {
 			if err := ctx.Err(); err != nil {
 				closeValues(values)
-
 				return nil, err
 			}
 
-			value, evalErr := runner.evaluateNode(ctx, node, values, weightsPath)
+			value, temps, evalErr := runner.evaluateNode(ctx, node, values, weightsPath)
+			temporaries = append(temporaries, temps...)
 
 			if evalErr != nil {
 				closeValues(values)
-
 				return nil, evalErr
 			}
 
 			if value != nil {
 				values[node.ID()] = value
+			}
+		}
+	}
+
+	runner.memory.EndBatch() // End batch before reading raw bytes
+	runner.memory.BeginBatch() // Re-begin batch for defer to not panic
+
+	for key, value := range values {
+		if key == "q_proj_0" || key == "k_proj_0" || key == "v_proj_0" || key == "q_rope_0" || key == "k_rope_0" || key == "v_rope_0" {
+			dt, raw, err := value.RawBytes()
+			if err == nil {
+				allZero := true
+				for _, b := range raw {
+					if b != 0 {
+						allZero = false
+						break
+					}
+				}
+				if allZero {
+					fmt.Printf("%s IS ALL ZERO! (len=%d, dtype=%s)\n", key, len(raw), dt)
+				} else {
+					fmt.Printf("%s IS NOT ZERO! (len=%d, dtype=%s)\n", key, len(raw), dt)
+				}
 			}
 		}
 	}
@@ -93,6 +131,18 @@ func (runner *MetalGraphRunner) Execute(
 		outputs[target.ID()] = value
 	}
 
+	runner.memory.EndBatch() // End batch before reading raw bytes
+	runner.memory.BeginBatch() // Re-begin batch for defer to not panic
+
+	// Close intermediate tensors that are not in outputs or externalInputs
+	for key, value := range values {
+		if _, isOutput := outputs[key]; !isOutput {
+			if _, isExternal := externalInputs[key]; !isExternal {
+				_ = value.Close()
+			}
+		}
+	}
+
 	return outputs, nil
 }
 
@@ -101,7 +151,7 @@ func (runner *MetalGraphRunner) evaluateNode(
 	node *ir.Node,
 	values map[string]tensor.Tensor,
 	weightsPath string,
-) (tensor.Tensor, error) {
+) (tensor.Tensor, []tensor.Tensor, error) {
 	_ = ctx
 
 	operationID := node.OperationID()
@@ -111,7 +161,8 @@ func (runner *MetalGraphRunner) evaluateNode(
 	}
 
 	if operationID == ir.OpID(ir.OpInput) || node.OpType() == ir.OpInput {
-		return runner.materializeExternalInput(node, values)
+		val, err := runner.materializeExternalInput(node, values)
+		return val, nil, err
 	}
 
 	kernelName := KernelName(operationID)
@@ -123,20 +174,22 @@ func (runner *MetalGraphRunner) evaluateNode(
 	)
 
 	if !ok {
-		return nil, fmt.Errorf("metal graph runner: no kernel for op %q (%s)", operationID, kernelName)
+		return nil, nil, fmt.Errorf("metal graph runner: no kernel for op %q (%s)", operationID, kernelName)
 	}
 
-	args, err := runner.buildKernelArgs(node, values, weightsPath, kernel.Signature)
+	args, temps, err := runner.buildKernelArgs(node, values, weightsPath, kernel.Signature)
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if err := kernel.Run(args...); err != nil {
-		return nil, fmt.Errorf("metal graph runner: kernel %q: %w", kernelName, err)
+		return nil, nil, fmt.Errorf("metal graph runner: kernel %q: %w", kernelName, err)
 	}
 
-	return args[len(args)-len(kernel.Signature.Outputs):][0], nil
+	outTensor := args[len(args)-len(kernel.Signature.Outputs):][0]
+
+	return outTensor, temps, nil
 }
 
 func (runner *MetalGraphRunner) materializeExternalInput(
@@ -189,20 +242,21 @@ func (runner *MetalGraphRunner) buildKernelArgs(
 	values map[string]tensor.Tensor,
 	weightsPath string,
 	signature kernels.Signature,
-) ([]tensor.Tensor, error) {
+) ([]tensor.Tensor, []tensor.Tensor, error) {
 	operationID := node.OperationID()
 	if operationID == "" {
 		operationID = ir.OpID(node.OpType())
 	}
 
 	args := make([]tensor.Tensor, 0, len(signature.Inputs)+len(signature.Outputs))
+	var temps []tensor.Tensor
 
 	// Collect inputs from node.Inputs()
 	nodeInputs := make([]tensor.Tensor, len(node.Inputs()))
 	for i, inputNode := range node.Inputs() {
 		value, ok := values[inputNode.ID()]
 		if !ok {
-			return nil, fmt.Errorf("metal graph runner: missing input %q for %q", inputNode.ID(), node.ID())
+			return nil, nil, fmt.Errorf("metal graph runner: missing input %q for %q", inputNode.ID(), node.ID())
 		}
 		nodeInputs[i] = value
 	}
@@ -213,13 +267,13 @@ func (runner *MetalGraphRunner) buildKernelArgs(
 	if hasWeightName && weightsPath != "" {
 		wt, err := runner.loadWeightTensor(weightsPath, weightName, node.ValueType().DType, node.Shape())
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		weightTensor = wt
 	}
 
 	if operationID == "embedding.token" && weightTensor == nil {
-		return nil, fmt.Errorf("embedding.token requires a weight tensor (weightName=%q, hasWeightName=%v, weightsPath=%q)", weightName, hasWeightName, weightsPath)
+		return nil, nil, fmt.Errorf("embedding.token requires a weight tensor (weightName=%q, hasWeightName=%v, weightsPath=%q)", weightName, hasWeightName, weightsPath)
 	}
 
 	// Map to kernel arguments based on operation
@@ -227,15 +281,15 @@ func (runner *MetalGraphRunner) buildKernelArgs(
 	case "embedding.token":
 		// [table, indices]
 		if weightTensor == nil {
-			return nil, fmt.Errorf("embedding.token requires a weight tensor")
+			return nil, nil, fmt.Errorf("embedding.token requires a weight tensor")
 		}
-		
+
 		args = append(args, weightTensor, nodeInputs[0])
 
 	case "projection.linear":
 		// [input, weight, bias]
 		if weightTensor == nil {
-			return nil, fmt.Errorf("projection.linear requires a weight tensor")
+			return nil, nil, fmt.Errorf("projection.linear requires a weight tensor")
 		}
 		args = append(args, nodeInputs[0], weightTensor)
 		// Bias is optional in manifesto, but required by puter kernel.
@@ -244,16 +298,38 @@ func (runner *MetalGraphRunner) buildKernelArgs(
 		biasShape, _ := tensor.NewShape([]int{outFeatures})
 		biasTensor, err := runner.memory.NewZeroed(biasShape, weightTensor.DType())
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		temps = append(temps, biasTensor)
 		args = append(args, biasTensor)
 
 	case "math.rmsnorm", "math.layernorm":
 		// [input, weight]
 		if weightTensor == nil {
-			return nil, fmt.Errorf("%s requires a weight tensor", operationID)
+			return nil, nil, fmt.Errorf("%s requires a weight tensor", operationID)
 		}
 		args = append(args, nodeInputs[0], weightTensor)
+
+	case "shape.view_as_heads":
+		numHeadsAttr := node.Attribute("num_heads")
+		if numHeadsAttr.Value == "" {
+			return nil, nil, fmt.Errorf("shape.view_as_heads requires num_heads config")
+		}
+
+		var numHeads int32
+		if parsed, err := strconv.ParseInt(numHeadsAttr.Value, 10, 32); err == nil {
+			numHeads = int32(parsed)
+		} else {
+			return nil, nil, fmt.Errorf("shape.view_as_heads num_heads invalid: %v", err)
+		}
+
+		numHeadsShape, _ := tensor.NewShape([]int{1})
+		numHeadsTensor, err := runner.memory.Upload(numHeadsShape, dtype.Int32, int32ToBytes([]int32{numHeads}))
+		if err != nil {
+			return nil, nil, err
+		}
+		temps = append(temps, numHeadsTensor)
+		args = append(args, nodeInputs[0], numHeadsTensor)
 
 	default:
 		// Default: append all node inputs, then weight if present
@@ -274,8 +350,14 @@ func (runner *MetalGraphRunner) buildKernelArgs(
 		seqLen := nodeInputs[0].Shape().Dims()[0]
 		if operationID == "embedding.token" {
 			seqLen = nodeInputs[0].Shape().Len()
+			dt, raw, err := nodeInputs[0].RawBytes()
+			if err == nil {
+				fmt.Printf("EMBEDDING INPUT RAW (len=%d, dtype=%s): %v\n", len(raw), dt, raw)
+			}
+			wt := args[0]
+			fmt.Printf("EMBEDDING VOCAB: %d\n", wt.Shape().Dims()[0])
 		}
-		
+
 		dims := outputShape.Dims()
 		if len(dims) > 0 && dims[0] != seqLen {
 			newDims := make([]int, len(dims))
@@ -287,12 +369,12 @@ func (runner *MetalGraphRunner) buildKernelArgs(
 
 	output, err := runner.memory.NewZeroed(outputShape, outputDType)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	args = append(args, output)
 
-	return args, nil
+	return args, temps, nil
 }
 
 func (runner *MetalGraphRunner) loadWeightTensor(
@@ -301,6 +383,10 @@ func (runner *MetalGraphRunner) loadWeightTensor(
 	format dtype.DType,
 	fallbackShape tensor.Shape,
 ) (tensor.Tensor, error) {
+	if cached, ok := runner.weightsCache[weightName]; ok {
+		return cached, nil
+	}
+
 	st, err := hub.OpenSafeTensors(weightsPath)
 	if err != nil {
 		return nil, err
@@ -343,7 +429,24 @@ func (runner *MetalGraphRunner) loadWeightTensor(
 		weightDType = dtype.Float32
 	}
 
-	return runner.memory.Upload(shape, weightDType, raw)
+	if weightName == "model.embed_tokens.weight" {
+		allZero := true
+		for _, b := range raw {
+			if b != 0 {
+				allZero = false
+				break
+			}
+		}
+		if allZero {
+			fmt.Println("EMBEDDING WEIGHT IS ALL ZERO!")
+		}
+	}
+
+	tensorValue, err := runner.memory.Upload(shape, weightDType, raw)
+	if err == nil {
+		runner.weightsCache[weightName] = tensorValue
+	}
+	return tensorValue, err
 }
 
 func metalKernelSignature(node *ir.Node) kernels.Signature {
@@ -359,6 +462,14 @@ func metalKernelSignature(node *ir.Node) kernels.Signature {
 	}
 
 	if operationID == "embedding.token" {
+		return kernels.Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{format, dtype.Int32},
+			Outputs: []dtype.DType{format},
+		}
+	}
+
+	if operationID == "shape.view_as_heads" {
 		return kernels.Signature{
 			Layout:  tensor.LayoutDense,
 			Inputs:  []dtype.DType{format, dtype.Int32},
@@ -400,5 +511,17 @@ func float64ToFloat32Bytes(values []float64) []byte {
 		buffer[index*4+3] = byte(bits >> 24)
 	}
 
+	return buffer
+}
+
+func int32ToBytes(values []int32) []byte {
+	buffer := make([]byte, len(values)*4)
+	for index, element := range values {
+		value := uint32(element)
+		buffer[index*4] = byte(value)
+		buffer[index*4+1] = byte(value >> 8)
+		buffer[index*4+2] = byte(value >> 16)
+		buffer[index*4+3] = byte(value >> 24)
+	}
 	return buffer
 }

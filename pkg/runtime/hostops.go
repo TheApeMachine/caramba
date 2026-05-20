@@ -47,9 +47,29 @@ func (hostOps *CarambaHostOps) ReadLine(ctx context.Context) (string, error) {
 	return strings.TrimSpace(text), nil
 }
 
-func (hostOps *CarambaHostOps) EmitToken(ctx context.Context, tokenID int) error {
-	_, err := fmt.Fprintf(os.Stdout, "%d ", tokenID)
+func (hostOps *CarambaHostOps) EmitToken(ctx context.Context, request manifestruntime.EmitTokenRequest) error {
+	if request.Tokenizer == "" {
+		_, err := fmt.Fprintf(os.Stdout, "%d ", request.TokenID)
+		return err
+	}
 
+	source := tokenizer.Source{
+		Source:   request.Tokenizer,
+		Cache:    hostOps.hubConfig.CacheDir,
+		Revision: "main",
+	}
+
+	artifact, err := tokenizer.Load(ctx, source)
+	if err != nil {
+		return err
+	}
+
+	text, err := artifact.Tokenizer.Decode([]int{request.TokenID}, true)
+	if err != nil {
+		return err
+	}
+
+	_, err = fmt.Fprintf(os.Stdout, "[%d:%s]", request.TokenID, text)
 	return err
 }
 

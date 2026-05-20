@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math"
 
@@ -21,6 +22,7 @@ GraphBackend executes manifest graphs through the Metal compute stack.
 type GraphBackend struct {
 	computeBackend *compute.Backend
 	deviceID       compute.DeviceID
+	runner         *computeruntime.MetalGraphRunner
 }
 
 /*
@@ -31,9 +33,19 @@ func NewGraphBackend(computeBackend *compute.Backend) (*GraphBackend, error) {
 		return nil, fmt.Errorf("runtime graph backend: compute backend is required")
 	}
 
+	dev, err := computeBackend.Device(compute.DeviceID{Location: tensor.Location("metal"), Index: 0})
+	if err != nil {
+		return nil, err
+	}
+	metalDev, ok := dev.(*metal.Backend)
+	if !ok {
+		return nil, fmt.Errorf("runtime graph backend: device is not a metal backend")
+	}
+
 	return &GraphBackend{
 		computeBackend: computeBackend,
 		deviceID:       compute.DeviceID{Location: tensor.Location("metal"), Index: 0},
+		runner:         computeruntime.NewMetalGraphRunner(metalDev),
 	}, nil
 }
 
@@ -53,23 +65,10 @@ func (backend *GraphBackend) CallGraph(
 		return manifestruntime.GraphCallResult{}, fmt.Errorf("runtime graph backend: compute graph is required")
 	}
 
-	dev, err := backend.computeBackend.Device(backend.deviceID)
-
-	if err != nil {
-		return manifestruntime.GraphCallResult{}, err
-	}
-
-	metalDev, ok := dev.(*metal.Backend)
-	if !ok {
-		return manifestruntime.GraphCallResult{}, fmt.Errorf("runtime graph backend: device is not a metal backend")
-	}
-
-	runner := computeruntime.NewMetalGraphRunner(metalDev)
-
 	weightsPath, _ := manifestGraph.Metadata["weights_path"].(string)
 
 	// We need to materialize inputs to tensor.Tensor.
-	externalInputs, err := backend.materializeInputs(metalDev, manifestGraph, request.Inputs)
+	externalInputs, err := backend.materializeInputs(backend.runner.Memory(), manifestGraph, request.Inputs)
 
 	if err != nil {
 		return manifestruntime.GraphCallResult{}, err
@@ -81,7 +80,7 @@ func (backend *GraphBackend) CallGraph(
 		return manifestruntime.GraphCallResult{}, err
 	}
 
-	tensors, err := runner.Execute(ctx, computeGraph, targets, weightsPath, externalInputs)
+	tensors, err := backend.runner.Execute(ctx, computeGraph, targets, weightsPath, externalInputs)
 
 	if err != nil {
 		return manifestruntime.GraphCallResult{}, err
@@ -96,32 +95,223 @@ func (backend *GraphBackend) CallGraph(
 			continue
 		}
 
-		native, err := value.Float32Native()
+		outDType := value.DType()
+		var native any
 
-		if err != nil {
-			fmt.Printf("Float32Native failed: %v, falling back to RawBytes\n", err)
-			// Fallback to downloading raw bytes and converting if Native is unsupported (e.g. Metal)
-			outDType, rawBytes, rawErr := value.RawBytes()
-			if rawErr != nil {
-				return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+		switch outDType {
+		case dtype.Float32:
+			f32s, err := value.Float32Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				f32s = make([]float32, len(rawBytes)/4)
+				for i := range f32s {
+					f32s[i] = math.Float32frombits(binary.LittleEndian.Uint32(rawBytes[i*4:]))
+				}
 			}
-			
-			// We only support Float32 output for now
-			if outDType != dtype.Float32 {
-				return manifestruntime.GraphCallResult{}, fmt.Errorf("expected Float32 output, got %s", outDType)
+			native = f32s
+
+		case dtype.BFloat16:
+			bf16s, err := value.BFloat16Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				bf16s = make([]dtype.BF16, len(rawBytes)/2)
+				for i := range bf16s {
+					bf16s[i] = dtype.BF16(binary.LittleEndian.Uint16(rawBytes[i*2:]))
+				}
 			}
-			
-			// Convert raw bytes to []float32
-			float32s := make([]float32, len(rawBytes)/4)
-			for i := range float32s {
-				float32s[i] = math.Float32frombits(
-					uint32(rawBytes[i*4]) |
-					uint32(rawBytes[i*4+1])<<8 |
-					uint32(rawBytes[i*4+2])<<16 |
-					uint32(rawBytes[i*4+3])<<24,
-				)
+			native = bf16s
+
+		case dtype.Float16:
+			f16s, err := value.Float16Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				f16s = make([]dtype.F16, len(rawBytes)/2)
+				for i := range f16s {
+					f16s[i] = dtype.F16(binary.LittleEndian.Uint16(rawBytes[i*2:]))
+				}
 			}
-			native = float32s
+			native = f16s
+
+		case dtype.Float64:
+			f64s, err := value.Float64Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				f64s = make([]float64, len(rawBytes)/8)
+				for i := range f64s {
+					f64s[i] = math.Float64frombits(binary.LittleEndian.Uint64(rawBytes[i*8:]))
+				}
+			}
+			native = f64s
+
+		case dtype.Int32:
+			i32s, err := value.Int32Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				i32s = make([]int32, len(rawBytes)/4)
+				for i := range i32s {
+					i32s[i] = int32(binary.LittleEndian.Uint32(rawBytes[i*4:]))
+				}
+			}
+			native = i32s
+
+		case dtype.Int64:
+			i64s, err := value.Int64Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				i64s = make([]int64, len(rawBytes)/8)
+				for i := range i64s {
+					i64s[i] = int64(binary.LittleEndian.Uint64(rawBytes[i*8:]))
+				}
+			}
+			native = i64s
+
+		case dtype.Int16:
+			i16s, err := value.Int16Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				i16s = make([]int16, len(rawBytes)/2)
+				for i := range i16s {
+					i16s[i] = int16(binary.LittleEndian.Uint16(rawBytes[i*2:]))
+				}
+			}
+			native = i16s
+
+		case dtype.Int8:
+			i8s, err := value.Int8Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				i8s = make([]int8, len(rawBytes))
+				for i := range i8s {
+					i8s[i] = int8(rawBytes[i])
+				}
+			}
+			native = i8s
+
+		case dtype.Uint64:
+			u64s, err := value.Uint64Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				u64s = make([]uint64, len(rawBytes)/8)
+				for i := range u64s {
+					u64s[i] = binary.LittleEndian.Uint64(rawBytes[i*8:])
+				}
+			}
+			native = u64s
+
+		case dtype.Uint32:
+			u32s, err := value.Uint32Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				u32s = make([]uint32, len(rawBytes)/4)
+				for i := range u32s {
+					u32s[i] = binary.LittleEndian.Uint32(rawBytes[i*4:])
+				}
+			}
+			native = u32s
+
+		case dtype.Uint16:
+			u16s, err := value.Uint16Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				u16s = make([]uint16, len(rawBytes)/2)
+				for i := range u16s {
+					u16s[i] = binary.LittleEndian.Uint16(rawBytes[i*2:])
+				}
+			}
+			native = u16s
+
+		case dtype.Uint8:
+			u8s, err := value.Uint8Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				u8s = make([]uint8, len(rawBytes))
+				copy(u8s, rawBytes)
+			}
+			native = u8s
+
+		case dtype.Float8E4M3:
+			f8s, err := value.Float8E4M3Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				f8s = make([]dtype.F8E4M3, len(rawBytes))
+				for i := range f8s {
+					f8s[i] = dtype.F8E4M3(rawBytes[i])
+				}
+			}
+			native = f8s
+
+		case dtype.Float8E5M2:
+			f8s, err := value.Float8E5M2Native()
+			if err != nil {
+				_, rawBytes, rawErr := value.RawBytes()
+				if rawErr != nil {
+					return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+				}
+				f8s = make([]dtype.F8E5M2, len(rawBytes))
+				for i := range f8s {
+					f8s[i] = dtype.F8E5M2(rawBytes[i])
+				}
+			}
+			native = f8s
+
+		default:
+			return manifestruntime.GraphCallResult{}, fmt.Errorf("runtime graph backend: unsupported output dtype %s", outDType)
+		}
+
+		allZero := true
+		if nativeFloat, ok := native.([]float32); ok {
+			for _, v := range nativeFloat {
+				if v != 0 {
+					allZero = false
+					break
+				}
+			}
+		} else {
+			allZero = false // Can't check easily, assume not zero
+		}
+		if allZero {
+			fmt.Printf("OUTPUT %s IS ALL ZERO!\n", nodeID)
+		} else {
+			fmt.Printf("OUTPUT %s IS NOT ZERO!\n", nodeID)
 		}
 
 		outputs[portName] = native
@@ -147,6 +337,16 @@ func (backend *GraphBackend) materializeInputs(
 		}
 
 		switch typed := rawValue.(type) {
+		case int:
+			shape, err := tensor.NewShape([]int{1})
+			if err != nil {
+				return nil, err
+			}
+			tensorValue, err := memory.Upload(shape, dtype.Int32, encodeInt32([]int{typed}))
+			if err != nil {
+				return nil, err
+			}
+			external[nodeID] = tensorValue
 		case []int:
 			shape, err := tensor.NewShape([]int{len(typed)})
 
@@ -231,4 +431,95 @@ func float32ToBytes(values []float32) []byte {
 	}
 
 	return buffer
+}
+
+func isAllZero(slice any) bool {
+	switch typed := slice.(type) {
+	case []float32:
+		for _, v := range typed {
+			if v != 0 {
+				return false
+			}
+		}
+	case []dtype.BF16:
+		for i := range typed {
+			if (&typed[i]).Float32() != 0 {
+				return false
+			}
+		}
+	case []dtype.F16:
+		for _, v := range typed {
+			if v.Float32() != 0 {
+				return false
+			}
+		}
+	case []float64:
+		for _, v := range typed {
+			if v != 0 {
+				return false
+			}
+		}
+	case []int32:
+		for _, v := range typed {
+			if v != 0 {
+				return false
+			}
+		}
+	case []int64:
+		for _, v := range typed {
+			if v != 0 {
+				return false
+			}
+		}
+	case []int16:
+		for _, v := range typed {
+			if v != 0 {
+				return false
+			}
+		}
+	case []int8:
+		for _, v := range typed {
+			if v != 0 {
+				return false
+			}
+		}
+	case []uint64:
+		for _, v := range typed {
+			if v != 0 {
+				return false
+			}
+		}
+	case []uint32:
+		for _, v := range typed {
+			if v != 0 {
+				return false
+			}
+		}
+	case []uint16:
+		for _, v := range typed {
+			if v != 0 {
+				return false
+			}
+		}
+	case []uint8:
+		for _, v := range typed {
+			if v != 0 {
+				return false
+			}
+		}
+	case []dtype.F8E4M3:
+		for _, v := range typed {
+			if v.Float32() != 0 {
+				return false
+			}
+		}
+	case []dtype.F8E5M2:
+		for _, v := range typed {
+			if v.Float32() != 0 {
+				return false
+			}
+		}
+	}
+
+	return true
 }
