@@ -7,11 +7,11 @@ architectures:
       double_hidden_size:
         product:
           - { config: hidden_size }
-          - 2
+          - { literal: 2 }
       triple_hidden_size:
         product:
           - { config: hidden_size }
-          - 3
+          - { literal: 3 }
       joint_attention_dim: { config: joint_attention_dim }
       num_layers: { config: num_layers }
       num_single_layers: { config: num_single_layers }
@@ -25,7 +25,7 @@ architectures:
         product:
           - { config: hidden_size }
           - { config: mlp_ratio }
-          - 2
+          - { literal: 2 }
       rope_theta: { config: rope_theta }
       eps: { config: eps }
       joint_terminal_index:

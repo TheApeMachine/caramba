@@ -3,7 +3,7 @@ package devteam
 import (
 	"time"
 
-	"github.com/theapemachine/caramba/pkg/qpool"
+	"github.com/theapemachine/qpool"
 )
 
 func publishChatUsage(role string, started time.Time, response ChatResponse) {

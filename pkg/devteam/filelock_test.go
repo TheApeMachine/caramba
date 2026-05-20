@@ -7,7 +7,7 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/qpool"
+	"github.com/theapemachine/qpool"
 )
 
 func TestFileLockRegistryClaim(t *testing.T) {

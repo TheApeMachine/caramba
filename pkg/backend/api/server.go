@@ -15,7 +15,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/modelscope"
 	"github.com/theapemachine/caramba/pkg/config"
 	"github.com/theapemachine/caramba/pkg/devteam"
-	"github.com/theapemachine/caramba/pkg/qpool"
+	"github.com/theapemachine/qpool"
 )
 
 /*

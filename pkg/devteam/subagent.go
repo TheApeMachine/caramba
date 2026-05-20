@@ -7,7 +7,7 @@ import (
 	"time"
 
 	devcfg "github.com/theapemachine/caramba/pkg/config"
-	"github.com/theapemachine/caramba/pkg/qpool"
+	"github.com/theapemachine/qpool"
 )
 
 const subAgentTimeout = 2 * time.Minute

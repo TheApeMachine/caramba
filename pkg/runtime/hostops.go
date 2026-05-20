@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"image"
@@ -8,6 +9,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/theapemachine/caramba/pkg/config"
 	"github.com/theapemachine/caramba/pkg/tokenizer"
@@ -35,7 +37,14 @@ func NewCarambaHostOps(hubConfig *config.HubConfig) *CarambaHostOps {
 func (hostOps *CarambaHostOps) ReadLine(ctx context.Context) (string, error) {
 	_ = ctx
 
-	return "", fmt.Errorf("io.read_line: use stdin via executor options")
+	fmt.Print("> ")
+	reader := bufio.NewReader(os.Stdin)
+	text, err := reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(text), nil
 }
 
 func (hostOps *CarambaHostOps) EmitToken(ctx context.Context, tokenID int) error {

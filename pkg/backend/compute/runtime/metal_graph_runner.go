@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/theapemachine/caramba/pkg/runtime/weights"
+	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/manifesto/dtype"
 	"github.com/theapemachine/manifesto/ir"
 	"github.com/theapemachine/manifesto/tensor"
@@ -51,6 +51,9 @@ func (runner *MetalGraphRunner) Execute(
 	for key, value := range externalInputs {
 		values[key] = value
 	}
+
+	runner.memory.BeginBatch()
+	defer runner.memory.EndBatch()
 
 	for _, layer := range layers {
 		for _, node := range layer {
@@ -109,19 +112,16 @@ func (runner *MetalGraphRunner) evaluateNode(
 		return runner.materializeExternalInput(node, values)
 	}
 
-	kernelName := metal.GraphKernelName(string(operationID))
-
-	args, err := runner.buildKernelArgs(node, values, weightsPath)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if err := metal.DispatchGraphKernel(kernelName, args...); err != nil {
-		return nil, fmt.Errorf("metal graph runner: kernel %q: %w", kernelName, err)
-	}
-
-	return args[len(args)-1], nil
+	// kernelName := metal.GraphKernelName(string(operationID))
+	// args, err := runner.buildKernelArgs(node, values, weightsPath)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// if err := metal.DispatchGraphKernel(kernelName, args...); err != nil {
+	// 	return nil, fmt.Errorf("metal graph runner: kernel %q: %w", kernelName, err)
+	// }
+	// return args[len(args)-1], nil
+	return nil, fmt.Errorf("metal graph runner: not implemented yet")
 }
 
 func (runner *MetalGraphRunner) materializeExternalInput(
@@ -219,8 +219,13 @@ func (runner *MetalGraphRunner) loadWeightTensor(
 	format dtype.DType,
 	fallbackShape tensor.Shape,
 ) (tensor.Tensor, error) {
-	raw, meta, err := weights.ReadTensor(weightsPath, weightName)
+	st, err := hub.OpenSafeTensors(weightsPath)
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
 
+	raw, meta, err := st.Tensor(weightName)
 	if err != nil {
 		return nil, err
 	}

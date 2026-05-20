@@ -13,7 +13,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/theapemachine/caramba/pkg/config"
-	"github.com/theapemachine/caramba/pkg/qpool"
+	"github.com/theapemachine/qpool"
 )
 
 const devteamJobTimeout = 24 * time.Hour

@@ -12,6 +12,7 @@ import (
 	"github.com/theapemachine/manifesto/ir"
 	manifestruntime "github.com/theapemachine/manifesto/runtime"
 	"github.com/theapemachine/manifesto/tensor"
+	"github.com/theapemachine/puter/device/metal"
 )
 
 /*
@@ -30,25 +31,9 @@ func NewGraphBackend(computeBackend *compute.Backend) (*GraphBackend, error) {
 		return nil, fmt.Errorf("runtime graph backend: compute backend is required")
 	}
 
-	deviceID, err := computeBackend.ResolveDevice("metal:0")
-
-	if err != nil {
-		return nil, fmt.Errorf("runtime graph backend: metal device is required: %w", err)
-	}
-
-	device, err := computeBackend.Device(deviceID)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if device.Executor() == nil {
-		return nil, fmt.Errorf("runtime graph backend: metal executor is not available")
-	}
-
 	return &GraphBackend{
 		computeBackend: computeBackend,
-		deviceID:       deviceID,
+		deviceID:       compute.DeviceID{Location: tensor.Location("metal"), Index: 0},
 	}, nil
 }
 
@@ -68,22 +53,23 @@ func (backend *GraphBackend) CallGraph(
 		return manifestruntime.GraphCallResult{}, fmt.Errorf("runtime graph backend: compute graph is required")
 	}
 
-	device, err := backend.computeBackend.Device(backend.deviceID)
+	dev, err := backend.computeBackend.Device(backend.deviceID)
 
 	if err != nil {
 		return manifestruntime.GraphCallResult{}, err
 	}
 
-	executor := device.Executor()
-
-	weightedExecutor, ok := executor.(computeruntime.WeightedExecutor)
-
+	metalDev, ok := dev.(*metal.Backend)
 	if !ok {
-		return manifestruntime.GraphCallResult{}, fmt.Errorf("runtime graph backend: unsupported executor %T", executor)
+		return manifestruntime.GraphCallResult{}, fmt.Errorf("runtime graph backend: device is not a metal backend")
 	}
 
+	runner := computeruntime.NewMetalGraphRunner(metalDev)
+
 	weightsPath, _ := manifestGraph.Metadata["weights_path"].(string)
-	externalInputs, err := backend.materializeInputs(device.Memory(), manifestGraph, request.Inputs)
+
+	// We need to materialize inputs to tensor.Tensor.
+	externalInputs, err := backend.materializeInputs(metalDev, manifestGraph, request.Inputs)
 
 	if err != nil {
 		return manifestruntime.GraphCallResult{}, err
@@ -95,7 +81,7 @@ func (backend *GraphBackend) CallGraph(
 		return manifestruntime.GraphCallResult{}, err
 	}
 
-	tensors, err := weightedExecutor.ExecuteWithWeights(ctx, computeGraph, targets, weightsPath, externalInputs)
+	tensors, err := runner.Execute(ctx, computeGraph, targets, weightsPath, externalInputs)
 
 	if err != nil {
 		return manifestruntime.GraphCallResult{}, err
@@ -123,7 +109,7 @@ func (backend *GraphBackend) CallGraph(
 }
 
 func (backend *GraphBackend) materializeInputs(
-	memory tensor.Backend,
+	memory *metal.Backend,
 	manifestGraph *ast.Graph,
 	rawInputs map[string]any,
 ) (map[string]tensor.Tensor, error) {

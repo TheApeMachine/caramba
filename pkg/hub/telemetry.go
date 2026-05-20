@@ -3,7 +3,7 @@ package hub
 import (
 	"time"
 
-	"github.com/theapemachine/caramba/pkg/qpool"
+	"github.com/theapemachine/qpool"
 )
 
 func publishHubProgress(op string, message string, fields ...qpool.Field) {

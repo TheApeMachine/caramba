@@ -1,6 +1,8 @@
 package compute
 
 import (
+	"context"
+
 	"github.com/theapemachine/caramba/pkg/backend/compute/runtime"
 	"github.com/theapemachine/manifesto/tensor"
 	"github.com/theapemachine/puter/device/metal"
@@ -79,7 +81,7 @@ func newHostDevice(index int) *Device {
 }
 
 func appendMetalDevice(devices []*Device) []*Device {
-	metalMemory, err := metal.NewBackend()
+	metalMemory, err := metal.NewBackend(context.Background(), nil)
 
 	if err != nil {
 		return devices

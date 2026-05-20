@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theapemachine/caramba/pkg/qpool"
+	"github.com/theapemachine/qpool"
 )
 
 const hubDownloadJobTimeout = 24 * time.Hour

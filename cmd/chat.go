@@ -35,6 +35,7 @@ func runChat(command *cobra.Command, args []string) error {
 	_ = args
 
 	ctx := context.Background()
+	fmt.Println("Starting chat session...")
 	session, err := runtime.OpenSession(ctx, chatRuntimePath)
 
 	if err != nil {
