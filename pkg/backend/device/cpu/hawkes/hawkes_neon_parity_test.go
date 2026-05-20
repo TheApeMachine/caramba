@@ -10,7 +10,7 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
 )
 
-const hawkesNEONExpVectorMaxULP = 8
+const hawkesNEONExpVectorMaxULP = 4
 
 const hawkesNEONCompositeMaxULP = 4
 
@@ -19,7 +19,7 @@ func TestHawkesExpSumFloat32NEONParity(t *testing.T) {
 		for _, length := range parity.Lengths {
 			convey.Convey(fmt.Sprintf("It should match scalar exp sum for N=%d", length), func() {
 				exponents := randomHawkesExponents(length, 0x2600+int64(length))
-				want := hawkesExpSumReference(exponents)
+				want := hawkesExpSumReferenceNEON(exponents)
 				got := HawkesExpSumNEON(exponents, length)
 
 				parity.AssertFloat32SlicesWithinULP(t, []float32{got}, []float32{want}, hawkesNEONExpVectorMaxULP)
@@ -37,7 +37,7 @@ func TestHawkesExpSumFloat32NEONAsmDirectParity(t *testing.T) {
 
 			convey.Convey(fmt.Sprintf("It should match scalar exp sum for N=%d", length), func() {
 				exponents := randomHawkesExponents(length, 0x2608+int64(length))
-				want := hawkesExpSumReference(exponents)
+				want := hawkesExpSumReferenceNEON(exponents)
 				got := HawkesExpSumNEONAsm(&exponents[0], length)
 
 				parity.AssertFloat32SlicesWithinULP(t, []float32{got}, []float32{want}, hawkesNEONExpVectorMaxULP)

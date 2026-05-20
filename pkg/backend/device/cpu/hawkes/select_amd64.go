@@ -2,7 +2,11 @@
 
 package hawkes
 
-import "math"
+import (
+	"math"
+
+	"golang.org/x/sys/cpu"
+)
 
 func HawkesIntensityNative(
 	eventTimes, queryTimes, out []float32,
@@ -12,13 +16,13 @@ func HawkesIntensityNative(
 	defer ReleaseFloat32Buffer(scratch)
 
 	for queryIndex, queryTime := range queryTimes {
-		out[queryIndex] = mu + hawkesExcitationAtAVX512(
+		out[queryIndex] = mu + hawkesExcitationAtNative(
 			queryTime, eventTimes, scratch, alpha, beta,
 		)
 	}
 }
 
-func hawkesExcitationAtAVX512(
+func hawkesExcitationAtNative(
 	queryTime float32,
 	eventTimes, scratch []float32,
 	alpha, beta float32,
@@ -38,14 +42,19 @@ func hawkesExcitationAtAVX512(
 		return 0
 	}
 
-	blockCount := validCount &^ 15
-	sum := float32(0)
+	asmCount := 0
 
-	if blockCount > 0 {
-		sum = HawkesExpSumFloat32AVX512Asm(&scratch[0], blockCount)
+	if cpu.X86.HasAVX512F {
+		asmCount = validCount &^ 15
 	}
 
-	for index := blockCount; index < validCount; index++ {
+	sum := float32(0)
+
+	if asmCount > 0 {
+		sum = HawkesExpSumFloat32AVX512Asm(&scratch[0], asmCount)
+	}
+
+	for index := asmCount; index < validCount; index++ {
 		sum += hawkesExpScalar(scratch[index])
 	}
 
@@ -75,15 +84,19 @@ func HawkesKernelMatrixNative(
 			scratch[colIndex] = -beta * (eventTimes[rowIndex] - eventTimes[colIndex])
 		}
 
-		blockPrefix := rowIndex &^ 15
+		asmPrefix := 0
 
-		if blockPrefix > 0 {
+		if cpu.X86.HasAVX512F {
+			asmPrefix = rowIndex &^ 15
+		}
+
+		if asmPrefix > 0 {
 			HawkesScaledExpStoreFloat32AVX512Asm(
-				&scratch[0], alpha, &out[rowStart], blockPrefix,
+				&scratch[0], alpha, &out[rowStart], asmPrefix,
 			)
 		}
 
-		for colIndex := blockPrefix; colIndex < rowIndex; colIndex++ {
+		for colIndex := asmPrefix; colIndex < rowIndex; colIndex++ {
 			out[rowStart+colIndex] = alpha * hawkesExpScalar(scratch[colIndex])
 		}
 	}
@@ -112,14 +125,19 @@ func HawkesLogLikelihoodNative(
 		intensity := mu
 
 		if validCount > 0 {
-			blockCount := validCount &^ 15
-			sum := float32(0)
+			asmCount := 0
 
-			if blockCount > 0 {
-				sum = HawkesExpSumFloat32AVX512Asm(&scratch[0], blockCount)
+			if cpu.X86.HasAVX512F {
+				asmCount = validCount &^ 15
 			}
 
-			for index := blockCount; index < validCount; index++ {
+			sum := float32(0)
+
+			if asmCount > 0 {
+				sum = HawkesExpSumFloat32AVX512Asm(&scratch[0], asmCount)
+			}
+
+			for index := asmCount; index < validCount; index++ {
 				sum += hawkesExpScalar(scratch[index])
 			}
 

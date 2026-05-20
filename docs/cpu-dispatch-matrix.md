@@ -13,7 +13,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | ISA path | Domains registered |
 |----------|-------------------:|
 | Scalar (Go) | 30 / 30 |
-| AVX-512 (amd64) | 24 / 30 |
+| AVX-512 (amd64) | 25 / 30 |
 | AVX2 (amd64) | 2 / 30 |
 | SSE2 (amd64) | 2 / 30 |
 | NEON (arm64) | 20 / 30 |
@@ -41,7 +41,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 | matmul | yes | yes | — | — | yes |
 | normalization | yes | yes | — | — | — |
 | optimizer | yes | yes | — | — | yes |
-| physics | yes | — | — | — | yes |
+| physics | yes | yes | — | — | yes |
 | pool | yes | yes | — | — | yes |
 | pospop | yes | yes | yes | yes | yes |
 | predictive_coding | yes | — | — | — | — |
@@ -64,6 +64,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 - `dropout`
 - `elementwise`
 - `embedding`
+- `hawkes`
 - `layernorm`
 - `losses`
 - `masking`
@@ -71,6 +72,7 @@ Combined coverage (T1.5): [`backend-coverage.md`](./backend-coverage.md).
 - `matmul`
 - `normalization`
 - `optimizer`
+- `physics`
 - `pool`
 - `pospop`
 - `quant`

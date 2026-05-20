@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/cpu"
 )
 
-const hawkesAVX512ExpVectorMaxULP = 8
+const hawkesAVX512ExpVectorMaxULP = 4
 
 const hawkesAVX512CompositeMaxULP = 4
 
@@ -28,7 +28,7 @@ func TestHawkesExpSumFloat32AVX512Parity(t *testing.T) {
 		for _, length := range parity.Lengths {
 			convey.Convey(fmt.Sprintf("It should match scalar exp sum for N=%d", length), func() {
 				exponents := randomHawkesExponents(length, 0x2400+int64(length))
-				want := hawkesExpSumReference(exponents)
+				want := hawkesExpSumReferenceAVX512(exponents)
 				got := HawkesExpSumFloat32AVX512Asm(&exponents[0], length)
 
 				parity.AssertFloat32SlicesWithinULP(t, []float32{got}, []float32{want}, hawkesAVX512ExpVectorMaxULP)
