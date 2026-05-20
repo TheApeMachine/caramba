@@ -32,7 +32,7 @@ var kernelAliases = map[string]string{
 	"math.mul":                     "mul",
 	"math.matmul":                  "matmul",
 	"math.softmax":                 "softmax",
-	"embedding.token":              "embedding",
+	"embedding.token":              "embedding_lookup",
 	"attention.gqa":                "grouped_query_attention",
 	"attention.sdpa":               "attention",
 	"activation.swiglu":            "swiglu",

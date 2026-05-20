@@ -99,7 +99,29 @@ func (backend *GraphBackend) CallGraph(
 		native, err := value.Float32Native()
 
 		if err != nil {
-			return manifestruntime.GraphCallResult{}, err
+			fmt.Printf("Float32Native failed: %v, falling back to RawBytes\n", err)
+			// Fallback to downloading raw bytes and converting if Native is unsupported (e.g. Metal)
+			outDType, rawBytes, rawErr := value.RawBytes()
+			if rawErr != nil {
+				return manifestruntime.GraphCallResult{}, fmt.Errorf("failed to get raw bytes: %w (original err: %v)", rawErr, err)
+			}
+			
+			// We only support Float32 output for now
+			if outDType != dtype.Float32 {
+				return manifestruntime.GraphCallResult{}, fmt.Errorf("expected Float32 output, got %s", outDType)
+			}
+			
+			// Convert raw bytes to []float32
+			float32s := make([]float32, len(rawBytes)/4)
+			for i := range float32s {
+				float32s[i] = math.Float32frombits(
+					uint32(rawBytes[i*4]) |
+					uint32(rawBytes[i*4+1])<<8 |
+					uint32(rawBytes[i*4+2])<<16 |
+					uint32(rawBytes[i*4+3])<<24,
+				)
+			}
+			native = float32s
 		}
 
 		outputs[portName] = native

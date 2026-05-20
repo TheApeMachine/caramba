@@ -7,9 +7,11 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/hub"
 	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/dtype/convert"
 	"github.com/theapemachine/manifesto/ir"
 	"github.com/theapemachine/manifesto/tensor"
 	"github.com/theapemachine/puter/device/metal"
+	"github.com/theapemachine/puter/kernels"
 )
 
 /*
@@ -112,16 +114,29 @@ func (runner *MetalGraphRunner) evaluateNode(
 		return runner.materializeExternalInput(node, values)
 	}
 
-	// kernelName := metal.GraphKernelName(string(operationID))
-	// args, err := runner.buildKernelArgs(node, values, weightsPath)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if err := metal.DispatchGraphKernel(kernelName, args...); err != nil {
-	// 	return nil, fmt.Errorf("metal graph runner: kernel %q: %w", kernelName, err)
-	// }
-	// return args[len(args)-1], nil
-	return nil, fmt.Errorf("metal graph runner: not implemented yet")
+	kernelName := KernelName(operationID)
+
+	kernel, ok := kernels.Default.LookupLocation(
+		kernelName,
+		metalKernelSignature(node),
+		tensor.Metal,
+	)
+
+	if !ok {
+		return nil, fmt.Errorf("metal graph runner: no kernel for op %q (%s)", operationID, kernelName)
+	}
+
+	args, err := runner.buildKernelArgs(node, values, weightsPath, kernel.Signature)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := kernel.Run(args...); err != nil {
+		return nil, fmt.Errorf("metal graph runner: kernel %q: %w", kernelName, err)
+	}
+
+	return args[len(args)-len(kernel.Signature.Outputs):][0], nil
 }
 
 func (runner *MetalGraphRunner) materializeExternalInput(
@@ -173,37 +188,104 @@ func (runner *MetalGraphRunner) buildKernelArgs(
 	node *ir.Node,
 	values map[string]tensor.Tensor,
 	weightsPath string,
+	signature kernels.Signature,
 ) ([]tensor.Tensor, error) {
-	args := make([]tensor.Tensor, 0, len(node.Inputs())+2)
+	operationID := node.OperationID()
+	if operationID == "" {
+		operationID = ir.OpID(node.OpType())
+	}
 
-	for _, inputNode := range node.Inputs() {
+	args := make([]tensor.Tensor, 0, len(signature.Inputs)+len(signature.Outputs))
+
+	// Collect inputs from node.Inputs()
+	nodeInputs := make([]tensor.Tensor, len(node.Inputs()))
+	for i, inputNode := range node.Inputs() {
 		value, ok := values[inputNode.ID()]
-
 		if !ok {
 			return nil, fmt.Errorf("metal graph runner: missing input %q for %q", inputNode.ID(), node.ID())
 		}
-
-		args = append(args, value)
+		nodeInputs[i] = value
 	}
 
-	if weightName, ok := node.Metadata()["weight_name"].(string); ok && weightsPath != "" {
-		weightTensor, err := runner.loadWeightTensor(weightsPath, weightName, node.ValueType().DType, node.Shape())
-
+	// Collect weight if present
+	var weightTensor tensor.Tensor
+	weightName, hasWeightName := node.Metadata()["weight_name"].(string)
+	if hasWeightName && weightsPath != "" {
+		wt, err := runner.loadWeightTensor(weightsPath, weightName, node.ValueType().DType, node.Shape())
 		if err != nil {
 			return nil, err
 		}
-
-		args = append(args, weightTensor)
+		weightTensor = wt
 	}
 
-	outputDType := node.ValueType().DType
+	if operationID == "embedding.token" && weightTensor == nil {
+		return nil, fmt.Errorf("embedding.token requires a weight tensor (weightName=%q, hasWeightName=%v, weightsPath=%q)", weightName, hasWeightName, weightsPath)
+	}
 
+	// Map to kernel arguments based on operation
+	switch operationID {
+	case "embedding.token":
+		// [table, indices]
+		if weightTensor == nil {
+			return nil, fmt.Errorf("embedding.token requires a weight tensor")
+		}
+		
+		args = append(args, weightTensor, nodeInputs[0])
+
+	case "projection.linear":
+		// [input, weight, bias]
+		if weightTensor == nil {
+			return nil, fmt.Errorf("projection.linear requires a weight tensor")
+		}
+		args = append(args, nodeInputs[0], weightTensor)
+		// Bias is optional in manifesto, but required by puter kernel.
+		// Create a zero bias tensor of shape [out_features].
+		outFeatures := weightTensor.Shape().Dims()[0]
+		biasShape, _ := tensor.NewShape([]int{outFeatures})
+		biasTensor, err := runner.memory.NewZeroed(biasShape, weightTensor.DType())
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, biasTensor)
+
+	case "math.rmsnorm", "math.layernorm":
+		// [input, weight]
+		if weightTensor == nil {
+			return nil, fmt.Errorf("%s requires a weight tensor", operationID)
+		}
+		args = append(args, nodeInputs[0], weightTensor)
+
+	default:
+		// Default: append all node inputs, then weight if present
+		args = append(args, nodeInputs...)
+		if weightTensor != nil {
+			args = append(args, weightTensor)
+		}
+	}
+
+	// Append output tensor
+	outputDType := node.ValueType().DType
 	if outputDType == dtype.Invalid {
 		outputDType = dtype.Float32
 	}
 
-	output, err := runner.memory.NewZeroed(node.Shape(), outputDType)
+	outputShape := node.Shape()
+	if len(nodeInputs) > 0 {
+		seqLen := nodeInputs[0].Shape().Dims()[0]
+		if operationID == "embedding.token" {
+			seqLen = nodeInputs[0].Shape().Len()
+		}
+		
+		dims := outputShape.Dims()
+		if len(dims) > 0 && dims[0] != seqLen {
+			newDims := make([]int, len(dims))
+			copy(newDims, dims)
+			newDims[0] = seqLen
+			outputShape, _ = tensor.NewShape(newDims)
+		}
+	}
 
+	output, err := runner.memory.NewZeroed(outputShape, outputDType)
 	if err != nil {
 		return nil, err
 	}
@@ -252,9 +334,61 @@ func (runner *MetalGraphRunner) loadWeightTensor(
 		format = weightDType
 	}
 
+	if format == dtype.Float32 && weightDType != dtype.Float32 {
+		float32s, err := convert.BytesToFloat32(weightDType, raw)
+		if err != nil {
+			return nil, err
+		}
+		raw = convert.Float32ToBytes(float32s)
+		weightDType = dtype.Float32
+	}
+
 	return runner.memory.Upload(shape, weightDType, raw)
 }
 
+func metalKernelSignature(node *ir.Node) kernels.Signature {
+	operationID := node.OperationID()
+	if operationID == "" {
+		operationID = ir.OpID(node.OpType())
+	}
+
+	valueType := node.ValueType()
+	format := valueType.DType
+	if format == dtype.Invalid {
+		format = dtype.Float32
+	}
+
+	if operationID == "embedding.token" {
+		return kernels.Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{format, dtype.Int32},
+			Outputs: []dtype.DType{format},
+		}
+	}
+
+	if operationID == "projection.linear" {
+		return kernels.Signature{
+			Layout:  tensor.LayoutDense,
+			Inputs:  []dtype.DType{format, format, format},
+			Outputs: []dtype.DType{format},
+		}
+	}
+
+	inputs := make([]dtype.DType, len(node.Inputs()))
+	for index := range node.Inputs() {
+		inputs[index] = format
+	}
+
+	if _, ok := node.Metadata()["weight_name"]; ok {
+		inputs = append(inputs, format)
+	}
+
+	return kernels.Signature{
+		Layout:  tensor.LayoutDense,
+		Inputs:  inputs,
+		Outputs: []dtype.DType{format},
+	}
+}
 func float64ToFloat32Bytes(values []float64) []byte {
 	buffer := make([]byte, len(values)*4)
 

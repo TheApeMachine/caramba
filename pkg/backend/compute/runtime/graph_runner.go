@@ -7,6 +7,7 @@ import (
 
 	"github.com/theapemachine/caramba/pkg/runtime/weights"
 	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/dtype/convert"
 	"github.com/theapemachine/manifesto/ir"
 	"github.com/theapemachine/manifesto/tensor"
 	"github.com/theapemachine/puter/kernels"
@@ -274,6 +275,15 @@ func (runner *GraphRunner) loadWeightTensor(
 
 	if format == dtype.Invalid {
 		format = weightDType
+	}
+
+	if format == dtype.Float32 && weightDType != dtype.Float32 {
+		float32s, err := convert.BytesToFloat32(weightDType, raw)
+		if err != nil {
+			return nil, err
+		}
+		raw = convert.Float32ToBytes(float32s)
+		weightDType = dtype.Float32
 	}
 
 	return runner.memory.Upload(shape, weightDType, raw)
