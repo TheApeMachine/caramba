@@ -2,6 +2,14 @@ module github.com/theapemachine/caramba
 
 go 1.26.1
 
+replace github.com/theapemachine/manifesto => ../manifesto
+
+replace github.com/theapemachine/puter => ../puter
+
+replace github.com/theapemachine/errnie => ../errnie
+
+replace github.com/theapemachine/alcatraz => ../alcatraz
+
 require (
 	capnproto.org/go/capnp/v3 v3.1.0-alpha.2
 	charm.land/bubbles/v2 v2.1.0
@@ -22,6 +30,8 @@ require (
 	github.com/qdrant/go-client v1.15.2
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0
+	github.com/theapemachine/manifesto v0.0.1
+	github.com/theapemachine/puter v0.0.1
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-go v0.25.0
 	gocloud.dev v0.45.0
@@ -75,6 +85,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elastic/elastic-transport-go/v8 v8.9.0 // indirect
+	github.com/elastic/go-elasticsearch/v9 v9.4.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
@@ -88,7 +99,7 @@ require (
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
@@ -106,14 +117,14 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/smarty/assertions v1.15.0 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.0-20260508151727-1282bb917829 // indirect
-	github.com/theapemachine/manifesto v0.0.1 // indirect
+	github.com/theapemachine/errnie v0.0.2 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.70.0 // indirect
+	github.com/valyala/fasthttp v1.71.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
@@ -148,7 +159,8 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
+	github.com/theapemachine/qpool v0.0.3
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/sys v0.43.0
+	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0
 )

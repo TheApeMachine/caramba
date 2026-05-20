@@ -2,8 +2,8 @@ package compute
 
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/runtime"
-	devicemetal "github.com/theapemachine/caramba/pkg/backend/device/metal"
 	"github.com/theapemachine/manifesto/tensor"
+	"github.com/theapemachine/puter/device/metal"
 )
 
 /*
@@ -79,17 +79,16 @@ func newHostDevice(index int) *Device {
 }
 
 func appendMetalDevice(devices []*Device) []*Device {
-	metalMemory, err := devicemetal.NewBackend()
+	metalMemory, err := metal.NewBackend()
 
 	if err != nil {
 		return devices
 	}
 
 	return append(devices, &Device{
-		id:     DeviceID{Location: tensor.Metal, Index: 0},
-		memory: metalMemory,
-		// Metal graph Executor lands with device/metal kernel dispatch.
-		executor: nil,
+		id:       DeviceID{Location: tensor.Metal, Index: 0},
+		memory:   metalMemory,
+		executor: runtime.NewMetal(metalMemory),
 	})
 }
 

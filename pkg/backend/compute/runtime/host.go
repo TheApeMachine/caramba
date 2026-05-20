@@ -26,6 +26,19 @@ func (host *Host) Execute(
 	graph *ir.Graph,
 	targets []*ir.Node,
 ) (map[string]tensor.Tensor, error) {
+	return host.ExecuteWithWeights(ctx, graph, targets, "", nil)
+}
+
+/*
+ExecuteWithWeights runs a graph using optional checkpoint bytes and external inputs.
+*/
+func (host *Host) ExecuteWithWeights(
+	ctx context.Context,
+	graph *ir.Graph,
+	targets []*ir.Node,
+	weightsPath string,
+	externalInputs map[string]tensor.Tensor,
+) (map[string]tensor.Tensor, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -42,62 +55,9 @@ func (host *Host) Execute(
 		return nil, err
 	}
 
-	layers, err := graph.TopologyLayers()
+	runner := NewGraphRunner(host.memory)
 
-	if err != nil {
-		return nil, err
-	}
-
-	values := make(map[string]tensor.Tensor, len(graph.Nodes()))
-
-	for _, layer := range layers {
-		for _, node := range layer {
-			if err := ctx.Err(); err != nil {
-				closeValues(values)
-
-				return nil, err
-			}
-
-			value, err := host.evaluateNode(node, values)
-
-			if err != nil {
-				closeValues(values)
-
-				return nil, err
-			}
-
-			if value != nil {
-				values[node.ID()] = value
-			}
-		}
-	}
-
-	keep := targetSet(targets)
-	outputs := make(map[string]tensor.Tensor, len(targets))
-
-	for _, target := range targets {
-		value, ok := values[target.ID()]
-
-		if !ok || value == nil {
-			closeValues(values)
-
-			return nil, fmt.Errorf("host executor: target %q produced no output", target.ID())
-		}
-
-		outputs[target.ID()] = value
-	}
-
-	for nodeID, value := range values {
-		if keep[nodeID] {
-			continue
-		}
-
-		if err := value.Close(); err != nil {
-			return nil, err
-		}
-	}
-
-	return outputs, nil
+	return runner.Execute(ctx, graph, targets, weightsPath, externalInputs)
 }
 
 func (host *Host) evaluateNode(
@@ -142,7 +102,10 @@ func (host *Host) Close() error {
 	return host.memory.Close()
 }
 
-var _ Executor = (*Host)(nil)
+var (
+	_ Executor         = (*Host)(nil)
+	_ WeightedExecutor = (*Host)(nil)
+)
 
 func validateTargets(graph *ir.Graph, targets []*ir.Node) error {
 	index, err := graph.Index()

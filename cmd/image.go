@@ -1,7 +1,16 @@
 package cmd
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/spf13/cobra"
+	"github.com/theapemachine/caramba/pkg/runtime"
+)
+
+var (
+	imageRuntimePath string
+	imageOutputPath  string
 )
 
 var imageCmd = &cobra.Command{
@@ -10,11 +19,58 @@ var imageCmd = &cobra.Command{
 	Long:         imageLong,
 	Args:         cobra.ArbitraryArgs,
 	SilenceUsage: true,
-	RunE:         func(cmd *cobra.Command, args []string) error { return nil },
+	RunE:         runImage,
 }
 
 func init() {
+	imageCmd.Flags().StringVar(
+		&imageRuntimePath,
+		"runtime",
+		"runtime/diffusion.yml",
+		"Runtime program manifest path under pkg/asset/template/",
+	)
+	imageCmd.Flags().StringVar(
+		&imageOutputPath,
+		"output",
+		"",
+		"Override output image path",
+	)
 	rootCmd.AddCommand(imageCmd)
+}
+
+func runImage(command *cobra.Command, args []string) error {
+	_ = command
+
+	prompt := ""
+
+	if len(args) > 0 {
+		prompt = args[0]
+	}
+
+	if prompt == "" {
+		return fmt.Errorf("image: prompt is required")
+	}
+
+	ctx := context.Background()
+	session, err := runtime.OpenSession(ctx, imageRuntimePath)
+
+	if err != nil {
+		return fmt.Errorf("image: %w", err)
+	}
+
+	initial := map[string]any{
+		"prompt": prompt,
+	}
+
+	if imageOutputPath != "" {
+		initial["generation.output"] = imageOutputPath
+	}
+
+	if err := session.RunWithValues(ctx, initial); err != nil {
+		return fmt.Errorf("image: %w", err)
+	}
+
+	return nil
 }
 
 const imageLong = `
