@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
-	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
+	"github.com/theapemachine/manifesto/dtype"
+	dtypeconvert "github.com/theapemachine/manifesto/dtype/convert"
+	"github.com/theapemachine/manifesto/ir"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 /*

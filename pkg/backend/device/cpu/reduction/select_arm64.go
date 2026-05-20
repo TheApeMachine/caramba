@@ -5,7 +5,7 @@ package reduction
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func SumF32NEON(values *float32, count int) float32 {

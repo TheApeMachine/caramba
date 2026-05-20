@@ -1,7 +1,7 @@
 package matmul
 
 import (
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 var parityNs = []int{1, 7, 64, 1024, 8192}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func BenchmarkKernel_RunGeGLUTanhDTypes(benchmark *testing.B) {

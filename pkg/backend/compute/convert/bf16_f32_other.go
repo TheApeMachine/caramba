@@ -2,7 +2,7 @@
 
 package convert
 
-import "github.com/theapemachine/caramba/pkg/dtype"
+import "github.com/theapemachine/manifesto/dtype"
 
 /*
 Fallback dispatcher for platforms outside amd64 / arm64. Routes

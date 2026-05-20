@@ -6,16 +6,16 @@ import (
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/attention"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/convolution"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/dequant"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/matmul"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/optimizer"
-	"github.com/theapemachine/caramba/pkg/backend/device/cpu/quant"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
+	"github.com/theapemachine/caramba/pkg/backend/device/cpu/quant"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/rope"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func TestRoPEFloat32(t *testing.T) {

@@ -3,7 +3,7 @@ package masking
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func ApplyMask(input, mask, output unsafe.Pointer, count int, format dtype.DType) {

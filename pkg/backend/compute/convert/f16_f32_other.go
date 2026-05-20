@@ -2,7 +2,7 @@
 
 package convert
 
-import "github.com/theapemachine/caramba/pkg/dtype"
+import "github.com/theapemachine/manifesto/dtype"
 
 /*
 Fallback dispatcher for F16↔F32 on platforms outside amd64 / arm64.

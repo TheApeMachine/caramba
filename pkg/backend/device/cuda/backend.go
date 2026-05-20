@@ -16,8 +16,8 @@ package cuda
 import (
 	"sync/atomic"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 /*

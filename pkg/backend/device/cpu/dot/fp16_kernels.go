@@ -3,7 +3,7 @@ package dot
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 var dotFP16Kernel = func() func(left, right *uint16, count int) uint16 {

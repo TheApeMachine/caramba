@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func TestKernelRegistry_MetalAdaptiveMaxPool2D(testingObject *testing.T) {

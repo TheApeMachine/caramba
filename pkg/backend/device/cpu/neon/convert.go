@@ -1,8 +1,8 @@
 package neon
 
 import (
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func widenToF32(arg tensor.Tensor, kind dtype.DType, dst []float32) error {

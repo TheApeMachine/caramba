@@ -7,7 +7,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func TestAbsFloat16NEONAsmParity(t *testing.T) {

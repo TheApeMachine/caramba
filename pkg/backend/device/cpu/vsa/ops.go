@@ -3,7 +3,7 @@ package vsa
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func Bind(left, right, output unsafe.Pointer, count int, format dtype.DType) {

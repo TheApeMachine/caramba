@@ -3,7 +3,7 @@ package active_inference
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func requireActiveInferenceFloat32(format dtype.DType) {

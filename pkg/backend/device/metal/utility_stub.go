@@ -3,7 +3,7 @@
 package metal
 
 import (
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func runMetalCheckpointEncodeFloat32(input tensor.Tensor, out tensor.Tensor) error {

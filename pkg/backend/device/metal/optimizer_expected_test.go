@@ -3,8 +3,8 @@ package metal
 import (
 	"math"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
-	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
+	"github.com/theapemachine/manifesto/dtype"
+	dtypeconvert "github.com/theapemachine/manifesto/dtype/convert"
 )
 
 const (

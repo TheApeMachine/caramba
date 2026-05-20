@@ -4,16 +4,16 @@ import (
 	"testing"
 
 	cpupool "github.com/theapemachine/caramba/pkg/backend/device/cpu/pool"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
-	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
+	"github.com/theapemachine/manifesto/dtype"
+	dtypeconvert "github.com/theapemachine/manifesto/dtype/convert"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 const (
 	adaptiveAvgPool2DBatch        = 2
-	adaptiveAvgPool2DChannels       = 2
-	adaptiveAvgPool2DInputHeight    = 5
-	adaptiveAvgPool2DOutputHeight   = 3
+	adaptiveAvgPool2DChannels     = 2
+	adaptiveAvgPool2DInputHeight  = 5
+	adaptiveAvgPool2DOutputHeight = 3
 )
 
 type adaptiveAvgPool2DFixture struct {

@@ -3,7 +3,7 @@ package dot
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func DotFP16Generic(left, right *uint16, count int) uint16 {

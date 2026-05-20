@@ -7,8 +7,8 @@ import (
 
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/parity"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func referenceDequantInt4(dst []float32, pairs tensor.Int4Vector, scale float32, zeroPoint int8) {

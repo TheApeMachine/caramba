@@ -2,7 +2,7 @@
 
 package convert
 
-import "github.com/theapemachine/caramba/pkg/dtype"
+import "github.com/theapemachine/manifesto/dtype"
 
 /*
 amd64 dispatcher for F16↔F32. F16C provides VCVTPH2PS / VCVTPS2PH

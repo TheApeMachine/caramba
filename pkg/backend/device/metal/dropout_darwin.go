@@ -16,7 +16,7 @@ import (
 	"math"
 
 	computekernels "github.com/theapemachine/caramba/pkg/backend/compute/kernels"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 type metalDropoutConfig struct {

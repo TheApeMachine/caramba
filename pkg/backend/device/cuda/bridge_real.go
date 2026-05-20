@@ -34,8 +34,8 @@ static void cuda_device_release(CUDADeviceRef device) { (void)device; }
 import "C"
 
 import (
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 /*

@@ -3,7 +3,7 @@ package hawkes
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func requireHawkesFloat32(format dtype.DType) {

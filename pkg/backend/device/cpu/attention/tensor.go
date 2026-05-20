@@ -1,6 +1,6 @@
 package attention
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func RunAttentionFloat32(args ...tensor.Tensor) error {
 	return runAttentionFloat32(args...)

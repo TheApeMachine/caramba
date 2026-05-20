@@ -98,7 +98,7 @@ func TestHawkesKernelMatrixNativeAVX512Parity(t *testing.T) {
 				want := make([]float32, eventCount*eventCount)
 
 				HawkesKernelMatrixNative(eventTimes, got, 0.5, 1.0)
-				hawkesKernelMatrixScalar(eventTimes, want, 0.5, 1.0)
+				HawkesKernelMatrixScalar(eventTimes, want, 0.5, 1.0)
 
 				parity.AssertFloat32SlicesWithinULP(t, got, want, hawkesAVX512CompositeMaxULP)
 			})

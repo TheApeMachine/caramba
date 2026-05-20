@@ -4,35 +4,35 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/device"
 	"github.com/theapemachine/caramba/pkg/backend/device/backendaudit"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/dispatchaudit"
+	"github.com/theapemachine/manifesto/ir"
 )
 
 /*
 InventoryCoverage summarizes device.Backend ↔ ir.RequiredOperationIDs (T1.2).
 */
 type InventoryCoverage struct {
-	BackendMethods         int
-	RequiredOperations     int
-	DirectCrossLinks       int
-	CompositeCrossLinks    int
+	BackendMethods           int
+	RequiredOperations       int
+	DirectCrossLinks         int
+	CompositeCrossLinks      int
 	KernelRegistryCrossLinks int
-	GraphOnlyCrossLinks    int
-	UnmappedBackendMethods int
+	GraphOnlyCrossLinks      int
+	UnmappedBackendMethods   int
 }
 
 /*
 CPUDispatchCoverage summarizes per-domain CPU ISA registration (T1.3).
 */
 type CPUDispatchCoverage struct {
-	Domains            int
-	ScalarDomains      int
-	AVX512Domains      int
-	AVX2Domains        int
-	SSE2Domains        int
-	NEONDomains        int
+	Domains              int
+	ScalarDomains        int
+	AVX512Domains        int
+	AVX2Domains          int
+	SSE2Domains          int
+	NEONDomains          int
 	AMD64SIMDDomainNames []string
 }
 
@@ -51,11 +51,11 @@ type DeviceBackendCoverage struct {
 ExecutionTargetCoverage is one row in the R1 execution-target summary.
 */
 type ExecutionTargetCoverage struct {
-	Target      string
-	Scope       string
-	Registered  int
-	Applicable  int
-	Detail      string
+	Target     string
+	Scope      string
+	Registered int
+	Applicable int
+	Detail     string
 }
 
 /*

@@ -3,7 +3,7 @@ package physics
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func requirePhysicsFloat32(format dtype.DType) {

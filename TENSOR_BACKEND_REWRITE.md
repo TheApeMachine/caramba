@@ -254,7 +254,7 @@ The package keeps its name but is rebuilt around dtype-aware contracts. The
 ```go
 package tensor
 
-import "github.com/theapemachine/caramba/pkg/dtype"
+import "github.com/theapemachine/manifesto/dtype"
 
 type Tensor interface {
     Shape()    Shape

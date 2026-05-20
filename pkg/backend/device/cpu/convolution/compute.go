@@ -3,7 +3,7 @@ package convolution
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func float32View(pointer unsafe.Pointer, length int) []float32 {

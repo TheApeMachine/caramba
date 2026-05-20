@@ -4,7 +4,7 @@ import (
 	"math"
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func Add(dst, left, right unsafe.Pointer, count int, format dtype.DType) {
@@ -108,4 +108,3 @@ func ReLU(dst, src unsafe.Pointer, count int, format dtype.DType) {
 func Axpy(y, x unsafe.Pointer, count int, alpha float32, format dtype.DType) {
 	dispatchAxpy(y, x, count, alpha, format, runAxpyF32)
 }
-

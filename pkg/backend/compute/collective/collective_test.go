@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func TestAllReduce_Sum(t *testing.T) {
@@ -106,9 +106,9 @@ func benchmarkAllReduceOp(b *testing.B, op Op, shardCount int) {
 	}
 }
 
-func BenchmarkAllReduce_Sum(b *testing.B)   { benchmarkAllReduceOp(b, OpSum, 4) }
-func BenchmarkAllReduce_Mean(b *testing.B)  { benchmarkAllReduceOp(b, OpMean, 4) }
-func BenchmarkAllReduce_Max(b *testing.B)   { benchmarkAllReduceOp(b, OpMax, 4) }
+func BenchmarkAllReduce_Sum(b *testing.B)  { benchmarkAllReduceOp(b, OpSum, 4) }
+func BenchmarkAllReduce_Mean(b *testing.B) { benchmarkAllReduceOp(b, OpMean, 4) }
+func BenchmarkAllReduce_Max(b *testing.B)  { benchmarkAllReduceOp(b, OpMax, 4) }
 
 func BenchmarkBroadcast_4(b *testing.B) {
 	ctx := context.Background()

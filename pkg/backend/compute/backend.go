@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/errnie/validate"
 	"github.com/theapemachine/caramba/pkg/qpool"
+	"github.com/theapemachine/manifesto/ir"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 var ErrDeviceNotFound = errors.New("compute: device not found")

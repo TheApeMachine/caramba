@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 /*

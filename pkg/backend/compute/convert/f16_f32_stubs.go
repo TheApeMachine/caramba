@@ -1,6 +1,6 @@
 package convert
 
-import "github.com/theapemachine/caramba/pkg/dtype"
+import "github.com/theapemachine/manifesto/dtype"
 
 /*
 SIMD entry-point stubs for F16↔F32. See bf16_f32_stubs.go for the

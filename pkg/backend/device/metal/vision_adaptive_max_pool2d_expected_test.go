@@ -4,14 +4,14 @@ import (
 	"testing"
 
 	cpupool "github.com/theapemachine/caramba/pkg/backend/device/cpu/pool"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
-	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
+	"github.com/theapemachine/manifesto/dtype"
+	dtypeconvert "github.com/theapemachine/manifesto/dtype/convert"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 const (
-	adaptiveMaxPool2DBatch      = 2
-	adaptiveMaxPool2DChannels   = 2
+	adaptiveMaxPool2DBatch        = 2
+	adaptiveMaxPool2DChannels     = 2
 	adaptiveMaxPool2DInputHeight  = 5
 	adaptiveMaxPool2DOutputHeight = 3
 )

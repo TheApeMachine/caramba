@@ -1,7 +1,7 @@
 package convolution
 
 import (
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func RunConv2DDefault(args ...tensor.Tensor) error {

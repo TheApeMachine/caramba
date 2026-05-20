@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"sort"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
+	"github.com/theapemachine/manifesto/ir"
 )
 
 /*

@@ -1,6 +1,6 @@
 package physics
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func RunLaplacian(args ...tensor.Tensor) error {
 	return runLaplacian(args...)

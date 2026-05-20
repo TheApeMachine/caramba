@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 type metalSoftmaxConfig struct {

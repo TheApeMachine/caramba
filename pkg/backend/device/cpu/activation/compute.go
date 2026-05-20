@@ -3,7 +3,7 @@ package activation
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func loadF32(pointer unsafe.Pointer, index int) float32 {

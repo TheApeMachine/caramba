@@ -3,8 +3,8 @@ package runtime
 import (
 	"context"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/ir"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 /*

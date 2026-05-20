@@ -3,7 +3,7 @@ package dot
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func DotF32NEON(left, right *float32, count int) float32 {

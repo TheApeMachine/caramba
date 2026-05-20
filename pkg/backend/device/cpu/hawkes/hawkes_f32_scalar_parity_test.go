@@ -53,8 +53,8 @@ func TestHawkesKernelMatrixScalarParityLengths(t *testing.T) {
 				first := make([]float32, eventCount*eventCount)
 				second := make([]float32, eventCount*eventCount)
 
-				hawkesKernelMatrixScalar(eventTimes, first, 0.5, 1.0)
-				hawkesKernelMatrixScalar(eventTimes, second, 0.5, 1.0)
+				HawkesKernelMatrixScalar(eventTimes, first, 0.5, 1.0)
+				HawkesKernelMatrixScalar(eventTimes, second, 0.5, 1.0)
 
 				parity.AssertFloat32SlicesWithinULP(t, first, second, 0)
 			})
@@ -89,7 +89,7 @@ func TestHawkesKernelMatrixNativeVsScalarParityLengths(t *testing.T) {
 				want := make([]float32, eventCount*eventCount)
 
 				HawkesKernelMatrixNative(eventTimes, got, 0.5, 1.0)
-				hawkesKernelMatrixScalar(eventTimes, want, 0.5, 1.0)
+				HawkesKernelMatrixScalar(eventTimes, want, 0.5, 1.0)
 
 				parity.AssertFloat32SlicesWithinULP(t, got, want, hawkesScalarMaxULP)
 			})

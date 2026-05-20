@@ -3,10 +3,10 @@ package backendaudit
 import (
 	"testing"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
-	"github.com/theapemachine/caramba/pkg/backend/device"
-	"github.com/theapemachine/caramba/pkg/dtype"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/caramba/pkg/backend/device"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/ir"
 )
 
 func TestBuildDeviceBackendMatrix(t *testing.T) {

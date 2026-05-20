@@ -22,8 +22,8 @@ package fusion
 import (
 	"sync"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 /*
@@ -181,8 +181,8 @@ func registerStandardTransformerFusions() {
 	// residual connection that follows it. Common in transformer
 	// blocks.
 	Default.Register(Entry{
-		SourceOps:   []string{"layernorm", "add"},
-		FusedOp:     "layernorm_residual",
+		SourceOps: []string{"layernorm", "add"},
+		FusedOp:   "layernorm_residual",
 		InputDTypes: []dtype.DType{
 			dtype.Float16, dtype.Float16, dtype.Float16, dtype.Float16,
 		},

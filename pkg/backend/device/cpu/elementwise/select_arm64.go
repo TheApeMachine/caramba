@@ -5,7 +5,7 @@ package elementwise
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func AddF32NEON(dst, left, right *float32, count int) {

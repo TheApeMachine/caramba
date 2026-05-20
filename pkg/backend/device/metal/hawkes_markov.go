@@ -2,8 +2,8 @@ package metal
 
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/kernels"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 var metalHawkesMarkovDTypes = []dtype.DType{

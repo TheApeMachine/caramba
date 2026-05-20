@@ -3,7 +3,6 @@ package neon
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/active_inference"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/attention"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/causal"
@@ -24,7 +23,8 @@ import (
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/shape"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/tokenizer"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/vsa"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func DequantInt8Native(dst []float32, src []int8, scale float32, zeroPoint int8) {

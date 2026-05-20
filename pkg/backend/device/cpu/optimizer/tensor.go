@@ -1,6 +1,6 @@
 package optimizer
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func RunAdamStepDefault(args ...tensor.Tensor) error {
 	if len(args) != 5 {

@@ -13,7 +13,7 @@ func HawkesKernelMatrixNative(
 	eventTimes, out []float32,
 	alpha, beta float32,
 ) {
-	hawkesKernelMatrixScalar(eventTimes, out, alpha, beta)
+	HawkesKernelMatrixScalar(eventTimes, out, alpha, beta)
 }
 
 func HawkesLogLikelihoodNative(

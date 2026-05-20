@@ -1,6 +1,6 @@
 package tokenizer
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func RunTokenizerPackInt32(args ...tensor.Tensor) error {
 	if len(args) != 2 {

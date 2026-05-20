@@ -2,7 +2,7 @@
 
 package metal
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func runMetalGather(source tensor.Tensor, indices tensor.Tensor, out tensor.Tensor) error {
 	_ = source

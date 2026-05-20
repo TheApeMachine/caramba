@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 /*
@@ -63,20 +63,20 @@ process tests and by the host-only distributed reference. Every
 synchronize through sync.Cond.
 */
 type LocalProcessGroup struct {
-	rank    int
-	size    int
-	state   *localGroupState
+	rank  int
+	size  int
+	state *localGroupState
 }
 
 type localGroupState struct {
-	mu             sync.Mutex
-	cond           *sync.Cond
-	barrierTag     uint64
-	barrierHit     int
-	allReduceIn    []tensor.Tensor
-	allReduceDone  bool
-	allReduceLeft  int
-	closed         bool
+	mu            sync.Mutex
+	cond          *sync.Cond
+	barrierTag    uint64
+	barrierHit    int
+	allReduceIn   []tensor.Tensor
+	allReduceDone bool
+	allReduceLeft int
+	closed        bool
 }
 
 /*

@@ -2896,11 +2896,11 @@ ok  	github.com/theapemachine/caramba/pkg/backend/device/metal	48.748s
 ### 2026-05-18 Phase 7 slice
 
 ```
-ok   github.com/theapemachine/caramba/pkg/dtype
-ok   github.com/theapemachine/caramba/pkg/dtype/convert
-ok   github.com/theapemachine/caramba/pkg/backend/compute/tensor
+ok   github.com/theapemachine/manifesto/dtype
+ok   github.com/theapemachine/manifesto/dtype/convert
+ok   github.com/theapemachine/manifesto/tensor
 ok   github.com/theapemachine/caramba/pkg/backend/compute/kernels
-ok   github.com/theapemachine/caramba/pkg/backend/compute/ir
+ok   github.com/theapemachine/manifesto/ir
 ok   github.com/theapemachine/caramba/pkg/backend/compute/state
 ?    github.com/theapemachine/caramba/pkg/backend/compute/runner [no test files]
 ok   github.com/theapemachine/caramba/pkg/backend/compute/executor
@@ -2973,9 +2973,9 @@ network/output paths outside the touched slice, and documentation.
 ### Previous session
 
 ```
-ok  github.com/theapemachine/caramba/pkg/dtype                       0.004s
-ok  github.com/theapemachine/caramba/pkg/dtype/convert               0.002s
-ok  github.com/theapemachine/caramba/pkg/backend/compute/tensor      0.008s
+ok  github.com/theapemachine/manifesto/dtype                       0.004s
+ok  github.com/theapemachine/manifesto/dtype/convert               0.002s
+ok  github.com/theapemachine/manifesto/tensor      0.008s
 ok  github.com/theapemachine/caramba/pkg/backend/compute/convert     0.066s
 ok  github.com/theapemachine/caramba/pkg/backend/compute/kernels     0.045s
 ok  github.com/theapemachine/caramba/pkg/backend/compute/distributed 0.003s

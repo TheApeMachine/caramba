@@ -1,6 +1,6 @@
 package convert
 
-import "github.com/theapemachine/caramba/pkg/dtype"
+import "github.com/theapemachine/manifesto/dtype"
 
 /*
 Float8E4M3ToFloat32 widens FP8 E4M3 values to float32.

@@ -1,6 +1,6 @@
 package convert
 
-import "github.com/theapemachine/caramba/pkg/dtype"
+import "github.com/theapemachine/manifesto/dtype"
 
 /*
 BFloat16ToFloat32 converts a slice of BF16 values to float32, writing

@@ -2,7 +2,7 @@ package metal
 
 import (
 	cpuinterpretability "github.com/theapemachine/caramba/pkg/backend/device/cpu/interpretability"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 type activationSteerFixture struct {

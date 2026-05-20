@@ -1,6 +1,6 @@
 package elementwise
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func RunAbsFloat32(args ...tensor.Tensor) error {
 	return runAbsFloat32(args...)

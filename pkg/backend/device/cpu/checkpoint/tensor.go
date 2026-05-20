@@ -3,7 +3,7 @@ package checkpoint
 import (
 	"encoding/binary"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func RunCheckpointEncodeFloat32(args ...tensor.Tensor) error {

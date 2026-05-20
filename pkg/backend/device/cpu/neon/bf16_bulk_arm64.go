@@ -4,7 +4,7 @@ package neon
 
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/convert"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 /*

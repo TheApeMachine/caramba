@@ -50,6 +50,29 @@ static inline float hawkes_markov_reduce(threadgroup float* reduction, uint thre
     return reduction[0];
 }
 
+// Matches cpu/hawkes hawkesExpC + activation.ExpF32NEON (VFRINTN, VFCVTZS, VFMLA Horner, VFMUL scale).
+static inline float metal_hawkes_exp32(float value) {
+    const float log2e = 1.4426950408889634f;
+    const float ln2 = 0.6931471805599453f;
+    float scaled = value * log2e;
+    float roundedK = rint(scaled);
+    float fraction = value - roundedK * ln2;
+    float poly = 0.00019841270f;
+
+    poly = fma(fraction, poly, 0.0013888889f);
+    poly = fma(fraction, poly, 0.008333334f);
+    poly = fma(fraction, poly, 0.041666667f);
+    poly = fma(fraction, poly, 0.16666667f);
+    poly = fma(fraction, poly, 0.5f);
+    poly = fma(fraction, poly, 1.0f);
+    poly = fma(fraction, poly, 1.0f);
+
+    int exponentInt = int(roundedK);
+    uint scaleBits = uint(exponentInt + 127) << 23;
+
+    return poly * as_type<float>(scaleBits);
+}
+
 template <typename Storage, typename Scalar>
 static inline void hawkes_intensity_kernel(
     device const Scalar* events,
@@ -66,20 +89,38 @@ static inline void hawkes_intensity_kernel(
     float queryTime = Storage::load(queryTimes, queryIndex);
     float alphaValue = Storage::load(alpha, 0);
     float betaValue = Storage::load(beta, 0);
-    float localValue = 0.0f;
+    float intensitySum = 0.0f;
 
-    for (uint eventIndex = threadIndex; eventIndex < eventCount; eventIndex += hawkesMarkovThreadCount) {
-        float eventTime = Storage::load(events, eventIndex);
-        if (eventTime <= queryTime) {
-            localValue += alphaValue * exp(-betaValue * (queryTime - eventTime));
+    for (uint base = 0; base < eventCount; base += hawkesMarkovThreadCount) {
+        float localValue = 0.0f;
+        uint eventIndex = base + threadIndex;
+        uint waveEnd = min(base + hawkesMarkovThreadCount, eventCount);
+
+        if (eventIndex < waveEnd) {
+            float eventTime = Storage::load(events, eventIndex);
+
+            if (eventTime <= queryTime) {
+                float exponentArg = -betaValue * (queryTime - eventTime);
+                localValue = alphaValue * metal_hawkes_exp32(exponentArg);
+            }
         }
+
+        reduction[threadIndex] = localValue;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        if (threadIndex == 0) {
+            uint activeEvents = waveEnd - base;
+
+            for (uint threadOffset = 0; threadOffset < activeEvents; threadOffset++) {
+                intensitySum += reduction[threadOffset];
+            }
+        }
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 
-    reduction[threadIndex] = localValue;
-    float sum = hawkes_markov_reduce(reduction, threadIndex);
-
     if (threadIndex == 0) {
-        Storage::store(out, queryIndex, Storage::load(baseline, 0) + sum);
+        Storage::store(out, queryIndex, Storage::load(baseline, 0) + intensitySum);
     }
 }
 
@@ -122,31 +163,39 @@ static inline void hawkes_log_likelihood_partial_kernel(
     uint groupIndex,
     uint threadIndex
 ) {
-    uint eventIndex = groupIndex * hawkesMarkovThreadCount + threadIndex;
-    float localValue = 0.0f;
+    float mu = Storage::load(baseline, 0);
+    float alphaValue = Storage::load(alpha, 0);
+    float betaValue = Storage::load(beta, 0);
+    float totalTimeValue = Storage::load(totalTime, 0);
+    uint baseEventIndex = groupIndex * hawkesMarkovThreadCount;
 
-    if (eventIndex < eventCount) {
-        float eventTime = Storage::load(events, eventIndex);
-        float mu = Storage::load(baseline, 0);
-        float alphaValue = Storage::load(alpha, 0);
-        float betaValue = Storage::load(beta, 0);
-        float intensity = mu;
+    for (uint offset = 0; offset < hawkesMarkovThreadCount; offset++) {
+        uint eventIndex = baseEventIndex + offset;
 
-        for (uint previousIndex = 0; previousIndex < eventIndex; previousIndex++) {
-            float delta = eventTime - Storage::load(events, previousIndex);
-            intensity += alphaValue * exp(-betaValue * delta);
+        if (eventIndex >= eventCount) {
+            break;
         }
 
-        float compensator = (alphaValue / betaValue) *
-            (1.0f - exp(-betaValue * (Storage::load(totalTime, 0) - eventTime)));
-        localValue = log(hawkes_markov_safe_positive(intensity)) - compensator;
-    }
+        float eventTime = Storage::load(events, eventIndex);
+        float historySum = 0.0f;
 
-    reduction[threadIndex] = localValue;
-    float sum = hawkes_markov_reduce(reduction, threadIndex);
+        for (uint previousIndex = threadIndex; previousIndex < eventIndex; previousIndex += hawkesMarkovThreadCount) {
+            float delta = eventTime - Storage::load(events, previousIndex);
+            historySum += metal_hawkes_exp32(-betaValue * delta);
+        }
 
-    if (threadIndex == 0) {
-        scratch[groupIndex] = sum;
+        reduction[threadIndex] = historySum;
+        float reducedHistory = hawkes_markov_reduce(reduction, threadIndex);
+
+        if (threadIndex == 0) {
+            float intensity = mu + alphaValue * reducedHistory;
+            float compensator = (alphaValue / betaValue) *
+                (1.0f - metal_hawkes_exp32(-betaValue * (totalTimeValue - eventTime)));
+
+            scratch[eventIndex] = log(hawkes_markov_safe_positive(intensity)) - compensator;
+        }
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 }
 
@@ -157,12 +206,12 @@ static inline void hawkes_log_likelihood_finalize_kernel(
     device const Scalar* baseline,
     device Scalar* out,
     threadgroup float* reduction,
-    constant uint& partialCount,
+    constant uint& eventCount,
     uint threadIndex
 ) {
     float localValue = 0.0f;
 
-    for (uint index = threadIndex; index < partialCount; index += hawkesMarkovThreadCount) {
+    for (uint index = threadIndex; index < eventCount; index += hawkesMarkovThreadCount) {
         localValue += scratch[index];
     }
 
@@ -369,12 +418,12 @@ kernel void name( \
     device const scalar* totalTime [[buffer(1)]], \
     device const scalar* baseline [[buffer(2)]], \
     device scalar* out [[buffer(3)]], \
-    constant uint& partialCount [[buffer(4)]], \
+    constant uint& eventCount [[buffer(4)]], \
     uint threadIndex [[thread_position_in_threadgroup]] \
 ) { \
     threadgroup float reduction[256]; \
     hawkes_log_likelihood_finalize_kernel<storage, scalar>( \
-        scratch, totalTime, baseline, out, reduction, partialCount, threadIndex \
+        scratch, totalTime, baseline, out, reduction, eventCount, threadIndex \
     ); \
 }
 

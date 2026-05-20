@@ -5,7 +5,7 @@ package reduction
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func SumFloat32Native(values []float32) float32 {

@@ -1,6 +1,6 @@
 package optimizer
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func mustShape(dims []int) tensor.Shape {
 	shape, err := tensor.NewShape(dims)

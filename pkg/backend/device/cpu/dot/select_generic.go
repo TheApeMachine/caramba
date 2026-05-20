@@ -5,7 +5,7 @@ package dot
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func DotFloat32Native(left, right []float32) float32 {

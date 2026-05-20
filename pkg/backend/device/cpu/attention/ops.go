@@ -3,7 +3,7 @@ package attention
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func ScaledDotProductAttention(

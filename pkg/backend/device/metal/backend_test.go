@@ -9,9 +9,9 @@ import (
 
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/kernels"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
-	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
+	"github.com/theapemachine/manifesto/dtype"
+	dtypeconvert "github.com/theapemachine/manifesto/dtype/convert"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 var parityElementCounts = []int{1, 7, 64, 1024, 8192}

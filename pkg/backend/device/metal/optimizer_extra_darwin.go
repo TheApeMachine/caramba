@@ -13,8 +13,8 @@ import "C"
 import (
 	"errors"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 type metalHebbianConfig struct {

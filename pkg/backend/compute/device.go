@@ -2,8 +2,8 @@ package compute
 
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/runtime"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	devicemetal "github.com/theapemachine/caramba/pkg/backend/device/metal"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 /*

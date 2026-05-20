@@ -3,7 +3,7 @@
 package metal
 
 import (
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func runMetalGeGLUTanh(gate tensor.Tensor, up tensor.Tensor, out tensor.Tensor) error {

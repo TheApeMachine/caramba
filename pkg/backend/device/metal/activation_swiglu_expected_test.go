@@ -2,8 +2,8 @@ package metal
 
 import (
 	cpuactivation "github.com/theapemachine/caramba/pkg/backend/device/cpu/activation"
-	"github.com/theapemachine/caramba/pkg/dtype"
-	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
+	"github.com/theapemachine/manifesto/dtype"
+	dtypeconvert "github.com/theapemachine/manifesto/dtype/convert"
 )
 
 type swiGLUFixture struct {

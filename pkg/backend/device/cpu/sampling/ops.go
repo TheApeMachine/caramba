@@ -3,7 +3,7 @@ package sampling
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func requireSamplingFloat32(format dtype.DType) {

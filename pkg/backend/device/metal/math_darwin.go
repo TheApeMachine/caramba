@@ -15,8 +15,8 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 type metalInvSqrtDimScaleConfig struct {

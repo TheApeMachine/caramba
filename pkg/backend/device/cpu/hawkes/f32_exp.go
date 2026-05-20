@@ -4,7 +4,7 @@ import (
 	"unsafe"
 
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/activation"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 /*

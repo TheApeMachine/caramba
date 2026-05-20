@@ -1,6 +1,6 @@
 package shape
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func RunWhereFloat32(args ...tensor.Tensor) error {
 	return runWhereFloat32(args...)

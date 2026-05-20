@@ -1,6 +1,6 @@
 package causal
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func RunCholesky(args ...tensor.Tensor) error {
 	return runCholesky(args...)

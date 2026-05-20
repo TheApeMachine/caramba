@@ -1,6 +1,6 @@
 package convert
 
-import "github.com/theapemachine/caramba/pkg/dtype"
+import "github.com/theapemachine/manifesto/dtype"
 
 /*
 SIMD entry-point stubs for the BF16↔F32 conversion kernels. Per

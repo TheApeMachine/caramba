@@ -4,7 +4,7 @@ import (
 	"math"
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 const normEpsilon = 1e-5

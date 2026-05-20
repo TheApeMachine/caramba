@@ -2,7 +2,7 @@
 
 package metal
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func runMetalMatMul(left tensor.Tensor, right tensor.Tensor, out tensor.Tensor) error {
 	return tensor.ErrNeedsPlatformSetup

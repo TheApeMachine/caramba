@@ -1,8 +1,8 @@
 package quant
 
 import (
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/backend/device/cpu/dequant"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func RunInt8QuantDefault(args ...tensor.Tensor) error {

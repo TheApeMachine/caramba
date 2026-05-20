@@ -3,7 +3,7 @@ package convert
 import (
 	"math"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 /*

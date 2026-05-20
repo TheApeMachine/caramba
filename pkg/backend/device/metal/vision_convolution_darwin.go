@@ -13,7 +13,7 @@ import "C"
 import (
 	"math"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 type metalConv1DConfig struct {

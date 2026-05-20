@@ -68,7 +68,7 @@ static int metal_hm_encode_hawkes_log_finalize(
     MetalBufferRef totalTimeRef,
     MetalBufferRef baselineRef,
     MetalBufferRef outRef,
-    uint32_t partialCount,
+    uint32_t eventCount,
     MetalStatus* status
 ) {
     id<MTLComputeCommandEncoder> encoder = nil;
@@ -81,7 +81,7 @@ static int metal_hm_encode_hawkes_log_finalize(
     [encoder setBuffer:(__bridge id<MTLBuffer>)totalTimeRef offset:0 atIndex:1];
     [encoder setBuffer:(__bridge id<MTLBuffer>)baselineRef offset:0 atIndex:2];
     [encoder setBuffer:(__bridge id<MTLBuffer>)outRef offset:0 atIndex:3];
-    [encoder setBytes:&partialCount length:sizeof(partialCount) atIndex:4];
+    [encoder setBytes:&eventCount length:sizeof(eventCount) atIndex:4];
     [encoder
         dispatchThreadgroups:MTLSizeMake(1, 1, 1)
         threadsPerThreadgroup:MTLSizeMake(metalHMScalarThreadCount, 1, 1)
@@ -203,7 +203,7 @@ int metal_dispatch_hawkes_log_likelihood(
         }
 
         int finalizeCode = metal_hm_encode_hawkes_log_finalize(
-            commandBuffer, finalizePipeline, scratchRef, totalTimeRef, baselineRef, outRef, partialCount, status
+            commandBuffer, finalizePipeline, scratchRef, totalTimeRef, baselineRef, outRef, eventCount, status
         );
         if (finalizeCode != 0) {
             return finalizeCode;

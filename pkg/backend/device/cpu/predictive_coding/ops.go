@@ -3,7 +3,7 @@ package predictive_coding
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func requirePredictiveCodingFloat32(format dtype.DType) {

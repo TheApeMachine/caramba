@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	cpumath "github.com/theapemachine/caramba/pkg/backend/device/cpu/math"
-	"github.com/theapemachine/caramba/pkg/dtype"
-	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
+	"github.com/theapemachine/manifesto/dtype"
+	dtypeconvert "github.com/theapemachine/manifesto/dtype/convert"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 type extendedUnaryCase struct {

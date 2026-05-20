@@ -5,7 +5,7 @@ package elementwise
 import (
 	"math/rand"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func randomBF16Slice(count int, seed int64) []dtype.BF16 {

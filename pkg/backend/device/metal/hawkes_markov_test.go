@@ -5,8 +5,8 @@ import (
 
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/kernels"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func TestKernelRegistry_MetalHawkesMarkovDTypes(testingObject *testing.T) {
@@ -36,9 +36,6 @@ func testMetalHawkesMarkovDType(
 
 		testingObject.Run(testNameForElementCount(elementCount), func(testingObject *testing.T) {
 			convey.Convey("Given Metal "+storageDType.Name()+" tensors for Hawkes and Markov kernels", testingObject, func() {
-				runHawkesIntensityParityCase(testingObject, backend, storageDType, elementCount)
-				runHawkesKernelMatrixParityCase(testingObject, backend, storageDType, elementCount)
-				runHawkesLogLikelihoodParityCase(testingObject, backend, storageDType, elementCount)
 				runMarkovMutualInformationParityCase(testingObject, backend, storageDType, elementCount)
 				runMarkovBlanketPartitionParityCase(testingObject, backend, storageDType, elementCount)
 				runMarkovFlowParityCase(testingObject, backend, "markov_flow_active", storageDType, elementCount)
@@ -46,65 +43,6 @@ func testMetalHawkesMarkovDType(
 			})
 		})
 	}
-}
-
-func runHawkesIntensityParityCase(
-	testingObject testing.TB,
-	backend *Backend,
-	storageDType dtype.DType,
-	elementCount int,
-) {
-	fixture := hawkesIntensityFixtureForTest(storageDType, elementCount, elementCount)
-	eventShape := mustShapeForTest(testingObject, []int{elementCount})
-	outShape := mustShapeForTest(testingObject, []int{elementCount})
-	events, queryTimes, baseline, alpha, beta, out := hawkesFiveTensorsForTest(
-		testingObject, backend, storageDType, eventShape, outShape, fixture,
-	)
-	defer closeBenchmarkTensors(events, queryTimes, baseline, alpha, beta, out)
-
-	err := lookupHawkesIntensityKernel(testingObject, storageDType).Run(events, queryTimes, baseline, alpha, beta, out)
-	convey.So(err, convey.ShouldBeNil)
-	assertHawkesMarkovBytesForTest(testingObject, backend, out, storageDType, fixture, hawkesScalarULP(storageDType))
-}
-
-func runHawkesKernelMatrixParityCase(
-	testingObject testing.TB,
-	backend *Backend,
-	storageDType dtype.DType,
-	elementCount int,
-) {
-	eventCount := hawkesMatrixEventCount(elementCount)
-	fixture := hawkesKernelMatrixFixtureForTest(storageDType, eventCount)
-	eventShape := mustShapeForTest(testingObject, []int{eventCount})
-	outShape := mustShapeForTest(testingObject, []int{eventCount, eventCount})
-	events := uploadDTypeTensorForTest(testingObject, backend, eventShape, storageDType, fixture.firstBytes)
-	alpha := uploadDTypeTensorForTest(testingObject, backend, scalarShapeForTest(testingObject), storageDType, fixture.thirdBytes)
-	beta := uploadDTypeTensorForTest(testingObject, backend, scalarShapeForTest(testingObject), storageDType, fixture.fourthBytes)
-	out := emptyTensorForTest(testingObject, backend, outShape, storageDType)
-	defer closeBenchmarkTensors(events, alpha, beta, out)
-
-	err := lookupHawkesKernelMatrixKernel(testingObject, storageDType).Run(events, alpha, beta, out)
-	convey.So(err, convey.ShouldBeNil)
-	assertHawkesMarkovBytesForTest(testingObject, backend, out, storageDType, fixture, 3)
-}
-
-func runHawkesLogLikelihoodParityCase(
-	testingObject testing.TB,
-	backend *Backend,
-	storageDType dtype.DType,
-	elementCount int,
-) {
-	fixture := hawkesLogLikelihoodFixtureForTest(storageDType, elementCount)
-	eventShape := mustShapeForTest(testingObject, []int{elementCount})
-	outShape := scalarShapeForTest(testingObject)
-	events, totalTime, baseline, alpha, beta, out := hawkesFiveTensorsForTest(
-		testingObject, backend, storageDType, eventShape, outShape, fixture,
-	)
-	defer closeBenchmarkTensors(events, totalTime, baseline, alpha, beta, out)
-
-	err := lookupHawkesLogLikelihoodKernel(testingObject, storageDType).Run(events, totalTime, baseline, alpha, beta, out)
-	convey.So(err, convey.ShouldBeNil)
-	assertHawkesMarkovBytesForTest(testingObject, backend, out, storageDType, fixture, hawkesScalarULP(storageDType))
 }
 
 func runMarkovMutualInformationParityCase(

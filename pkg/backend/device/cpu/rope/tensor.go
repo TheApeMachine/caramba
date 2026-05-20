@@ -3,8 +3,8 @@ package rope
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func RunRoPEFloat32Default(args ...tensor.Tensor) error {

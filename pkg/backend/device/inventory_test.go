@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/manifesto/ir"
 )
 
 func TestEnumerateBackendMethods(t *testing.T) {

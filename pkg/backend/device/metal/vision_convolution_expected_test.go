@@ -1,6 +1,6 @@
 package metal
 
-import "github.com/theapemachine/caramba/pkg/dtype"
+import "github.com/theapemachine/manifesto/dtype"
 
 func conv1DDTypeBytes(width int, storageDType dtype.DType) ([]byte, []byte, []byte, []byte) {
 	batch, inChannels, outChannels, kernelLength := 2, 2, 3, 3

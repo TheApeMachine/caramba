@@ -1,6 +1,6 @@
 package hawkes
 
-func hawkesKernelMatrixScalar(
+func HawkesKernelMatrixScalar(
 	eventTimes, out []float32,
 	alpha, beta float32,
 ) {

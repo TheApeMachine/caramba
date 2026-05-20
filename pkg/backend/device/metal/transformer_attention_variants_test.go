@@ -6,8 +6,8 @@ import (
 
 	"github.com/smartystreets/goconvey/convey"
 	"github.com/theapemachine/caramba/pkg/backend/compute/kernels"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func TestKernelRegistry_MetalAttentionVariantDTypes(testingObject *testing.T) {

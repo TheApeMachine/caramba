@@ -58,7 +58,7 @@ func BenchmarkHawkesKernelMatrixScalar(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		hawkesKernelMatrixScalar(eventTimes, output, 0.5, 1.0)
+		HawkesKernelMatrixScalar(eventTimes, output, 0.5, 1.0)
 	}
 }
 

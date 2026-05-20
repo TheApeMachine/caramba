@@ -1,6 +1,6 @@
 package convert
 
-import "github.com/theapemachine/caramba/pkg/dtype"
+import "github.com/theapemachine/manifesto/dtype"
 
 /*
 Float16ToFloat32 converts a slice of IEEE 754 binary16 values to

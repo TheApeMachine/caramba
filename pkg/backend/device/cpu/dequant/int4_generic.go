@@ -1,6 +1,6 @@
 package dequant
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func dequantInt4Generic(dst []float32, pairs tensor.Int4Vector, scale float32, zeroPoint int8) {
 	for index := range dst {

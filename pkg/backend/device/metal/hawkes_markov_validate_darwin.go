@@ -6,8 +6,8 @@ import (
 	"errors"
 	"math"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 type metalHawkesScalarConfig struct {
@@ -22,6 +22,7 @@ type metalHawkesScalarConfig struct {
 	eventCount   uint32
 	outputCount  uint32
 	partialCount uint32
+	scratchCount uint32
 }
 
 type metalMarkovMatrixConfig struct {
@@ -109,6 +110,7 @@ func requireMetalHawkesLogLikelihood(
 	}
 
 	config.partialCount = uint32(metalHawkesMarkovPartialCount(config.events.shape.Len()))
+	config.scratchCount = config.eventCount
 	return config, nil
 }
 

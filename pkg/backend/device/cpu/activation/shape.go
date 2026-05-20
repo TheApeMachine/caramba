@@ -1,6 +1,6 @@
 package activation
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 /*
 PackedGatedShape derives batch and halfCount for packed gate+up layout.

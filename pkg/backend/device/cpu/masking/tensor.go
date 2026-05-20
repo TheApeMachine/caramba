@@ -1,6 +1,6 @@
 package masking
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func RunApplyMask(args ...tensor.Tensor) error {
 	return runApplyMask(args...)

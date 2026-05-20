@@ -4,7 +4,7 @@ import (
 	"math"
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func loadF16(pointer unsafe.Pointer, index int) float32 {

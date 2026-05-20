@@ -1,6 +1,6 @@
 package device
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/ir"
+import "github.com/theapemachine/manifesto/ir"
 
 func operationCrossLinks() []OperationCrossLink {
 	return []OperationCrossLink{

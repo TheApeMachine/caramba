@@ -3,7 +3,7 @@ package activation
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 func HardGelu(dst, src unsafe.Pointer, count int, format dtype.DType) {

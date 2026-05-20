@@ -2,7 +2,7 @@ package metal
 
 import (
 	cpumodelediting "github.com/theapemachine/caramba/pkg/backend/device/cpu/model_editing"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 type weightGraftFixture struct {

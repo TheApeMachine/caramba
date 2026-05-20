@@ -5,8 +5,8 @@ import (
 	"math"
 	"sync"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	dtypeconvert "github.com/theapemachine/caramba/pkg/dtype/convert"
+	dtypeconvert "github.com/theapemachine/manifesto/dtype/convert"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 type StateKeyType uint

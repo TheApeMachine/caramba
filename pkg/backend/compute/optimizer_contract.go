@@ -1,6 +1,6 @@
 package compute
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/ir"
+import "github.com/theapemachine/manifesto/ir"
 
 /*
 OptimizerContract declares optimizer operation IDs used by train graph nodes.

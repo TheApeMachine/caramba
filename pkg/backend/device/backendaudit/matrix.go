@@ -5,11 +5,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/ir"
 	"github.com/theapemachine/caramba/pkg/backend/compute/kernels"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
 	"github.com/theapemachine/caramba/pkg/backend/device"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/ir"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 /*
@@ -37,14 +37,14 @@ const (
 DeviceBackendRow summarizes one tensor backend's registration surface.
 */
 type DeviceBackendRow struct {
-	Backend            DeviceBackendName
-	SupportedDTypes    []dtype.DType
-	KernelSources      int
+	Backend             DeviceBackendName
+	SupportedDTypes     []dtype.DType
+	KernelSources       int
 	DarwinDispatchFiles int
-	StubDispatchFiles  int
-	RegisteredKernels  int
-	UniqueKernelNames  int
-	TensorAPIMethods   int
+	StubDispatchFiles   int
+	RegisteredKernels   int
+	UniqueKernelNames   int
+	TensorAPIMethods    int
 }
 
 /*

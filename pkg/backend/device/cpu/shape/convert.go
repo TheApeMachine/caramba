@@ -2,8 +2,8 @@ package shape
 
 import (
 	"github.com/theapemachine/caramba/pkg/backend/compute/convert"
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func Bfloat16BulkToFloat32(dst []float32, src []dtype.BF16) {

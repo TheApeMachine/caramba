@@ -2,7 +2,7 @@
 
 package metal
 
-import "github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+import "github.com/theapemachine/manifesto/tensor"
 
 func runMetalLayerNorm(
 	input tensor.Tensor,

@@ -13,7 +13,7 @@ import "C"
 import (
 	"errors"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 type metalMultiHeadAttentionVariant int

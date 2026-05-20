@@ -1,6 +1,6 @@
 package metal
 
-import "github.com/theapemachine/caramba/pkg/dtype"
+import "github.com/theapemachine/manifesto/dtype"
 
 func conv2DDTypeBytes(
 	outputWidth int,

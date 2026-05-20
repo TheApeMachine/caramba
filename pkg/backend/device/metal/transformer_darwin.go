@@ -13,7 +13,7 @@ import "C"
 import (
 	"fmt"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func runMetalEmbeddingLookup(

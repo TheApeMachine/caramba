@@ -3,7 +3,7 @@ package reduction
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 var sumFP16Kernel = func() func(values *uint16, count int) uint16 {

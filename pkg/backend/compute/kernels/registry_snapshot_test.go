@@ -3,9 +3,9 @@ package kernels
 import (
 	"testing"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func TestSnapshot(t *testing.T) {

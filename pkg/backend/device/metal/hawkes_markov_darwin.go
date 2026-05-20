@@ -13,8 +13,8 @@ import "C"
 import (
 	"fmt"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 const metalHawkesMarkovThreadCountGo = 256
@@ -190,7 +190,12 @@ func newMetalHawkesMarkovScratch(bridge *metalBridge, partialCount int) (*metalT
 }
 
 func (config *metalHawkesScalarConfig) allocateScratch() error {
-	scratch, err := newMetalHawkesMarkovScratch(config.out.bridge, int(config.partialCount))
+	scratchElements := int(config.scratchCount)
+	if scratchElements == 0 {
+		scratchElements = int(config.partialCount)
+	}
+
+	scratch, err := newMetalHawkesMarkovScratch(config.out.bridge, scratchElements)
 	if err != nil {
 		return err
 	}

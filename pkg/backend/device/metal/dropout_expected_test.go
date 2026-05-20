@@ -1,7 +1,7 @@
 package metal
 
 import (
-	"github.com/theapemachine/caramba/pkg/dtype"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 type dropoutFixture struct {

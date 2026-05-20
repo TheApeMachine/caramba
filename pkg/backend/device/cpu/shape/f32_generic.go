@@ -3,7 +3,7 @@ package shape
 import (
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/backend/compute/tensor"
+	"github.com/theapemachine/manifesto/tensor"
 )
 
 func copyContiguousF32Generic(dst, src *float32, count int) {

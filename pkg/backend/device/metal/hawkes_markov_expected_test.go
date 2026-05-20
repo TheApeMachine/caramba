@@ -3,7 +3,8 @@ package metal
 import (
 	"math"
 
-	"github.com/theapemachine/caramba/pkg/dtype"
+	cpuhawkes "github.com/theapemachine/caramba/pkg/backend/device/cpu/hawkes"
+	"github.com/theapemachine/manifesto/dtype"
 )
 
 type hawkesMarkovFixture struct {
@@ -50,7 +51,10 @@ func hawkesKernelMatrixFixtureForTest(storageDType dtype.DType, eventCount int) 
 	scalarBytes := hawkesScalarBytes(scalars, storageDType)
 	storedEvents := decodeDTypeBytesToFloat32(eventBytes, storageDType)
 	storedScalars := hawkesStoredScalars(scalarBytes, storageDType)
-	expected := hawkesKernelMatrixExpected(storedEvents, storedScalars)
+	expected := make([]float32, len(storedEvents)*len(storedEvents))
+	cpuhawkes.HawkesKernelMatrixScalar(
+		storedEvents, expected, storedScalars[1], storedScalars[2],
+	)
 
 	return hawkesMarkovFixture{
 		firstBytes: eventBytes, thirdBytes: scalarBytes[1], fourthBytes: scalarBytes[2],
@@ -130,24 +134,6 @@ func hawkesIntensityExpected(events []float32, queries []float32, scalars []floa
 		}
 
 		out[queryIndex] = scalars[0] + activeReduceFloat32(reduction)
-	}
-
-	return out
-}
-
-func hawkesKernelMatrixExpected(events []float32, scalars []float32) []float32 {
-	out := make([]float32, len(events)*len(events))
-
-	for rowIndex := range events {
-		for colIndex := range events {
-			if colIndex >= rowIndex {
-				continue
-			}
-
-			delta := events[rowIndex] - events[colIndex]
-			out[rowIndex*len(events)+colIndex] = scalars[1] *
-				float32(math.Exp(float64(-scalars[2]*delta)))
-		}
 	}
 
 	return out
