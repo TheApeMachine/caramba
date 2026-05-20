@@ -1,4 +1,4 @@
-//go:build arm64
+//go:build amd64
 
 package hawkes
 
@@ -12,13 +12,13 @@ func HawkesIntensityNative(
 	defer ReleaseFloat32Buffer(scratch)
 
 	for queryIndex, queryTime := range queryTimes {
-		out[queryIndex] = mu + hawkesExcitationAtNEON(
+		out[queryIndex] = mu + hawkesExcitationAtAVX512(
 			queryTime, eventTimes, scratch, alpha, beta,
 		)
 	}
 }
 
-func hawkesExcitationAtNEON(
+func hawkesExcitationAtAVX512(
 	queryTime float32,
 	eventTimes, scratch []float32,
 	alpha, beta float32,
@@ -38,7 +38,16 @@ func hawkesExcitationAtNEON(
 		return 0
 	}
 
-	sum := HawkesExpSumNEON(scratch[:validCount], validCount)
+	blockCount := validCount &^ 15
+	sum := float32(0)
+
+	if blockCount > 0 {
+		sum = HawkesExpSumFloat32AVX512Asm(&scratch[0], blockCount)
+	}
+
+	for index := blockCount; index < validCount; index++ {
+		sum += hawkesExpScalar(scratch[index])
+	}
 
 	return alpha * sum
 }
@@ -66,9 +75,17 @@ func HawkesKernelMatrixNative(
 			scratch[colIndex] = -beta * (eventTimes[rowIndex] - eventTimes[colIndex])
 		}
 
-		HawkesScaledExpStoreNEON(
-			scratch[:rowIndex], alpha, out[rowStart:rowStart+rowIndex], rowIndex,
-		)
+		blockPrefix := rowIndex &^ 15
+
+		if blockPrefix > 0 {
+			HawkesScaledExpStoreFloat32AVX512Asm(
+				&scratch[0], alpha, &out[rowStart], blockPrefix,
+			)
+		}
+
+		for colIndex := blockPrefix; colIndex < rowIndex; colIndex++ {
+			out[rowStart+colIndex] = alpha * hawkesExpScalar(scratch[colIndex])
+		}
 	}
 }
 
@@ -95,7 +112,18 @@ func HawkesLogLikelihoodNative(
 		intensity := mu
 
 		if validCount > 0 {
-			intensity += alpha * HawkesExpSumNEON(scratch[:validCount], validCount)
+			blockCount := validCount &^ 15
+			sum := float32(0)
+
+			if blockCount > 0 {
+				sum = HawkesExpSumFloat32AVX512Asm(&scratch[0], blockCount)
+			}
+
+			for index := blockCount; index < validCount; index++ {
+				sum += hawkesExpScalar(scratch[index])
+			}
+
+			intensity += alpha * sum
 		}
 
 		sumLog += math.Log(math.Max(1e-12, float64(intensity)))
@@ -111,32 +139,5 @@ func HawkesLogLikelihoodNative(
 }
 
 func MarkovMutualInformationNative(joint []float32, xCount, yCount int, out []float32) {
-	marginalX := make([]float64, xCount)
-	marginalY := make([]float64, yCount)
-
-	for xIndex := 0; xIndex < xCount; xIndex++ {
-		for yIndex := 0; yIndex < yCount; yIndex++ {
-			value := float64(joint[xIndex*yCount+yIndex])
-			marginalX[xIndex] += value
-			marginalY[yIndex] += value
-		}
-	}
-
-	const epsilon = 1e-12
-	var mutualInformation float64
-
-	for xIndex := 0; xIndex < xCount; xIndex++ {
-		for yIndex := 0; yIndex < yCount; yIndex++ {
-			jointValue := float64(joint[xIndex*yCount+yIndex])
-
-			if jointValue <= epsilon {
-				continue
-			}
-
-			denominator := marginalX[xIndex]*marginalY[yIndex] + epsilon
-			mutualInformation += jointValue * math.Log(jointValue/denominator)
-		}
-	}
-
-	out[0] = float32(mutualInformation)
+	MarkovMutualInformationScalar(joint, xCount, yCount, out)
 }

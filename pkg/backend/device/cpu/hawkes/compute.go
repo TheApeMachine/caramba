@@ -18,7 +18,7 @@ func HawkesIntensityScalar(
 				continue
 			}
 
-			intensity += alpha * float32(math.Exp(float64(-beta*(queryTime-eventTime))))
+			intensity += alpha * hawkesExpScalar(-beta*(queryTime-eventTime))
 		}
 
 		out[queryIndex] = intensity
@@ -37,7 +37,7 @@ func HawkesLogLikelihoodScalar(
 
 		for previousIndex := 0; previousIndex < eventIndex; previousIndex++ {
 			delta := eventTime - eventTimes[previousIndex]
-			intensity += alpha * float32(math.Exp(float64(-beta*delta)))
+			intensity += alpha * hawkesExpScalar(-beta*delta)
 		}
 
 		sumLog += math.Log(math.Max(1e-12, float64(intensity)))
