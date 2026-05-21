@@ -1,6 +1,0 @@
-manifest:
-  kind: ResearchProject
-  name: {{ .Name }}
-  description: {{ .Description }}
-  created: {{ .Created }}
-  updated: {{ .Updated }}

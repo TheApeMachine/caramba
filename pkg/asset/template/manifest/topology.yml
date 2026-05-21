@@ -1,8 +1,0 @@
-manifest:
-  kind: Topology
-  name: {{ .Name }}
-  description: {{ .Description }}
-  created: {{ .Created }}
-  updated: {{ .Updated }}
-  nodes: {{ .Nodes }}
-  edges: {{ .Edges }}

@@ -1,6 +1,0 @@
-manifest:
-  kind: Team
-  name: {{ .Name }}
-  description: {{ .Description }}
-  created: {{ .Created }}
-  updated: {{ .Updated }}

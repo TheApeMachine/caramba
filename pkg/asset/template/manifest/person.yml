@@ -1,7 +1,0 @@
-manifest:
-  kind: Person
-  name: {{ .Name }}
-  email: {{ .Email }}
-  phone: {{ .Phone }}
-  created: {{ .Created }}
-  updated: {{ .Updated }}

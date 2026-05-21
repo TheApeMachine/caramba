@@ -1,7 +1,0 @@
-manifest:
-  kind: Architecture
-  name: {{ .Name }}
-  description: {{ .Description }}
-  created: {{ .Created }}
-  updated: {{ .Updated }}
-  topology: {{ .Topology }}
