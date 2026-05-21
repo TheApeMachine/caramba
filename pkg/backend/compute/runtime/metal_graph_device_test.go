@@ -122,6 +122,48 @@ func TestNodeOutputShape(t *testing.T) {
 		})
 	})
 
+	convey.Convey("Given a slice whose end resolves to the runtime dimension", t, func() {
+		inputShape, err := tensor.NewShape([]int{1, 4106, 3072})
+		convey.So(err, convey.ShouldBeNil)
+
+		outputShape, err := tensor.NewShape([]int{1, 1, 3072})
+		convey.So(err, convey.ShouldBeNil)
+
+		node := ir.NewNode("context_tail", "shape.slice", outputShape)
+		node.SetOperationID("shape.slice")
+		node.SetAttribute("dim", ir.IntAttribute(1))
+		node.SetAttribute("start", ir.IntAttribute(4096))
+		node.SetAttribute("end", ir.IntAttribute(0))
+
+		convey.Convey("It should slice through the end of that dimension", func() {
+			resolved, err := nodeOutputShape(node, []tensor.Shape{inputShape})
+
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(resolved.Dims(), convey.ShouldResemble, []int{1, 10, 3072})
+		})
+	})
+
+	convey.Convey("Given a slice whose start resolves from the runtime dimension", t, func() {
+		inputShape, err := tensor.NewShape([]int{1, 4106, 3072})
+		convey.So(err, convey.ShouldBeNil)
+
+		outputShape, err := tensor.NewShape([]int{1, 1, 3072})
+		convey.So(err, convey.ShouldBeNil)
+
+		node := ir.NewNode("latent_tail", "shape.slice", outputShape)
+		node.SetOperationID("shape.slice")
+		node.SetAttribute("dim", ir.IntAttribute(1))
+		node.SetAttribute("start", ir.IntAttribute(-4096))
+		node.SetAttribute("end", ir.IntAttribute(0))
+
+		convey.Convey("It should slice the latent tail", func() {
+			resolved, err := nodeOutputShape(node, []tensor.Shape{inputShape})
+
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(resolved.Dims(), convey.ShouldResemble, []int{1, 4096, 3072})
+		})
+	})
+
 	convey.Convey("Given a 3D input to RMSNorm", t, func() {
 		inputShape, err := tensor.NewShape([]int{1, 4106, 3072})
 		convey.So(err, convey.ShouldBeNil)

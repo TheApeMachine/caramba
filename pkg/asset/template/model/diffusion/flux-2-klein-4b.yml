@@ -110,3 +110,4 @@ system:
         eps: 1e-06
       variables:
         latent_seq_len: 4096
+        latent_side: 64

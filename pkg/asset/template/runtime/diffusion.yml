@@ -20,8 +20,12 @@ schedulers:
   scheduler:
     type: flow_match_euler_discrete
     config:
-      steps: 4
+      steps: 50
       num_train_timesteps: 1000
+      shift: 3.0
+      use_dynamic_shifting: true
+      time_shift_type: exponential
+      image_seq_len: 4096
 
 main:
   - in: prompt
@@ -29,6 +33,9 @@ main:
     config:
       tokenizer: hf://black-forest-labs/FLUX.2-klein-4B
       tokenizer_file: tokenizer/tokenizer.json
+      apply_chat_template: true
+      max_length: 512
+      pad_token_id: 151643
     out: input_ids
 
   - in:

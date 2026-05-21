@@ -76,6 +76,9 @@ func TestFlux2Transformer2DModel(t *testing.T) {
 				"time_guidance_embed.time_proj":                  false,
 				"time_guidance_embed.timestep_embedder.linear_1": false,
 				"time_guidance_embed.timestep_embedder.linear_2": false,
+				"single_stream_modulation.linear":                false,
+				"single_transformer_blocks.0.attn.norm_q":        false,
+				"single_transformer_blocks.0.attn.norm_k":        false,
 				"norm_out.linear":                                false,
 				"norm_out":                                       false,
 			}

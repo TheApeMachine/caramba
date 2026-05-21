@@ -103,7 +103,32 @@ func (hostOps *CarambaHostOps) Encode(
 		return nil, err
 	}
 
-	return artifact.Tokenizer.Encode(text)
+	tokenIDs, err := artifact.Tokenizer.Encode(text)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return normalizeTokenIDs(tokenIDs, request.MaxLength, request.PadTokenID), nil
+}
+
+func normalizeTokenIDs(tokenIDs []int, maxLength int, padTokenID int) []int {
+	if maxLength <= 0 {
+		return tokenIDs
+	}
+
+	if len(tokenIDs) >= maxLength {
+		return append([]int(nil), tokenIDs[:maxLength]...)
+	}
+
+	padded := make([]int, maxLength)
+	copy(padded, tokenIDs)
+
+	for index := len(tokenIDs); index < maxLength; index++ {
+		padded[index] = padTokenID
+	}
+
+	return padded
 }
 
 func prepareEncodeText(

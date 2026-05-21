@@ -47,15 +47,233 @@ func (runner *MetalGraphRunner) evaluateNodeDevice(
 		return runner.deviceGroupNorm(node, values, weightsPath)
 	case "math.adaptive_rmsnorm":
 		return runner.deviceAdaptiveRMSNorm(node, values, weightsPath)
+	case "math.modulated_layernorm":
+		return runner.deviceModulatedLayerNorm(node, values, weightsPath)
+	case "math.gated_residual":
+		return runner.deviceGatedResidual(node, values, weightsPath)
+	case "math.batchnorm_denorm":
+		return runner.deviceBatchNormDenorm(node, values, weightsPath)
 	case "embedding.token":
 		return runner.deviceEmbedding(node, values, weightsPath)
 	case "embedding.timestep":
 		return runner.deviceTimestepEmbedding(node, values, weightsPath)
 	case "activation.swiglu":
 		return runner.deviceSwiGLU(node, values, weightsPath)
+	case "positional.rope":
+		return runner.deviceRoPE(node, values, weightsPath)
+	case "positional.flux2_rope":
+		return runner.deviceFlux2RoPE(node, values, weightsPath)
 	default:
 		return nil, nil, errDeviceDispatchUnsupported
 	}
+}
+
+func (runner *MetalGraphRunner) deviceRoPE(
+	node *ir.Node,
+	values map[string]tensor.Tensor,
+	weightsPath string,
+) (tensor.Tensor, []tensor.Tensor, error) {
+	_ = weightsPath
+
+	nodeInputs, err := runner.nodeInputs(node, values)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(nodeInputs) != 1 {
+		return nil, nil, fmt.Errorf("metal graph runner: %q expects 1 input", node.ID())
+	}
+
+	output, err := runner.newOutputTensor(node, nodeInputs)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := runner.memory.RoPEWithTheta(
+		nodeInputs[0],
+		output,
+		float32Attribute(node, "base", 10000),
+	); err != nil {
+		_ = output.Close()
+
+		return nil, nil, err
+	}
+
+	return output, nil, nil
+}
+
+func (runner *MetalGraphRunner) deviceFlux2RoPE(
+	node *ir.Node,
+	values map[string]tensor.Tensor,
+	weightsPath string,
+) (tensor.Tensor, []tensor.Tensor, error) {
+	_ = weightsPath
+
+	nodeInputs, err := runner.nodeInputs(node, values)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(nodeInputs) != 1 {
+		return nil, nil, fmt.Errorf("metal graph runner: %q expects 1 input", node.ID())
+	}
+
+	output, err := runner.newOutputTensor(node, nodeInputs)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := runner.memory.Flux2RoPE(
+		nodeInputs[0],
+		output,
+		int(int64Attribute(node, "latent_seq_len")),
+		int(int64Attribute(node, "latent_side")),
+		float32Attribute(node, "base", 2000),
+	); err != nil {
+		_ = output.Close()
+
+		return nil, nil, err
+	}
+
+	return output, nil, nil
+}
+
+func (runner *MetalGraphRunner) deviceBatchNormDenorm(
+	node *ir.Node,
+	values map[string]tensor.Tensor,
+	weightsPath string,
+) (tensor.Tensor, []tensor.Tensor, error) {
+	nodeInputs, err := runner.nodeInputs(node, values)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(nodeInputs) != 1 {
+		return nil, nil, fmt.Errorf("metal graph runner: %q expects 1 input", node.ID())
+	}
+
+	channels := int(int64Attribute(node, "channels"))
+	weightShape, err := tensor.NewShape([]int{channels})
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	mean, err := runner.loadWeightTensor(
+		weightPathForNode(node, weightsPath),
+		node.Attribute("mean").Value,
+		runner.executionDType(node),
+		weightShape,
+	)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	variance, err := runner.loadWeightTensor(
+		weightPathForNode(node, weightsPath),
+		node.Attribute("variance").Value,
+		runner.executionDType(node),
+		weightShape,
+	)
+
+	if err != nil {
+		_ = mean.Close()
+
+		return nil, nil, err
+	}
+
+	output, err := runner.newOutputTensor(node, nodeInputs)
+
+	if err != nil {
+		_ = mean.Close()
+		_ = variance.Close()
+
+		return nil, nil, err
+	}
+
+	if err := runner.memory.BatchNormDenorm(nodeInputs[0], mean, variance, output); err != nil {
+		_ = output.Close()
+		_ = mean.Close()
+		_ = variance.Close()
+
+		return nil, nil, err
+	}
+
+	return output, []tensor.Tensor{mean, variance}, nil
+}
+
+func (runner *MetalGraphRunner) deviceModulatedLayerNorm(
+	node *ir.Node,
+	values map[string]tensor.Tensor,
+	weightsPath string,
+) (tensor.Tensor, []tensor.Tensor, error) {
+	_ = weightsPath
+
+	nodeInputs, err := runner.nodeInputs(node, values)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(nodeInputs) != 2 {
+		return nil, nil, fmt.Errorf("metal graph runner: %q expects 2 inputs", node.ID())
+	}
+
+	output, err := runner.newOutputTensor(node, nodeInputs)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := runner.memory.ModulatedLayerNorm(
+		nodeInputs[0], nodeInputs[1], output, int(int64Attribute(node, "set")),
+	); err != nil {
+		_ = output.Close()
+
+		return nil, nil, err
+	}
+
+	return output, nil, nil
+}
+
+func (runner *MetalGraphRunner) deviceGatedResidual(
+	node *ir.Node,
+	values map[string]tensor.Tensor,
+	weightsPath string,
+) (tensor.Tensor, []tensor.Tensor, error) {
+	_ = weightsPath
+
+	nodeInputs, err := runner.nodeInputs(node, values)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(nodeInputs) != 3 {
+		return nil, nil, fmt.Errorf("metal graph runner: %q expects 3 inputs", node.ID())
+	}
+
+	output, err := runner.newOutputTensor(node, nodeInputs)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := runner.memory.GatedResidual(
+		nodeInputs[0], nodeInputs[1], nodeInputs[2], output, int(int64Attribute(node, "set")),
+	); err != nil {
+		_ = output.Close()
+
+		return nil, nil, err
+	}
+
+	return output, nil, nil
 }
 
 func (runner *MetalGraphRunner) deviceAdaptiveRMSNorm(
@@ -800,6 +1018,14 @@ func nodeOutputShape(
 			return adaptiveRMSNormOutputShape(inputShapes)
 		}
 
+		if node.OperationID() == "math.modulated_layernorm" {
+			return modulatedLayerNormOutputShape(inputShapes)
+		}
+
+		if node.OperationID() == "math.gated_residual" {
+			return gatedResidualOutputShape(inputShapes)
+		}
+
 		if preservesInputShape(node.OperationID()) {
 			return inputShapes[0], nil
 		}
@@ -833,6 +1059,49 @@ func adaptiveRMSNormOutputShape(inputShapes []tensor.Shape) (tensor.Shape, error
 
 	if modulationDims[0] != inputDims[0] || modulationDims[1] != 2*channelCount {
 		return tensor.Shape{}, tensor.ErrShapeMismatch
+	}
+
+	return inputShapes[0], nil
+}
+
+func modulatedLayerNormOutputShape(inputShapes []tensor.Shape) (tensor.Shape, error) {
+	if len(inputShapes) != 2 {
+		return tensor.Shape{}, tensor.ErrShapeMismatch
+	}
+
+	inputDims := inputShapes[0].Dims()
+	modulationDims := inputShapes[1].Dims()
+
+	if len(inputDims) < 2 || len(modulationDims) != 2 {
+		return tensor.Shape{}, tensor.ErrShapeMismatch
+	}
+
+	channelCount := inputDims[len(inputDims)-1]
+
+	if modulationDims[0] != inputDims[0] || modulationDims[1]%channelCount != 0 {
+		return tensor.Shape{}, tensor.ErrShapeMismatch
+	}
+
+	if modulationDims[1] != 3*channelCount && modulationDims[1] != 6*channelCount {
+		return tensor.Shape{}, tensor.ErrShapeMismatch
+	}
+
+	return inputShapes[0], nil
+}
+
+func gatedResidualOutputShape(inputShapes []tensor.Shape) (tensor.Shape, error) {
+	if len(inputShapes) != 3 {
+		return tensor.Shape{}, tensor.ErrShapeMismatch
+	}
+
+	if !inputShapes[0].Equal(inputShapes[1]) {
+		return tensor.Shape{}, tensor.ErrShapeMismatch
+	}
+
+	_, err := modulatedLayerNormOutputShape([]tensor.Shape{inputShapes[0], inputShapes[2]})
+
+	if err != nil {
+		return tensor.Shape{}, err
 	}
 
 	return inputShapes[0], nil
@@ -1049,6 +1318,14 @@ func sliceOutputShape(
 	start := int(int64Attribute(node, "start"))
 	end := int(int64Attribute(node, "end"))
 
+	if start < 0 && len(inputDims) > 0 {
+		start = inputDims[axis] + start
+	}
+
+	if end <= 0 && len(inputDims) > 0 {
+		end = inputDims[axis] + end
+	}
+
 	if len(inputDims) == 0 || start < 0 || end <= start || end > inputDims[axis] {
 		return node.Shape(), nil
 	}
@@ -1097,8 +1374,8 @@ func mergeHeadsOutputShape(
 
 func preservesInputShape(operationID ir.OpID) bool {
 	switch operationID {
-	case "math.rmsnorm", "math.layernorm", "math.groupnorm", "positional.rope", "attention.sdpa",
-		"math.add", "math.sub", "math.mul",
+	case "math.rmsnorm", "math.layernorm", "math.groupnorm", "positional.rope", "positional.flux2_rope", "attention.sdpa",
+		"math.batchnorm_denorm", "math.add", "math.sub", "math.mul",
 		"activation.silu", "activation.swish":
 		return true
 	default:

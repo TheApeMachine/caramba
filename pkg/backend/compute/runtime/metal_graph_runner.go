@@ -371,13 +371,13 @@ func (runner *MetalGraphRunner) buildKernelArgs(
 			return nil, nil, err
 		}
 
-		startTensor, err := runner.int32Argument(node, "start")
+		startTensor, err := runner.sliceStartArgument(node, nodeInputs[0].Shape())
 
 		if err != nil {
 			return nil, nil, err
 		}
 
-		endTensor, err := runner.int32Argument(node, "end")
+		endTensor, err := runner.sliceEndArgument(node, nodeInputs[0].Shape())
 
 		if err != nil {
 			return nil, nil, err
@@ -434,6 +434,70 @@ func (runner *MetalGraphRunner) buildKernelArgs(
 	args = append(args, output)
 
 	return args, temps, nil
+}
+
+func (runner *MetalGraphRunner) sliceEndArgument(
+	node *ir.Node,
+	inputShape tensor.Shape,
+) (tensor.Tensor, error) {
+	end := int(int64Attribute(node, "end"))
+
+	if end > 0 {
+		return runner.int32Argument(node, "end")
+	}
+
+	inputDims := inputShape.Dims()
+	axis := concatAxis(node, len(inputDims))
+
+	if len(inputDims) == 0 || axis < 0 || axis >= len(inputDims) {
+		return nil, tensor.ErrShapeMismatch
+	}
+
+	resolvedEnd := inputDims[axis] + end
+
+	if resolvedEnd <= 0 {
+		return nil, tensor.ErrShapeMismatch
+	}
+
+	argumentShape, err := tensor.NewShape([]int{1})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return runner.memory.Upload(argumentShape, dtype.Int32, int32ToBytes([]int32{int32(resolvedEnd)}))
+}
+
+func (runner *MetalGraphRunner) sliceStartArgument(
+	node *ir.Node,
+	inputShape tensor.Shape,
+) (tensor.Tensor, error) {
+	start := int(int64Attribute(node, "start"))
+
+	if start >= 0 {
+		return runner.int32Argument(node, "start")
+	}
+
+	inputDims := inputShape.Dims()
+	axis := concatAxis(node, len(inputDims))
+
+	if len(inputDims) == 0 || axis < 0 || axis >= len(inputDims) {
+		return nil, tensor.ErrShapeMismatch
+	}
+
+	resolvedStart := inputDims[axis] + start
+
+	if resolvedStart < 0 {
+		return nil, tensor.ErrShapeMismatch
+	}
+
+	argumentShape, err := tensor.NewShape([]int{1})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return runner.memory.Upload(argumentShape, dtype.Int32, int32ToBytes([]int32{int32(resolvedStart)}))
 }
 
 func (runner *MetalGraphRunner) transposePermutation(

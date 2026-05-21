@@ -12,38 +12,45 @@ No backend falls back silently. If a kernel isn't implemented for a target backe
 
 ---
 
-## Standard Deep Learning
+### PosPop
+
+| Op ID | Description |
+| `Countstring` | TODO |
+| `Count8` | TODO |
+| `Count16` | TODO |
+| `Count32` | TODO |
+| `Count64` | TODO |
 
 ### Activation
 
-| Op ID                  | Description                          |
-|------------------------|--------------------------------------|
-| `activation.relu`      | Rectified linear unit                |
-| `activation.leaky_relu`| Leaky ReLU with configurable slope   |
-| `activation.gelu`      | Tanh-form Gaussian error linear unit |
-| `activation.selu`      | Scaled exponential linear unit       |
-| `activation.sigmoid`   | Logistic sigmoid                     |
-| `activation.swiglu`    | Swish-gated linear unit              |
-| `activation.swish`     | Swish (SiLU)                         |
-| `activation.tanh`      | Hyperbolic tangent                   |
+| Op ID                   | Description                          |
+|-------------------------|--------------------------------------|
+| `activation.relu`       | Rectified linear unit                |
+| `activation.leaky_relu` | Leaky ReLU with configurable slope   |
+| `activation.gelu`       | Tanh-form Gaussian error linear unit |
+| `activation.selu`       | Scaled exponential linear unit       |
+| `activation.sigmoid`    | Logistic sigmoid                     |
+| `activation.swiglu`     | Swish-gated linear unit              |
+| `activation.swish`      | Swish (SiLU)                         |
+| `activation.tanh`       | Hyperbolic tangent                   |
 
 ### Attention
 
-| Op ID                       | Description                                   |
-|-----------------------------|-----------------------------------------------|
-| `attention.sdpa`            | Scaled dot-product attention                  |
-| `attention.gqa`             | Grouped-query attention                       |
-| `attention.mqa`             | Multi-query attention                         |
-| `attention.sliding_window`  | Sliding-window local attention                |
+| Op ID                      | Description                    |
+|----------------------------|--------------------------------|
+| `attention.sdpa`           | Scaled dot-product attention   |
+| `attention.gqa`            | Grouped-query attention        |
+| `attention.mqa`            | Multi-query attention          |
+| `attention.sliding_window` | Sliding-window local attention |
 
 ### Embedding
 
-| Op ID                   | Description                                  |
-|-------------------------|----------------------------------------------|
-| `embedding.token`       | Learned token embeddings                     |
-| `embedding.rope`        | Rotary position embeddings (RoPE)            |
-| `embedding.alibi`       | Attention with linear biases (ALiBi)         |
-| `embedding.sinusoidal`  | Fixed sinusoidal position encoding           |
+| Op ID                  | Description                          |
+|------------------------|--------------------------------------|
+| `embedding.token`      | Learned token embeddings             |
+| `embedding.rope`       | Rotary position embeddings (RoPE)    |
+| `embedding.alibi`      | Attention with linear biases (ALiBi) |
+| `embedding.sinusoidal` | Fixed sinusoidal position encoding   |
 
 ### Tokenizer
 
@@ -55,47 +62,47 @@ No backend falls back silently. If a kernel isn't implemented for a target backe
 
 ### Normalization
 
-| Op ID              | Description                    |
-|--------------------|--------------------------------|
-| `norm.layer`       | Layer normalization            |
-| `norm.rms`         | RMS normalization              |
-| `norm.batch`       | Batch normalization            |
+| Op ID        | Description         |
+|--------------|---------------------|
+| `norm.layer` | Layer normalization |
+| `norm.rms`   | RMS normalization   |
+| `norm.batch` | Batch normalization |
 
 ### Projection
 
-| Op ID                   | Description                                  |
-|-------------------------|----------------------------------------------|
-| `projection.linear`     | Linear projection (weight + optional bias)   |
-| `projection.fused_qkv`  | Fused Q/K/V projection                       |
-| `projection.lora`       | Low-rank adaptation (LoRA)                   |
+| Op ID                  | Description                                |
+|------------------------|--------------------------------------------|
+| `projection.linear`    | Linear projection (weight + optional bias) |
+| `projection.fused_qkv` | Fused Q/K/V projection                     |
+| `projection.lora`      | Low-rank adaptation (LoRA)                 |
 
 ### Convolution
 
-| Op ID            | Description                   |
-|------------------|-------------------------------|
-| `conv.1d`        | 1D convolution                |
-| `conv.2d`        | 2D convolution                |
-| `conv.depthwise` | Depthwise separable conv      |
-| `conv.grouped`   | Grouped convolution           |
+| Op ID            | Description              |
+|------------------|--------------------------|
+| `conv.1d`        | 1D convolution           |
+| `conv.2d`        | 2D convolution           |
+| `conv.depthwise` | Depthwise separable conv |
+| `conv.grouped`   | Grouped convolution      |
 
 ### Pooling
 
-| Op ID           | Description              |
-|-----------------|--------------------------|
-| `pool.mean`     | Mean pooling             |
-| `pool.max`      | Max pooling              |
-| `pool.attention`| Attention-weighted pooling |
+| Op ID            | Description                |
+|------------------|----------------------------|
+| `pool.mean`      | Mean pooling               |
+| `pool.max`       | Max pooling                |
+| `pool.attention` | Attention-weighted pooling |
 
 ### Masking & Shape
 
-| Op ID            | Description                    |
-|------------------|--------------------------------|
-| `mask.causal`    | Causal (autoregressive) mask   |
-| `mask.padding`   | Padding mask                   |
-| `shape.reshape`  | Tensor reshape                 |
-| `shape.transpose`| Tensor transpose               |
-| `shape.expand`   | Tensor broadcast expansion     |
-| `shape.slice`    | Contiguous range extraction    |
+| Op ID             | Description                  |
+|-------------------|------------------------------|
+| `mask.causal`     | Causal (autoregressive) mask |
+| `mask.padding`    | Padding mask                 |
+| `shape.reshape`   | Tensor reshape               |
+| `shape.transpose` | Tensor transpose             |
+| `shape.expand`    | Tensor broadcast expansion   |
+| `shape.slice`     | Contiguous range extraction  |
 
 Metal `shape.slice` is handled by `operation_executor.applySlice`, which
 currently requires `start==0` and leading-dim slicing. The Metal failure maps to
@@ -124,12 +131,12 @@ implemented.
 
 ### Math
 
-| Op ID         | Description              |
-|---------------|--------------------------|
-| `math.softmax`| Softmax normalization    |
-| `math.add`    | Elementwise addition     |
-| `math.mul`    | Elementwise multiplication |
-| `math.matmul` | Matrix multiplication    |
+| Op ID          | Description                |
+|----------------|----------------------------|
+| `math.softmax` | Softmax normalization      |
+| `math.add`     | Elementwise addition       |
+| `math.mul`     | Elementwise multiplication |
+| `math.matmul`  | Matrix multiplication      |
 
 ---
 
@@ -139,23 +146,23 @@ implemented.
 
 Implements free energy minimization and precision-weighted prediction error. Used for architectures grounded in the Free Energy Principle.
 
-| Op ID                            | Description                           |
-|----------------------------------|---------------------------------------|
-| `active_inference.free_energy`   | Variational free energy computation   |
-| `active_inference.precision`     | Precision-weighted prediction error   |
-| `active_inference.belief_update` | Bayesian belief updating              |
+| Op ID                            | Description                         |
+|----------------------------------|-------------------------------------|
+| `active_inference.free_energy`   | Variational free energy computation |
+| `active_inference.precision`     | Precision-weighted prediction error |
+| `active_inference.belief_update` | Bayesian belief updating            |
 
 ### Energy-Based Models
 
 Energy-based model experiments start as composite blocks built from resident math
 operations, so the backend operation contract is not expanded by these templates.
 
-| Block ID                               | Description                                      |
-|----------------------------------------|--------------------------------------------------|
-| `block.energy.boltzmann_distribution`  | Converts energies into Boltzmann probabilities   |
-| `block.energy.free_energy`             | Computes `-beta^{-1} logsumexp(-beta E)`         |
-| `block.energy.langevin_step`           | Applies one externally differentiated sampler step |
-| `block.energy.contrastive_phase`       | Produces per-sample positive/negative phase deltas |
+| Block ID                              | Description                                        |
+|---------------------------------------|----------------------------------------------------|
+| `block.energy.boltzmann_distribution` | Converts energies into Boltzmann probabilities     |
+| `block.energy.free_energy`            | Computes `-beta^{-1} logsumexp(-beta E)`           |
+| `block.energy.langevin_step`          | Applies one externally differentiated sampler step |
+| `block.energy.contrastive_phase`      | Produces per-sample positive/negative phase deltas |
 
 ### Physics — Quantum Hydrodynamics
 
@@ -166,38 +173,38 @@ backend kernels — they cannot be composed from `math.add` / `math.mul`
 because no `shape.shift` / `shape.roll` primitive exists, so the operator
 ships its own SIMD assembly per ISA.
 
-| Op ID               | Description                                              |
-|---------------------|----------------------------------------------------------|
+| Op ID               | Description                                                                                          |
+|---------------------|------------------------------------------------------------------------------------------------------|
 | `stencil.laplacian` | 2nd-order central-difference Laplacian on a uniform 1D / 2D / 3D grid, periodic boundary conditions. |
 
 ### Causal Inference
 
-| Op ID                      | Description                          |
-|----------------------------|--------------------------------------|
-| `causal.temporal_diff`     | Temporal difference learning         |
-| `causal.intervention`      | Causal intervention (do-calculus)    |
-| `causal.counterfactual`    | Counterfactual estimation            |
+| Op ID                   | Description                       |
+|-------------------------|-----------------------------------|
+| `causal.temporal_diff`  | Temporal difference learning      |
+| `causal.intervention`   | Causal intervention (do-calculus) |
+| `causal.counterfactual` | Counterfactual estimation         |
 
 ### Hawkes Process
 
 Point process kernels for modeling event sequences with excitatory interactions.
 
-| Op ID                   | Description                          |
-|-------------------------|--------------------------------------|
-| `hawkes.intensity`      | Conditional intensity computation    |
-| `hawkes.attention`      | Hawkes process attention kernel      |
-| `hawkes.log_likelihood` | Point process log-likelihood         |
+| Op ID                   | Description                       |
+|-------------------------|-----------------------------------|
+| `hawkes.intensity`      | Conditional intensity computation |
+| `hawkes.attention`      | Hawkes process attention kernel   |
+| `hawkes.log_likelihood` | Point process log-likelihood      |
 
 ### Markov Blanket
 
 Free energy decomposition and blanket detection for hierarchical models grounded in active inference.
 
-| Op ID                        | Description                          |
-|------------------------------|--------------------------------------|
-| `markov_blanket.partition`   | Blanket partition detection          |
-| `markov_blanket.flow_internal` | Internal state flow               |
-| `markov_blanket.flow_active` | Active state flow                    |
-| `markov_blanket.mutual_info` | Mutual information between blankets  |
+| Op ID                          | Description                         |
+|--------------------------------|-------------------------------------|
+| `markov_blanket.partition`     | Blanket partition detection         |
+| `markov_blanket.flow_internal` | Internal state flow                 |
+| `markov_blanket.flow_active`   | Active state flow                   |
+| `markov_blanket.mutual_info`   | Mutual information between blankets |
 
 The Markov blanket kernels have dedicated ARM64 NEON assembly for performance-critical paths.
 
@@ -205,23 +212,23 @@ The Markov blanket kernels have dedicated ARM64 NEON assembly for performance-cr
 
 Hierarchical prediction error propagation for architectures inspired by Rao & Ballard's predictive coding theory.
 
-| Op ID                         | Description                          |
-|-------------------------------|--------------------------------------|
-| `predictive_coding.predict`   | Top-down prediction generation       |
-| `predictive_coding.error`     | Prediction error computation         |
-| `predictive_coding.update`    | Precision-weighted weight update     |
+| Op ID                       | Description                      |
+|-----------------------------|----------------------------------|
+| `predictive_coding.predict` | Top-down prediction generation   |
+| `predictive_coding.error`   | Prediction error computation     |
+| `predictive_coding.update`  | Precision-weighted weight update |
 
 ### Vector Symbolic Architecture (VSA)
 
 Hyperdimensional computing operations for compositional symbolic-subsymbolic integration.
 
-| Op ID             | Description                            |
-|-------------------|----------------------------------------|
-| `vsa.bind`        | Binding (XOR, circular convolution)    |
-| `vsa.bundle`      | Bundling (superposition)               |
-| `vsa.permute`     | Permutation (shifting role encoding)   |
-| `vsa.inv_permute` | Inverse permutation                    |
-| `vsa.similarity`  | Cosine similarity / cleanup memory     |
+| Op ID             | Description                          |
+|-------------------|--------------------------------------|
+| `vsa.bind`        | Binding (XOR, circular convolution)  |
+| `vsa.bundle`      | Bundling (superposition)             |
+| `vsa.permute`     | Permutation (shifting role encoding) |
+| `vsa.inv_permute` | Inverse permutation                  |
+| `vsa.similarity`  | Cosine similarity / cleanup memory   |
 
 ---
 
@@ -229,16 +236,16 @@ Hyperdimensional computing operations for compositional symbolic-subsymbolic int
 
 Optimizers live in `pkg/backend/compute/cpu/optimizer/` and `pkg/asset/template/optimizer/`:
 
-| Optimizer   | Notes                                              |
-|-------------|-----------------------------------------------------|
-| `adam`      | AdamW with decoupled weight decay                  |
-| `sgd`       | Stochastic gradient descent with momentum          |
-| `lion`      | Sign-based optimizer (memory-efficient)            |
-| `adagrad`   | Adaptive gradient                                  |
-| `rmsprop`   | RMSProp                                            |
-| `lbfgs`     | Limited-memory BFGS (second-order)                 |
-| `lars`      | Layer-wise adaptive rate scaling                   |
-| `hebbian`   | Hebbian learning (unsupervised)                    |
+| Optimizer | Notes                                     |
+|-----------|-------------------------------------------|
+| `adam`    | AdamW with decoupled weight decay         |
+| `sgd`     | Stochastic gradient descent with momentum |
+| `lion`    | Sign-based optimizer (memory-efficient)   |
+| `adagrad` | Adaptive gradient                         |
+| `rmsprop` | RMSProp                                   |
+| `lbfgs`   | Limited-memory BFGS (second-order)        |
+| `lars`    | Layer-wise adaptive rate scaling          |
+| `hebbian` | Hebbian learning (unsupervised)           |
 
 ---
 
@@ -307,22 +314,22 @@ The operation is now available in manifests as `<category>.<name>` and appears i
 
 Beyond individual operations, Caramba provides pre-wired **blocks**—composite subgraphs that appear as a single collapsed node in the editor. Blocks are defined in `pkg/asset/template/block/`:
 
-| Block category     | Examples                                             |
-|--------------------|------------------------------------------------------|
-| `active_inference` | Free energy minimization block                       |
-| `causal`           | Causal temporal block                                |
-| `energy`           | Boltzmann normalization, EBM free energy, sampler steps |
-| `hawkes`           | Hawkes process attention block                       |
-| `markov_blanket`   | Markov blanket hierarchy block                       |
-| `memory`           | External memory read/write block                     |
-| `predictive_coding`| Hierarchical prediction error block                  |
-| `vsa`              | VSA bind-bundle-query block                          |
+| Block category      | Examples                                                |
+|---------------------|---------------------------------------------------------|
+| `active_inference`  | Free energy minimization block                          |
+| `causal`            | Causal temporal block                                   |
+| `energy`            | Boltzmann normalization, EBM free energy, sampler steps |
+| `hawkes`            | Hawkes process attention block                          |
+| `markov_blanket`    | Markov blanket hierarchy block                          |
+| `memory`            | External memory read/write block                        |
+| `predictive_coding` | Hierarchical prediction error block                     |
+| `vsa`               | VSA bind-bundle-query block                             |
 
 Full model templates (entire architectures as blocks) live in `pkg/asset/template/model/`:
 
-| Model category | Examples                                          |
-|----------------|---------------------------------------------------|
-| `llm`          | Llama 3.2, GPT-2, Mistral, Phi                   |
-| `vision`       | ViT, CLIP visual encoder                         |
-| `audio`        | Whisper encoder                                   |
-| `diffusion`    | UNet, DiT                                         |
+| Model category | Examples                       |
+|----------------|--------------------------------|
+| `llm`          | Llama 3.2, GPT-2, Mistral, Phi |
+| `vision`       | ViT, CLIP visual encoder       |
+| `audio`        | Whisper encoder                |
+| `diffusion`    | UNet, DiT                      |

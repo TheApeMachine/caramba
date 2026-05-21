@@ -155,6 +155,10 @@ func schedulersFromProgram(program *ast.Program) (map[string]*manifestruntime.Fl
 			scheduler, err := manifestruntime.NewFlowMatchEulerDiscrete(manifestruntime.SchedulerConfig{
 				Steps:             steps,
 				NumTrainTimesteps: trainSteps,
+				Shift:             float64FromAny(declaration.Config["shift"], 1),
+				UseDynamicShift:   boolFromAny(declaration.Config["use_dynamic_shifting"]),
+				TimeShiftType:     stringFromAny(declaration.Config["time_shift_type"], "exponential"),
+				ImageSeqLen:       intFromAny(declaration.Config["image_seq_len"], 4096),
 			})
 
 			if err != nil {
@@ -168,6 +172,41 @@ func schedulersFromProgram(program *ast.Program) (map[string]*manifestruntime.Fl
 	}
 
 	return schedulers, nil
+}
+
+func float64FromAny(value any, fallback float64) float64 {
+	switch typed := value.(type) {
+	case float64:
+		return typed
+	case float32:
+		return float64(typed)
+	case int:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	default:
+		return fallback
+	}
+}
+
+func boolFromAny(value any) bool {
+	typed, ok := value.(bool)
+
+	if !ok {
+		return false
+	}
+
+	return typed
+}
+
+func stringFromAny(value any, fallback string) string {
+	typed, ok := value.(string)
+
+	if !ok {
+		return fallback
+	}
+
+	return typed
 }
 
 func intFromAny(value any, fallback int) int {

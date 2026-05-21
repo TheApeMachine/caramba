@@ -42,6 +42,24 @@ func TestPrepareEncodeText(test *testing.T) {
 	})
 }
 
+func TestNormalizeTokenIDs(test *testing.T) {
+	Convey("Given a shorter token sequence and a max length", test, func() {
+		tokenIDs := normalizeTokenIDs([]int{1, 2}, 5, 151643)
+
+		Convey("It should right-pad to the requested length", func() {
+			So(tokenIDs, ShouldResemble, []int{1, 2, 151643, 151643, 151643})
+		})
+	})
+
+	Convey("Given a longer token sequence and a max length", test, func() {
+		tokenIDs := normalizeTokenIDs([]int{1, 2, 3, 4}, 2, 151643)
+
+		Convey("It should truncate to the requested length", func() {
+			So(tokenIDs, ShouldResemble, []int{1, 2})
+		})
+	})
+}
+
 func TestCarambaHostOpsWriteImage(test *testing.T) {
 	Convey("Given a channel-planar RGB tensor", test, func() {
 		directory := test.TempDir()

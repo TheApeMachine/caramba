@@ -21,26 +21,51 @@ system:
       - id: vae.unpack.grid
         op: shape.reshape
         in: [latents]
-        out: [unpack_grid]
-        config: { shape: [1, 64, 64, 32, 2, 2] }
-      - id: vae.unpack.t23
+        out: [packed_grid]
+        config: { shape: [1, 64, 64, 128] }
+      - id: vae.unpack.pack_t23
         op: shape.transpose
-        in: [unpack_grid]
-        out: [unpack_t23]
+        in: [packed_grid]
+        out: [packed_t23]
         config: { dim0: 2, dim1: 3 }
-      - id: vae.unpack.t12
+      - id: vae.unpack.pack_t12
         op: shape.transpose
-        in: [unpack_t23]
-        out: [unpack_t12]
+        in: [packed_t23]
+        out: [packed_latent]
         config: { dim0: 1, dim1: 2 }
-      - id: vae.unpack.t34
+
+      - id: bn
+        op: math.batchnorm_denorm
+        in: [packed_latent]
+        out: [denorm_packed_latent]
+        config:
+          channels: 128
+          mean: bn.running_mean
+          variance: bn.running_var
+
+      - id: vae.unpack.unpatch_grid
+        op: shape.reshape
+        in: [denorm_packed_latent]
+        out: [unpatch_grid]
+        config: { shape: [1, 32, 2, 2, 64, 64] }
+      - id: vae.unpack.unpatch_t34
         op: shape.transpose
-        in: [unpack_t12]
-        out: [unpack_t34]
+        in: [unpatch_grid]
+        out: [unpatch_t34]
         config: { dim0: 3, dim1: 4 }
+      - id: vae.unpack.unpatch_t23
+        op: shape.transpose
+        in: [unpatch_t34]
+        out: [unpatch_t23]
+        config: { dim0: 2, dim1: 3 }
+      - id: vae.unpack.unpatch_t45
+        op: shape.transpose
+        in: [unpatch_t23]
+        out: [unpatch_t45]
+        config: { dim0: 4, dim1: 5 }
       - id: vae.unpack.latent
         op: shape.reshape
-        in: [unpack_t34]
+        in: [unpatch_t45]
         out: [latent_image]
         config: { shape: [1, 32, 128, 128] }
 
