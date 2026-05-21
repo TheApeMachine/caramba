@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/theapemachine/caramba/pkg/asset"
+	"github.com/theapemachine/manifesto/asset"
 )
 
 var researchCmd = &cobra.Command{

@@ -19,26 +19,26 @@ which allows a developer to easily override the config file.
 //go:embed asset/config.yml
 var embedded embed.FS
 
-/*
-rootCmd represents the base command when called without any subcommands
-*/
 var (
-	cfgFile string
+	cfgFile     string
+	programPath string
 
 	rootCmd = &cobra.Command{
 		Use:   "caramba",
 		Short: "Caramba is a fully featured machine learning research platform.",
 		Long:  rootLong,
-		// Run: func(cmd *cobra.Command, args []string) {
-		// 	fmt.Println("Hello, World!")
-		// },
+		RunE:  runRoot,
 	}
 )
 
-/*
-Execute adds all child commands to the root command and sets flags appropriately.
-This is called by main.main(). It only needs to happen once to the rootCmd.
-*/
+func runRoot(command *cobra.Command, args []string) error {
+	if strings.TrimSpace(programPath) == "" {
+		return fmt.Errorf("caramba: --program is required")
+	}
+
+	return runProgram(command, programPath, nil)
+}
+
 func Execute() {
 	err := rootCmd.Execute()
 
@@ -56,16 +56,15 @@ func init() {
 		"",
 		"path to config file (default: try cmd/asset/config.yml, ./config.yml, $HOME/.caramba/config.yml, then embedded default)",
 	)
+
+	rootCmd.PersistentFlags().StringVar(
+		&programPath,
+		"program",
+		"",
+		"path to program file",
+	)
 }
 
-/*
-initConfig loads config.yml from, in order:
-  - path given by --config (if set)
-  - ./cmd/asset/config.yml (repo checkout)
-  - ./config.yml
-  - $HOME/.caramba/config.yml
-  - embedded cmd/asset/config.yml
-*/
 func initConfig() {
 	viper.SetConfigType("yml")
 

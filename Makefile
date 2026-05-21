@@ -1,4 +1,4 @@
-.PHONY: build test generate clean chat image research serve
+.PHONY: build test generate clean chat diffusion image research serve
 
 DUMP ?= caramba.txt
 
@@ -35,8 +35,10 @@ clean:
 chat:
 	go run $(LDFLAGS) . chat
 
-image:
-	go run $(LDFLAGS) . image "An elephant playing chess"
+diffusion:
+	go run $(LDFLAGS) . diffusion "An elephant playing chess"
+
+image: diffusion
 
 research:
 	go run $(LDFLAGS) . research

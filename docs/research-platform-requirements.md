@@ -100,7 +100,7 @@ Required runtime operation families:
 | Value      | `value.assign`, `value.slice`, `value.append`, `value.clear`, `value.length`, `value.positions`                                |
 | Graph      | `graph.call`, `graph.call_sequence`, `graph.bind_weights`                                                                     |
 | Sampler    | `sampler.next_token`, `sampler.stop_matched`, `sampler.logprobs`                                                              |
-| Scheduler  | `scheduler.timesteps`, `scheduler.step`, `scheduler.scale_input`                                                              |
+| Scheduler  | `scheduler.timesteps`, `scheduler.delta`, `scheduler.scale_input`                                                             |
 | State      | `state.create`, `state.reset`, `state.append`, `state.update`, `state.branch`, `state.commit`, `state.inspect`                |
 | Training   | `train.forward`, `train.loss`, `train.backward`, `train.optimizer_step`, `train.zero_grad`, `train.clip_grad`                 |
 | Evaluation | `eval.metric`, `eval.compare`, `eval.record`, `eval.assert`                                                                   |
@@ -172,7 +172,8 @@ system:
         as: timestep
         body:
           - { id: denoise, op: graph.call, graph: denoiser, inputs: { latents: state.latents, prompt_embeds: prompt_embeds, timestep: timestep }, outputs: { velocity: velocity } }
-          - { id: scheduler_step, op: scheduler.step, scheduler: state.scheduler, latents: state.latents, velocity: velocity, timestep: timestep, out: state.latents }
+          - { id: scheduler_delta, op: scheduler.delta, scheduler: state.scheduler, timestep: timestep, out: delta }
+          - { id: scheduler_update, op: math.axpy, y: state.latents, x: velocity, alpha: delta, out: state.latents }
       - { id: decode, op: graph.call, graph: vae_decode, inputs: { latents: state.latents }, outputs: { image: image } }
       - { id: write, op: io.write_image, input: image, path: ${generation.output} }
 ```
