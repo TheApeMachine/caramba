@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -10,12 +9,12 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
+	"github.com/theapemachine/caramba/pkg/assistant"
 	"github.com/theapemachine/caramba/pkg/backend/architecture"
 	"github.com/theapemachine/caramba/pkg/backend/compute"
 	"github.com/theapemachine/caramba/pkg/backend/modelscope"
 	"github.com/theapemachine/caramba/pkg/config"
-	"github.com/theapemachine/caramba/pkg/devteam"
-	"github.com/theapemachine/qpool"
+	"github.com/theapemachine/caramba/pkg/research"
 )
 
 /*
@@ -26,11 +25,11 @@ type Server struct {
 	compute            *compute.Service
 	architecture       *architecture.Service
 	modelscope         *modelscope.Service
-	researchProjects   *ResearchProjectService
-	researchPapers     *ResearchPaperService
+	researchProjects   *research.ProjectService
+	researchPapers     *research.PaperService
 	researcherProfiles *ResearcherProfileService
-	assistantPersonas  *AssistantPersonaService
-	assistantSessions  *AssistantSessionService
+	assistantPersonas  *assistant.PersonaService
+	assistantSessions  *assistant.SessionService
 }
 
 /*
@@ -47,11 +46,11 @@ func NewServer() *Server {
 		compute:            compute.NewService(),
 		architecture:       architecture.NewService(),
 		modelscope:         modelscope.NewService(),
-		researchProjects:   NewResearchProjectService(config.NewDevTeamConfig().DatabaseURL),
-		researchPapers:     NewResearchPaperService(config.NewDevTeamConfig().DatabaseURL),
+		researchProjects:   research.NewProjectService(config.NewDevTeamConfig().DatabaseURL),
+		researchPapers:     research.NewPaperService(config.NewDevTeamConfig().DatabaseURL),
 		researcherProfiles: NewResearcherProfileService(config.NewDevTeamConfig().DatabaseURL),
-		assistantPersonas:  NewAssistantPersonaService(config.NewDevTeamConfig().DatabaseURL),
-		assistantSessions:  NewAssistantSessionService(config.NewDevTeamConfig().DatabaseURL),
+		assistantPersonas:  assistant.NewPersonaService(config.NewDevTeamConfig().DatabaseURL),
+		assistantSessions:  assistant.NewSessionService(config.NewDevTeamConfig().DatabaseURL),
 	}
 }
 
@@ -101,32 +100,6 @@ func (server *Server) Up() error {
 	server.app.Put("/backend/assistant/sessions", wrap(server.assistantSessions.UpdateSession))
 	server.app.Delete("/backend/assistant/sessions", wrap(server.assistantSessions.DeleteSession))
 	server.app.Post("/backend/assistant/messages", wrap(server.assistantSessions.CreateMessage))
-
-	devteamCfg := config.NewDevTeamConfig()
-
-	if devteamCfg.Active {
-		orchestrator, err := devteam.NewOrchestrator(context.Background(), devteamCfg)
-
-		if err == nil {
-			workerPool := qpool.NewQ(
-				context.Background(),
-				1,
-				1,
-				&qpool.Config{
-					SchedulingTimeout:  24 * time.Hour,
-					JobChannelCapacity: 1,
-					Scaler:             nil,
-				},
-			)
-			workerPool.Schedule(
-				"backend.devteam.orchestrator",
-				func(context.Context) (any, error) {
-					return nil, orchestrator.Run()
-				},
-				qpool.WithExecTimeout(24*time.Hour),
-			)
-		}
-	}
 
 	return server.app.Listen(":8118")
 }

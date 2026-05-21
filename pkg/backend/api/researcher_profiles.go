@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/theapemachine/caramba/pkg/backend/apidata"
 )
 
 type ResearcherProfileService struct {
-	pool *sqlPool
+	pool *apidata.SQLPool
 }
 
 type researcherProfilePayload struct {
@@ -35,23 +36,23 @@ type researcherProfileResponse struct {
 }
 
 func NewResearcherProfileService(databaseURL string) *ResearcherProfileService {
-	return &ResearcherProfileService{pool: newSQLPool(databaseURL)}
+	return &ResearcherProfileService{pool: apidata.NewSQLPool(databaseURL)}
 }
 
 func (service *ResearcherProfileService) Get(ctx fiber.Ctx) error {
-	identity, err := readClerkIdentity(ctx)
+	identity, err := apidata.ReadClerkIdentity(ctx)
 
 	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	database, err := service.pool.open()
+	database, err := service.pool.Open()
 
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	profile, err := service.loadProfile(ctx, database, identity.subject)
+	profile, err := service.loadProfile(ctx, database, identity.Subject)
 
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
@@ -61,15 +62,15 @@ func (service *ResearcherProfileService) Get(ctx fiber.Ctx) error {
 }
 
 func (service *ResearcherProfileService) Save(ctx fiber.Ctx) error {
-	return mutate(ctx, "researcher profile", service.save)
+	return apidata.Mutate(ctx, "researcher profile", service.save)
 }
 
 func (service *ResearcherProfileService) save(
 	ctx fiber.Ctx,
-	identity clerkIdentity,
+	identity apidata.ClerkIdentity,
 	request researcherProfilePayload,
 ) (int64, error) {
-	database, err := service.pool.open()
+	database, err := service.pool.Open()
 
 	if err != nil {
 		return 0, err
@@ -77,7 +78,7 @@ func (service *ResearcherProfileService) save(
 
 	now := time.Now().UTC()
 
-	return runWithTxid(ctx, database, func(transaction *sql.Tx) error {
+	return apidata.RunWithTxid(ctx, database, func(transaction *sql.Tx) error {
 		_, err := transaction.ExecContext(
 			ctx.Context(),
 			`INSERT INTO researcher_profiles (
@@ -99,7 +100,7 @@ func (service *ResearcherProfileService) save(
           website = EXCLUDED.website,
           research_focus = EXCLUDED.research_focus,
           updated_at = EXCLUDED.updated_at`,
-			identity.subject,
+			identity.Subject,
 			strings.TrimSpace(request.DisplayName),
 			strings.TrimSpace(request.RoleTitle),
 			strings.TrimSpace(request.Affiliation),

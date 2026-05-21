@@ -14,7 +14,6 @@ import (
 )
 
 var ErrDeviceNotFound = errors.New("compute: device not found")
-var ErrExecutorUnavailable = errors.New("compute: executor unavailable for device")
 
 /*
 Backend routes manifest and program execution to discovered devices.
@@ -68,6 +67,14 @@ func NewBackend(ctx context.Context, pool *qpool.Q) (*Backend, error) {
 		"devices": backend.devices,
 		"mesh":    backend.mesh,
 	})
+}
+
+func (backend *Backend) PickDevice() (device.Backend, error) {
+	if backend == nil {
+		return nil, ErrDeviceNotFound
+	}
+
+	return backend.Device(DeviceID{Location: tensor.Metal, Index: 0})
 }
 
 func (backend *Backend) Device(id DeviceID) (device.Backend, error) {
