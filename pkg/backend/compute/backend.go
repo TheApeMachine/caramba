@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/theapemachine/caramba/pkg/errnie/validate"
+	"github.com/theapemachine/errnie"
 	"github.com/theapemachine/manifesto/tensor"
 	"github.com/theapemachine/puter/device"
 	"github.com/theapemachine/puter/device/cpu"
@@ -35,6 +35,7 @@ func NewBackend(ctx context.Context, pool *qpool.Q) (*Backend, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	cpuBackend, err := cpu.NewBackend(ctx, pool)
+
 	if err != nil {
 		cancel()
 		return nil, err
@@ -51,8 +52,8 @@ func NewBackend(ctx context.Context, pool *qpool.Q) (*Backend, error) {
 		ctx:    ctx,
 		cancel: cancel,
 		devices: map[DeviceID]device.Backend{
-			DeviceID{Location: tensor.Host, Index: 0}:  cpuBackend,
-			DeviceID{Location: tensor.Metal, Index: 0}: metalBackend,
+			{Location: tensor.Host, Index: 0}:  cpuBackend,
+			{Location: tensor.Metal, Index: 0}: metalBackend,
 		},
 		mesh: tensor.ShardingMesh{
 			Devices:   []tensor.Location{tensor.Metal},
@@ -62,7 +63,7 @@ func NewBackend(ctx context.Context, pool *qpool.Q) (*Backend, error) {
 		pool: pool,
 	}
 
-	return backend, validate.Require(map[string]any{
+	return backend, errnie.Require(map[string]any{
 		"ctx":     ctx,
 		"devices": backend.devices,
 		"mesh":    backend.mesh,

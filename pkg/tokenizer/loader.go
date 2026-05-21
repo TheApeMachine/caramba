@@ -60,8 +60,6 @@ func (source Source) Resolve(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	fmt.Printf("TOKENIZER RESOLVE: Source=%q, RepoID=%q\n", source.Source, location.RepoID)
-
 	if source.Revision != "" {
 		location.Revision = source.Revision
 	}

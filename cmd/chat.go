@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/caramba/pkg/runtime"
+	"github.com/theapemachine/errnie"
 )
 
 var (
@@ -17,7 +17,21 @@ var chatCmd = &cobra.Command{
 	Short:        "Start a terminal chat session.",
 	Long:         chatLong,
 	SilenceUsage: true,
-	RunE:         runChat,
+	RunE: func(cmd *cobra.Command, args []string) (err error) {
+		errnie.Info("Starting chat session...")
+		
+		session := errnie.Does(func() (*runtime.Session, error) {
+			return runtime.OpenSession(cmd.Context(), chatRuntimePath)
+		}).Or(func(err error) {
+			errnie.Error(err, "Failed to open chat session")
+		}).Value()
+
+		if err := session.Run(cmd.Context()); err != nil {
+			return fmt.Errorf("chat: %w", err)
+		}
+
+		return nil
+	},
 }
 
 func init() {
@@ -28,25 +42,6 @@ func init() {
 		"Runtime program manifest path under pkg/asset/template/",
 	)
 	rootCmd.AddCommand(chatCmd)
-}
-
-func runChat(command *cobra.Command, args []string) error {
-	_ = command
-	_ = args
-
-	ctx := context.Background()
-	fmt.Println("Starting chat session...")
-	session, err := runtime.OpenSession(ctx, chatRuntimePath)
-
-	if err != nil {
-		return fmt.Errorf("chat: %w", err)
-	}
-
-	if err := session.Run(ctx); err != nil {
-		return fmt.Errorf("chat: %w", err)
-	}
-
-	return nil
 }
 
 const chatLong = `

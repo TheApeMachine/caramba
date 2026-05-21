@@ -1,6 +1,11 @@
-.PHONY: build dump metal cuda
+.PHONY: build test generate clean chat image research serve
 
 DUMP ?= caramba.txt
+
+# The pool package uses go:linkname to access runtime scheduling
+# primitives (dropg, readgstatus) for zero-overhead goroutine parking.
+# Go 1.26 restricts these by default; -checklinkname=0 preserves access.
+LDFLAGS := -ldflags='-checklinkname=0'
 
 dump:
 	python3 "$(CURDIR)/scripts/dump-repo.py" "$(DUMP)"
@@ -16,4 +21,25 @@ cuda:
 	fi
 
 build: metal cuda
-	go build .
+	go build $(LDFLAGS) .
+
+test:
+	go test $(LDFLAGS) ./...
+
+generate:
+	go generate $(LDFLAGS) ./...
+
+clean:
+	go clean $(LDFLAGS) ./...
+
+chat:
+	go run $(LDFLAGS) . chat
+
+image:
+	go run $(LDFLAGS) . image "An elephant playing chess"
+
+research:
+	go run $(LDFLAGS) . research
+
+serve:
+	go run $(LDFLAGS) . serve

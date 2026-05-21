@@ -55,6 +55,7 @@ func (hostOps *CarambaHostOps) EmitToken(ctx context.Context, request manifestru
 
 	source := tokenizer.Source{
 		Source:   request.Tokenizer,
+		File:     request.TokenizerFile,
 		Cache:    hostOps.hubConfig.CacheDir,
 		Revision: "main",
 	}
@@ -69,7 +70,7 @@ func (hostOps *CarambaHostOps) EmitToken(ctx context.Context, request manifestru
 		return err
 	}
 
-	_, err = fmt.Fprintf(os.Stdout, "[%d:%s]", request.TokenID, text)
+	_, err = fmt.Fprint(os.Stdout, text)
 	return err
 }
 
@@ -81,6 +82,7 @@ func (hostOps *CarambaHostOps) Encode(
 
 	source := tokenizer.Source{
 		Source:   request.Tokenizer,
+		File:     request.TokenizerFile,
 		Cache:    hostOps.hubConfig.CacheDir,
 		Revision: "main",
 	}
@@ -89,13 +91,38 @@ func (hostOps *CarambaHostOps) Encode(
 		return nil, fmt.Errorf("tokenizer.encode: tokenizer name is required")
 	}
 
+	text, err := prepareEncodeText(ctx, source, request.Text, request.ApplyChatTemplate)
+
+	if err != nil {
+		return nil, err
+	}
+
 	artifact, err := tokenizer.Load(ctx, source)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return artifact.Tokenizer.Encode(request.Text)
+	return artifact.Tokenizer.Encode(text)
+}
+
+func prepareEncodeText(
+	ctx context.Context,
+	source tokenizer.Source,
+	text string,
+	applyChatTemplate bool,
+) (string, error) {
+	if !applyChatTemplate {
+		return text, nil
+	}
+
+	metadata, err := tokenizer.LoadMetadata(ctx, source)
+
+	if err != nil {
+		return "", err
+	}
+
+	return metadata.ApplyChatTemplate(text)
 }
 
 func (hostOps *CarambaHostOps) WriteImage(
@@ -121,18 +148,29 @@ func (hostOps *CarambaHostOps) WriteImage(
 		height = 64
 	}
 
+	channels := request.Channels
+
+	if channels <= 0 {
+		channels = 3
+	}
+
 	canvas := image.NewRGBA(image.Rect(0, 0, width, height))
 	pixelCount := width * height
 
-	for index := 0; index < pixelCount && index*3+2 < len(values); index++ {
-		offset := index * 3
+	for index := 0; index < pixelCount; index++ {
+		red, green, blue, ok := imagePixel(values, index, pixelCount, channels, request.Layout)
+
+		if !ok {
+			break
+		}
+
 		canvas.Set(
 			index%width,
 			index/width,
 			color.RGBA{
-				R: floatToByte(values[offset]),
-				G: floatToByte(values[offset+1]),
-				B: floatToByte(values[offset+2]),
+				R: floatToByte(red, request.Range),
+				G: floatToByte(green, request.Range),
+				B: floatToByte(blue, request.Range),
 				A: 255,
 			},
 		)
@@ -155,7 +193,52 @@ func (hostOps *CarambaHostOps) WriteImage(
 	return png.Encode(file, canvas)
 }
 
-func floatToByte(value float32) uint8 {
+func imagePixel(
+	values []float32,
+	index int,
+	pixelCount int,
+	channels int,
+	layout string,
+) (float32, float32, float32, bool) {
+	if layout == "channel_planar" {
+		return channelPlanarPixel(values, index, pixelCount, channels)
+	}
+
+	return interleavedPixel(values, index, channels)
+}
+
+func channelPlanarPixel(
+	values []float32,
+	index int,
+	pixelCount int,
+	channels int,
+) (float32, float32, float32, bool) {
+	if channels < 3 || index+2*pixelCount >= len(values) {
+		return 0, 0, 0, false
+	}
+
+	return values[index], values[pixelCount+index], values[2*pixelCount+index], true
+}
+
+func interleavedPixel(
+	values []float32,
+	index int,
+	channels int,
+) (float32, float32, float32, bool) {
+	offset := index * channels
+
+	if channels < 3 || offset+2 >= len(values) {
+		return 0, 0, 0, false
+	}
+
+	return values[offset], values[offset+1], values[offset+2], true
+}
+
+func floatToByte(value float32, valueRange string) uint8 {
+	if valueRange == "zero_one" {
+		return zeroOneToByte(value)
+	}
+
 	if value < -1 {
 		return 0
 	}
@@ -165,6 +248,18 @@ func floatToByte(value float32) uint8 {
 	}
 
 	return uint8((value + 1) * 127.5)
+}
+
+func zeroOneToByte(value float32) uint8 {
+	if value < 0 {
+		return 0
+	}
+
+	if value > 1 {
+		return 255
+	}
+
+	return uint8(value * 255)
 }
 
 var _ manifestruntime.HostOps = (*CarambaHostOps)(nil)

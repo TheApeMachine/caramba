@@ -27,6 +27,37 @@
 #   joint_terminal_index    `${num_layers} + ${num_single_layers}` as a literal
 inputs: [hidden_states, encoder_hidden_states, timestep]
 nodes:
+  - id: time_guidance_embed.time_proj
+    op: embedding.timestep
+    in: [timestep]
+    out: [timestep_projection]
+    config:
+      dim: 256
+      flip_sin_to_cos: true
+      downscale_freq_shift: 0
+      max_period: 10000
+
+  - id: time_guidance_embed.timestep_embedder.linear_1
+    op: projection.linear
+    in: [timestep_projection]
+    out: [timestep_hidden]
+    config:
+      in_features: 256
+      out_features: ${include.hidden_size}
+
+  - id: time_guidance_embed.timestep_embedder.act
+    op: activation.swish
+    in: [timestep_hidden]
+    out: [timestep_activated]
+
+  - id: time_guidance_embed.timestep_embedder.linear_2
+    op: projection.linear
+    in: [timestep_activated]
+    out: [temb]
+    config:
+      in_features: ${include.hidden_size}
+      out_features: ${include.hidden_size}
+
   - id: x_embedder
     op: projection.linear
     in: [hidden_states]
@@ -311,8 +342,21 @@ nodes:
         out: ["h_${next_offset_i}"]
 
   - id: norm_out
-    op: math.rmsnorm
-    in: ["h_${include.joint_terminal_index}"]
+    op: activation.swish
+    in: [temb]
+    out: [norm_out_conditioning]
+
+  - id: norm_out.linear
+    op: projection.linear
+    in: [norm_out_conditioning]
+    out: [norm_out_modulation]
+    config:
+      in_features: ${include.hidden_size}
+      out_features: ${include.double_hidden_size}
+
+  - id: norm_out.adaptive
+    op: math.adaptive_rmsnorm
+    in: ["h_${include.joint_terminal_index}", norm_out_modulation]
     out: [final_norm]
     config: { eps: "${include.eps}", affine: false }
 

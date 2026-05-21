@@ -1,11 +1,8 @@
 package compute
 
 import (
-	"context"
-
 	"github.com/theapemachine/caramba/pkg/backend/compute/runtime"
 	"github.com/theapemachine/manifesto/tensor"
-	"github.com/theapemachine/puter/device/metal"
 )
 
 /*
@@ -60,60 +57,4 @@ func (device *Device) Close() error {
 	}
 
 	return nil
-}
-
-func discoverDevices() ([]*Device, error) {
-	devices := make([]*Device, 0, 4)
-	devices = append(devices, newHostDevice(0))
-	devices = appendMetalDevice(devices)
-
-	return devices, nil
-}
-
-func newHostDevice(index int) *Device {
-	hostMemory := tensor.NewHostBackend()
-
-	return &Device{
-		id:       DeviceID{Location: tensor.Host, Index: index},
-		memory:   hostMemory,
-		executor: runtime.NewHost(hostMemory),
-	}
-}
-
-func appendMetalDevice(devices []*Device) []*Device {
-	metalMemory, err := metal.NewBackend(context.Background(), nil)
-
-	if err != nil {
-		return devices
-	}
-
-	return append(devices, &Device{
-		id:       DeviceID{Location: tensor.Metal, Index: 0},
-		memory:   metalMemory,
-		executor: runtime.NewMetal(metalMemory),
-	})
-}
-
-func indexDevices(devices []*Device) map[DeviceID]*Device {
-	byID := make(map[DeviceID]*Device, len(devices))
-
-	for _, device := range devices {
-		byID[device.id] = device
-	}
-
-	return byID
-}
-
-func buildMesh(devices []*Device) tensor.ShardingMesh {
-	locations := make([]tensor.Location, len(devices))
-
-	for index, device := range devices {
-		locations[index] = device.id.Location
-	}
-
-	return tensor.ShardingMesh{
-		Devices:   locations,
-		Shape:     []int{len(devices)},
-		AxisNames: []string{"device"},
-	}
 }

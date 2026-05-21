@@ -45,7 +45,7 @@ func NewGraphBackend(computeBackend *compute.Backend) (*GraphBackend, error) {
 	return &GraphBackend{
 		computeBackend: computeBackend,
 		deviceID:       compute.DeviceID{Location: tensor.Location("metal"), Index: 0},
-		runner:         computeruntime.NewMetalGraphRunner(metalDev),
+		runner:         computeruntime.NewMetalGraphRunner(metalDev, dev),
 	}, nil
 }
 
@@ -297,23 +297,6 @@ func (backend *GraphBackend) CallGraph(
 			return manifestruntime.GraphCallResult{}, fmt.Errorf("runtime graph backend: unsupported output dtype %s", outDType)
 		}
 
-		allZero := true
-		if nativeFloat, ok := native.([]float32); ok {
-			for _, v := range nativeFloat {
-				if v != 0 {
-					allZero = false
-					break
-				}
-			}
-		} else {
-			allZero = false // Can't check easily, assume not zero
-		}
-		if allZero {
-			fmt.Printf("OUTPUT %s IS ALL ZERO!\n", nodeID)
-		} else {
-			fmt.Printf("OUTPUT %s IS NOT ZERO!\n", nodeID)
-		}
-
 		outputs[portName] = native
 	}
 
@@ -361,8 +344,22 @@ func (backend *GraphBackend) materializeInputs(
 			}
 
 			external[nodeID] = tensorValue
+		case float32:
+			shape, err := tensor.NewShape([]int{1})
+
+			if err != nil {
+				return nil, err
+			}
+
+			tensorValue, err := memory.Upload(shape, dtype.Float32, float32ToBytes([]float32{typed}))
+
+			if err != nil {
+				return nil, err
+			}
+
+			external[nodeID] = tensorValue
 		case []float32:
-			shape, err := tensor.NewShape([]int{len(typed)})
+			shape, err := tensor.NewShape(float32InputShape(manifestGraph, portName, len(typed)))
 
 			if err != nil {
 				return nil, err
@@ -381,6 +378,53 @@ func (backend *GraphBackend) materializeInputs(
 	}
 
 	return external, nil
+}
+
+func float32InputShape(
+	manifestGraph *ast.Graph,
+	portName string,
+	valueCount int,
+) []int {
+	featureWidth := graphInputFeatureWidth(manifestGraph, portName)
+
+	if featureWidth <= 0 || valueCount%featureWidth != 0 {
+		return []int{valueCount}
+	}
+
+	return []int{1, valueCount / featureWidth, featureWidth}
+}
+
+func graphInputFeatureWidth(manifestGraph *ast.Graph, portName string) int {
+	if manifestGraph == nil {
+		return 0
+	}
+
+	for _, node := range manifestGraph.Nodes {
+		if len(node.Inputs) == 0 || node.Inputs[0] != portName {
+			continue
+		}
+
+		if node.Op != "projection.linear" {
+			continue
+		}
+
+		return intFromAttribute(node.Attributes["in_features"])
+	}
+
+	return 0
+}
+
+func intFromAttribute(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
 }
 
 func outputTargets(computeGraph *ir.Graph, manifestGraph *ast.Graph) ([]*ir.Node, error) {
@@ -431,95 +475,4 @@ func float32ToBytes(values []float32) []byte {
 	}
 
 	return buffer
-}
-
-func isAllZero(slice any) bool {
-	switch typed := slice.(type) {
-	case []float32:
-		for _, v := range typed {
-			if v != 0 {
-				return false
-			}
-		}
-	case []dtype.BF16:
-		for i := range typed {
-			if (&typed[i]).Float32() != 0 {
-				return false
-			}
-		}
-	case []dtype.F16:
-		for _, v := range typed {
-			if v.Float32() != 0 {
-				return false
-			}
-		}
-	case []float64:
-		for _, v := range typed {
-			if v != 0 {
-				return false
-			}
-		}
-	case []int32:
-		for _, v := range typed {
-			if v != 0 {
-				return false
-			}
-		}
-	case []int64:
-		for _, v := range typed {
-			if v != 0 {
-				return false
-			}
-		}
-	case []int16:
-		for _, v := range typed {
-			if v != 0 {
-				return false
-			}
-		}
-	case []int8:
-		for _, v := range typed {
-			if v != 0 {
-				return false
-			}
-		}
-	case []uint64:
-		for _, v := range typed {
-			if v != 0 {
-				return false
-			}
-		}
-	case []uint32:
-		for _, v := range typed {
-			if v != 0 {
-				return false
-			}
-		}
-	case []uint16:
-		for _, v := range typed {
-			if v != 0 {
-				return false
-			}
-		}
-	case []uint8:
-		for _, v := range typed {
-			if v != 0 {
-				return false
-			}
-		}
-	case []dtype.F8E4M3:
-		for _, v := range typed {
-			if v.Float32() != 0 {
-				return false
-			}
-		}
-	case []dtype.F8E5M2:
-		for _, v := range typed {
-			if v.Float32() != 0 {
-				return false
-			}
-		}
-	}
-
-	return true
 }

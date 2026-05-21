@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/theapemachine/caramba/pkg/errnie/validate"
+	"github.com/theapemachine/errnie"
 )
 
 /*
@@ -99,7 +99,7 @@ func NewRing(ctx context.Context, capacity int) (*Ring, error) {
 		ring.buffer[index].sequence.Store(uint64(index))
 	}
 
-	return ring, validate.Require(map[string]any{
+	return ring, errnie.Require(map[string]any{
 		"ctx":    ring.ctx,
 		"cancel": ring.cancel,
 		"mask":   ring.mask,

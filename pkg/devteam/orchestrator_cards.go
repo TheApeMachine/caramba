@@ -4,8 +4,7 @@ import (
 	"fmt"
 
 	"github.com/google/go-github/v67/github"
-
-	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/errnie"
 )
 
 func (orchestrator *Orchestrator) moveCard(cardID, columnKey, note string) error {

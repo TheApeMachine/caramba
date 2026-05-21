@@ -169,8 +169,14 @@ system:
             in: ["attn_residual_${layer}", "mlp_out_${layer}"]
             out: ["h_${next_layer}"]
 
+      - id: prompt_embeds_0
+        op: shape.concat
+        in: [h_9, h_18]
+        out: [prompt_embeds_0]
+        config: { dim: 2 }
+
       - id: prompt_embeds
         op: shape.concat
-        in: [h_9, h_18, h_27]
+        in: [prompt_embeds_0, h_27]
         out: [prompt_embeds]
         config: { dim: 2 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/theapemachine/manifesto/ir"
 	"github.com/theapemachine/manifesto/tensor"
+	"github.com/theapemachine/puter/device"
 	"github.com/theapemachine/puter/device/metal"
 )
 
@@ -14,13 +15,14 @@ Metal executes IR graphs on the Metal device through direct kernel dispatch.
 */
 type Metal struct {
 	memory *metal.Backend
+	device device.Backend
 }
 
 /*
 NewMetal constructs a Metal executor backed by a Metal memory backend.
 */
-func NewMetal(memory *metal.Backend) *Metal {
-	return &Metal{memory: memory}
+func NewMetal(memory *metal.Backend, deviceBackend device.Backend) *Metal {
+	return &Metal{memory: memory, device: deviceBackend}
 }
 
 func (metalExecutor *Metal) Execute(
@@ -57,7 +59,7 @@ func (metalExecutor *Metal) ExecuteWithWeights(
 		return nil, err
 	}
 
-	runner := NewMetalGraphRunner(metalExecutor.memory)
+	runner := NewMetalGraphRunner(metalExecutor.memory, metalExecutor.device)
 
 	return runner.Execute(ctx, graph, targets, weightsPath, externalInputs)
 }
