@@ -117,103 +117,6 @@ CGO_ENABLED=1 go build -tags cgo ./pkg/backend/device/metal/...
 go build -tags "cgo xla" ./pkg/backend/device/xla/...
 ```
 
-The Metal backend embeds `pkg/backend/device/metal/kernels.metallib`
-from `pkg/backend/device/metal/*.metal`. Dense elementwise binary and
-unary kernels cover `float32`, `float16`, and `bfloat16`, including
-binary `add`, `sub`, `mul`, `div`, `max`, `min`, comparisons, `pow`,
-`atan2`, and `mod`, plus extended unary math and activation kernels
-for `rsqrt`, `exp`, `log`,
-`sin`, `cos`, `tanh`, `sigmoid`, `silu`, `swish`, `softsign`, `elu`,
-`selu`, `leaky_relu`, `hardsigmoid`, and `hardswish`; Metal shape
-kernels cover gather/scatter/where/masked-fill/general transpose plus
-concat/split/head reshape/last-token/transpose2d/upsample movement
-across the same storage dtypes with dtype-specific shader entry points,
-`uint4` movement for aligned contiguous ranges, and device-side index
-validation surfaced through async command completion.
-Metal matmul kernels cover `matmul` and fused `matmul_add` for the
-same storage dtypes with tiled threadgroup execution. Metal projection
-and model kernels cover `linear`, `fused_qkv`, `lora_merge`, and
-`lora_apply` for the same storage dtypes; the LoRA apply path stages
-the rank-space intermediate in device scratch storage and submits the
-two GPU stages in one command buffer. Metal transformer support covers
-`attention`, `flash_attention`, `multi_head_attention`,
-`grouped_query_attention`, `sliding_window_attention`,
-`embedding_lookup`, `embedding_bag`, `apply_mask`, `causal_mask`, and
-`alibi_bias`, and `rope` for the same storage dtypes; attention uses tiled GPU
-stages for score construction and weighted output with a
-device-resident float32 score buffer, flash attention uses a
-row/value-tile online softmax kernel with threadgroup dot-product
-reduction, and the multi-head variants use row/head/value-tile kernels
-with GQA KV-head sharing and causal sliding-window masks. RoPE rotates
-consecutive head-dimension pairs directly on the device. Embedding
-kernels report invalid index data through the asynchronous command
-completion path.
-Metal vision kernels cover `conv1d`, `conv2d`, `conv3d`,
-`conv_transpose2d`, `max_pool2d`, `avg_pool2d`,
-`adaptive_avg_pool2d`, and `adaptive_max_pool2d` for the same storage
-dtypes using NCL/NCHW/NCDHW memory layout and GPU-side accumulation.
-Metal optimizer kernels cover `adam_step`, `adamw_step`,
-`adamax_step`, `adagrad_step`, `rmsprop_step`, `lion_step`,
-`sgd_step`, `lars_step`, `lbfgs_step`, and `hebbian_step` with
-reduced-dtype params/gradients/output and float32 optimizer state.
-Metal quantization kernels cover `int8_dequant`, `int4_dequant`, and
-`int8_quant` with default scale/zero-point semantics matching the
-scalar registry. Metal sampling kernels cover `greedy_sample`,
-`topk_sample`, and `topp_sample` for `float32`, `float16`, and
-`bfloat16`; greedy uses a row-local GPU reduction and top-k/top-p sort
-device-resident logits before the seeded draw. Metal dropout kernels
-cover `float32`, `float16`, and `bfloat16` with indexed GPU xorshift
-generation matching the scalar default seed and inverted-dropout scale.
-Metal utility kernels cover `checkpoint_encode_float32`,
-`checkpoint_decode_float32`, `tokenizer_pack_int32`, and
-`weight_freeze_mask`; checkpoint and tokenizer kernels preserve exact
-wire bytes, and weight-freeze masking supports `float32`, `float16`,
-and `bfloat16` gradients with packed-bool masks. Metal loss kernels
-cover `mse_loss`, `mae_loss`,
-`huber_loss`, `binary_cross_entropy`, `cross_entropy`, and
-`kl_divergence` for `float32`, `float16`, and `bfloat16`; pair losses
-run chunked partial reductions and cross-entropy runs one row-local
-threadgroup per batch row before a device finalize stage. Metal
-reduction kernels cover `sum`, `mean`, `prod`, `reduce_min`,
-`reduce_max`, `argmin`, `argmax`, `l1_norm`, `l2_norm`, `variance`,
-and `stddev` for the same storage dtypes with chunked partial
-reductions and a device finalize stage. Metal math utility kernels
-cover `inv_sqrt_dim_scale`, `logsumexp`, and `outer` for the same
-storage dtypes; `logsumexp` uses row-local parallel max and sum
-reductions over the trailing dimension.
-Metal softmax covers the same storage dtypes with one threadgroup per
-row, parallel max reduction, parallel sum reduction, and normalized
-dtype-native writes. Metal normalization covers `layernorm` and
-`rmsnorm` for the same storage dtypes with row-local reductions and
-dtype-native writes. Metal research kernels cover `vsa_bind`,
-`vsa_bundle`, `vsa_permute`, `vsa_inverse_permute`, `pc_prediction`,
-`pc_prediction_error`, `pc_update_representation`, and
-`pc_update_weights` for the same storage dtypes, using fp32
-accumulation for predictive-coding matrix/vector contractions. Metal
-active-inference kernels cover `free_energy`, `expected_free_energy`,
-`belief_update`, and `precision_weight` for the same storage dtypes,
-using fp32 scratch reductions for scalar free-energy objectives and
-belief normalization. Metal Hawkes and Markov-blanket kernels cover
-`hawkes_intensity`, `hawkes_kernel_matrix`,
-`hawkes_log_likelihood`, `markov_mutual_information`,
-`markov_blanket_partition`, `markov_flow_active`, and
-`markov_flow_internal` for the same storage dtypes, with fp32 scratch
-reductions for scalar objectives and dtype-native writes for vector
-outputs. Metal causal-inference kernels cover `backdoor_adjustment`,
-`frontdoor_adjustment`, `do_intervene`, `cate`, `counterfactual`,
-`iv_estimate`, and `dag_markov_factorization` for the same storage
-dtypes; IV and DAG factorization use device scratch reductions and a
-device finalize stage. Metal quantum-hydro physics kernels cover
-`laplacian`, `laplacian4`, `grad1d`, `divergence1d`, `fft1d`,
-`ifft1d`, `quantum_potential`, `bohmian_velocity`, and
-`madelung_continuity` for the same storage dtypes; FFT uses staged
-device Cooley-Tukey passes for power-of-two lengths and direct device
-DFT for other lengths. These families run through the device command
-queue with async completion, pooled `MTLBuffer` storage, and per-kernel
-pipeline caching.
-
-Every backend implements the same interface, and the optimizer does the same math everywhere:
-
 ```go
 type Runner interface {
     Execute(
@@ -270,22 +173,22 @@ CGO_ENABLED=1 go test -tags "cgo cuda"     ./pkg/backend/device/cuda/...
 
 ## 📓 Documentation
 
-| Document                                       | What's inside                                       |
-|------------------------------------------------|-----------------------------------------------------|
-| [Getting Started](./docs/getting-started.md)   | Install, first chat, first study                    |
-| [Architecture](./docs/architecture.md)         | System design, IR, executor                         |
-| [Manifest & Governance](./docs/manifest.md)    | Manifest grammar, compiler pipeline, examples       |
-| [Compute Backends](./docs/compute.md)          | CPU/SIMD, CUDA, Metal, XLA in depth                 |
-| [Backend inventory](./docs/backend-inventory.md) | `device.Backend` methods ↔ `ir.RequiredOperationIDs()` |
-| [CPU dispatch matrix](./docs/cpu-dispatch-matrix.md) | Per-domain scalar / AVX-512 / AVX2 / SSE2 / NEON registration |
-| [Device backend matrix](./docs/device-backend-matrix.md) | Metal / CUDA / XLA kernel registrations, dtypes, required-op coverage |
-| [Backend coverage matrix](./docs/backend-coverage.md) | Combined T1.2–T1.4 registration snapshot and R1 execution-target summary |
+| Document                                                       | What's inside                                                                                     |
+|----------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
+| [Getting Started](./docs/getting-started.md)                   | Install, first chat, first study                                                                  |
+| [Architecture](./docs/architecture.md)                         | System design, IR, executor                                                                       |
+| [Manifest & Governance](./docs/manifest.md)                    | Manifest grammar, compiler pipeline, examples                                                     |
+| [Compute Backends](./docs/compute.md)                          | CPU/SIMD, CUDA, Metal, XLA in depth                                                               |
+| [Backend inventory](./docs/backend-inventory.md)               | `device.Backend` methods ↔ `ir.RequiredOperationIDs()`                                            |
+| [CPU dispatch matrix](./docs/cpu-dispatch-matrix.md)           | Per-domain scalar / AVX-512 / AVX2 / SSE2 / NEON registration                                     |
+| [Device backend matrix](./docs/device-backend-matrix.md)       | Metal / CUDA / XLA kernel registrations, dtypes, required-op coverage                             |
+| [Backend coverage matrix](./docs/backend-coverage.md)          | Combined T1.2–T1.4 registration snapshot and R1 execution-target summary                          |
 | [Backend compliance audit](./docs/backend-compliance-audit.md) | T1.6 machine checks: forbidden phrasing, cross-ISA calls, amd64 scalar tails, loose test epsilons |
-| [Operations](./docs/operations.md)             | Operation library, SIMD kernels, custom ops         |
-| [Frontend & Visualization](./docs/frontend.md) | Node editor, microscope tooling                     |
-| [The Notary](./docs/notary.md)                 | Identity, ledger, custody model                     |
-| [Agents](./docs/agents.md)                     | Conversational ingress, LLM providers               |
-| [AGENTS.md](./AGENTS.md)                       | Backend implementation contract for contributors    |
+| [Operations](./docs/operations.md)                             | Operation library, SIMD kernels, custom ops                                                       |
+| [Frontend & Visualization](./docs/frontend.md)                 | Node editor, microscope tooling                                                                   |
+| [The Notary](./docs/notary.md)                                 | Identity, ledger, custody model                                                                   |
+| [Agents](./docs/agents.md)                                     | Conversational ingress, LLM providers                                                             |
+| [AGENTS.md](./AGENTS.md)                                       | Backend implementation contract for contributors                                                  |
 
 ---
 

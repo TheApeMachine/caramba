@@ -40,9 +40,12 @@ func runProgram(
 		return fmt.Errorf("caramba: resolve state memory: %w", err)
 	}
 
+	graphRunner := runner.New(devicePool)
+	defer graphRunner.Close()
+
 	programOrchestrator, err := runtime.NewOrchestrator(runtime.OrchestratorOptions{
 		Hub:           hub.NewResolveAdapter(hub.NewClient(hubConfig)),
-		Compute:       runner.New(devicePool),
+		Compute:       graphRunner,
 		Host:          program.NewHost(program.HostOptions{Stdin: os.Stdin, HubConfig: hubConfig}),
 		StateMemory:   stateMemory,
 		CacheDir:      hubConfig.CacheDir,
