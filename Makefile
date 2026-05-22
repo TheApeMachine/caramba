@@ -1,6 +1,9 @@
-.PHONY: build test generate clean chat diffusion image research serve
+.PHONY: build test generate clean chat diffusion diffusion-diagnose image research serve
 
 DUMP ?= caramba.txt
+
+# Metal kernels and metallib generation live in the puter module (go.mod replace).
+PUTER_ROOT := ../puter
 
 # The pool package uses go:linkname to access runtime scheduling
 # primitives (dropg, readgstatus) for zero-overhead goroutine parking.
@@ -11,16 +14,12 @@ dump:
 	python3 "$(CURDIR)/scripts/dump-repo.py" "$(DUMP)"
 
 metal:
-	cd pkg/backend/device/metal && go generate
+	cd $(PUTER_ROOT)/device/metal && CGO_ENABLED=1 go generate
 
 cuda:
-	@if command -v nvcc >/dev/null 2>&1; then \
-		go generate -tags cuda ./pkg/backend/device/cuda; \
-	else \
-		echo "Skipping CUDA generation: nvcc not found (run make cuda on a CUDA host)"; \
-	fi
+	@echo "Skipping CUDA generation: device/cuda in puter has no go:generate step"
 
-build: metal cuda
+build: metal
 	go build $(LDFLAGS) .
 
 test:
@@ -37,6 +36,9 @@ chat:
 
 diffusion:
 	go run $(LDFLAGS) . diffusion "An elephant playing chess"
+
+diffusion-diagnose: build
+	./caramba diffusion-diagnose "An elephant playing chess"
 
 image: diffusion
 
