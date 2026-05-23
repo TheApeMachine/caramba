@@ -208,6 +208,10 @@ Prefer compact code that a reader fluent in Go and the relevant ISA can follow. 
 
 If less code means less performance, choose performance.
 
+### Fallbacks or Silent Failures/Errors
+
+Never ever use a fallback or silent errors/faliures. If things are not as they are supposed to be, then return an error properly, and let the code fail. That is the only way we become aware of them so we can fix things.
+
 ---
 
 ## 6. Testing
