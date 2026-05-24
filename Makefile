@@ -1,4 +1,4 @@
-.PHONY: build test generate clean chat diffusion diffusion-diagnose image research serve
+.PHONY: build test check verify generate clean chat diffusion diffusion-diagnose image research serve
 
 DUMP ?= caramba.txt
 
@@ -24,6 +24,14 @@ build: metal
 
 test:
 	go test $(LDFLAGS) ./...
+
+# check runs mechanical enforcement of the manifest-first contract.
+# See AGENTS.md and ../puter/GAPS.md §6.5 for the rules.
+check:
+	@bash "$(CURDIR)/scripts/check_banned.sh"
+
+# verify is the gate: banned-pattern check first, then tests.
+verify: check test
 
 generate:
 	go generate $(LDFLAGS) ./...

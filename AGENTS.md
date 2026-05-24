@@ -414,3 +414,59 @@ When writing compute kernels like SIMD/Assembly, Metal, Cuda, or XLA, you must o
 > !NOTE: While working on an arm64 machine, you are not expected to use cross-compiling to verify amd64 code. It is assumed that you will be mostly correct when it comes to the amd64 variants, and those will be tested on a compatible machine, and any minor issues will be resolved there.
 
 Please be mindful and respectful of the fact that this is extremely important to this project. Our machine learning research framework sets itself apart by having world-class implementations that don't just serve the traditional ML researcher, but also the ones on the very fringes of the field.
+
+---
+
+## 11. Architecture-Level Invariants (shared with puter, manifesto, hf)
+
+caramba is the orchestrator. It does not own the compute kernels (puter), the compiler (manifesto), or the HuggingFace ingestion (hf). It wires them together. These rules govern *what kinds of code may exist* in caramba, in addition to the kernel-level rules in §1-10. They are derived from `../puter/ARCHITECTURE.md` and the audit in `../puter/GAPS.md`. They are enforced by `scripts/check_banned.sh` (see §12).
+
+### 11.1 Manifest-first
+
+Every model architecture compiles from YAML manifests over atomic ops on `device.Backend`. There are exactly two ways a manifest enters the system: hand-authored, or synthesized from a HuggingFace checkpoint by `hf`. caramba never bypasses this. CLI subcommands (`chat`, `diffusion`, `research`) load a YAML manifest and dispatch through the standard executor; they do not embed model-specific Go.
+
+Specifically:
+
+- caramba may not import `manifesto/diffusion`, `manifesto/llama`, `manifesto/flux`, or any future model-named subpackage. Those packages are forbidden in manifesto (see `../manifesto/AGENTS.md`); their absence is enforced upstream.
+- `cmd/diffusion.go`, if it exists, is a thin manifest loader that calls `runtime.Orchestrator` with `template/runtime/diffusion.yml` — nothing else.
+- Fusion catalog entries (`pkg/backend/compute/fusion/`) are general op-graph patterns (`matmul+bias+gelu`, `layernorm+residual`), never model-specific shortcuts.
+
+When the missing primitive forces you toward a shortcut, surface the gap. Don't write the shortcut.
+
+### 11.2 Zero-host-sync (consumer side)
+
+caramba consumes `device.Backend`. It must not introduce host-sync points by calling methods that return Go scalars. Once puter's interface.go is fixed (GAPS.md P0), every device call writes to `dst unsafe.Pointer` and host reads happen at execution boundaries. caramba's job is to never re-introduce the round-trip.
+
+### 11.3 No hot-path map lookups
+
+`pkg/backend/compute/backend.go` currently holds `devices map[DeviceID]device.Backend`. That is acceptable for top-level device selection at session init. It is **not** acceptable in the per-node dispatch loop. Pre-resolve to a flat slice if the executor ever calls `Device(id)` per execution step.
+
+### 11.4 Fusion parity is mandatory
+
+Per §2 of this document and AGENTS.md §1: every entry in `pkg/backend/compute/fusion/catalog.go` must have a `*_parity_test.go` proving the fused op matches the unfused reference at N ∈ {1, 7, 64, 1024, 8192}. An unfused-vs-fused diff outside the tight ULP bound is a failed fusion, not a tolerance to widen.
+
+### 11.5 Companion repositories
+
+caramba lives downstream of three other repos:
+
+- **`puter`** — `device.Backend` implementations. The architecture contract lives in `../puter/ARCHITECTURE.md`. The gap inventory in `../puter/GAPS.md`.
+- **`manifesto`** — compiler / optimizer / scheduler / IR. The pipeline caramba dispatches through.
+- **`hf`** — HuggingFace ingestion. The manifest synthesizer caramba calls into for Hub-loaded models.
+
+Each has its own `scripts/check_banned.sh`. **Run `make check` in every affected repo before claiming a cross-repo change is done.**
+
+---
+
+## 12. Mechanical Enforcement
+
+`scripts/check_banned.sh` mechanically checks the rules from §11. Run via `make check`. Use `make verify` (check + test) before declaring work done. Do not edit the script to make your change pass.
+
+The script specifically catches:
+
+1. Imports of `manifesto/diffusion` and other model-specific manifesto subpackages.
+2. Orchestration files that import diffusion-specific logic (`FlowMatchEulerDiscrete`, `PackLatents`, `prepare_latents`).
+3. Hot-path map lookups in execution paths.
+4. Fusion catalog entries without parity tests.
+5. Banned phrases in comments (`for now`, `fallback to Go`, etc.).
+
+The current state of the world (what passes, what fails today) is in `../puter/GAPS.md`. Update GAPS.md when you close a gap.
