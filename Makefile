@@ -54,4 +54,4 @@ research:
 	go run $(LDFLAGS) . research
 
 serve:
-	go run $(LDFLAGS) . serve
+	go run $(LDFLAGS) main.go serve
