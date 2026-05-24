@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -9,9 +8,11 @@ import (
 	"github.com/theapemachine/caramba/pkg/config"
 	"github.com/theapemachine/hf/hub"
 	"github.com/theapemachine/hf/program"
+	"github.com/theapemachine/hf/safetensors"
 	"github.com/theapemachine/manifesto/runtime"
+	"github.com/theapemachine/manifesto/types"
+	"github.com/theapemachine/puter/execution"
 	"github.com/theapemachine/puter/pool"
-	"github.com/theapemachine/puter/runner"
 )
 
 func runProgram(
@@ -40,12 +41,15 @@ func runProgram(
 		return fmt.Errorf("caramba: resolve state memory: %w", err)
 	}
 
-	graphRunner := runner.New(devicePool)
-	defer graphRunner.Close()
+	graphBackend := execution.New(devicePool)
+	defer graphBackend.Close()
 
 	programOrchestrator, err := runtime.NewOrchestrator(runtime.OrchestratorOptions{
-		Hub:           hub.NewResolveAdapter(hub.NewClient(hubConfig)),
-		Compute:       graphRunner,
+		Hub: hub.NewResolveAdapter(hub.NewClient(hubConfig)),
+		Parser: func(archive []byte) (types.Parser, error) {
+			return safetensors.NewParser(archive)
+		},
+		Compute:       graphBackend,
 		Host:          program.NewHost(program.HostOptions{Stdin: os.Stdin, HubConfig: hubConfig}),
 		StateMemory:   stateMemory,
 		CacheDir:      hubConfig.CacheDir,
@@ -58,15 +62,4 @@ func runProgram(
 	}
 
 	return programOrchestrator.Run(command.Context(), programPath)
-}
-
-func runProgramContext(
-	ctx context.Context,
-	programPath string,
-	initialValues map[string]any,
-) error {
-	command := &cobra.Command{}
-	command.SetContext(ctx)
-
-	return runProgram(command, programPath, initialValues)
 }
