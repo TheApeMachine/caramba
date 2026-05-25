@@ -14,9 +14,12 @@ import type React from "react";
 import { Assistant } from "#/components/assistant/component";
 import { AuthenticatedBoundary } from "#/components/auth/authenticated-boundary";
 import { SessionControls } from "#/components/auth/session-controls";
+import { NotFoundPage } from "#/components/layout/not-found";
 import { Page } from "#/components/layout/page";
 import { ToastProvider } from "#/components/ui/toast";
 import { isAuthenticationPublicPath } from "#/lib/authentication-public-path";
+import "#/i18n";
+import { I18nProvider } from "#/providers/i18n";
 import { ThemeProvider } from "#/providers/theme";
 import appCss from "../styles.css?url";
 
@@ -33,40 +36,42 @@ const RootDocument = ({ children }: { children: React.ReactNode }) => {
 			</head>
 			<body className="flex h-full min-h-svh flex-col" suppressHydrationWarning>
 				<ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up">
-					<ThemeProvider>
-						<ToastProvider>
-							<Page>
-								<Page.Header>
-									<SessionControls />
-								</Page.Header>
-								<Page.Nav />
-								<Page.Main>
-									<Page.MainBody>
-										<AuthenticatedBoundary>{children}</AuthenticatedBoundary>
-									</Page.MainBody>
-								</Page.Main>
-								<Page.Aside>{/* reserved for layout */}</Page.Aside>
-								<Page.Footer />
-							</Page>
+					<I18nProvider>
+						<ThemeProvider>
+							<ToastProvider>
+								<Page>
+									<Page.Header>
+										<SessionControls />
+									</Page.Header>
+									<Page.Nav />
+									<Page.Main>
+										<Page.MainBody>
+											<AuthenticatedBoundary>{children}</AuthenticatedBoundary>
+										</Page.MainBody>
+									</Page.Main>
+									<Page.Aside>{/* reserved for layout */}</Page.Aside>
+									<Page.Footer />
+								</Page>
+								<ClientOnly fallback={null}>
+									<Assistant />
+								</ClientOnly>
+							</ToastProvider>
 							<ClientOnly fallback={null}>
-								<Assistant />
+								<TanStackDevtools
+									config={{
+										position: "bottom-right",
+									}}
+									plugins={[
+										{
+											name: "Tanstack Router",
+											render: <TanStackRouterDevtoolsPanel />,
+										},
+									]}
+								/>
 							</ClientOnly>
-						</ToastProvider>
-						<ClientOnly fallback={null}>
-							<TanStackDevtools
-								config={{
-									position: "bottom-right",
-								}}
-								plugins={[
-									{
-										name: "Tanstack Router",
-										render: <TanStackRouterDevtoolsPanel />,
-									},
-								]}
-							/>
-						</ClientOnly>
-						<Scripts />
-					</ThemeProvider>
+							<Scripts />
+						</ThemeProvider>
+					</I18nProvider>
 				</ClerkProvider>
 			</body>
 		</html>
@@ -105,10 +110,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 			links: [{ rel: "stylesheet", href: appCss }],
 		}),
 		shellComponent: RootDocument,
-		notFoundComponent: () => (
-			<div className="flex h-full items-center justify-center text-muted-foreground">
-				Page not found
-			</div>
-		),
+		notFoundComponent: NotFoundPage,
 	},
 );

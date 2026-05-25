@@ -1,5 +1,6 @@
 import type { UIMessage } from "@tanstack/ai-client";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CardFrame } from "#/components/ui/card";
 import { Flex } from "#/components/ui/flex";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,7 @@ function AssistantShell({
 	mode: Mode;
 	setMode: (mode: Mode) => void;
 }) {
+	const { t } = useTranslation();
 	const {
 		sessions,
 		session,
@@ -92,10 +94,10 @@ function AssistantShell({
 	const isFull = mode === "full";
 
 	const teamName = isMini
-		? "Assistant"
+		? t("assistant.title")
 		: session.personas.length > 1
-			? `Research team (${session.personas.length})`
-			: (session.personas[0]?.name ?? "Assistant");
+			? t("assistant.researchTeam", { count: session.personas.length })
+			: (session.personas[0]?.name ?? t("assistant.title"));
 
 	return (
 		<Flex

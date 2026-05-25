@@ -1,6 +1,7 @@
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Button } from "#/components/ui/button";
 import { Field } from "#/components/ui/field";
@@ -15,6 +16,7 @@ export const Route = createFileRoute("/request-feature")({
 });
 
 function RequestFeatureRoute() {
+	const { t } = useTranslation();
 	const [submissionError, setSubmissionError] = useState<string | null>(null);
 	const [submissionSuccess, setSubmissionSuccess] = useState<string | null>(
 		null,
@@ -42,9 +44,7 @@ function RequestFeatureRoute() {
 					},
 				});
 
-				setSubmissionSuccess(
-					"Thanks — your request was added to the Requests backlog.",
-				);
+				setSubmissionSuccess(t("requestFeature.success"));
 			} catch (error) {
 				setSubmissionError(
 					error instanceof Error ? error.message : String(error),
@@ -58,26 +58,28 @@ function RequestFeatureRoute() {
 			<Flex.Column gap={6} className="w-full max-w-lg">
 				<Flex.Column gap={1}>
 					<h1 className="font-semibold text-foreground text-lg">
-						Request a feature
+						{t("requestFeature.title")}
 					</h1>
 					<Typography.Paragraph variant="muted">
-						Requests become Backlog cards on the Requests project for the
-						configured organization (seeded as{" "}
-						<code className="text-foreground">caramba / requests</code> by
-						default).
+						<Trans
+							i18nKey="requestFeature.description"
+							components={{
+								1: <code className="text-foreground" />,
+							}}
+						/>
 					</Typography.Paragraph>
 				</Flex.Column>
 
 				{submissionSuccess !== null ? (
 					<Alert variant="success">
-						<AlertTitle>Submitted</AlertTitle>
+						<AlertTitle>{t("requestFeature.submitted")}</AlertTitle>
 						<AlertDescription>{submissionSuccess}</AlertDescription>
 					</Alert>
 				) : null}
 
 				{submissionError !== null ? (
 					<Alert variant="error">
-						<AlertTitle>Could not submit</AlertTitle>
+						<AlertTitle>{t("requestFeature.submitError")}</AlertTitle>
 						<AlertDescription>{submissionError}</AlertDescription>
 					</Alert>
 				) : null}
@@ -94,7 +96,9 @@ function RequestFeatureRoute() {
 						name="title"
 						validators={{
 							onChange: ({ value }) =>
-								value.trim().length < 3 ? "Title is too short" : undefined,
+								value.trim().length < 3
+									? t("requestFeature.titleTooShort")
+									: undefined,
 						}}
 					>
 						{(field) => (
@@ -103,7 +107,9 @@ function RequestFeatureRoute() {
 									field.state.meta.isTouched && !field.state.meta.isValid
 								}
 							>
-								<Field.Label htmlFor={field.name}>Title</Field.Label>
+								<Field.Label htmlFor={field.name}>
+									{t("requestFeature.titleLabel")}
+								</Field.Label>
 								<Input
 									aria-invalid={
 										field.state.meta.isTouched && !field.state.meta.isValid
@@ -128,7 +134,9 @@ function RequestFeatureRoute() {
 						name="description"
 						validators={{
 							onChange: ({ value }) =>
-								value.trim().length < 1 ? "Description is required" : undefined,
+								value.trim().length < 1
+									? t("requestFeature.descriptionRequired")
+									: undefined,
 						}}
 					>
 						{(field) => (
@@ -137,7 +145,9 @@ function RequestFeatureRoute() {
 									field.state.meta.isTouched && !field.state.meta.isValid
 								}
 							>
-								<Field.Label htmlFor={field.name}>Description</Field.Label>
+								<Field.Label htmlFor={field.name}>
+									{t("requestFeature.descriptionLabel")}
+								</Field.Label>
 								<Textarea
 									aria-invalid={
 										field.state.meta.isTouched && !field.state.meta.isValid
@@ -162,7 +172,7 @@ function RequestFeatureRoute() {
 						{(field) => (
 							<Field>
 								<Field.Label htmlFor={field.name}>
-									Contact email (optional)
+									{t("requestFeature.contactEmailLabel")}
 								</Field.Label>
 								<Input
 									autoComplete="email"
@@ -171,7 +181,7 @@ function RequestFeatureRoute() {
 									name={field.name}
 									onBlur={field.handleBlur}
 									onChange={(event) => field.handleChange(event.target.value)}
-									placeholder="you@example.com"
+									placeholder={t("requestFeature.contactEmailPlaceholder")}
 									type="email"
 									value={field.state.value}
 								/>
@@ -185,10 +195,12 @@ function RequestFeatureRoute() {
 						{([canSubmit, isSubmitting]) => (
 							<Flex.Row className="justify-end" gap={2}>
 								<Button render={<Link to="/kanban" />} variant="outline">
-									Kanban hub
+									{t("requestFeature.kanbanHub")}
 								</Button>
 								<Button disabled={!canSubmit || isSubmitting} type="submit">
-									{isSubmitting ? "Sending…" : "Submit request"}
+									{isSubmitting
+										? t("requestFeature.sending")
+										: t("requestFeature.submit")}
 								</Button>
 							</Flex.Row>
 						)}

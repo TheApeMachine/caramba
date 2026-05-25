@@ -1,0 +1,210 @@
+{
+	"app": {
+		"title": "caramba",
+		"tagline": "A substrate for AI research"
+	},
+	"common": {
+		"home": "Home",
+		"cancel": "Cancel",
+		"save": "Save",
+		"admin": "Admin",
+		"loadingSession": "Loading session…"
+	},
+	"errors": {
+		"pageNotFound": "Page not found"
+	},
+	"nav": {
+		"projects": "Projects",
+		"research": "Research",
+		"models": "Models",
+		"agents": "Agents",
+		"kanban": {
+			"title": "Kanban",
+			"description": "Manage your projects"
+		},
+		"requestFeature": {
+			"title": "Request a feature",
+			"description": "Send requests to the Requests backlog"
+		},
+		"architecture": {
+			"title": "Architecture",
+			"description": "Build and manage your research architectures"
+		},
+		"benchmarks": {
+			"title": "Benchmarks",
+			"description": "Run evaluations and watch them live"
+		},
+		"newBenchmark": {
+			"title": "New benchmark",
+			"description": "Pick a preset or configure from scratch"
+		},
+		"newResearchProject": {
+			"title": "New research project",
+			"description": "Spin up a board, paper, and team in one flow"
+		}
+	},
+	"auth": {
+		"signIn": "Sign in",
+		"signUp": "Sign up",
+		"requestFeature": "Request feature",
+		"personalAccount": "Personal account",
+		"loadMoreOrganizations": "Load more organizations",
+		"switchWorkspace": "Switch workspace"
+	},
+	"theme": {
+		"toggle": "Toggle theme",
+		"light": "Light",
+		"dim": "Dim",
+		"dark": "Dark",
+		"system": "System",
+		"highContrast": "High contrast"
+	},
+	"language": {
+		"toggle": "Change language",
+		"en": "English",
+		"de": "Deutsch"
+	},
+	"research": {
+		"greetingMorning": "Good morning",
+		"greetingAfternoon": "Good afternoon",
+		"greetingEvening": "Good evening",
+		"researcherFallback": "Researcher",
+		"workspaceLoading": "Research workspace",
+		"subtitle": "Your projects, tasks, and recent activity in one place."
+	},
+	"kanban": {
+		"loadingHub": "Loading Kanban hub…",
+		"loadError": "Could not load projects for Kanban routing.",
+		"title": "Kanban",
+		"subtitle": "Open a board per research project, or the aggregate board for every project tagged with an organization slug.",
+		"organization": "Organization",
+		"noOrganization": "No organization",
+		"aggregateDescription": "Aggregate board across every project in this organization.",
+		"projectBoards": "Project boards",
+		"projectCount_one": "{{count}} project",
+		"projectCount_other": "{{count}} projects",
+		"noProjects": "No research projects synced yet.",
+		"personalUnsorted": "Personal / unsorted",
+		"loadingBoard": "Loading board…",
+		"projectKanban": "Project Kanban",
+		"loadingOrgBoard": "Loading organization board…",
+		"organizationKanban": "Organization Kanban"
+	},
+	"requestFeature": {
+		"title": "Request a feature",
+		"description": "Requests become Backlog cards on the Requests project for the configured organization (seeded as <1>caramba / requests</1> by default).",
+		"success": "Thanks — your request was added to the Requests backlog.",
+		"submitted": "Submitted",
+		"submitError": "Could not submit",
+		"titleTooShort": "Title is too short",
+		"titleLabel": "Title",
+		"descriptionRequired": "Description is required",
+		"descriptionLabel": "Description",
+		"contactEmailLabel": "Contact email (optional)",
+		"contactEmailPlaceholder": "you@example.com",
+		"kanbanHub": "Kanban hub",
+		"sending": "Sending…",
+		"submit": "Submit request"
+	},
+	"benchmarks": {
+		"title": "Benchmarks",
+		"subtitle": "Run an evaluation, watch it live, compare results.",
+		"chartGallery": "Chart gallery",
+		"newBenchmark": "New benchmark",
+		"runPreset": "Run a preset",
+		"estimatedMinutes": "~{{count}} min",
+		"recentRuns": "Recent runs",
+		"storedLocally": "{{count}} stored locally",
+		"noRunsYet": "No runs yet",
+		"noRunsHint": "Launch a preset above or build one from scratch.",
+		"untitledRun": "untitled run",
+		"justNow": "just now",
+		"minutesAgo": "{{count}}m ago",
+		"hoursAgo": "{{count}}h ago",
+		"lossPrefix": "loss {{value}}",
+		"deleteRun": "Delete run",
+		"runNotFound": "Run not found",
+		"runNotFoundHint": "Local run records may have been cleared. Start a new benchmark to see the live view.",
+		"backToBenchmarks": "Back to benchmarks",
+		"status": {
+			"done": "done",
+			"running": "running",
+			"queued": "queued",
+			"failed": "failed"
+		}
+	},
+	"measurement": {
+		"card": {
+			"progress": {
+				"notStarted": "Not started",
+				"started": "Started",
+				"finished": "Finished"
+			}
+		}
+	},
+	"assistant": {
+		"title": "Assistant",
+		"researchTeam": "Research team ({{count}})",
+		"headerDescription": "Manage sessions, personas, and chat with your team.",
+		"footerStreaming": "Responses may be incomplete while the team is streaming.",
+		"messageTeam": "Message your team ({{names}})…",
+		"messagePlaceholder": "Message…",
+		"chat": "Chat",
+		"team": "Team",
+		"messageLabel": "Message",
+		"sessions": "Sessions",
+		"reasoning": "Reasoning",
+		"toolError": "Tool error",
+		"toolResult": "Tool result",
+		"thinking": "Thinking…",
+		"you": "You",
+		"readySingle": "Ask anything — I'm ready.",
+		"readyTeam": "Ask anything — your research team is ready.",
+		"newConversation": "New conversation",
+		"scope": {
+			"global": "Global",
+			"team": "Team",
+			"personal": "Personal"
+		},
+		"adapter": {
+			"openai": "OpenAI (cloud)",
+			"ollama": "Ollama (local)",
+			"openaiCompat": "OpenAI-compatible"
+		},
+		"settings": {
+			"personaNamePlaceholder": "Persona name",
+			"scope": "Scope",
+			"adapter": "Adapter",
+			"endpointUrl": "Endpoint URL",
+			"systemPromptPlaceholder": "System prompt…",
+			"model": "Model",
+			"temperature": "Temperature",
+			"maxTokens": "Max tokens",
+			"newPersonaName": "Researcher {{count}}",
+			"defaultSystemPrompt": "You are a specialist researcher. Build on the conversation and add new insights.",
+			"localOnlyMode": "Local-only mode",
+			"localOnlyDescription": "Store everything in browser storage. Chat goes to per-persona local endpoints.",
+			"defaultLocalEndpoint": "Default local endpoint",
+			"authHeaderOptional": "Auth header (optional)",
+			"authHeaderPlaceholder": "Bearer sk-…",
+			"personas": "Personas",
+			"addPersona": "Add persona",
+			"contextWindow": "Context window (messages)",
+			"contextWindowHint": "First message is always pinned. Remaining context slides over the last N messages."
+		},
+		"defaultPersona": {
+			"name": "Assistant",
+			"systemPrompt": "You are a helpful research assistant. You can search arXiv for papers when relevant."
+		},
+		"models": {
+			"gpt-5.5": "GPT 5.5",
+			"gpt-5.4-mini": "GPT 5.4 mini",
+			"claude-opus-4-7": "Claude Opus 4.7",
+			"claude-sonnet-4-6": "Claude Sonnet 4.6",
+			"gemini-3.1-pro": "Gemini 3.1 Pro",
+			"gemini-3.1-flash": "Gemini 3.1 Flash",
+			"grok-4.3": "Grok 4.3",
+			"grok-4.3-mini": "Grok 4.3 mini"
+		}
+	}
+}

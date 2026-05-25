@@ -11,6 +11,7 @@ import {
 	MicroscopeIcon,
 	NetworkIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
 	Accordion,
 	AccordionItem,
@@ -25,11 +26,13 @@ export const Navigation = ({
 }: {
 	onNavigate?: () => void;
 } = {}) => {
+	const { t } = useTranslation();
+
 	return (
 		<Accordion className="w-full">
 			<AccordionItem value="item-1">
 				<AccordionTrigger>
-					<BlocksIcon /> Projects
+					<BlocksIcon /> {t("nav.projects")}
 				</AccordionTrigger>
 				<AccordionPanel className="flex flex-col gap-2">
 					<Link to={"/kanban"} onClick={onNavigate}>
@@ -39,9 +42,9 @@ export const Navigation = ({
 						>
 							<KanbanIcon className="shrink-0" />
 							<Flex.Column gap={1} className="text-left" fullWidth>
-								<h3>Kanban</h3>
+								<h3>{t("nav.kanban.title")}</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
-									Manage your projects
+									{t("nav.kanban.description")}
 								</p>
 							</Flex.Column>
 							<ChevronRightIcon
@@ -57,9 +60,9 @@ export const Navigation = ({
 						>
 							<LightbulbIcon className="shrink-0" />
 							<Flex.Column gap={1} className="text-left" fullWidth>
-								<h3>Request a feature</h3>
+								<h3>{t("nav.requestFeature.title")}</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
-									Send requests to the Requests backlog
+									{t("nav.requestFeature.description")}
 								</p>
 							</Flex.Column>
 							<ChevronRightIcon
@@ -72,7 +75,7 @@ export const Navigation = ({
 			</AccordionItem>
 			<AccordionItem value="item-2">
 				<AccordionTrigger>
-					<MicroscopeIcon /> Research
+					<MicroscopeIcon /> {t("nav.research")}
 				</AccordionTrigger>
 				<AccordionPanel className="flex flex-col gap-2">
 					<Link to={"/nodegraph"} onClick={onNavigate}>
@@ -82,9 +85,9 @@ export const Navigation = ({
 						>
 							<NetworkIcon className="shrink-0" />
 							<Flex.Column gap={1} className="text-left" fullWidth>
-								<h3>Architecture</h3>
+								<h3>{t("nav.architecture.title")}</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
-									Build and manage your research architectures
+									{t("nav.architecture.description")}
 								</p>
 							</Flex.Column>
 							<ChevronRightIcon
@@ -100,9 +103,9 @@ export const Navigation = ({
 						>
 							<GaugeIcon className="shrink-0" />
 							<Flex.Column gap={1} className="text-left" fullWidth>
-								<h3>Benchmarks</h3>
+								<h3>{t("nav.benchmarks.title")}</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
-									Run evaluations and watch them live
+									{t("nav.benchmarks.description")}
 								</p>
 							</Flex.Column>
 							<ChevronRightIcon
@@ -118,9 +121,9 @@ export const Navigation = ({
 						>
 							<FlaskConicalIcon className="shrink-0" />
 							<Flex.Column gap={1} className="text-left" fullWidth>
-								<h3>New benchmark</h3>
+								<h3>{t("nav.newBenchmark.title")}</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
-									Pick a preset or configure from scratch
+									{t("nav.newBenchmark.description")}
 								</p>
 							</Flex.Column>
 							<ChevronRightIcon
@@ -136,9 +139,9 @@ export const Navigation = ({
 						>
 							<MicroscopeIcon className="shrink-0" />
 							<Flex.Column gap={1} className="text-left" fullWidth>
-								<h3>New research project</h3>
+								<h3>{t("nav.newResearchProject.title")}</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
-									Spin up a board, paper, and team in one flow
+									{t("nav.newResearchProject.description")}
 								</p>
 							</Flex.Column>
 							<ChevronRightIcon
@@ -151,7 +154,7 @@ export const Navigation = ({
 			</AccordionItem>
 			<AccordionItem value="item-3">
 				<AccordionTrigger>
-					<NetworkIcon /> Models
+					<NetworkIcon /> {t("nav.models")}
 				</AccordionTrigger>
 				<AccordionPanel className="flex flex-col gap-2">
 					<Link to={"/nodegraph"} onClick={onNavigate}>
@@ -161,9 +164,9 @@ export const Navigation = ({
 						>
 							<CpuIcon className="shrink-0" />
 							<Flex.Column gap={1} className="text-left" fullWidth>
-								<h3>Architecture</h3>
+								<h3>{t("nav.architecture.title")}</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
-									Build and manage your research architectures
+									{t("nav.architecture.description")}
 								</p>
 							</Flex.Column>
 							<ChevronRightIcon
@@ -176,7 +179,7 @@ export const Navigation = ({
 			</AccordionItem>
 			<AccordionItem value="item-4">
 				<AccordionTrigger>
-					<BotIcon /> Agents
+					<BotIcon /> {t("nav.agents")}
 				</AccordionTrigger>
 				<AccordionPanel className="flex flex-col gap-2">
 					<Link to={"/nodegraph"} onClick={onNavigate}>
@@ -186,9 +189,9 @@ export const Navigation = ({
 						>
 							<BotIcon className="shrink-0" />
 							<Flex.Column gap={1} className="text-left" fullWidth>
-								<h3>Architecture</h3>
+								<h3>{t("nav.architecture.title")}</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">
-									Build and manage your research architectures
+									{t("nav.architecture.description")}
 								</p>
 							</Flex.Column>
 							<ChevronRightIcon

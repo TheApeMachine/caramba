@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LiveRun, loadRuns, type RunRecord } from "#/components/benchmarks";
 import { Button } from "#/components/ui/button";
 
@@ -10,6 +11,7 @@ export const Route = createFileRoute("/benchmarks/$runId")({
 
 function BenchmarkRunRoute() {
 	const { runId } = useParams({ from: "/benchmarks/$runId" });
+	const { t } = useTranslation();
 	const [record, setRecord] = useState<RunRecord | null>(null);
 	const [resolved, setResolved] = useState(false);
 
@@ -25,19 +27,18 @@ function BenchmarkRunRoute() {
 			return (
 				<div className="flex h-full flex-col items-center justify-center gap-3 text-center">
 					<h2 className="font-semibold text-foreground text-lg">
-						Run not found
+						{t("benchmarks.runNotFound")}
 					</h2>
 					<p className="text-muted-foreground text-sm">
-						Local run records may have been cleared. Start a new benchmark to
-						see the live view.
+						{t("benchmarks.runNotFoundHint")}
 					</p>
 					<Button render={<Link to="/benchmarks" />} size="sm">
-						Back to benchmarks
+						{t("benchmarks.backToBenchmarks")}
 					</Button>
 				</div>
 			);
 		return <LiveRun runId={runId} spec={record.spec} initialRecord={record} />;
-	}, [record, resolved, runId]);
+	}, [record, resolved, runId, t]);
 
 	return <div className="flex h-full min-h-0 w-full flex-1 p-4">{view}</div>;
 }

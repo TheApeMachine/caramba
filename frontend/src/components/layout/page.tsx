@@ -2,6 +2,7 @@ import { Link, useLocation, useRouterState } from "@tanstack/react-router";
 import { Menu as MenuIcon } from "lucide-react";
 import type React from "react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -105,6 +106,7 @@ Page.Header = ({ children }: { children?: React.ReactNode }) => {
 
 const PageHeaderBody = ({ children }: { children?: React.ReactNode }) => {
 	const [navOpen, setNavOpen] = useState(false);
+	const { t } = useTranslation();
 
 	return (
 		<header className="grid-area-header flex shrink-0 flex-wrap items-center justify-between gap-4 p-4">
@@ -117,25 +119,25 @@ const PageHeaderBody = ({ children }: { children?: React.ReactNode }) => {
 							</SheetTrigger>
 							<SheetPopup variant="inset" side="left">
 								<SheetHeader>
-									<SheetTitle>Caramba</SheetTitle>
-									<SheetDescription>
-										A substrate for AI research
-									</SheetDescription>
+									<SheetTitle>{t("app.title")}</SheetTitle>
+									<SheetDescription>{t("app.tagline")}</SheetDescription>
 								</SheetHeader>
 								<SheetPanel className="grid gap-4">
 									<Navigation onNavigate={() => setNavOpen(false)} />
 								</SheetPanel>
 								<SheetFooter>
 									<SheetClose render={<Button variant="ghost" />}>
-										Cancel
+										{t("common.cancel")}
 									</SheetClose>
-									<Button type="submit">Save</Button>
+									<Button type="submit">{t("common.save")}</Button>
 								</SheetFooter>
 							</SheetPopup>
 						</Sheet>
 					</BreadcrumbItem>
 					<BreadcrumbItem>
-						<BreadcrumbLink render={<Link to={"/"} />}>Home</BreadcrumbLink>
+						<BreadcrumbLink render={<Link to={"/"} />}>
+							{t("common.home")}
+						</BreadcrumbLink>
 					</BreadcrumbItem>
 					{useRouteCrumbs().map((crumb, index, all) => (
 						<RouteCrumb

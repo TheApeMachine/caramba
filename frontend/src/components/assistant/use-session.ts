@@ -4,6 +4,7 @@ import type { AssistantMessageRow } from "#/collections/assistant_messages";
 import type { AssistantPersonaRow } from "#/collections/assistant_personas";
 import type { AssistantSessionPersonaRow } from "#/collections/assistant_session_personas";
 import type { AssistantSessionRow } from "#/collections/assistant_sessions";
+import i18n from "#/i18n";
 import { useAssistantCollections } from "./assistant-collections-provider";
 import { importLocalStorageIfNeeded } from "./storage-migration";
 import {
@@ -126,7 +127,7 @@ function newSessionRow(scope: SessionScope = "personal"): AssistantSessionRow {
 		scope,
 		owner_id: null,
 		organization_slug: null,
-		title: "New conversation",
+		title: i18n.t("assistant.newConversation"),
 		window_size: DEFAULT_WINDOW_SIZE,
 		created_at: now,
 		updated_at: now,
@@ -253,7 +254,7 @@ export function useSession() {
 		return {
 			id: "pending",
 			scope: "personal",
-			title: "New conversation",
+			title: i18n.t("assistant.newConversation"),
 			createdAt: Date.now(),
 			messages: [],
 			personas: [{ ...DEFAULT_PERSONA }],

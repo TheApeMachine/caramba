@@ -3,6 +3,7 @@ import {
 	useOrganizationList,
 } from "@clerk/tanstack-react-start";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "#/components/ui/button";
 import {
 	Menu,
@@ -29,12 +30,13 @@ export function OrganizationAccountMenu() {
 	});
 
 	const loaded = organizationLoaded && membershipListLoaded;
+	const { t } = useTranslation();
 
 	const memberships = userMemberships?.data ?? [];
 	const label =
 		organization !== undefined && organization !== null
 			? organization.name
-			: "Personal account";
+			: t("auth.personalAccount");
 
 	return (
 		<Menu>
@@ -48,7 +50,7 @@ export function OrganizationAccountMenu() {
 						variant="outline"
 					/>
 				}
-				aria-label="Switch workspace"
+				aria-label={t("auth.switchWorkspace")}
 			>
 				<span className="min-w-0 flex-1 truncate text-start" title={label}>
 					{label}
@@ -63,7 +65,9 @@ export function OrganizationAccountMenu() {
 					}}
 				>
 					<span className="flex min-w-0 flex-1 items-center gap-2">
-						<span className="min-w-0 flex-1 truncate">Personal account</span>
+						<span className="min-w-0 flex-1 truncate">
+							{t("auth.personalAccount")}
+						</span>
 						{loaded && organization === null ? (
 							<CheckIcon aria-hidden className="size-4 shrink-0" />
 						) : null}
@@ -108,7 +112,7 @@ export function OrganizationAccountMenu() {
 								void userMemberships.fetchNext();
 							}}
 						>
-							Load more organizations
+							{t("auth.loadMoreOrganizations")}
 						</MenuItem>
 					</>
 				) : null}

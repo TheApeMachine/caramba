@@ -10,9 +10,10 @@ import {
 	TrashIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn } from "#/lib/utils";
 import { BACKENDS, DATASETS, MODELS, PRESETS } from "./model";
 import { deleteRun, loadRuns, type RunRecord } from "./store";
 
@@ -26,14 +27,6 @@ const statusVariant: Record<
 	failed: "error",
 };
 
-const fmtRelative = (timestamp: number): string => {
-	const diff = Date.now() - timestamp;
-	if (diff < 60_000) return "just now";
-	if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m ago`;
-	if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h ago`;
-	return new Date(timestamp).toLocaleDateString();
-};
-
 const RunRow = ({
 	run,
 	onDelete,
@@ -41,9 +34,27 @@ const RunRow = ({
 	run: RunRecord;
 	onDelete: () => void;
 }) => {
+	const { t } = useTranslation();
 	const model = MODELS.find((entry) => entry.id === run.spec.modelId);
 	const dataset = DATASETS.find((entry) => entry.id === run.spec.datasetId);
 	const backend = BACKENDS.find((entry) => entry.id === run.spec.backend);
+
+	const fmtRelative = (timestamp: number): string => {
+		const diff = Date.now() - timestamp;
+		if (diff < 60_000) return t("benchmarks.justNow");
+		if (diff < 3_600_000) {
+			return t("benchmarks.minutesAgo", {
+				count: Math.round(diff / 60_000),
+			});
+		}
+		if (diff < 86_400_000) {
+			return t("benchmarks.hoursAgo", {
+				count: Math.round(diff / 3_600_000),
+			});
+		}
+		return new Date(timestamp).toLocaleDateString();
+	};
+
 	return (
 		<li className="group flex items-center gap-3 rounded-xl border bg-card/40 px-4 py-3 hover:border-primary/40 hover:bg-card/80">
 			<Link
@@ -54,14 +65,14 @@ const RunRow = ({
 				<div className="flex flex-1 min-w-0 flex-col gap-1">
 					<div className="flex items-center gap-2">
 						<span className="truncate font-medium text-foreground text-sm">
-							{run.spec.name || "untitled run"}
+							{run.spec.name || t("benchmarks.untitledRun")}
 						</span>
 						<Badge
 							variant={statusVariant[run.status]}
 							size="sm"
 							className="capitalize"
 						>
-							{run.status}
+							{t(`benchmarks.status.${run.status}`)}
 						</Badge>
 					</div>
 					<div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground text-xs">
@@ -87,7 +98,11 @@ const RunRow = ({
 							: "—"}
 					</span>
 					<span className="text-muted-foreground">
-						{run.finalLoss !== null ? `loss ${run.finalLoss.toFixed(3)}` : ""}
+						{run.finalLoss !== null
+							? t("benchmarks.lossPrefix", {
+									value: run.finalLoss.toFixed(3),
+								})
+							: ""}
 					</span>
 				</div>
 			</Link>
@@ -96,7 +111,7 @@ const RunRow = ({
 				size="sm"
 				onClick={onDelete}
 				className="opacity-0 transition group-hover:opacity-100"
-				aria-label="Delete run"
+				aria-label={t("benchmarks.deleteRun")}
 			>
 				<TrashIcon />
 			</Button>
@@ -110,6 +125,7 @@ localStorage for the mock) plus the preset shortcuts so the most common
 flow — "run SST-2 again" — never costs the user a wizard click.
 */
 export const IndexView = () => {
+	const { t } = useTranslation();
 	const [runs, setRuns] = useState<RunRecord[]>([]);
 
 	useEffect(() => {
@@ -125,9 +141,11 @@ export const IndexView = () => {
 		<div className="flex h-full min-h-0 flex-1 flex-col gap-6">
 			<header className="flex flex-wrap items-center justify-between gap-3">
 				<div className="flex flex-col">
-					<h1 className="font-semibold text-foreground text-xl">Benchmarks</h1>
+					<h1 className="font-semibold text-foreground text-xl">
+						{t("benchmarks.title")}
+					</h1>
 					<p className="text-muted-foreground text-sm">
-						Run an evaluation, watch it live, compare results.
+						{t("benchmarks.subtitle")}
 					</p>
 				</div>
 				<div className="flex items-center gap-2">
@@ -136,10 +154,10 @@ export const IndexView = () => {
 						variant="outline"
 						size="sm"
 					>
-						Chart gallery
+						{t("benchmarks.chartGallery")}
 					</Button>
 					<Button render={<Link to="/benchmarks/new" />}>
-						<PlusIcon /> New benchmark
+						<PlusIcon /> {t("benchmarks.newBenchmark")}
 					</Button>
 				</div>
 			</header>
@@ -147,7 +165,7 @@ export const IndexView = () => {
 			<section className="flex flex-col gap-3">
 				<div className="flex items-center gap-2 text-foreground text-sm">
 					<FlaskConicalIcon className="size-4 text-primary" />
-					<span className="font-medium">Run a preset</span>
+					<span className="font-medium">{t("benchmarks.runPreset")}</span>
 				</div>
 				<div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
 					{PRESETS.map((preset) => (
@@ -172,7 +190,9 @@ export const IndexView = () => {
 								{preset.description}
 							</span>
 							<span className="text-muted-foreground/80 text-xs">
-								~{preset.estimatedMinutes} min
+								{t("benchmarks.estimatedMinutes", {
+									count: preset.estimatedMinutes,
+								})}
 							</span>
 						</Link>
 					))}
@@ -182,10 +202,10 @@ export const IndexView = () => {
 			<section className="flex min-h-0 flex-1 flex-col gap-3">
 				<div className="flex items-center justify-between">
 					<span className="font-medium text-foreground text-sm">
-						Recent runs
+						{t("benchmarks.recentRuns")}
 					</span>
 					<span className="text-muted-foreground text-xs">
-						{runs.length} stored locally
+						{t("benchmarks.storedLocally", { count: runs.length })}
 					</span>
 				</div>
 
@@ -194,14 +214,14 @@ export const IndexView = () => {
 						<FlaskConicalIcon className="size-8 text-muted-foreground/50" />
 						<div className="flex flex-col gap-1">
 							<span className="font-medium text-foreground text-sm">
-								No runs yet
+								{t("benchmarks.noRunsYet")}
 							</span>
 							<span className="text-muted-foreground text-xs">
-								Launch a preset above or build one from scratch.
+								{t("benchmarks.noRunsHint")}
 							</span>
 						</div>
 						<Button render={<Link to="/benchmarks/new" />} size="sm">
-							<PlusIcon /> New benchmark
+							<PlusIcon /> {t("benchmarks.newBenchmark")}
 						</Button>
 					</div>
 				) : (

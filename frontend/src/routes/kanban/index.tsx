@@ -2,15 +2,18 @@ import { useAuth } from "@clerk/tanstack-react-start";
 import { useLiveQuery } from "@tanstack/react-db";
 import { ClientOnly, createFileRoute, Link } from "@tanstack/react-router";
 import { KanbanIcon, LayersIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { researchProjectCollection } from "#/collections/research_project";
 import { Flex } from "#/components/ui/flex";
 import { Typography } from "#/components/ui/typography";
 
 const KanbanHubPending = () => {
+	const { t } = useTranslation();
+
 	return (
 		<Flex.Center className="p-6">
 			<Typography.Paragraph variant="muted">
-				Loading Kanban hub…
+				{t("kanban.loadingHub")}
 			</Typography.Paragraph>
 		</Flex.Center>
 	);
@@ -18,6 +21,7 @@ const KanbanHubPending = () => {
 
 function KanbanHubContent() {
 	const { orgSlug } = useAuth();
+	const { t } = useTranslation();
 
 	const { data, isLoading, isError } = useLiveQuery((query) =>
 		query
@@ -37,7 +41,7 @@ function KanbanHubContent() {
 		return (
 			<Flex.Center className="p-6">
 				<Typography.Paragraph variant="muted">
-					Could not load projects for Kanban routing.
+					{t("kanban.loadError")}
 				</Typography.Paragraph>
 			</Flex.Center>
 		);
@@ -49,11 +53,10 @@ function KanbanHubContent() {
 		<Flex.Column className="mx-auto min-h-0 w-full max-w-5xl flex-1 gap-8 p-8">
 			<Flex.Column gap={2}>
 				<h1 className="font-semibold text-foreground text-2xl tracking-tight">
-					Kanban
+					{t("kanban.title")}
 				</h1>
 				<Typography.Paragraph variant="muted">
-					Open a board per research project, or the aggregate board for every
-					project tagged with an organization slug.
+					{t("kanban.subtitle")}
 				</Typography.Paragraph>
 			</Flex.Column>
 
@@ -65,7 +68,7 @@ function KanbanHubContent() {
 							className="size-4 shrink-0 text-muted-foreground"
 						/>
 						<h2 className="font-medium text-foreground text-sm">
-							Organization
+							{t("kanban.organization")}
 						</h2>
 					</Flex.Row>
 					<Link
@@ -79,11 +82,11 @@ function KanbanHubContent() {
 								className="size-4 shrink-0 text-muted-foreground group-hover:text-primary"
 							/>
 							<span className="truncate font-medium text-sm">
-								{orgSlug ?? "No organization"}
+								{orgSlug ?? t("kanban.noOrganization")}
 							</span>
 						</Flex.Row>
 						<span className="text-muted-foreground text-xs">
-							Aggregate board across every project in this organization.
+							{t("kanban.aggregateDescription")}
 						</span>
 					</Link>
 				</section>
@@ -95,16 +98,16 @@ function KanbanHubContent() {
 							className="size-4 shrink-0 text-muted-foreground"
 						/>
 						<h2 className="font-medium text-foreground text-sm">
-							Project boards
+							{t("kanban.projectBoards")}
 						</h2>
 						<span className="ml-auto text-muted-foreground text-xs">
-							{projects.length} {projects.length === 1 ? "project" : "projects"}
+							{t("kanban.projectCount", { count: projects.length })}
 						</span>
 					</Flex.Row>
 					{projects.length === 0 ? (
 						<div className="rounded-xl border border-border border-dashed bg-card/30 p-6 text-center">
 							<Typography.Paragraph variant="muted">
-								No research projects synced yet.
+								{t("kanban.noProjects")}
 							</Typography.Paragraph>
 						</div>
 					) : (
@@ -120,7 +123,8 @@ function KanbanHubContent() {
 											{project.name}
 										</span>
 										<span className="truncate text-muted-foreground text-xs">
-											{project.organization_slug ?? "Personal / unsorted"}
+											{project.organization_slug ??
+												t("kanban.personalUnsorted")}
 										</span>
 									</Link>
 								</li>

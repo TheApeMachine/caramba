@@ -1,5 +1,6 @@
 import { MessageSquareText, Settings } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardPanel } from "#/components/ui/card";
 import { AnimatePresence, Flex } from "#/components/ui/flex";
 import { Tabs } from "#/components/ui/tabs";
@@ -49,13 +50,16 @@ export const Body = ({
 	onWindowSizeChange,
 }: BodyProps) => {
 	const [tab, setTab] = useState<string>("chat");
+	const { t } = useTranslation();
 	const isMini = mode === "mini";
 	const isFull = mode === "full";
 
 	const placeholder =
 		session.personas.length > 1 && !isMini
-			? `Message your team (${session.personas.map((p) => p.name).join(", ")})…`
-			: "Message…";
+			? t("assistant.messageTeam", {
+					names: session.personas.map((persona) => persona.name).join(", "),
+				})
+			: t("assistant.messagePlaceholder");
 
 	return (
 		<Card className="w-full flex-1 min-h-0">
@@ -83,11 +87,11 @@ export const Body = ({
 									<Tabs.List>
 										<Tabs.Tab value="chat">
 											<MessageSquareText />
-											Chat
+											{t("assistant.chat")}
 										</Tabs.Tab>
 										<Tabs.Tab value="settings">
 											<Settings />
-											Team
+											{t("assistant.team")}
 										</Tabs.Tab>
 									</Tabs.List>
 								</Tabs>

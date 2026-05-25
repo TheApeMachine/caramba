@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "#/components/ui/button";
 import { AnimatePresence, Flex } from "#/components/ui/flex";
 import type { Session } from "./types";
@@ -18,11 +19,13 @@ export const Sidebar = ({
 	onCreate,
 	onDelete,
 }: SidebarProps) => {
+	const { t } = useTranslation();
+
 	return (
 		<Flex.Column className="w-52 shrink-0 border-r">
 			<Flex.Row align="center" justify="between" className="px-3 py-2">
 				<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-					Sessions
+					{t("assistant.sessions")}
 				</span>
 				<Button
 					size="icon-xs"

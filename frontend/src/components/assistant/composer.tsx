@@ -1,4 +1,5 @@
 import { Send, Square } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "#/components/ui/button";
 import { Field } from "#/components/ui/field";
 import { AnimatePresence, Flex } from "#/components/ui/flex";
@@ -22,10 +23,14 @@ export const Composer = ({
 	busy,
 	placeholder,
 }: ComposerProps) => {
+	const { t } = useTranslation();
+
 	return (
 		<Form onSubmit={onSubmit} className="flex w-full border-t shrink-0">
 			<Field className="w-full flex-1">
-				<Field.Label className="sr-only">Message</Field.Label>
+				<Field.Label className="sr-only">
+					{t("assistant.messageLabel")}
+				</Field.Label>
 				<Input
 					value={value}
 					onChange={(e) => onChange(e.target.value)}

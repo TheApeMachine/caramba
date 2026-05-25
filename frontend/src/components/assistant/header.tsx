@@ -1,4 +1,5 @@
 import { Bot, Maximize2, Minimize2, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "#/components/ui/button";
 import {
 	CardFrameAction,
@@ -17,6 +18,7 @@ interface HeaderProps {
 }
 
 export const Header = ({ mode, setMode, teamName }: HeaderProps) => {
+	const { t } = useTranslation();
 	const isClosed = mode === "closed";
 	const isMini = mode === "mini";
 	const isFull = mode === "full";
@@ -43,7 +45,7 @@ export const Header = ({ mode, setMode, teamName }: HeaderProps) => {
 			</Flex.Row>
 			{isFull && (
 				<CardFrameDescription>
-					Manage sessions, personas, and chat with your team.
+					{t("assistant.headerDescription")}
 				</CardFrameDescription>
 			)}
 			{!isClosed && (

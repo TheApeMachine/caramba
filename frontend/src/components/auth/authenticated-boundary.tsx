@@ -1,6 +1,7 @@
 import { useAuth } from "@clerk/tanstack-react-start";
 import { Navigate, useRouterState } from "@tanstack/react-router";
 import type React from "react";
+import { useTranslation } from "react-i18next";
 import { isAuthenticationPublicPath } from "#/lib/authentication-public-path";
 
 /*
@@ -16,6 +17,7 @@ export function AuthenticatedBoundary({
 		select: (routerState) => routerState.location.pathname,
 	});
 	const { isSignedIn, isLoaded } = useAuth();
+	const { t } = useTranslation();
 
 	if (isAuthenticationPublicPath(pathname)) {
 		return children;
@@ -24,7 +26,7 @@ export function AuthenticatedBoundary({
 	if (!isLoaded) {
 		return (
 			<div className="flex h-full flex-1 items-center justify-center text-muted-foreground">
-				Loading session…
+				{t("common.loadingSession")}
 			</div>
 		);
 	}

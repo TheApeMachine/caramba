@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
@@ -35,15 +36,15 @@ const PROVIDERS = Array.from(
 ) as Provider[];
 
 const SCOPE_LABELS: Record<PersonaScope, string> = {
-	global: "Global",
-	team: "Team",
-	personal: "Personal",
+	global: "assistant.scope.global",
+	team: "assistant.scope.team",
+	personal: "assistant.scope.personal",
 };
 
 const ADAPTER_LABELS: Record<AdapterType, string> = {
-	openai: "OpenAI (cloud)",
-	ollama: "Ollama (local)",
-	"openai-compat": "OpenAI-compatible",
+	openai: "assistant.adapter.openai",
+	ollama: "assistant.adapter.ollama",
+	"openai-compat": "assistant.adapter.openaiCompat",
 };
 
 function sliderScalar(next: number | readonly number[]): number | undefined {
@@ -70,6 +71,7 @@ function PersonaCard({
 	onUpdate: (p: Persona) => void;
 	onRemove: () => void;
 }) {
+	const { t } = useTranslation();
 	const showEndpoint =
 		persona.adapterType === "ollama" || persona.adapterType === "openai-compat";
 
@@ -80,7 +82,7 @@ function PersonaCard({
 					value={persona.name}
 					onChange={(e) => onUpdate({ ...persona, name: e.target.value })}
 					className="h-7 text-sm font-medium flex-1"
-					placeholder="Persona name"
+					placeholder={t("assistant.settings.personaNamePlaceholder")}
 				/>
 				{removable && (
 					<Button size="icon-xs" variant="ghost" onClick={onRemove}>
@@ -91,7 +93,9 @@ function PersonaCard({
 
 			<div className="grid grid-cols-2 gap-2">
 				<div className="flex flex-col gap-1">
-					<Label className="text-xs text-muted-foreground">Scope</Label>
+					<Label className="text-xs text-muted-foreground">
+						{t("assistant.settings.scope")}
+					</Label>
 					<Select
 						value={persona.scope}
 						onValueChange={(v) =>
@@ -102,15 +106,19 @@ function PersonaCard({
 							<SelectValue />
 						</SelectTrigger>
 						<SelectPopup>
-							<SelectItem value="personal">{SCOPE_LABELS.personal}</SelectItem>
-							<SelectItem value="team">{SCOPE_LABELS.team}</SelectItem>
-							<SelectItem value="global">{SCOPE_LABELS.global}</SelectItem>
+							<SelectItem value="personal">
+								{t(SCOPE_LABELS.personal)}
+							</SelectItem>
+							<SelectItem value="team">{t(SCOPE_LABELS.team)}</SelectItem>
+							<SelectItem value="global">{t(SCOPE_LABELS.global)}</SelectItem>
 						</SelectPopup>
 					</Select>
 				</div>
 
 				<div className="flex flex-col gap-1">
-					<Label className="text-xs text-muted-foreground">Adapter</Label>
+					<Label className="text-xs text-muted-foreground">
+						{t("assistant.settings.adapter")}
+					</Label>
 					<Select
 						value={persona.adapterType}
 						onValueChange={(v) =>
@@ -121,10 +129,10 @@ function PersonaCard({
 							<SelectValue />
 						</SelectTrigger>
 						<SelectPopup>
-							<SelectItem value="openai">{ADAPTER_LABELS.openai}</SelectItem>
-							<SelectItem value="ollama">{ADAPTER_LABELS.ollama}</SelectItem>
+							<SelectItem value="openai">{t(ADAPTER_LABELS.openai)}</SelectItem>
+							<SelectItem value="ollama">{t(ADAPTER_LABELS.ollama)}</SelectItem>
 							<SelectItem value="openai-compat">
-								{ADAPTER_LABELS["openai-compat"]}
+								{t(ADAPTER_LABELS["openai-compat"])}
 							</SelectItem>
 						</SelectPopup>
 					</Select>
@@ -133,7 +141,9 @@ function PersonaCard({
 
 			{showEndpoint && (
 				<div className="flex flex-col gap-1">
-					<Label className="text-xs text-muted-foreground">Endpoint URL</Label>
+					<Label className="text-xs text-muted-foreground">
+						{t("assistant.settings.endpointUrl")}
+					</Label>
 					<Input
 						value={persona.endpointUrl}
 						onChange={(e) =>
@@ -152,12 +162,14 @@ function PersonaCard({
 			<Textarea
 				value={persona.systemPrompt}
 				onChange={(e) => onUpdate({ ...persona, systemPrompt: e.target.value })}
-				placeholder="System prompt…"
+				placeholder={t("assistant.settings.systemPromptPlaceholder")}
 				className="text-xs min-h-[72px]"
 			/>
 
 			<div className="flex flex-col gap-2">
-				<Label className="text-xs text-muted-foreground">Model</Label>
+				<Label className="text-xs text-muted-foreground">
+					{t("assistant.settings.model")}
+				</Label>
 				<Select
 					value={persona.model}
 					onValueChange={(v) => v && onUpdate({ ...persona, model: v })}
@@ -171,13 +183,15 @@ function PersonaCard({
 								<div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
 									{PROVIDER_LABELS[provider]}
 								</div>
-								{AVAILABLE_MODELS.filter((m) => m.provider === provider).map(
-									(m) => (
-										<SelectItem key={m.id} value={m.id}>
-											{m.label}
-										</SelectItem>
-									),
-								)}
+								{AVAILABLE_MODELS.filter(
+									(modelEntry) => modelEntry.provider === provider,
+								).map((modelEntry) => (
+									<SelectItem key={modelEntry.id} value={modelEntry.id}>
+										{t(`assistant.models.${modelEntry.id}`, {
+											defaultValue: modelEntry.label,
+										})}
+									</SelectItem>
+								))}
 							</div>
 						))}
 					</SelectPopup>
@@ -186,7 +200,9 @@ function PersonaCard({
 
 			<div className="flex flex-col gap-1">
 				<div className="flex items-center justify-between">
-					<Label className="text-xs text-muted-foreground">Temperature</Label>
+					<Label className="text-xs text-muted-foreground">
+						{t("assistant.settings.temperature")}
+					</Label>
 					<span className="text-xs tabular-nums">
 						{persona.temperature.toFixed(1)}
 					</span>
@@ -205,7 +221,9 @@ function PersonaCard({
 
 			<div className="flex flex-col gap-1">
 				<div className="flex items-center justify-between">
-					<Label className="text-xs text-muted-foreground">Max tokens</Label>
+					<Label className="text-xs text-muted-foreground">
+						{t("assistant.settings.maxTokens")}
+					</Label>
 					<span className="text-xs tabular-nums">{persona.maxTokens}</span>
 				</div>
 				<Slider
@@ -231,15 +249,17 @@ export function SettingsPanel({
 	onWindowSizeChange,
 }: Props) {
 	const { mode, toggle, endpoint, updateEndpoint } = useAssistantMode();
+	const { t } = useTranslation();
 
 	const handleAdd = () => {
 		onAddPersona({
 			...DEFAULT_PERSONA,
 			id: crypto.randomUUID(),
 			scope: "personal",
-			name: `Researcher ${session.personas.length + 1}`,
-			systemPrompt:
-				"You are a specialist researcher. Build on the conversation and add new insights.",
+			name: t("assistant.settings.newPersonaName", {
+				count: session.personas.length + 1,
+			}),
+			systemPrompt: t("assistant.settings.defaultSystemPrompt"),
 		});
 	};
 
@@ -248,10 +268,11 @@ export function SettingsPanel({
 			<div className="flex flex-col gap-3 rounded-xl border bg-muted/30 p-4">
 				<div className="flex items-center justify-between">
 					<div className="flex flex-col">
-						<span className="text-sm font-medium">Local-only mode</span>
+						<span className="text-sm font-medium">
+							{t("assistant.settings.localOnlyMode")}
+						</span>
 						<span className="text-xs text-muted-foreground">
-							Store everything in browser storage. Chat goes to per-persona
-							local endpoints.
+							{t("assistant.settings.localOnlyDescription")}
 						</span>
 					</div>
 					<Switch checked={mode === "local"} onCheckedChange={() => toggle()} />
@@ -261,7 +282,7 @@ export function SettingsPanel({
 					<div className="flex flex-col gap-2 pt-2 border-t">
 						<div className="flex flex-col gap-1">
 							<Label className="text-xs text-muted-foreground">
-								Default local endpoint
+								{t("assistant.settings.defaultLocalEndpoint")}
 							</Label>
 							<Input
 								value={endpoint.baseURL}
@@ -272,12 +293,12 @@ export function SettingsPanel({
 						</div>
 						<div className="flex flex-col gap-1">
 							<Label className="text-xs text-muted-foreground">
-								Auth header (optional)
+								{t("assistant.settings.authHeaderOptional")}
 							</Label>
 							<Input
 								value={endpoint.authHeader}
 								onChange={(e) => updateEndpoint({ authHeader: e.target.value })}
-								placeholder="Bearer sk-…"
+								placeholder={t("assistant.settings.authHeaderPlaceholder")}
 								className="h-7 text-xs"
 							/>
 						</div>
@@ -287,10 +308,12 @@ export function SettingsPanel({
 
 			<div className="flex flex-col gap-3">
 				<div className="flex items-center justify-between">
-					<span className="text-sm font-medium">Personas</span>
+					<span className="text-sm font-medium">
+						{t("assistant.settings.personas")}
+					</span>
 					<Button size="xs" variant="outline" onClick={handleAdd}>
 						<Plus />
-						Add persona
+						{t("assistant.settings.addPersona")}
 					</Button>
 				</div>
 
@@ -308,7 +331,7 @@ export function SettingsPanel({
 			<div className="flex flex-col gap-2 border-t pt-4">
 				<div className="flex items-center justify-between">
 					<Label className="text-xs text-muted-foreground">
-						Context window (messages)
+						{t("assistant.settings.contextWindow")}
 					</Label>
 					<span className="text-xs tabular-nums">{session.windowSize}</span>
 				</div>
@@ -323,8 +346,7 @@ export function SettingsPanel({
 					}}
 				/>
 				<p className="text-xs text-muted-foreground">
-					First message is always pinned. Remaining context slides over the last
-					N messages.
+					{t("assistant.settings.contextWindowHint")}
 				</p>
 			</div>
 		</div>

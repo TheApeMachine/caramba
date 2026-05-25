@@ -1,4 +1,5 @@
 import { Contrast, Monitor, Moon, Sun, SunDim } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "#/components/ui/button";
 import {
 	Menu,
@@ -23,13 +24,14 @@ toggle. State is owned by the ThemeProvider and persisted to localStorage.
 */
 export const ModeToggle = () => {
 	const { theme, setTheme, contrast, setContrast } = useTheme();
+	const { t } = useTranslation();
 
 	return (
 		<Menu>
 			<MenuTrigger
 				render={
 					<Button
-						aria-label="Toggle theme"
+						aria-label={t("theme.toggle")}
 						size="icon"
 						type="button"
 						variant="outline"
@@ -41,19 +43,19 @@ export const ModeToggle = () => {
 			<MenuPopup align="end" className="min-w-48">
 				<MenuItem onClick={() => setTheme("light")}>
 					<Sun />
-					Light
+					{t("theme.light")}
 				</MenuItem>
 				<MenuItem onClick={() => setTheme("dim")}>
 					<SunDim />
-					Dim
+					{t("theme.dim")}
 				</MenuItem>
 				<MenuItem onClick={() => setTheme("dark")}>
 					<Moon />
-					Dark
+					{t("theme.dark")}
 				</MenuItem>
 				<MenuItem onClick={() => setTheme("system")}>
 					<Monitor />
-					System
+					{t("theme.system")}
 				</MenuItem>
 				<MenuSeparator />
 				<MenuCheckboxItem
@@ -64,10 +66,10 @@ export const ModeToggle = () => {
 				>
 					<span className="flex items-center gap-2">
 						<Contrast className="size-4" />
-						High contrast
+						{t("theme.highContrast")}
 					</span>
 				</MenuCheckboxItem>
 			</MenuPopup>
 		</Menu>
 	);
-}
+};

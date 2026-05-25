@@ -6,7 +6,9 @@ import {
 } from "@clerk/tanstack-react-start";
 import { Link } from "@tanstack/react-router";
 import { LightbulbIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { OrganizationAccountMenu } from "#/components/auth/organization-account-menu";
+import { LanguageToggle } from "#/components/layout/language-toggle";
 import { ModeToggle } from "#/components/layout/mode-toggle";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -17,20 +19,24 @@ SessionControls surfaces sign-in and account UI in the shell header.
 */
 export function SessionControls() {
 	const isClerkAppAdmin = useIsClerkAppAdmin();
+	const { t } = useTranslation();
 
 	return (
 		<div className="ml-auto flex shrink-0 items-center gap-2">
-			{isClerkAppAdmin ? <Badge variant="warning">Admin</Badge> : null}
+			{isClerkAppAdmin ? (
+				<Badge variant="warning">{t("common.admin")}</Badge>
+			) : null}
+			<LanguageToggle />
 			<ModeToggle />
 			<Show when="signed-out">
 				<SignInButton mode="modal">
 					<Button size="sm" type="button" variant="outline">
-						Sign in
+						{t("auth.signIn")}
 					</Button>
 				</SignInButton>
 				<SignUpButton mode="modal">
 					<Button size="sm" type="button" variant="default">
-						Sign up
+						{t("auth.signUp")}
 					</Button>
 				</SignUpButton>
 			</Show>
@@ -39,7 +45,7 @@ export function SessionControls() {
 					<Link to="/request-feature">
 						<Button size="sm" type="button" variant="outline">
 							<LightbulbIcon aria-hidden className="size-4" />
-							Request feature
+							{t("auth.requestFeature")}
 						</Button>
 					</Link>
 					<OrganizationAccountMenu />

@@ -2,15 +2,15 @@ module github.com/theapemachine/caramba
 
 go 1.26.1
 
-// replace github.com/theapemachine/manifesto => ../manifesto
+replace github.com/theapemachine/manifesto => ../manifesto
 
-// replace github.com/theapemachine/puter => ../puter
+replace github.com/theapemachine/puter => ../puter
 
 // replace github.com/theapemachine/errnie => ../errnie
 
 // replace github.com/theapemachine/alcatraz => ../alcatraz
 
-// replace github.com/theapemachine/hf => ../hf
+replace github.com/theapemachine/hf => ../hf
 
 // replace github.com/theapemachine/qpool => ../qpool
 

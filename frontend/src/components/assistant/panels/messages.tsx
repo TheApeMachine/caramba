@@ -1,5 +1,6 @@
 import type { MessagePart } from "@tanstack/ai-client";
 import { Brain, ChevronDown, Sparkles, Wrench } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import { Avatar, AvatarFallback } from "#/components/ui/avatar";
 import {
@@ -19,11 +20,13 @@ function partKey(messageId: string, part: MessagePart, index: number): string {
 }
 
 function ThinkingPart({ content }: { content: string }) {
+	const { t } = useTranslation();
+
 	return (
 		<Collapsible className="mb-2">
 			<CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer group">
 				<Brain className="size-3 shrink-0 text-violet-400" />
-				<span className="italic">Reasoning</span>
+				<span className="italic">{t("assistant.reasoning")}</span>
 				<ChevronDown className="size-3 transition-transform group-data-open:rotate-180" />
 			</CollapsibleTrigger>
 			<CollapsiblePanel>
@@ -68,6 +71,7 @@ function ToolResultPart({
 	content: unknown;
 	error?: string | null;
 }) {
+	const { t } = useTranslation();
 	const raw =
 		error ??
 		(typeof content === "string" ? content : JSON.stringify(content, null, 2));
@@ -97,7 +101,7 @@ function ToolResultPart({
 							: "text-emerald-600 dark:text-emerald-400",
 					)}
 				>
-					{isError ? "Tool error" : "Tool result"}
+					{isError ? t("assistant.toolError") : t("assistant.toolResult")}
 				</span>
 				<ChevronDown className="size-3 ml-auto shrink-0 transition-transform group-data-open:rotate-180" />
 			</CollapsibleTrigger>
@@ -170,6 +174,8 @@ export function MessageFeed({
 	isSubmitted,
 	compact,
 }: Props) {
+	const { t } = useTranslation();
+
 	return (
 		<ScrollArea aria-label="Conversation">
 			<section className="flex flex-col-reverse">
@@ -180,7 +186,7 @@ export function MessageFeed({
 								<>
 									<Sparkles className="size-3.5 text-violet-400 animate-pulse" />
 									<span className="text-xs italic bg-linear-to-r from-muted-foreground/40 via-foreground to-muted-foreground/40 bg-size-[200%_100%] bg-clip-text text-transparent animate-[shimmer_2s_linear_infinite]">
-										Thinking…
+										{t("assistant.thinking")}
 									</span>
 								</>
 							) : (
@@ -196,7 +202,9 @@ export function MessageFeed({
 
 				{[...messages].reverse().map((message) => {
 					const isUser = message.role === "user";
-					const label = isUser ? "You" : (message.personaName ?? "Assistant");
+					const label = isUser
+						? t("assistant.you")
+						: (message.personaName ?? t("assistant.title"));
 					const initials = label
 						.split(/\s+/)
 						.map((w) => w[0])
@@ -257,9 +265,7 @@ export function MessageFeed({
 
 				{messages.length === 0 && (
 					<p className="text-xs text-muted-foreground text-center mt-8">
-						{compact
-							? "Ask anything — I'm ready."
-							: "Ask anything — your research team is ready."}
+						{compact ? t("assistant.readySingle") : t("assistant.readyTeam")}
 					</p>
 				)}
 			</section>
