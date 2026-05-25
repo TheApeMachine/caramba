@@ -24,10 +24,11 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0
-	github.com/theapemachine/errnie v1.2.0
-	github.com/theapemachine/hf v1.2.2
-	github.com/theapemachine/manifesto v1.2.2
-	github.com/theapemachine/puter v1.2.2
+	github.com/theapemachine/errnie v1.2.3
+	github.com/theapemachine/hf v1.2.3
+	github.com/theapemachine/manifesto v1.2.3
+	github.com/theapemachine/puter v1.2.3
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -56,7 +57,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gofiber/schema v1.7.1 // indirect
 	github.com/gofiber/utils/v2 v2.0.4 // indirect
-	github.com/gopherjs/gopherjs v1.17.2 // indirect
+	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
@@ -67,7 +68,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/smarty/assertions v1.15.0 // indirect
+	github.com/smarty/assertions v1.16.0 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.71.0 // indirect
@@ -80,7 +81,6 @@ require (
 	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (
@@ -97,7 +97,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/theapemachine/qpool v1.2.2
+	github.com/theapemachine/qpool v1.2.3
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
