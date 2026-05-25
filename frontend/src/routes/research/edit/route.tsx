@@ -5,7 +5,9 @@ import {
 	useRouterState,
 } from "@tanstack/react-router";
 import { BoxIcon, HouseIcon, PanelsTopLeftIcon } from "lucide-react";
+import { useMemo } from "react";
 import { z } from "zod";
+import { usePublishAssistantContext } from "#/components/assistant/use-publish-assistant-context";
 import { Flex } from "#/components/ui/flex";
 import { Tabs } from "#/components/ui/tabs";
 import { researchProjectQueryOptions } from "#/queries/research-projects";
@@ -39,6 +41,7 @@ function researchEditTabFromPathname(pathname: string): ResearchEditTabId {
 }
 
 export const Route = createFileRoute("/research/edit")({
+	ssr: false,
 	validateSearch: parseEditSearch,
 	loader: ({ context, location }) => {
 		const search = parseEditSearch(location.search as Record<string, unknown>);
@@ -65,6 +68,18 @@ function ResearchEditLayout() {
 		"research-paper": "Research Paper",
 	}[activeTab];
 
+	usePublishAssistantContext(
+		useMemo(
+			() => ({
+				key: "active_tab",
+				label: "Active tab",
+				value: activeTabLabel,
+				persistent: true,
+			}),
+			[activeTabLabel],
+		),
+	);
+
 	return (
 		<Flex.Column className="min-h-0" fullHeight fullWidth>
 			<Tabs
@@ -77,13 +92,6 @@ function ResearchEditLayout() {
 				}}
 			>
 				<div className="border-b">
-					<span
-						className="sr-only"
-						data-context="Active tab"
-						data-context-key="active_tab"
-					>
-						{activeTabLabel}
-					</span>
 					<Tabs.List variant="underline">
 						<Tabs.Tab
 							className="h-auto! flex-col gap-1.5 py-[calc(--spacing(2)-1px)]"

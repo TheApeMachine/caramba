@@ -1,6 +1,8 @@
 "use client";
 
 import { useStore } from "@tanstack/react-form";
+import { useEffect } from "react";
+import { assistantContextBridge } from "#/components/assistant/assistant-context-bridge";
 import {
 	PaperEditorProvider,
 	usePaperEditor,
@@ -11,6 +13,7 @@ import { WritingCanvas } from "#/components/latex/panels/writing-canvas";
 import { DragDropProvider } from "#/components/ui/drag-drop";
 import { Flex } from "#/components/ui/flex";
 import { Typography } from "#/components/ui/typography";
+import { PaperAssistantContext } from "./paper-assistant-context";
 import { LatexToolbar } from "./toolbar";
 
 export type PaperEditorAppProps = {
@@ -57,17 +60,20 @@ const PaperContextSnapshot = () => {
 		.filter(Boolean)
 		.join("\n");
 
-	return (
-		<span
-			aria-hidden="true"
-			className="sr-only"
-			data-context="Research paper content"
-			data-context-key="paper_content"
-			data-context-type="text"
-		>
-			{summary}
-		</span>
-	);
+	useEffect(() => {
+		assistantContextBridge.publish({
+			key: "paper_content",
+			label: "Research paper content",
+			value: summary,
+			persistent: true,
+		});
+
+		return () => {
+			assistantContextBridge.unpublish("paper_content");
+		};
+	}, [summary]);
+
+	return null;
 };
 
 const PaperEditorShell = () => {
@@ -98,6 +104,7 @@ const PaperEditorShell = () => {
 	return (
 		<>
 			<PaperContextSnapshot />
+			<PaperAssistantContext />
 
 			<DragDropProvider>
 				<Flex.Column className="box-border min-h-0 bg-background" fullHeight>

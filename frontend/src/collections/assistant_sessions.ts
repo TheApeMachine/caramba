@@ -1,9 +1,8 @@
-import { electricCollectionOptions } from "@tanstack/electric-db-collection";
-import {
-	createCollection,
-	localStorageCollectionOptions,
-} from "@tanstack/react-db";
 import { z } from "zod";
+import {
+	createDualModeCollection,
+	electricAwaitOptions,
+} from "#/lib/dual-mode-collection";
 import {
 	createSession,
 	deleteSession,
@@ -23,93 +22,57 @@ export const AssistantSession = z.object({
 
 export type AssistantSessionRow = z.infer<typeof AssistantSession>;
 
-const shapeUrl = () => {
-	if (typeof window === "undefined")
-		return "http://localhost/api/shape/assistant-sessions";
-	return `${window.location.origin}/api/shape/assistant-sessions`;
-};
-
-const skipTxidAwait = import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true";
-
-const awaitOptions = (txid: number | undefined) => {
-	if (skipTxidAwait || typeof txid !== "number") return undefined;
-	return { timeout: 60_000, txid };
-};
-
 type SessionMutationContext = {
 	personaIds?: string[];
 };
 
-let cloud: ReturnType<typeof buildCloud> | null = null;
-let local: ReturnType<typeof buildLocal> | null = null;
+export const getSessionsCollection = createDualModeCollection({
+	cacheKey: "assistant_sessions",
+	schema: AssistantSession,
+	getKey: (item) => item.id,
+	cloud: {
+		id: "assistant_sessions",
+		shapePath: "assistant-sessions",
+		parser: { timestamptz: (value: string) => new Date(value) },
+		onInsert: async ({ transaction }) => {
+			const row = transaction.mutations[0].modified as AssistantSessionRow;
+			const meta = (transaction.metadata ?? {}) as SessionMutationContext;
+			const result = await createSession({
+				data: {
+					id: row.id,
+					scope: row.scope,
+					title: row.title,
+					window_size: row.window_size,
+					persona_ids: meta.personaIds ?? [],
+				},
+			});
 
-const buildCloud = () => {
-	return createCollection(
-		electricCollectionOptions({
-			id: "assistant_sessions",
-			schema: AssistantSession,
-			getKey: (item) => item.id,
-			shapeOptions: {
-				url: shapeUrl(),
-				parser: { timestamptz: (value: string) => new Date(value) },
-			},
-			onInsert: async ({ transaction }) => {
-				const row = transaction.mutations[0].modified as AssistantSessionRow;
-				const meta = (transaction.metadata ?? {}) as SessionMutationContext;
-				const result = await createSession({
-					data: {
-						id: row.id,
-						scope: row.scope,
-						title: row.title,
-						window_size: row.window_size,
-						persona_ids: meta.personaIds ?? [],
-					},
-				});
+			return electricAwaitOptions(result?.txid);
+		},
+		onUpdate: async ({ transaction }) => {
+			const row = transaction.mutations[0].modified as AssistantSessionRow;
+			const meta = (transaction.metadata ?? {}) as SessionMutationContext;
+			const result = await updateSession({
+				data: {
+					id: row.id,
+					scope: row.scope,
+					title: row.title,
+					window_size: row.window_size,
+					persona_ids: meta.personaIds ?? [],
+				},
+			});
 
-				return awaitOptions(result?.txid);
-			},
-			onUpdate: async ({ transaction }) => {
-				const row = transaction.mutations[0].modified as AssistantSessionRow;
-				const meta = (transaction.metadata ?? {}) as SessionMutationContext;
-				const result = await updateSession({
-					data: {
-						id: row.id,
-						scope: row.scope,
-						title: row.title,
-						window_size: row.window_size,
-						persona_ids: meta.personaIds ?? [],
-					},
-				});
+			return electricAwaitOptions(result?.txid);
+		},
+		onDelete: async ({ transaction }) => {
+			const row = transaction.mutations[0].original as AssistantSessionRow;
+			const result = await deleteSession({ data: { id: row.id } });
 
-				return awaitOptions(result?.txid);
-			},
-			onDelete: async ({ transaction }) => {
-				const row = transaction.mutations[0].original as AssistantSessionRow;
-				const result = await deleteSession({ data: { id: row.id } });
-
-				return awaitOptions(result?.txid);
-			},
-		}),
-	);
-};
-
-const buildLocal = () => {
-	return createCollection(
-		localStorageCollectionOptions({
-			id: "assistant_sessions_local",
-			storageKey: "caramba:assistant:sessions",
-			schema: AssistantSession,
-			getKey: (item) => item.id,
-		}),
-	);
-};
-
-export const getSessionsCollection = (mode: "cloud" | "local") => {
-	if (mode === "local") {
-		local ??= buildLocal();
-		return local;
-	}
-
-	cloud ??= buildCloud();
-	return cloud;
-};
+			return electricAwaitOptions(result?.txid);
+		},
+	},
+	local: {
+		id: "assistant_sessions_local",
+		storageKey: "caramba:assistant:sessions",
+	},
+});

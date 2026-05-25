@@ -89,7 +89,7 @@ const Select = ({
 		"w-full justify-between gap-2 font-normal text-left";
 
 	return (
-		<React.Fragment>
+		<div className="flex w-full min-w-0 flex-col">
 			{allowMultiple && typeof data !== "string" ? (
 				data.length ? (
 					<div className="mb-2 flex flex-col gap-1">
@@ -144,7 +144,7 @@ const Select = ({
 						portalContainer,
 					)
 				: null}
-		</React.Fragment>
+		</div>
 	);
 };
 

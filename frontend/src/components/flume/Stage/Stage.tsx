@@ -3,7 +3,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import type { CommentAction } from "#/components/flume/commentsReducer";
 import { CommentActionTypes } from "#/components/flume/commentsReducer";
-import { STAGE_ID } from "#/components/flume/constants";
+import { CANVAS_ID, STAGE_ID } from "#/components/flume/constants";
 import {
 	NodeDispatchContext,
 	NodeTypesContext,
@@ -64,8 +64,13 @@ const Stage = ({
 	});
 	const dragData = React.useRef({ x: 0, y: 0 });
 	const [spaceIsPressed, setSpaceIsPressed] = React.useState(false);
-	const pendingScale = React.useRef<{ scale: number; translate: StageTranslate } | null>(null);
-	const zoomCommitTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+	const pendingScale = React.useRef<{
+		scale: number;
+		translate: StageTranslate;
+	} | null>(null);
+	const zoomCommitTimer = React.useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
 	const scaleWrapper = React.useRef<HTMLDivElement>(null);
 
 	const setStageRect = React.useCallback(() => {
@@ -100,20 +105,40 @@ const Stage = ({
 
 			// Read current state from the last pending commit or the live state ref.
 			const current = pendingScale.current ?? {
-				scale: parseFloat(scaleWrapper.current?.style.transform.replace("scale(", "") ?? "1") || scale,
+				scale:
+					parseFloat(
+						scaleWrapper.current?.style.transform.replace("scale(", "") ?? "1",
+					) || scale,
 				translate,
 			};
 
 			const delta = e.deltaY;
 			const clampedDelta = Math.min(10, Math.max(-10, delta));
-			const newScale = Math.min(7, Math.max(0.1, current.scale - clampedDelta * 0.005));
+			const newScale = Math.min(
+				7,
+				Math.max(0.1, current.scale - clampedDelta * 0.005),
+			);
 
 			const byOldScale = (n: number) => n * (1 / current.scale);
 			const byNewScale = (n: number) => n * (1 / newScale);
-			const xOld = byOldScale(e.clientX - wrapperRect.x - wrapperRect.width  / 2 + current.translate.x);
-			const yOld = byOldScale(e.clientY - wrapperRect.y - wrapperRect.height / 2 + current.translate.y);
-			const xNew = byNewScale(e.clientX - wrapperRect.x - wrapperRect.width  / 2 + current.translate.x);
-			const yNew = byNewScale(e.clientY - wrapperRect.y - wrapperRect.height / 2 + current.translate.y);
+			const xOld = byOldScale(
+				e.clientX - wrapperRect.x - wrapperRect.width / 2 + current.translate.x,
+			);
+			const yOld = byOldScale(
+				e.clientY -
+					wrapperRect.y -
+					wrapperRect.height / 2 +
+					current.translate.y,
+			);
+			const xNew = byNewScale(
+				e.clientX - wrapperRect.x - wrapperRect.width / 2 + current.translate.x,
+			);
+			const yNew = byNewScale(
+				e.clientY -
+					wrapperRect.y -
+					wrapperRect.height / 2 +
+					current.translate.y,
+			);
 			const newTranslate = {
 				x: current.translate.x + (xOld - xNew) * newScale,
 				y: current.translate.y + (yOld - yNew) * newScale,
@@ -129,8 +154,9 @@ const Stage = ({
 
 			pendingScale.current = { scale: newScale, translate: newTranslate };
 
-			// Commit to Redux (triggers edge recalc) only after the wheel gesture stops.
-			if (zoomCommitTimer.current !== null) clearTimeout(zoomCommitTimer.current);
+			// Commit to Redux once the wheel gesture stops.
+			if (zoomCommitTimer.current !== null)
+				clearTimeout(zoomCommitTimer.current);
 			zoomCommitTimer.current = setTimeout(() => {
 				const committed = pendingScale.current;
 				if (!committed) return;
@@ -354,6 +380,7 @@ const Stage = ({
 			>
 				<div
 					ref={scaleWrapper}
+					id={`${CANVAS_ID}${editorId}`}
 					className={styles.scaleWrapper}
 					style={{ transform: `scale(${scale})` }}
 				>

@@ -39,6 +39,7 @@ const initialToolboxIds = (registry: ReadonlyArray<WidgetDescriptor>) =>
 export interface DashboardProps {
 	widgets?: ReadonlyArray<WidgetDescriptor>;
 	initialLayout?: ReadonlyArray<PlacedWidget>;
+	layoutEditable?: boolean;
 }
 
 /*
@@ -49,7 +50,11 @@ also routed through the same payload union. Toolbox tiles are Draggables.
 All grid mutations (place / move / resize / remove) happen in this file;
 the visual primitives know nothing about them.
 */
-export const Dashboard = ({ widgets, initialLayout }: DashboardProps = {}) => {
+export const Dashboard = ({
+	widgets,
+	initialLayout,
+	layoutEditable = true,
+}: DashboardProps = {}) => {
 	const registry = widgets ?? defaultWidgetRegistry;
 
 	const byKind = useMemo(
@@ -159,17 +164,19 @@ export const Dashboard = ({ widgets, initialLayout }: DashboardProps = {}) => {
 		<DragDropProvider>
 			<VegaProvider>
 				<div className="relative flex h-full w-full gap-6">
-					<Button
-						type="button"
-						size="sm"
-						variant={editing ? "default" : "outline"}
-						onClick={() => setEditing((current) => !current)}
-						className="absolute right-0 top-0 z-10"
-					>
-						<PencilIcon /> {editing ? "Done" : "Edit"}
-					</Button>
+					{layoutEditable ? (
+						<Button
+							type="button"
+							size="sm"
+							variant={editing ? "default" : "outline"}
+							onClick={() => setEditing((current) => !current)}
+							className="absolute right-0 top-0 z-10"
+						>
+							<PencilIcon /> {editing ? "Done" : "Edit"}
+						</Button>
+					) : null}
 
-					{editing && (
+					{editing && layoutEditable ? (
 						<aside className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl border bg-card/40 p-3">
 							<h3 className="px-1 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
 								Toolbox
@@ -195,7 +202,7 @@ export const Dashboard = ({ widgets, initialLayout }: DashboardProps = {}) => {
 								);
 							})}
 						</aside>
-					)}
+					) : null}
 
 					<div
 						className="relative grid h-full flex-1 gap-4"

@@ -4,7 +4,8 @@ import {
 	getRouteApi,
 	useNavigate,
 } from "@tanstack/react-router";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
+import { usePublishAssistantContext } from "#/components/assistant/use-publish-assistant-context";
 import { PaperEditorApp } from "#/components/latex/component";
 import { ProjectPaperSwitcher } from "#/components/research/project-paper-switcher";
 import { Flex } from "#/components/ui/flex";
@@ -15,6 +16,18 @@ const researchEditRouteApi = getRouteApi("/research/edit");
 function ResearchEditPaperPanel() {
 	const navigate = useNavigate();
 	const search = researchEditRouteApi.useSearch();
+
+	usePublishAssistantContext(
+		useMemo(
+			() => ({
+				key: "current_view",
+				label: "Current view",
+				value: "Research Paper",
+				persistent: true,
+			}),
+			[],
+		),
+	);
 
 	const handleSelectPaperId = useCallback(
 		(paperId: string) => {

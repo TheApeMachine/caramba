@@ -8,13 +8,19 @@ import {
 	type EdgeRoutingMode,
 } from "#/components/flume/connectionCalculator";
 import {
-	ObstacleIndexContext,
-	useConnectionWorker,
-	useObstacleIndex,
-} from "#/components/flume/useObstacleIndex";
-import { DRAG_CONNECTION_ID, STAGE_ID } from "#/components/flume/constants";
+	DRAG_CONNECTION_ID,
+	PORT_LAYER_ID,
+	STAGE_ID,
+} from "#/components/flume/constants";
 import Node from "#/components/flume/Node/Node";
 import Stage from "#/components/flume/Stage/Stage";
+import { portLayoutKey } from "#/components/flume/spatial-index";
+import { useFlumeGraphWorker } from "#/components/flume/useFlumeGraphWorker";
+import {
+	ObstacleIndexContext,
+	PortLayoutRegistrationContext,
+	useSpatialIndex,
+} from "#/components/flume/useSpatialIndex";
 import { Button } from "#/components/ui/button";
 import { Flex } from "#/components/ui/flex";
 import usePrevious from "#/hooks/usePrevious";
@@ -25,11 +31,12 @@ import {
 	ContextContext,
 	EdgeRoutingContext,
 	EditorIdContext,
+	FlumeGraphWorkerContext,
 	NodeDispatchContext,
+	NodeDragOverrideContext,
 	NodeMapContext,
 	NodeTypesContext,
 	PortTypesContext,
-	RecalculateConnectionsWorkerContext,
 	RecalculateStageRectContext,
 	StageContext,
 } from "./context";
@@ -44,6 +51,7 @@ import styles from "./styles.module.css";
 import { dispatchFlumeToastAction, type ToastAction } from "./toastsReducer";
 import type {
 	CircularBehavior,
+	DefaultConnection,
 	DefaultNode,
 	FlumeCommentMap,
 	NodeHeaderRenderCallback,
@@ -60,6 +68,7 @@ interface NodeEditorProps {
 	nodeTypes: NodeTypeMap;
 	portTypes: PortTypeMap;
 	defaultNodes?: DefaultNode[];
+	defaultConnections?: DefaultConnection[];
 	context?: unknown;
 	onChange?: (nodes: NodeMap) => void;
 	onCommentsChange?: (comments: FlumeCommentMap) => void;
@@ -87,6 +96,7 @@ export const NodeEditor = React.forwardRef(
 			nodeTypes = {},
 			portTypes = {},
 			defaultNodes = [],
+			defaultConnections = [],
 			context = defaultContext,
 			onChange,
 			onCommentsChange,
@@ -111,6 +121,21 @@ export const NodeEditor = React.forwardRef(
 		const cache = React.useRef(new Cache());
 		const stage = React.useRef<DOMRect | undefined>(undefined);
 		const scaleRef = React.useRef(1);
+		const environmentRef = React.useRef({
+			nodeTypes,
+			portTypes,
+			cache,
+			circularBehavior,
+			context,
+		});
+
+		environmentRef.current = {
+			nodeTypes,
+			portTypes,
+			cache,
+			circularBehavior,
+			context,
+		};
 
 		const [sideEffectToasts, setSideEffectToasts] =
 			React.useState<ToastAction>();
@@ -118,7 +143,7 @@ export const NodeEditor = React.forwardRef(
 		const [nodes, dispatchNodes] = React.useReducer(
 			connectNodesReducer(
 				nodesReducer,
-				{ nodeTypes, portTypes, cache, circularBehavior, context },
+				() => environmentRef.current,
 				setSideEffectToasts,
 			),
 			{},
@@ -137,12 +162,30 @@ export const NodeEditor = React.forwardRef(
 			initialComments || {},
 		);
 
+		const defaultConnectionsAppliedRef = React.useRef(false);
+
 		React.useEffect(() => {
 			dispatchNodes({ type: NodesActionType.HYDRATE_DEFAULT_NODES });
 		}, []);
 
-		const [shouldRecalculateConnections, setShouldRecalculateConnections] =
-			React.useState(true);
+		const nodeTypeRegistryKey = React.useMemo(
+			() => Object.keys(nodeTypes).sort().join("\0"),
+			[nodeTypes],
+		);
+		const portTypeRegistryKey = React.useMemo(
+			() => Object.keys(portTypes).sort().join("\0"),
+			[portTypes],
+		);
+
+		// biome-ignore lint/correctness/useExhaustiveDependencies: reconcile graph when node/port registries change
+		React.useEffect(() => {
+			dispatchNodes({ type: NodesActionType.RECONCILE_NODE_TYPES });
+		}, [nodeTypeRegistryKey, portTypeRegistryKey]);
+
+		const visibleNodes = React.useMemo(
+			() => Object.values(nodes).filter((node) => nodeTypes[node.type]),
+			[nodes, nodeTypes],
+		);
 
 		const [stageState, dispatchStageState] = React.useReducer(stageReducer, {
 			scale:
@@ -156,17 +199,105 @@ export const NodeEditor = React.forwardRef(
 			scaleRef.current = stageState.scale;
 		}, [stageState.scale]);
 
-		const obstacleIndex = useObstacleIndex(editorId, stageState.scale);
-		const recalculateWorker = useConnectionWorker(
+		const [dragOverride, setDragOverride] = React.useState<Record<
+			string,
+			{ x: number; y: number }
+		> | null>(null);
+
+		const nodesRef = React.useRef(nodes);
+		nodesRef.current = nodes;
+
+		const onNodeLayoutChange = React.useCallback(() => {
+			graphWorkerRef.current?.recalculate(nodesRef.current);
+		}, []);
+
+		const { indexRef, registerPortLayout: registerPortLayoutBase } =
+			useSpatialIndex(editorId, dispatchNodes, onNodeLayoutChange);
+		const graphWorkerBase = useFlumeGraphWorker(
 			editorId,
 			edgeRoutingMode,
-			obstacleIndex,
-			scaleRef,
+			indexRef,
+		);
+		const graphWorkerRef = React.useRef(graphWorkerBase);
+		graphWorkerRef.current = graphWorkerBase;
+
+		const graphWorker = React.useMemo(
+			() => ({
+				beginDrag: (nodeId: string) => {
+					graphWorkerBase.beginDrag(nodeId);
+				},
+				updateDrag: (nodeId: string, x: number, y: number) => {
+					setDragOverride({ [nodeId]: { x, y } });
+					graphWorkerBase.updateDrag(nodeId, x, y);
+				},
+				endDrag: (nodeId: string, x: number, y: number) => {
+					setDragOverride(null);
+					graphWorkerBase.endDrag(nodeId, x, y);
+				},
+				recalculate: graphWorkerBase.recalculate,
+			}),
+			[graphWorkerBase],
 		);
 
-		const recalculateConnections = React.useCallback(() => {
-			createConnections(nodes, stageState, editorId, edgeRoutingMode);
-		}, [nodes, editorId, stageState, edgeRoutingMode]);
+		const recalculateConnections = React.useCallback(
+			(positionOverrides?: Record<string, { x: number; y: number }>) => {
+				createConnections(
+					nodes,
+					stageState,
+					editorId,
+					edgeRoutingMode,
+					indexRef.current,
+					positionOverrides,
+				);
+				graphWorker.recalculate(nodes, positionOverrides);
+			},
+			[nodes, editorId, stageState, edgeRoutingMode, indexRef, graphWorker],
+		);
+
+		const recalculateConnectionsRef = React.useRef(recalculateConnections);
+		recalculateConnectionsRef.current = recalculateConnections;
+
+		const portRecalcFrameRef = React.useRef<number | null>(null);
+
+		const schedulePortLayoutRecalculate = React.useCallback(() => {
+			if (portRecalcFrameRef.current !== null) {
+				return;
+			}
+
+			portRecalcFrameRef.current = requestAnimationFrame(() => {
+				portRecalcFrameRef.current = null;
+				recalculateConnectionsRef.current();
+			});
+		}, []);
+
+		const registerPortLayout = React.useCallback<
+			NonNullable<React.ContextType<typeof PortLayoutRegistrationContext>>
+		>(
+			(nodeId, portName, transputType, entry) => {
+				const layoutKey = portLayoutKey(nodeId, portName, transputType);
+				const previous = indexRef.current.portLayouts.get(layoutKey);
+
+				if (
+					previous &&
+					previous.offsetX === entry.offsetX &&
+					previous.offsetY === entry.offsetY
+				) {
+					return;
+				}
+
+				registerPortLayoutBase(nodeId, portName, transputType, entry);
+				schedulePortLayoutRecalculate();
+			},
+			[indexRef, registerPortLayoutBase, schedulePortLayoutRecalculate],
+		);
+
+		React.useEffect(() => {
+			return () => {
+				if (portRecalcFrameRef.current !== null) {
+					cancelAnimationFrame(portRecalcFrameRef.current);
+				}
+			};
+		}, []);
 
 		const recalculateStageRect = React.useCallback(() => {
 			stage.current = document
@@ -175,18 +306,65 @@ export const NodeEditor = React.forwardRef(
 		}, [editorId]);
 
 		React.useLayoutEffect(() => {
-			if (shouldRecalculateConnections) {
-				recalculateConnections();
-				setShouldRecalculateConnections(false);
+			recalculateConnections();
+		}, [recalculateConnections]);
+
+		const triggerRecalculation = React.useCallback(
+			(positionOverrides?: Record<string, { x: number; y: number }>) => {
+				recalculateConnections(positionOverrides);
+			},
+			[recalculateConnections],
+		);
+
+		React.useEffect(() => {
+			if (!defaultConnections.length || defaultConnectionsAppliedRef.current) {
+				return;
 			}
-		}, [shouldRecalculateConnections, recalculateConnections]);
 
-		const triggerRecalculation = React.useCallback(() => {
-			setShouldRecalculateConnections(true);
-		}, []);
+			const nodeList = Object.values(nodes);
 
-		const nodesRef = React.useRef(nodes);
-		nodesRef.current = nodes;
+			if (nodeList.length === 0) {
+				return;
+			}
+
+			for (const connection of defaultConnections) {
+				const outputNode = nodeList.find(
+					(node) => node.type === connection.output.nodeType,
+				);
+				const inputNode = nodeList.find(
+					(node) => node.type === connection.input.nodeType,
+				);
+
+				if (!outputNode || !inputNode) continue;
+
+				const existingInputs =
+					inputNode.connections.inputs[connection.input.portName] ?? [];
+				const alreadyConnected = existingInputs.some(
+					(link) =>
+						link.nodeId === outputNode.id &&
+						link.portName === connection.output.portName,
+				);
+
+				if (alreadyConnected) continue;
+
+				dispatchNodes({
+					type: NodesActionType.ADD_CONNECTION,
+					output: {
+						nodeId: outputNode.id,
+						portName: connection.output.portName,
+					},
+					input: {
+						nodeId: inputNode.id,
+						portName: connection.input.portName,
+					},
+				});
+			}
+
+			defaultConnectionsAppliedRef.current = true;
+			triggerRecalculation();
+		}, [nodes, defaultConnections, triggerRecalculation]);
+
+		const nodesRefForLayout = nodesRef;
 
 		const prevGraphLayout = usePrevious(graphLayoutMode);
 
@@ -194,14 +372,14 @@ export const NodeEditor = React.forwardRef(
 			const mode = graphLayoutMode ?? "freeform";
 			if (prevGraphLayout === undefined || prevGraphLayout === mode) return;
 			if (mode === "freeform") return;
-			dispatchGraphLayout(mode, nodesRef.current, dispatchNodes);
+			dispatchGraphLayout(mode, nodesRefForLayout.current, dispatchNodes);
 			triggerRecalculation();
-		}, [graphLayoutMode, prevGraphLayout, triggerRecalculation]);
-
-		React.useEffect(() => {
-			void edgeRoutingMode;
-			setShouldRecalculateConnections(true);
-		}, [edgeRoutingMode]);
+		}, [
+			graphLayoutMode,
+			nodesRefForLayout,
+			prevGraphLayout,
+			triggerRecalculation,
+		]);
 
 		React.useImperativeHandle(ref, () => ({
 			getNodes: () => {
@@ -246,106 +424,130 @@ export const NodeEditor = React.forwardRef(
 				fullHeight
 				fullWidth
 			>
-				<ObstacleIndexContext.Provider value={obstacleIndex}>
-					<RecalculateConnectionsWorkerContext.Provider value={recalculateWorker}>
-						<NodeMapContext.Provider value={nodes}>
-							<EdgeRoutingContext.Provider value={edgeRoutingMode}>
-								<PortTypesContext.Provider value={portTypes}>
-									<NodeTypesContext.Provider value={nodeTypes}>
-										<NodeDispatchContext.Provider value={dispatchNodes}>
-											<ConnectionRecalculateContext.Provider
-												value={triggerRecalculation}
-											>
-												<ContextContext.Provider value={context}>
-													<StageContext.Provider value={stageState}>
-														<CacheContext.Provider value={cache}>
-															<EditorIdContext.Provider value={editorId}>
-																<RecalculateStageRectContext.Provider
-																	value={recalculateStageRect}
-																>
-																	<Stage
-																		editorId={editorId}
-																		scale={stageState.scale}
-																		translate={stageState.translate}
-																		spaceToPan={spaceToPan}
-																		disablePan={disablePan}
-																		disableZoom={disableZoom}
-																		dispatchStageState={dispatchStageState}
-																		dispatchComments={dispatchComments}
-																		disableComments={disableComments || hideComments}
-																		disableFocusCapture={disableFocusCapture}
-																		stageRef={stage}
-																		numNodes={Object.keys(nodes).length}
-																		outerStageChildren={
-																			debug ? (
-																				<div className={styles.debugWrapper}>
-																					<Button
-																						type="button"
-																						variant="outline"
-																						size="sm"
-																						onClick={() => console.log(nodes)}
-																					>
-																						Log Nodes
-																					</Button>
-																					<Button
-																						type="button"
-																						variant="outline"
-																						size="sm"
-																						onClick={() =>
-																							console.log(JSON.stringify(nodes))
-																						}
-																					>
-																						Export Nodes
-																					</Button>
-																					<Button
-																						type="button"
-																						variant="outline"
-																						size="sm"
-																						onClick={() => console.log(comments)}
-																					>
-																						Log Comments
-																					</Button>
-																				</div>
-																			) : null
-																		}
-																	>
-																		{!hideComments &&
-																			Object.values(comments).map((comment) => (
-																				<Comment
-																					{...comment}
-																					stageRect={stage}
-																					dispatch={dispatchComments}
-																					onDragStart={recalculateStageRect}
-																					key={comment.id}
+				<ObstacleIndexContext.Provider value={indexRef}>
+					<PortLayoutRegistrationContext.Provider value={registerPortLayout}>
+						<FlumeGraphWorkerContext.Provider value={graphWorker}>
+							<NodeDragOverrideContext.Provider value={dragOverride}>
+								<NodeMapContext.Provider value={nodes}>
+									<EdgeRoutingContext.Provider value={edgeRoutingMode}>
+										<PortTypesContext.Provider value={portTypes}>
+											<NodeTypesContext.Provider value={nodeTypes}>
+												<NodeDispatchContext.Provider value={dispatchNodes}>
+													<ConnectionRecalculateContext.Provider
+														value={triggerRecalculation}
+													>
+														<ContextContext.Provider value={context}>
+															<StageContext.Provider value={stageState}>
+																<CacheContext.Provider value={cache}>
+																	<EditorIdContext.Provider value={editorId}>
+																		<RecalculateStageRectContext.Provider
+																			value={recalculateStageRect}
+																		>
+																			<Stage
+																				editorId={editorId}
+																				scale={stageState.scale}
+																				translate={stageState.translate}
+																				spaceToPan={spaceToPan}
+																				disablePan={disablePan}
+																				disableZoom={disableZoom}
+																				dispatchStageState={dispatchStageState}
+																				dispatchComments={dispatchComments}
+																				disableComments={
+																					disableComments || hideComments
+																				}
+																				disableFocusCapture={
+																					disableFocusCapture
+																				}
+																				stageRef={stage}
+																				numNodes={Object.keys(nodes).length}
+																				outerStageChildren={
+																					debug ? (
+																						<div
+																							className={styles.debugWrapper}
+																						>
+																							<Button
+																								type="button"
+																								variant="outline"
+																								size="sm"
+																								onClick={() =>
+																									console.log(nodes)
+																								}
+																							>
+																								Log Nodes
+																							</Button>
+																							<Button
+																								type="button"
+																								variant="outline"
+																								size="sm"
+																								onClick={() =>
+																									console.log(
+																										JSON.stringify(nodes),
+																									)
+																								}
+																							>
+																								Export Nodes
+																							</Button>
+																							<Button
+																								type="button"
+																								variant="outline"
+																								size="sm"
+																								onClick={() =>
+																									console.log(comments)
+																								}
+																							>
+																								Log Comments
+																							</Button>
+																						</div>
+																					) : null
+																				}
+																			>
+																				<div
+																					className={styles.portLayer}
+																					id={`${PORT_LAYER_ID}${editorId}`}
 																				/>
-																			))}
-																		{Object.values(nodes).map((node) => (
-																			<Node
-																				{...node}
-																				stageRect={stage}
-																				onDragStart={recalculateStageRect}
-																				renderNodeHeader={renderNodeHeader}
-																				key={node.id}
-																			/>
-																		))}
-																		<Connections editorId={editorId} />
-																		<div
-																			className={styles.dragWrapper}
-																			id={`${DRAG_CONNECTION_ID}${editorId}`}
-																		/>
-																	</Stage>
-																</RecalculateStageRectContext.Provider>
-															</EditorIdContext.Provider>
-														</CacheContext.Provider>
-													</StageContext.Provider>
-												</ContextContext.Provider>
-											</ConnectionRecalculateContext.Provider>
-										</NodeDispatchContext.Provider>
-									</NodeTypesContext.Provider>
-								</PortTypesContext.Provider>
-							</EdgeRoutingContext.Provider>
-						</NodeMapContext.Provider>
-					</RecalculateConnectionsWorkerContext.Provider>
+																				{!hideComments &&
+																					Object.values(comments).map(
+																						(comment) => (
+																							<Comment
+																								{...comment}
+																								stageRect={stage}
+																								dispatch={dispatchComments}
+																								onDragStart={
+																									recalculateStageRect
+																								}
+																								key={comment.id}
+																							/>
+																						),
+																					)}
+																				{visibleNodes.map((node) => (
+																					<Node
+																						{...node}
+																						stageRect={stage}
+																						onDragStart={recalculateStageRect}
+																						renderNodeHeader={renderNodeHeader}
+																						key={node.id}
+																					/>
+																				))}
+																				<Connections editorId={editorId} />
+																				<div
+																					className={styles.dragWrapper}
+																					id={`${DRAG_CONNECTION_ID}${editorId}`}
+																				/>
+																			</Stage>
+																		</RecalculateStageRectContext.Provider>
+																	</EditorIdContext.Provider>
+																</CacheContext.Provider>
+															</StageContext.Provider>
+														</ContextContext.Provider>
+													</ConnectionRecalculateContext.Provider>
+												</NodeDispatchContext.Provider>
+											</NodeTypesContext.Provider>
+										</PortTypesContext.Provider>
+									</EdgeRoutingContext.Provider>
+								</NodeMapContext.Provider>
+							</NodeDragOverrideContext.Provider>
+						</FlumeGraphWorkerContext.Provider>
+					</PortLayoutRegistrationContext.Provider>
 				</ObstacleIndexContext.Provider>
 			</Flex.Column>
 		);

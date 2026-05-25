@@ -1,9 +1,9 @@
 .PHONY: build test check verify generate clean chat diffusion diffusion-diagnose image research serve dump tag
 
-# Positional args after `tag` become dummy goals; see scripts/tag-release.sh.
+# Positional args after `tag` are not real targets; see scripts/tag-release.sh.
 ifeq (tag,$(firstword $(MAKECMDGOALS)))
-  TAG_RUN_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  $(foreach arg,$(TAG_RUN_ARGS),$(eval $(arg):;@:))
+%:
+	@:
 endif
 
 DUMP_SCRIPT := $(CURDIR)/scripts/dump-repo.py

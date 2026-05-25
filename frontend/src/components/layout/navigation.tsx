@@ -80,7 +80,7 @@ export const Navigation = ({
 							className="w-full h-auto! flex flex-row items-center justify-between gap-4 px-4 py-3 text-left"
 							variant="outline"
 						>
-							<MicroscopeIcon className="shrink-0" />
+							<NetworkIcon className="shrink-0" />
 							<Flex.Column gap={1} className="text-left" fullWidth>
 								<h3>Architecture</h3>
 								<p className="whitespace-break-spaces font-normal text-muted-foreground">

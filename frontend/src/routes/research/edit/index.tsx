@@ -4,7 +4,9 @@ import {
 	getRouteApi,
 	Link,
 } from "@tanstack/react-router";
-import { NodeGraph } from "#/components/nodegraph/component";
+import { useMemo } from "react";
+import { usePublishAssistantContext } from "#/components/assistant/use-publish-assistant-context";
+import { FlumeEditor } from "#/components/flume/flume-editor";
 import { Button } from "#/components/ui/button";
 import { Flex } from "#/components/ui/flex";
 
@@ -12,6 +14,33 @@ const researchEditRouteApi = getRouteApi("/research/edit");
 
 const ResearchEditArchitecturePanel = () => {
 	const search = researchEditRouteApi.useSearch();
+
+	usePublishAssistantContext(
+		useMemo(
+			() => ({
+				key: "current_view",
+				label: "Current view",
+				value: "Research graph",
+				persistent: true,
+			}),
+			[],
+		),
+	);
+
+	usePublishAssistantContext(
+		useMemo(
+			() =>
+				search.projectId
+					? {
+							key: "project_id",
+							label: "Project ID",
+							value: search.projectId,
+							persistent: true,
+						}
+					: null,
+			[search.projectId],
+		),
+	);
 
 	return (
 		<Flex.Column
@@ -23,18 +52,11 @@ const ResearchEditArchitecturePanel = () => {
 		>
 			<Flex.Row gap={2} className="shrink-0 items-center justify-between gap-2">
 				<Flex.Column gap={1}>
-					<h1
-						className="font-semibold text-foreground text-lg"
-						data-context="Current view"
-					>
+					<h1 className="font-semibold text-foreground text-lg">
 						Research graph
 					</h1>
 					{search.projectId ? (
-						<p
-							className="font-mono text-muted-foreground text-xs"
-							data-context="Project ID"
-							data-context-key="project_id"
-						>
+						<p className="font-mono text-muted-foreground text-xs">
 							{search.projectId}
 						</p>
 					) : (
@@ -55,7 +77,7 @@ const ResearchEditArchitecturePanel = () => {
 						</Flex.Center>
 					}
 				>
-					<NodeGraph />
+					<FlumeEditor projectId={search.projectId} />
 				</ClientOnly>
 			</Flex.Column>
 		</Flex.Column>

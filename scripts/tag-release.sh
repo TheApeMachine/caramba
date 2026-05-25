@@ -15,6 +15,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 REPOS=(
 	"$ROOT/../manifesto"
+	"$ROOT/../errnie"
 	"$ROOT/../alcatraz"
 	"$ROOT/../qpool"
 	"$ROOT/../puter"
@@ -24,6 +25,7 @@ REPOS=(
 
 TAGGED_MODULES=(
 	github.com/theapemachine/manifesto
+	github.com/theapemachine/errnie
 	github.com/theapemachine/alcatraz
 	github.com/theapemachine/qpool
 	github.com/theapemachine/puter
@@ -65,7 +67,7 @@ tag_repo() {
 module_in_go_mod() {
 	local module="$1"
 
-	grep -qE "(^|[[:space:]])${module}[[:space:]]" go.mod
+	grep -vE '^\s*//' go.mod | grep -qE "${module}[[:space:]]+v"
 }
 
 update_go_mods() {

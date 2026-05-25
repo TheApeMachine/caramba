@@ -14,6 +14,7 @@ import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as RequestFeatureRouteImport } from './routes/request-feature'
 import { Route as NodegraphDevRouteImport } from './routes/nodegraph-dev'
 import { Route as NodegraphRouteImport } from './routes/nodegraph'
+import { Route as FlumeRouteImport } from './routes/flume'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResearchIndexRouteImport } from './routes/research/index'
@@ -65,6 +66,11 @@ const NodegraphDevRoute = NodegraphDevRouteImport.update({
 const NodegraphRoute = NodegraphRouteImport.update({
   id: '/nodegraph',
   path: '/nodegraph',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FlumeRoute = FlumeRouteImport.update({
+  id: '/flume',
+  path: '/flume',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -213,6 +219,7 @@ const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/flume': typeof FlumeRoute
   '/nodegraph': typeof NodegraphRoute
   '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
@@ -247,6 +254,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/flume': typeof FlumeRoute
   '/nodegraph': typeof NodegraphRoute
   '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
@@ -281,6 +289,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/flume': typeof FlumeRoute
   '/nodegraph': typeof NodegraphRoute
   '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
@@ -317,6 +326,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dashboard'
+    | '/flume'
     | '/nodegraph'
     | '/nodegraph-dev'
     | '/request-feature'
@@ -351,6 +361,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/dashboard'
+    | '/flume'
     | '/nodegraph'
     | '/nodegraph-dev'
     | '/request-feature'
@@ -384,6 +395,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/dashboard'
+    | '/flume'
     | '/nodegraph'
     | '/nodegraph-dev'
     | '/request-feature'
@@ -419,6 +431,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
+  FlumeRoute: typeof FlumeRoute
   NodegraphRoute: typeof NodegraphRoute
   NodegraphDevRoute: typeof NodegraphDevRoute
   RequestFeatureRoute: typeof RequestFeatureRoute
@@ -483,6 +496,13 @@ declare module '@tanstack/react-router' {
       path: '/nodegraph'
       fullPath: '/nodegraph'
       preLoaderRoute: typeof NodegraphRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/flume': {
+      id: '/flume'
+      path: '/flume'
+      fullPath: '/flume'
+      preLoaderRoute: typeof FlumeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -695,6 +715,7 @@ const ResearchEditRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
+  FlumeRoute: FlumeRoute,
   NodegraphRoute: NodegraphRoute,
   NodegraphDevRoute: NodegraphDevRoute,
   RequestFeatureRoute: RequestFeatureRoute,

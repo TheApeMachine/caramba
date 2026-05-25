@@ -8,7 +8,7 @@ RUN go mod download && go mod verify
 
 COPY . .
 
-RUN go build -o main main.go
+RUN go build -ldflags='-checklinkname=0' -o main main.go
 
 EXPOSE 8118
 

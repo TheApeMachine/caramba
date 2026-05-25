@@ -256,6 +256,7 @@ export type FlumeNode = {
 	id: string;
 	type: string;
 	width: number;
+	height?: number;
 	x: number;
 	y: number;
 	inputData: InputData;
@@ -269,6 +270,11 @@ export type DefaultNode = {
 	type: string;
 	x?: number;
 	y?: number;
+};
+
+export type DefaultConnection = {
+	output: { nodeType: string; portName: string };
+	input: { nodeType: string; portName: string };
 };
 
 export type NodeMap = { [nodeId: string]: FlumeNode };

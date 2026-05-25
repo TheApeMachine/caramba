@@ -52,17 +52,19 @@ const RootDocument = ({ children }: { children: React.ReactNode }) => {
 								<Assistant />
 							</ClientOnly>
 						</ToastProvider>
-						<TanStackDevtools
-							config={{
-								position: "bottom-right",
-							}}
-							plugins={[
-								{
-									name: "Tanstack Router",
-									render: <TanStackRouterDevtoolsPanel />,
-								},
-							]}
-						/>
+						<ClientOnly fallback={null}>
+							<TanStackDevtools
+								config={{
+									position: "bottom-right",
+								}}
+								plugins={[
+									{
+										name: "Tanstack Router",
+										render: <TanStackRouterDevtoolsPanel />,
+									},
+								]}
+							/>
+						</ClientOnly>
 						<Scripts />
 					</ThemeProvider>
 				</ClerkProvider>

@@ -1,9 +1,8 @@
-import { electricCollectionOptions } from "@tanstack/electric-db-collection";
-import {
-	createCollection,
-	localStorageCollectionOptions,
-} from "@tanstack/react-db";
 import { z } from "zod";
+import {
+	createDualModeCollection,
+	electricAwaitOptions,
+} from "#/lib/dual-mode-collection";
 import {
 	createPersona,
 	deletePersona,
@@ -28,97 +27,61 @@ export const AssistantPersona = z.object({
 
 export type AssistantPersonaRow = z.infer<typeof AssistantPersona>;
 
-const shapeUrl = () => {
-	if (typeof window === "undefined")
-		return "http://localhost/api/shape/assistant-personas";
-	return `${window.location.origin}/api/shape/assistant-personas`;
-};
+export const getPersonasCollection = createDualModeCollection({
+	cacheKey: "assistant_personas",
+	schema: AssistantPersona,
+	getKey: (item) => item.id,
+	cloud: {
+		id: "assistant_personas",
+		shapePath: "assistant-personas",
+		parser: { timestamptz: (value: string) => new Date(value) },
+		onInsert: async ({ transaction }) => {
+			const row = transaction.mutations[0].modified as AssistantPersonaRow;
+			const result = await createPersona({
+				data: {
+					id: row.id,
+					scope: row.scope,
+					name: row.name,
+					system_prompt: row.system_prompt,
+					model: row.model,
+					temperature: row.temperature,
+					max_tokens: row.max_tokens,
+					adapter_type: row.adapter_type,
+					endpoint_url: row.endpoint_url ?? "",
+				},
+			});
 
-const skipTxidAwait = import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true";
+			return electricAwaitOptions(result?.txid);
+		},
+		onUpdate: async ({ transaction }) => {
+			const row = transaction.mutations[0].modified as AssistantPersonaRow;
+			const result = await updatePersona({
+				data: {
+					id: row.id,
+					scope: row.scope,
+					name: row.name,
+					system_prompt: row.system_prompt,
+					model: row.model,
+					temperature: row.temperature,
+					max_tokens: row.max_tokens,
+					adapter_type: row.adapter_type,
+					endpoint_url: row.endpoint_url ?? "",
+				},
+			});
 
-const awaitOptions = (txid: number | undefined) => {
-	if (skipTxidAwait || typeof txid !== "number") return undefined;
-	return { timeout: 60_000, txid };
-};
+			return electricAwaitOptions(result?.txid);
+		},
+		onDelete: async ({ transaction }) => {
+			const row = transaction.mutations[0].original as AssistantPersonaRow;
+			const result = await deletePersona({
+				data: { id: row.id, scope: row.scope },
+			});
 
-let cloud: ReturnType<typeof buildCloud> | null = null;
-let local: ReturnType<typeof buildLocal> | null = null;
-
-const buildCloud = () => {
-	return createCollection(
-		electricCollectionOptions({
-			id: "assistant_personas",
-			schema: AssistantPersona,
-			getKey: (item) => item.id,
-			shapeOptions: {
-				url: shapeUrl(),
-				parser: { timestamptz: (value: string) => new Date(value) },
-			},
-			onInsert: async ({ transaction }) => {
-				const row = transaction.mutations[0].modified as AssistantPersonaRow;
-				const result = await createPersona({
-					data: {
-						id: row.id,
-						scope: row.scope,
-						name: row.name,
-						system_prompt: row.system_prompt,
-						model: row.model,
-						temperature: row.temperature,
-						max_tokens: row.max_tokens,
-						adapter_type: row.adapter_type,
-						endpoint_url: row.endpoint_url ?? "",
-					},
-				});
-
-				return awaitOptions(result?.txid);
-			},
-			onUpdate: async ({ transaction }) => {
-				const row = transaction.mutations[0].modified as AssistantPersonaRow;
-				const result = await updatePersona({
-					data: {
-						id: row.id,
-						scope: row.scope,
-						name: row.name,
-						system_prompt: row.system_prompt,
-						model: row.model,
-						temperature: row.temperature,
-						max_tokens: row.max_tokens,
-						adapter_type: row.adapter_type,
-						endpoint_url: row.endpoint_url ?? "",
-					},
-				});
-
-				return awaitOptions(result?.txid);
-			},
-			onDelete: async ({ transaction }) => {
-				const row = transaction.mutations[0].original as AssistantPersonaRow;
-				const result = await deletePersona({
-					data: { id: row.id, scope: row.scope },
-				});
-
-				return awaitOptions(result?.txid);
-			},
-		}),
-	);
-};
-
-const buildLocal = () => {
-	return createCollection(
-		localStorageCollectionOptions({
-			id: "assistant_personas_local",
-			storageKey: "caramba:assistant:personas",
-			schema: AssistantPersona,
-			getKey: (item) => item.id,
-		}),
-	);
-};
-
-export function getPersonasCollection(mode: "cloud" | "local") {
-	if (mode === "local") {
-		local ??= buildLocal();
-		return local;
-	}
-
-	cloud ??= buildCloud();
-	return cloud;
-}
+			return electricAwaitOptions(result?.txid);
+		},
+	},
+	local: {
+		id: "assistant_personas_local",
+		storageKey: "caramba:assistant:personas",
+	},
+});

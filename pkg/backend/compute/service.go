@@ -2,6 +2,7 @@ package compute
 
 import (
 	"github.com/gofiber/fiber/v3"
+	"github.com/theapemachine/caramba/pkg/backend/compute/schema"
 )
 
 /*
@@ -21,9 +22,9 @@ NewService creates a new Service with operation, optimizer, and block sub-servic
 func NewService() *Service {
 	return &Service{
 		handlers: map[string]handler{
-			"operation": nil,
-			"optimizer": nil,
-			"block":     nil,
+			"operation": schema.NewOperation(),
+			"optimizer": schema.NewOptimizer(),
+			"block":     schema.NewBlock(),
 		},
 	}
 }

@@ -103,7 +103,7 @@ function ContextMenuFilteredBody({
 	);
 
 	return (
-		<>
+		<div>
 			{grouped ? (
 				(filteredItems as FilteredGroup[]).map((group) => (
 					<CommandGroup items={[...group.items]} key={group.label}>
@@ -117,7 +117,7 @@ function ContextMenuFilteredBody({
 			<CommandEmpty data-flume-component="ctx-menu-empty">
 				{optionsLength === 0 ? emptyText : "No matching options."}
 			</CommandEmpty>
-		</>
+		</div>
 	);
 }
 

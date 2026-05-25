@@ -9,12 +9,12 @@ import { defineConfig } from "vite";
 const config = defineConfig({
 	resolve: { tsconfigPaths: true },
 	plugins: [
+		devtools(),
 		tanstackStart(),
 		react(),
 		babel({
 			presets: [reactCompilerPreset()],
 		}),
-		devtools(),
 		nitro({ rollupConfig: { external: [/^@sentry\//] } }),
 		tailwindcss(),
 	],

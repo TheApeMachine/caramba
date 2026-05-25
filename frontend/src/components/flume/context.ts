@@ -12,7 +12,8 @@ import type {
 } from "#/components/flume/types";
 
 /** Current edge path style shared by Connections, temporary drag previews, and {@link IoPorts}. */
-export const EdgeRoutingContext = React.createContext<EdgeRoutingMode>("smooth");
+export const EdgeRoutingContext =
+	React.createContext<EdgeRoutingMode>("smooth");
 
 export function useEdgeRouting(): EdgeRoutingMode {
 	return React.useContext(EdgeRoutingContext) ?? "smooth";
@@ -23,7 +24,8 @@ export const PortTypesContext = React.createContext<PortTypeMap | null>(null);
 export const NodeDispatchContext =
 	React.createContext<React.Dispatch<NodesAction> | null>(null);
 export const ConnectionRecalculateContext = React.createContext<
-	(() => void) | null
+	| ((positionOverrides?: Record<string, { x: number; y: number }>) => void)
+	| null
 >(null);
 export const ContextContext = React.createContext<unknown>(null);
 export const StageContext = React.createContext<StageState | null>(null);
@@ -38,14 +40,31 @@ export const EditorIdContext = React.createContext<string>("");
 /** Maps node IDs to their full node data for consumers that need the full graph. */
 export const NodeMapContext = React.createContext<NodeMap>({});
 
+/** Live drag coordinates for the node currently being moved (single-node drag). */
+export const NodeDragOverrideContext = React.createContext<Record<
+	string,
+	{ x: number; y: number }
+> | null>(null);
+
 /*
-RecalculateConnectionsWorkerContext is a callback that dispatches a full
-connection-path recalculation to the off-thread Web Worker. Nodes call this
-after each drag move so path math never blocks the main thread.
+FlumeGraphWorkerContext exposes Comlink-backed graph routing: load snapshot,
+update drag coordinates, and apply returned SVG path data off the main thread.
 */
-export const RecalculateConnectionsWorkerContext = React.createContext<
-	((nodes: NodeMap) => void) | null
->(null);
+export type FlumeGraphWorkerHandle = {
+	beginDrag: (nodeId: string) => void;
+	updateDrag: (nodeId: string, x: number, y: number) => void;
+	endDrag: (nodeId: string, x: number, y: number) => void;
+	recalculate: (
+		nodes: NodeMap,
+		positionOverrides?: Record<string, { x: number; y: number }>,
+	) => void;
+};
+
+export const FlumeGraphWorkerContext =
+	React.createContext<FlumeGraphWorkerHandle | null>(null);
+
+/** @deprecated Use {@link FlumeGraphWorkerContext}. */
+export const RecalculateConnectionsWorkerContext = FlumeGraphWorkerContext;
 
 /*
 SubGraphContext is set by a block Node when it renders an inline NodeEditor.

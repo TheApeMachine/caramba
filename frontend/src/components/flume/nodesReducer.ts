@@ -32,7 +32,9 @@ export enum NodesActionType {
 	HYDRATE_DEFAULT_NODES = "HYDRATE_DEFAULT_NODES",
 	SET_PORT_DATA = "SET_PORT_DATA",
 	SET_NODE_COORDINATES = "SET_NODE_COORDINATES",
+	SET_NODE_DIMENSIONS = "SET_NODE_DIMENSIONS",
 	SET_NODE_SUBGRAPH = "SET_NODE_SUBGRAPH",
+	RECONCILE_NODE_TYPES = "RECONCILE_NODE_TYPES",
 }
 
 const addConnection = (
@@ -158,28 +160,28 @@ const reconcileNodes = (
 	portTypes: PortTypeMap,
 	context: unknown,
 ): NodeMap => {
-	let nodes = { ...initialNodes };
+	const knownNodes: NodeMap = {};
 
-	// Delete extraneous nodes
-	const nodesToDelete = Object.values(nodes)
-		.map((node) => (!nodeTypes[node.type] ? node.id : undefined))
-		.filter((x): x is string => !!x);
+	for (const [nodeId, node] of Object.entries(initialNodes)) {
+		if (node?.type && nodeTypes[node.type]) {
+			knownNodes[nodeId] = node;
+			continue;
+		}
 
-	nodesToDelete.forEach((nodeId) => {
-		nodes = nodesReducer(
-			nodes,
-			{
-				type: NodesActionType.REMOVE_NODE,
-				nodeId,
-			},
-			{ nodeTypes, portTypes, context },
-		);
-	});
+		if (typeof document !== "undefined") {
+			deleteConnectionsByNodeId(nodeId);
+		}
+	}
 
 	// Reconcile input data for each node
-	let reconciledNodes = Object.values(nodes).reduce<NodeMap>(
+	let reconciledNodes = Object.values(knownNodes).reduce<NodeMap>(
 		(nodesObj, node) => {
 			const nodeType = nodeTypes[node.type];
+
+			if (!nodeType) {
+				return nodesObj;
+			}
+
 			const defaultInputData = getDefaultData({
 				node,
 				nodeType,
@@ -211,8 +213,13 @@ const reconcileNodes = (
 	// Reconcile node attributes for each node
 	reconciledNodes = Object.values(reconciledNodes).reduce<NodeMap>(
 		(nodesObj, node) => {
-			const newNode = { ...node };
 			const nodeType = nodeTypes[node.type];
+
+			if (!nodeType) {
+				return nodesObj;
+			}
+
+			const newNode = { ...node };
 			if (nodeType.root !== node.root) {
 				if (nodeType.root && !node.root) {
 					newNode.root = nodeType.root;
@@ -249,7 +256,7 @@ export const getInitialNodes = (
 			const nodeNotAdded = !Object.values(initialNodes).find(
 				(n) => n.type === dNode.type,
 			);
-			if (nodeNotAdded) {
+			if (nodeNotAdded && nodeTypes[dNode.type]) {
 				nodes = nodesReducer(
 					nodes,
 					{
@@ -279,6 +286,10 @@ const getDefaultData = ({
 	portTypes: PortTypeMap;
 	context: unknown;
 }): InputData => {
+	if (!nodeType) {
+		return {};
+	}
+
 	const inputs = Array.isArray(nodeType.inputs)
 		? nodeType.inputs
 		: nodeType.inputs(node.inputData, node.connections, context);
@@ -340,10 +351,17 @@ export type NodesAction =
 			nodeId: string;
 	  }
 	| {
+			type: NodesActionType.SET_NODE_DIMENSIONS;
+			nodeId: string;
+			width: number;
+			height: number;
+	  }
+	| {
 			type: NodesActionType.SET_NODE_SUBGRAPH;
 			nodeId: string;
 			subGraph: NodeMap;
-	  };
+	  }
+	| { type: NodesActionType.RECONCILE_NODE_TYPES };
 
 interface FlumeEnvironment {
 	nodeTypes: NodeTypeMap;
@@ -418,6 +436,11 @@ const nodesReducer = (
 
 		case NodesActionType.ADD_NODE: {
 			const { x, y, nodeType, id: _id, defaultNode: _defaultNode } = action;
+
+			if (!nodeTypes[nodeType]) {
+				return nodes;
+			}
+
 			const newNodeId = _id ?? createFlumeId();
 			const newNode: FlumeNode = {
 				id: newNodeId,
@@ -510,6 +533,18 @@ const nodesReducer = (
 			};
 		}
 
+		case NodesActionType.SET_NODE_DIMENSIONS: {
+			const { nodeId, width, height } = action;
+			return {
+				...nodes,
+				[nodeId]: {
+					...nodes[nodeId],
+					width,
+					height,
+				},
+			};
+		}
+
 		case NodesActionType.SET_NODE_SUBGRAPH: {
 			const { nodeId, subGraph } = action;
 			return {
@@ -521,6 +556,9 @@ const nodesReducer = (
 			};
 		}
 
+		case NodesActionType.RECONCILE_NODE_TYPES:
+			return reconcileNodes(nodes, nodeTypes, portTypes, context);
+
 		default:
 			return nodes;
 	}
@@ -529,12 +567,12 @@ const nodesReducer = (
 export const connectNodesReducer =
 	(
 		reducer: typeof nodesReducer,
-		environment: FlumeEnvironment,
+		readEnvironment: () => FlumeEnvironment,
 		dispatchToasts: React.Dispatch<
 			React.SetStateAction<ToastAction | undefined>
 		>,
 	) =>
 	(state: NodeMap, action: NodesAction) =>
-		reducer(state, action, environment, dispatchToasts);
+		reducer(state, action, readEnvironment(), dispatchToasts);
 
 export default nodesReducer;

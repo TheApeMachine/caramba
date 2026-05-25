@@ -46,7 +46,7 @@ const researchBentoTiles: BentoTileSpec[] = [
 	{
 		id: "r-todos",
 		kind: "research-todos",
-		colSpan: 2,
+		colSpan: 1,
 		rowSpan: 1,
 		priority: 50,
 	},

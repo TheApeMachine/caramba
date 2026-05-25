@@ -11,3 +11,16 @@
 	bottom: 10px;
 	gap: 15px;
 }
+.portLayer {
+	position: absolute;
+	left: 0px;
+	top: 0px;
+	width: 0px;
+	height: 0px;
+	z-index: 2;
+	pointer-events: none;
+	overflow: visible;
+}
+.portLayer > * {
+	pointer-events: auto;
+}

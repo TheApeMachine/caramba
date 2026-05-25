@@ -1,21 +1,10 @@
 /*
-usePageContext scrapes data-context elements from the live DOM on demand.
-
-Opt any element in by adding:
-  data-context="<label>"          — human-readable label for this chunk
-  data-context-key="<key>"        — optional machine key (defaults to label)
-  data-context-type="text|value|json|count"
-                                  — how to extract (default: "text")
-
-The hook returns a `capture()` function that collects a snapshot and formats
-it as a compact string suitable for prepending to an agent message as context.
-
-Rules that keep context size reasonable:
-- Only elements with data-context are included (explicit opt-in).
-- Each extracted value is truncated at MAX_CHARS characters.
-- The full snapshot is capped at MAX_TOTAL_CHARS.
-- Elements hidden via display:none or visibility:hidden are skipped.
+usePageContext assembles assistant context from semantic state published by
+feature providers, with DOM scraping as a secondary fallback for legacy
+data-context markers.
 */
+import { useCallback } from "react";
+import { assistantContextBridge } from "./assistant-context-bridge";
 
 const MAX_CHARS = 512;
 const MAX_TOTAL_CHARS = 4096;
@@ -28,8 +17,8 @@ type ContextEntry = {
 
 type ExtractionType = "text" | "value" | "json" | "count";
 
-function isVisible(el: Element): boolean {
-	const style = window.getComputedStyle(el);
+function isVisible(element: Element): boolean {
+	const style = window.getComputedStyle(element);
 	return (
 		style.display !== "none" &&
 		style.visibility !== "hidden" &&
@@ -37,17 +26,18 @@ function isVisible(el: Element): boolean {
 	);
 }
 
-function extractValue(el: Element, type: ExtractionType): string {
+function extractValue(element: Element, type: ExtractionType): string {
 	switch (type) {
 		case "value": {
-			const input = el as
+			const input = element as
 				| HTMLInputElement
 				| HTMLTextAreaElement
 				| HTMLSelectElement;
 			return input.value ?? "";
 		}
 		case "json": {
-			const raw = el.getAttribute("data-context-value") ?? el.textContent ?? "";
+			const raw =
+				element.getAttribute("data-context-value") ?? element.textContent ?? "";
 			try {
 				return JSON.stringify(JSON.parse(raw), null, 2);
 			} catch {
@@ -55,23 +45,25 @@ function extractValue(el: Element, type: ExtractionType): string {
 			}
 		}
 		case "count": {
-			const children = el.querySelectorAll("[data-context-item]");
+			const children = element.querySelectorAll("[data-context-item]");
 			return children.length > 0
 				? `${children.length} item${children.length === 1 ? "" : "s"}`
-				: el.childElementCount.toString();
+				: element.childElementCount.toString();
 		}
 		default: {
-			return (el.textContent ?? "").replace(/\s+/g, " ").trim();
+			return (element.textContent ?? "").replace(/\s+/g, " ").trim();
 		}
 	}
 }
 
-function scrape(): ContextEntry[] {
+function scrapeDomContext(): ContextEntry[] {
 	const nodes = document.querySelectorAll("[data-context]");
 	const entries: ContextEntry[] = [];
 
 	for (const node of nodes) {
-		if (!isVisible(node)) continue;
+		if (!isVisible(node)) {
+			continue;
+		}
 
 		const label = node.getAttribute("data-context") ?? "";
 		const key =
@@ -79,36 +71,61 @@ function scrape(): ContextEntry[] {
 			label.toLowerCase().replace(/\s+/g, "_");
 		const type = (node.getAttribute("data-context-type") ??
 			"text") as ExtractionType;
-
 		const raw = extractValue(node, type);
 		const value = raw.length > MAX_CHARS ? `${raw.slice(0, MAX_CHARS)}…` : raw;
 
-		if (value) entries.push({ label, key, value });
+		if (value) {
+			entries.push({ label, key, value });
+		}
 	}
 
 	return entries;
 }
 
+function mergeEntries(entries: ContextEntry[]): ContextEntry[] {
+	const merged = new Map<string, ContextEntry>();
+
+	for (const entry of entries) {
+		merged.set(entry.key, entry);
+	}
+
+	return [...merged.values()];
+}
+
 function format(entries: ContextEntry[], route: string): string {
-	if (entries.length === 0) return "";
+	if (entries.length === 0) {
+		return "";
+	}
 
 	const lines: string[] = [
 		`[Page context — ${route}]`,
-		...entries.map((e) => `${e.label}: ${e.value}`),
+		...entries.map((entry) => `${entry.label}: ${entry.value}`),
 	];
-
 	const full = lines.join("\n");
+
 	return full.length > MAX_TOTAL_CHARS
 		? `${full.slice(0, MAX_TOTAL_CHARS)}…`
 		: full;
 }
 
 export function usePageContext() {
-	const capture = (): string => {
+	const capture = useCallback((): string => {
 		const route = window.location.pathname;
-		const entries = scrape();
-		return format(entries, route);
-	};
+		const semanticEntries = assistantContextBridge.snapshot().map((entry) => ({
+			label: entry.label,
+			key: entry.key,
+			value:
+				entry.value.length > MAX_CHARS
+					? `${entry.value.slice(0, MAX_CHARS)}…`
+					: entry.value,
+		}));
+		const domEntries = scrapeDomContext().filter(
+			(entry) =>
+				!semanticEntries.some((semantic) => semantic.key === entry.key),
+		);
+
+		return format(mergeEntries([...semanticEntries, ...domEntries]), route);
+	}, []);
 
 	return { capture };
 }

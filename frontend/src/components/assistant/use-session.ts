@@ -1,21 +1,10 @@
 import { useLiveQuery } from "@tanstack/react-db";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-	type AssistantMessageRow,
-	getMessagesCollection,
-} from "#/collections/assistant_messages";
-import {
-	type AssistantPersonaRow,
-	getPersonasCollection,
-} from "#/collections/assistant_personas";
-import {
-	type AssistantSessionPersonaRow,
-	getSessionPersonasCollection,
-} from "#/collections/assistant_session_personas";
-import {
-	type AssistantSessionRow,
-	getSessionsCollection,
-} from "#/collections/assistant_sessions";
+import type { AssistantMessageRow } from "#/collections/assistant_messages";
+import type { AssistantPersonaRow } from "#/collections/assistant_personas";
+import type { AssistantSessionPersonaRow } from "#/collections/assistant_session_personas";
+import type { AssistantSessionRow } from "#/collections/assistant_sessions";
+import { useAssistantCollections } from "./assistant-collections-provider";
 import { importLocalStorageIfNeeded } from "./storage-migration";
 import {
 	type AdapterType,
@@ -27,7 +16,6 @@ import {
 	type SessionScope,
 	type UIMessage,
 } from "./types";
-import { useAssistantMode } from "./use-assistant-mode";
 
 const ACTIVE_KEY = "caramba:assistant:active";
 
@@ -176,13 +164,13 @@ localStorage-backed (local). Mode switches recreate the active collections
 through the `get*Collection(mode)` factories.
 */
 export function useSession() {
-	const { mode } = useAssistantMode();
-
-	const personasCollection: AnyCollection = getPersonasCollection(mode);
-	const sessionsCollection: AnyCollection = getSessionsCollection(mode);
-	const messagesCollection: AnyCollection = getMessagesCollection(mode);
-	const sessionPersonasCollection: AnyCollection =
-		getSessionPersonasCollection(mode);
+	const {
+		mode,
+		personas: personasCollection,
+		sessions: sessionsCollection,
+		messages: messagesCollection,
+		sessionPersonas: sessionPersonasCollection,
+	} = useAssistantCollections();
 
 	const importedRef = useRef<string | null>(null);
 

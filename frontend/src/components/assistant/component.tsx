@@ -4,6 +4,7 @@ import { CardFrame } from "#/components/ui/card";
 import { Flex } from "#/components/ui/flex";
 import { cn } from "@/lib/utils";
 import { assistantBridge } from "./assistant-bridge";
+import { AssistantCollectionsProvider } from "./assistant-collections-provider";
 import { Body } from "./body";
 import { Footer } from "./footer";
 import { Header } from "./header";
@@ -31,6 +32,20 @@ function buildUserMessage(text: string, pageContext: string): UIMessage {
 export function Assistant() {
 	const [mode, setMode] = useState<Mode>("closed");
 
+	return (
+		<AssistantCollectionsProvider>
+			<AssistantShell mode={mode} setMode={setMode} />
+		</AssistantCollectionsProvider>
+	);
+}
+
+function AssistantShell({
+	mode,
+	setMode,
+}: {
+	mode: Mode;
+	setMode: (mode: Mode) => void;
+}) {
 	const {
 		sessions,
 		session,
@@ -70,7 +85,7 @@ export function Assistant() {
 			setMode,
 		});
 		return () => assistantBridge.unregister();
-	}, [send, capture]);
+	}, [send, capture, setMode]);
 
 	const isClosed = mode === "closed";
 	const isMini = mode === "mini";

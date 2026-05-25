@@ -4,5 +4,5 @@
 	top: 0px;
 	pointer-events: none;
 	z-index: 0;
-	overflow: visible !important;
+	overflow: visible;
 }

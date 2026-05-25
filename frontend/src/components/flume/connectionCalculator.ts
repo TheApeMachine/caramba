@@ -1,7 +1,20 @@
 import { curveBasis, line } from "d3-shape";
 import type { RefObject } from "react";
 import type FlumeCache from "#/components/flume/Cache";
-import { CONNECTIONS_ID } from "#/components/flume/constants";
+import {
+	CANVAS_ID,
+	CONNECTIONS_ID,
+	STAGE_ID,
+} from "#/components/flume/constants";
+import {
+	buildRoutingGridFromObstacles,
+	routeOrthogonalWithGrid,
+} from "#/components/flume/orthogonal-grid-router";
+import {
+	buildObstacleMapFromSpatialIndex,
+	resolveConnectionsFromSpatialIndex,
+	type SpatialIndexSnapshot,
+} from "#/components/flume/spatial-index";
 import type {
 	Coordinate,
 	FlumeNode,
@@ -21,39 +34,56 @@ export const connectionId = (
 ) =>
 	`${encSeg(outputNodeId)}|${encSeg(outputPortName)}|${encSeg(inputNodeId)}|${encSeg(inputPortName)}`;
 
+const portHandleSelector = (
+	nodeId: string,
+	portName: string,
+	transputType: TransputType,
+) =>
+	`[data-flume-component="port-handle"][data-node-id="${nodeId}"][data-port-name="${portName}"][data-port-transput-type="${transputType}"]`;
+
+export const findPortHandle = (
+	root: ParentNode,
+	nodeId: string,
+	portName: string,
+	transputType: TransputType = "input",
+) => root.querySelector(portHandleSelector(nodeId, portName, transputType));
+
 const getPort = (
 	nodeId: string,
 	portName: string,
 	transputType: TransputType = "input",
-) =>
-	document.querySelector(
-		`[data-node-id="${nodeId}"] [data-port-name="${portName}"][data-port-transput-type="${transputType}"]`,
-	);
+	editorId?: string,
+) => {
+	if (editorId) {
+		return getPortInEditor(editorId, nodeId, portName, transputType);
+	}
+	return findPortHandle(document, nodeId, portName, transputType);
+};
 
 export const getPortRect = (
 	nodeId: string,
 	portName: string,
 	transputType?: TransputType,
 	cache?: RefObject<FlumeCache>,
+	editorId?: string,
 ) => {
 	const calculatedTransputType = transputType ?? "input";
 
 	if (cache?.current) {
 		const portCacheName = nodeId + portName + calculatedTransputType;
 		const cachedPort = cache.current.ports[portCacheName];
-		if (cachedPort) {
+		if (cachedPort?.isConnected) {
 			return cachedPort.getBoundingClientRect();
-		} else {
-			const port = getPort(nodeId, portName, calculatedTransputType);
-			if (port) {
-				cache.current.ports[portCacheName] = port;
-			}
-			return port?.getBoundingClientRect() ?? null;
 		}
-	} else {
-		const port = getPort(nodeId, portName, calculatedTransputType);
+		const port = getPort(nodeId, portName, calculatedTransputType, editorId);
+		if (port) {
+			cache.current.ports[portCacheName] = port;
+		}
 		return port?.getBoundingClientRect() ?? null;
 	}
+
+	const port = getPort(nodeId, portName, calculatedTransputType, editorId);
+	return port?.getBoundingClientRect() ?? null;
 };
 
 export const getPortRectsByNodes = (
@@ -80,7 +110,12 @@ export const getPortRectsByNodes = (
 								forEachConnection({
 									to: toRect,
 									from: fromRect,
-									name: connectionId(output.nodeId, output.portName, node.id, inputName),
+									name: connectionId(
+										output.nodeId,
+										output.portName,
+										node.id,
+										inputName,
+									),
 								});
 							}
 							obj[node.id + inputName] = toRect;
@@ -154,7 +189,6 @@ function segmentHitsVertical(
 	return false;
 }
 
-
 /*
 Orthogonal path from {@link from} (output port) to {@link to} (input port).
 
@@ -183,6 +217,27 @@ export function calculateOrthogonalEdgePath(
 	obstaclesVertical: ReadonlyArray<ObstacleRect>,
 	obstaclesHorizontal: ReadonlyArray<ObstacleRect>,
 ): string {
+	const grid = buildRoutingGridFromObstacles(obstaclesHorizontal);
+	const gridPath = routeOrthogonalWithGrid(from, to, grid);
+
+	if (gridPath) {
+		return gridPath;
+	}
+
+	return calculateOrthogonalEdgePathCorridor(
+		from,
+		to,
+		obstaclesVertical,
+		obstaclesHorizontal,
+	);
+}
+
+function calculateOrthogonalEdgePathCorridor(
+	from: Coordinate,
+	to: Coordinate,
+	obstaclesVertical: ReadonlyArray<ObstacleRect>,
+	obstaclesHorizontal: ReadonlyArray<ObstacleRect>,
+): string {
 	const px = from.x + PORT_EXIT_STUB;
 	const py = from.y;
 	const qx = to.x - PORT_EXIT_STUB;
@@ -200,8 +255,10 @@ export function calculateOrthogonalEdgePath(
 
 		const mid = Math.round((px + qx) / 2);
 		for (let i = 0; i <= CORRIDOR_SCAN_LIMIT; i++) {
-			if (isClear(mid + i * CORRIDOR_SCAN_STEP)) return seg(mid + i * CORRIDOR_SCAN_STEP);
-			if (i > 0 && isClear(mid - i * CORRIDOR_SCAN_STEP)) return seg(mid - i * CORRIDOR_SCAN_STEP);
+			if (isClear(mid + i * CORRIDOR_SCAN_STEP))
+				return seg(mid + i * CORRIDOR_SCAN_STEP);
+			if (i > 0 && isClear(mid - i * CORRIDOR_SCAN_STEP))
+				return seg(mid - i * CORRIDOR_SCAN_STEP);
 		}
 		return seg(mid);
 	}
@@ -217,13 +274,17 @@ export function calculateOrthogonalEdgePath(
 
 	// Gather all node tops/bottoms to find bypass corridors above and below.
 	const allNodes = [...obstaclesVertical, ...obstaclesHorizontal];
-	const nodeExtents = allNodes.flatMap((o) => [o.top - OBSTACLE_PADDING, o.bottom + OBSTACLE_PADDING]);
+	const nodeExtents = allNodes.flatMap((o) => [
+		o.top - OBSTACLE_PADDING,
+		o.bottom + OBSTACLE_PADDING,
+	]);
 	const yMin = Math.min(py, qy, ...nodeExtents) - CORRIDOR_MARGIN;
 	const yMax = Math.max(py, qy, ...nodeExtents) + CORRIDOR_MARGIN;
 
 	// Candidate horizontal corridors: above all nodes, below all nodes, and between node rows.
 	const candidates: number[] = [yMin, yMax];
-	for (const y of nodeExtents) candidates.push(y - CORRIDOR_MARGIN, y + CORRIDOR_MARGIN);
+	for (const y of nodeExtents)
+		candidates.push(y - CORRIDOR_MARGIN, y + CORRIDOR_MARGIN);
 	candidates.sort((a, b) => a - b);
 
 	const isBypassClear = (vy: number, vxEast: number, vxWest: number) =>
@@ -254,22 +315,28 @@ export function buildObstacleMap(
 	nodes: Record<string, FlumeNode>,
 	stage: DOMRect,
 	scale: number,
+	editorId?: string,
 ): Map<string, ObstacleRect> {
-	const hw = stage.width / 2;
-	const hh = stage.height / 2;
+	const stageHalfWidth = stage.width / 2;
+	const stageHalfHeight = stage.height / 2;
 	const byScale = (value: number) => (1 / scale) * value;
+	const canvas = editorId ? getCanvasRef(editorId) : null;
 	const out = new Map<string, ObstacleRect>();
 	for (const id of Object.keys(nodes)) {
-		const el = document.querySelector(
-			`[data-flume-component="node"][data-node-id="${id}"]`,
-		);
-		if (!(el instanceof Element)) continue;
-		const rect = el.getBoundingClientRect();
+		const element = canvas
+			? canvas.querySelector(
+					`[data-flume-component="node"][data-node-id="${id}"]`,
+				)
+			: document.querySelector(
+					`[data-flume-component="node"][data-node-id="${id}"]`,
+				);
+		if (!(element instanceof Element)) continue;
+		const rect = element.getBoundingClientRect();
 		out.set(id, {
-			left:   byScale(rect.left   - stage.x - hw),
-			right:  byScale(rect.right  - stage.x - hw),
-			top:    byScale(rect.top    - stage.y - hh),
-			bottom: byScale(rect.bottom - stage.y - hh),
+			left: byScale(rect.left - stage.x - stageHalfWidth),
+			right: byScale(rect.right - stage.x - stageHalfWidth),
+			top: byScale(rect.top - stage.y - stageHalfHeight),
+			bottom: byScale(rect.bottom - stage.y - stageHalfHeight),
 		});
 	}
 	return out;
@@ -418,7 +485,13 @@ export const updateConnection = ({
 }) => {
 	line.setAttribute(
 		"d",
-		calculateEdgePath(routingMode, from, to, obstaclesVertical, obstaclesHorizontal),
+		calculateEdgePath(
+			routingMode,
+			from,
+			to,
+			obstaclesVertical,
+			obstaclesHorizontal,
+		),
 	);
 };
 
@@ -478,109 +551,167 @@ export const createSVG = ({
 	return svg;
 };
 
+export const getCanvasRef = (editorId: string) =>
+	document.getElementById(`${CANVAS_ID}${editorId}`);
+
+/*
+getStageBounds returns the visible stage rect used to convert screen coordinates
+into the editor's center-origin canvas space.
+*/
+export const getStageBounds = (editorId: string): DOMRect | null => {
+	const stage = document.getElementById(`${STAGE_ID}${editorId}`);
+	return stage?.getBoundingClientRect() ?? null;
+};
+
+export const screenPointToCanvas = (
+	screenX: number,
+	screenY: number,
+	stageRect: DOMRect,
+	scale: number,
+): Coordinate => {
+	const byScale = (value: number) => (1 / scale) * value;
+	const stageHalfWidth = stageRect.width / 2;
+	const stageHalfHeight = stageRect.height / 2;
+
+	return {
+		x: byScale(screenX - stageRect.x - stageHalfWidth),
+		y: byScale(screenY - stageRect.y - stageHalfHeight),
+	};
+};
+
+export const screenRectToCanvas = (
+	rect: DOMRect,
+	stageRect: DOMRect,
+	scale: number,
+): { x: number; y: number; width: number; height: number } => {
+	const topLeft = screenPointToCanvas(rect.left, rect.top, stageRect, scale);
+	const bottomRight = screenPointToCanvas(
+		rect.right,
+		rect.bottom,
+		stageRect,
+		scale,
+	);
+
+	return {
+		x: topLeft.x,
+		y: topLeft.y,
+		width: bottomRight.x - topLeft.x,
+		height: bottomRight.y - topLeft.y,
+	};
+};
+
+/** Reads the live CSS scale from the canvas; falls back when React state is stale during wheel zoom. */
+export const readLiveStageScale = (
+	editorId: string,
+	fallbackScale: number,
+): number => {
+	const canvas = getCanvasRef(editorId);
+	if (!canvas) return fallbackScale;
+
+	const match = canvas.style.transform.match(/scale\(([^)]+)\)/);
+	if (!match) return fallbackScale;
+
+	const parsedScale = Number.parseFloat(match[1]);
+	if (Number.isNaN(parsedScale) || parsedScale <= 0) return fallbackScale;
+
+	return parsedScale;
+};
+
 export const getStageRef = (editorId: string) =>
 	document.getElementById(
 		`${CONNECTIONS_ID}${editorId}`,
 	) as HTMLDivElement | null;
 
+export const getPortInEditor = (
+	editorId: string,
+	nodeId: string,
+	portName: string,
+	transputType: TransputType = "input",
+) => {
+	const canvas = getCanvasRef(editorId);
+	if (!canvas) return null;
+	return findPortHandle(canvas, nodeId, portName, transputType);
+};
+
 export const createConnections = (
 	nodes: { [nodeId: string]: FlumeNode },
-	{ scale }: StageState,
+	_editorState: StageState,
 	editorId: string,
 	routingMode: EdgeRoutingMode = "smooth",
+	spatialIndex?: SpatialIndexSnapshot,
+	positionOverrides?: Record<string, Coordinate>,
 ) => {
 	const stageRef = getStageRef(editorId);
-	if (stageRef) {
-		const stage = stageRef.getBoundingClientRect();
-		const stageHalfWidth = stage.width / 2;
-		const stageHalfHeight = stage.height / 2;
+	if (!stageRef || !spatialIndex) {
+		return;
+	}
 
-		const byScale = (value: number) => (1 / scale) * value;
+	const allObstaclesById: Map<string, ObstacleRect> | undefined =
+		routingMode === "orthogonal"
+			? buildObstacleMapFromSpatialIndex(nodes, spatialIndex, positionOverrides)
+			: undefined;
+	const allObstacles = allObstaclesById
+		? Array.from(allObstaclesById.values())
+		: undefined;
 
-		// Build obstacle rects once per pass, not once per edge.
-		// allObstaclesById lets us cheaply exclude endpoint nodes per edge.
-		const allObstaclesById: Map<string, ObstacleRect> | undefined =
-			routingMode === "orthogonal"
-				? buildObstacleMap(nodes, stage, scale)
-				: undefined;
-		const allObstacles = allObstaclesById
-			? Array.from(allObstaclesById.values())
+	const resolved = resolveConnectionsFromSpatialIndex(
+		nodes,
+		spatialIndex,
+		positionOverrides,
+	);
+
+	const resolvedIds = new Set(resolved.map((connection) => connection.id));
+
+	for (const pathElement of stageRef.querySelectorAll<SVGPathElement>(
+		"[data-connection-id]",
+	)) {
+		const connectionId = pathElement.getAttribute("data-connection-id");
+
+		if (connectionId && !resolvedIds.has(connectionId)) {
+			pathElement.parentElement?.remove();
+		}
+	}
+
+	for (const connection of resolved) {
+		const obstaclesVertical = allObstacles;
+		const obstaclesHorizontal = allObstaclesById
+			? Array.from(allObstaclesById.entries())
+					.filter(
+						([nodeId]) =>
+							nodeId !== connection.outputNodeId &&
+							nodeId !== connection.inputNodeId,
+					)
+					.map(([, rect]) => rect)
 			: undefined;
 
-		Object.values(nodes).forEach((node) => {
-			if (node.connections?.inputs) {
-				Object.entries(node.connections.inputs).forEach(
-					([inputName, outputs]) => {
-						outputs.forEach((output) => {
-							const fromPort = getPortRect(
-								output.nodeId,
-								output.portName,
-								"output",
-							);
-							const toPort = getPortRect(node.id, inputName, "input");
-							if (fromPort && toPort) {
-								const fromHalfW = fromPort.width / 2;
-								const fromHalfH = fromPort.height / 2;
-								const toHalfW = toPort.width / 2;
-								const toHalfH = toPort.height / 2;
-								const id = connectionId(output.nodeId, output.portName, node.id, inputName);
-								const fromCoord = {
-									x: byScale(
-										fromPort.x - stage.x + fromHalfW - stageHalfWidth,
-									),
-									y: byScale(
-										fromPort.y - stage.y + fromHalfH - stageHalfHeight,
-									),
-								};
-								const toCoord = {
-									x: byScale(
-										toPort.x - stage.x + toHalfW - stageHalfWidth,
-									),
-									y: byScale(
-										toPort.y - stage.y + toHalfH - stageHalfHeight,
-									),
-								};
+		const existingLine = stageRef.querySelector<SVGPathElement>(
+			`[data-connection-id="${connection.id}"]`,
+		);
 
-								// Per-edge obstacle set: exclude the two endpoint nodes for horizontal legs.
-								const obstaclesVertical = allObstacles;
-								const obstaclesHorizontal = allObstaclesById
-									? Array.from(allObstaclesById.entries())
-										.filter(([id]) => id !== output.nodeId && id !== node.id)
-										.map(([, rect]) => rect)
-									: undefined;
+		if (existingLine) {
+			updateConnection({
+				line: existingLine,
+				from: connection.from,
+				to: connection.to,
+				routingMode,
+				obstaclesVertical,
+				obstaclesHorizontal,
+			});
+			continue;
+		}
 
-								const existingLine: SVGPathElement | null =
-									document.querySelector(`[data-connection-id="${id}"]`);
-
-								if (existingLine) {
-									updateConnection({
-										line: existingLine,
-										from: fromCoord,
-										to: toCoord,
-										routingMode,
-										obstaclesVertical,
-										obstaclesHorizontal,
-									});
-								} else {
-									createSVG({
-										id,
-										outputNodeId: output.nodeId,
-										outputPortName: output.portName,
-										inputNodeId: node.id,
-										inputPortName: inputName,
-										from: fromCoord,
-										to: toCoord,
-										stage: stageRef,
-										routingMode,
-										obstaclesVertical,
-										obstaclesHorizontal,
-									});
-								}
-							}
-						});
-					},
-				);
-			}
+		createSVG({
+			id: connection.id,
+			outputNodeId: connection.outputNodeId,
+			outputPortName: connection.outputPortName,
+			inputNodeId: connection.inputNodeId,
+			inputPortName: connection.inputPortName,
+			from: connection.from,
+			to: connection.to,
+			stage: stageRef,
+			routingMode,
+			obstaclesVertical,
+			obstaclesHorizontal,
 		});
 	}
 };

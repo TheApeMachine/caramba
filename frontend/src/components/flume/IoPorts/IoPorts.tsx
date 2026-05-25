@@ -5,8 +5,11 @@ import Control from "#/components/flume/Control/Control";
 import {
 	calculateEdgePath,
 	getPortRect,
+	getStageBounds,
+	readLiveStageScale,
+	screenPointToCanvas,
 } from "#/components/flume/connectionCalculator";
-import { CONNECTIONS_ID } from "#/components/flume/constants";
+import { CONNECTIONS_ID, PORT_LAYER_ID } from "#/components/flume/constants";
 import {
 	ConnectionRecalculateContext,
 	ContextContext,
@@ -34,6 +37,7 @@ import { Fieldset } from "#/components/ui/fieldset";
 import { Flex } from "#/components/ui/flex";
 import usePrevious from "#/hooks/usePrevious";
 import { cn } from "@/lib/utils";
+import { usePortOverlayPosition } from "../usePortOverlayPosition";
 import styles from "./IoPorts.module.css";
 
 const useTransputs = (
@@ -450,57 +454,62 @@ const Port = ({
 		y: 0,
 	});
 	const dragStartCoordinatesCache = React.useRef(dragStartCoordinates);
+	const portAnchor = React.useRef<HTMLSpanElement>(null);
 	const port = React.useRef<HTMLButtonElement>(null);
 	const line = React.useRef<SVGPathElement>(null);
-	const lineInToPort = React.useRef<HTMLDivElement | null>(null);
+	const lineInToPort = React.useRef<SVGPathElement | null>(null);
 
 	const connectionsPortalHost =
 		typeof document !== "undefined"
 			? document.getElementById(connectionsDomId)
 			: null;
 
+	const [portLayerHost, setPortLayerHost] = React.useState<HTMLElement | null>(
+		null,
+	);
+
+	React.useLayoutEffect(() => {
+		setPortLayerHost(document.getElementById(`${PORT_LAYER_ID}${editorId}`));
+	}, [editorId]);
+
+	const overlayPosition = usePortOverlayPosition(
+		portAnchor,
+		editorId,
+		nodeId,
+		name,
+		isInput ? "input" : "output",
+	);
+
 	const edgeRouting = useEdgeRouting();
 
-	const byScale = (value: number) => (1 / (stageState?.scale ?? 1)) * value;
+	const readCanvasScale = () =>
+		readLiveStageScale(editorId, stageState?.scale ?? 1);
 
-	const handleDrag = (e: MouseEvent) => {
-		// Match createConnections(): use the connections container (inside the
-		// scaled translate tree), not the outer stage — and do not add translate
-		// here because getBoundingClientRect() already reflects pan/zoom.
-		const conn = document
-			.getElementById(connectionsDomId)
-			?.getBoundingClientRect() ?? { x: 0, y: 0, width: 0, height: 0 };
-		const { x, y, width, height } = conn;
-		const halfW = width / 2;
-		const halfH = height / 2;
+	const clientPointToCanvas = (clientX: number, clientY: number) => {
+		const stageRect = getStageBounds(editorId);
+
+		if (!stageRect) {
+			return { x: 0, y: 0 };
+		}
+
+		return screenPointToCanvas(clientX, clientY, stageRect, readCanvasScale());
+	};
+
+	const handleDrag = (event: MouseEvent) => {
+		const to = clientPointToCanvas(event.clientX, event.clientY);
 
 		if (isInput) {
-			const to = {
-				x: byScale(e.clientX - x - halfW),
-				y: byScale(e.clientY - y - halfH),
-			};
 			lineInToPort.current?.setAttribute(
 				"d",
-				calculateEdgePath(
-					edgeRouting,
-					dragStartCoordinatesCache.current,
-					to,
-				),
+				calculateEdgePath(edgeRouting, dragStartCoordinatesCache.current, to),
 			);
-		} else {
-			const to = {
-				x: byScale(e.clientX - x - halfW),
-				y: byScale(e.clientY - y - halfH),
-			};
-			line.current?.setAttribute(
-				"d",
-				calculateEdgePath(
-					edgeRouting,
-					dragStartCoordinatesCache.current,
-					to,
-				),
-			);
+			return;
 		}
+
+		line.current?.setAttribute(
+			"d",
+			calculateEdgePath(edgeRouting, dragStartCoordinatesCache.current, to),
+		);
 	};
 
 	const handleDragEnd = (e: MouseEvent) => {
@@ -597,24 +606,18 @@ const Port = ({
 		document.removeEventListener("mousemove", handleDrag);
 	};
 
+	const portRectCenterToCanvas = (rect?: DOMRect | null) => {
+		if (!rect) {
+			return { x: 0, y: 0 };
+		}
+
+		return clientPointToCanvas(
+			rect.left + rect.width / 2,
+			rect.top + rect.height / 2,
+		);
+	};
+
 	const beginDragFromPort = () => {
-		const {
-			x: startPortX = 0,
-			y: startPortY = 0,
-			width: startPortWidth = 0,
-			height: startPortHeight = 0,
-		} = port.current?.getBoundingClientRect() || {};
-
-		const conn = document
-			.getElementById(connectionsDomId)
-			?.getBoundingClientRect() || { x: 0, y: 0, width: 0, height: 0 };
-		const stageX = conn.x;
-		const stageY = conn.y;
-		const stageWidth = conn.width;
-		const stageHeight = conn.height;
-		const stageHalfWidth = stageWidth / 2;
-		const stageHalfHeight = stageHeight / 2;
-
 		if (isInput) {
 			lineInToPort.current = document.querySelector(
 				`[data-input-node-id="${nodeId}"][data-input-port-name="${name}"]`,
@@ -631,36 +634,24 @@ const Port = ({
 					lineInToPort.current.dataset.outputPortName || "",
 					"output",
 				);
-				const {
-					x: outputPortX = 0,
-					y: outputPortY = 0,
-					width: outputPortWidth = 0,
-					height: outputPortHeight = 0,
-				} = outputRect || {};
-				const portHalfX = outputPortWidth / 2;
-				const portHalfY = outputPortHeight / 2;
-
-				const coordinates = {
-					x: byScale(outputPortX - stageX + portHalfX - stageHalfWidth),
-					y: byScale(outputPortY - stageY + portHalfY - stageHalfHeight),
-				};
+				const coordinates = portRectCenterToCanvas(outputRect);
 				setDragStartCoordinates(coordinates);
 				dragStartCoordinatesCache.current = coordinates;
 				setIsDragging(true);
 				document.addEventListener("mouseup", handleDragEnd);
 				document.addEventListener("mousemove", handleDrag);
 			}
-		} else {
-			const coordinates = {
-				x: byScale(startPortX - stageX + startPortWidth / 2 - stageHalfWidth),
-				y: byScale(startPortY - stageY + startPortHeight / 2 - stageHalfHeight),
-			};
-			setDragStartCoordinates(coordinates);
-			dragStartCoordinatesCache.current = coordinates;
-			setIsDragging(true);
-			document.addEventListener("mouseup", handleDragEnd);
-			document.addEventListener("mousemove", handleDrag);
+			return;
 		}
+
+		const coordinates = portRectCenterToCanvas(
+			port.current?.getBoundingClientRect(),
+		);
+		setDragStartCoordinates(coordinates);
+		dragStartCoordinatesCache.current = coordinates;
+		setIsDragging(true);
+		document.addEventListener("mouseup", handleDragEnd);
+		document.addEventListener("mousemove", handleDrag);
 	};
 
 	const handleDragStart = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -670,37 +661,54 @@ const Port = ({
 	};
 
 	return (
-		<React.Fragment>
-			<Button
-				ref={port}
-				type="button"
-				size="sm"
-				variant="ghost"
-				className={cn(
-					"relative z-0 h-3 min-h-3 min-w-3 shrink-0 gap-0 rounded-full border-none p-0 shadow-md ring-offset-background [&]:before:shadow-none!",
-					"[&]:hover:bg-transparent!",
-					"[&]:data-pressed:bg-transparent!",
-					styles.port,
-				)}
-				onMouseDown={handleDragStart}
-				onKeyDown={(e) => {
-					if (e.key === "Enter" || e.key === " ") {
-						e.preventDefault();
-						beginDragFromPort();
-					}
-				}}
-				aria-label={`Connect port ${name}`}
-				data-port-color={color}
-				data-port-name={name}
-				data-port-type={type}
-				data-port-transput-type={isInput ? "input" : "output"}
-				data-node-id={nodeId}
-				data-flume-component="port-handle"
-				onDragStart={(e) => {
-					e.preventDefault();
-					e.stopPropagation();
-				}}
+		<span className="inline-flex shrink-0">
+			<span
+				ref={portAnchor}
+				aria-hidden
+				className="inline-block h-3 min-h-3 min-w-3 shrink-0"
 			/>
+			{portLayerHost && overlayPosition.ready
+				? createPortal(
+						<Button
+							ref={port}
+							type="button"
+							size="sm"
+							variant="ghost"
+							className={cn(
+								"absolute gap-0 rounded-full border-none p-0 shadow-md ring-offset-background [&]:before:shadow-none!",
+								"[&]:hover:bg-transparent!",
+								"[&]:data-pressed:bg-transparent!",
+								styles.port,
+							)}
+							style={{
+								position: "absolute",
+								left: overlayPosition.left,
+								top: overlayPosition.top,
+								width: overlayPosition.width,
+								height: overlayPosition.height,
+							}}
+							onMouseDown={handleDragStart}
+							onKeyDown={(event) => {
+								if (event.key === "Enter" || event.key === " ") {
+									event.preventDefault();
+									beginDragFromPort();
+								}
+							}}
+							aria-label={`Connect port ${name}`}
+							data-port-color={color}
+							data-port-name={name}
+							data-port-type={type}
+							data-port-transput-type={isInput ? "input" : "output"}
+							data-node-id={nodeId}
+							data-flume-component="port-handle"
+							onDragStart={(event) => {
+								event.preventDefault();
+								event.stopPropagation();
+							}}
+						/>,
+						portLayerHost,
+					)
+				: null}
 			{isDragging && !isInput && connectionsPortalHost
 				? createPortal(
 						<Connection
@@ -711,6 +719,6 @@ const Port = ({
 						connectionsPortalHost,
 					)
 				: null}
-		</React.Fragment>
+		</span>
 	);
 };
