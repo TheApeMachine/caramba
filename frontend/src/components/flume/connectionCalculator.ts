@@ -660,15 +660,17 @@ export const createConnections = (
 		positionOverrides,
 	);
 
-	const resolvedIds = new Set(resolved.map((connection) => connection.id));
+	if (resolved.length > 0) {
+		const resolvedIds = new Set(resolved.map((connection) => connection.id));
 
-	for (const pathElement of stageRef.querySelectorAll<SVGPathElement>(
-		"[data-connection-id]",
-	)) {
-		const connectionId = pathElement.getAttribute("data-connection-id");
+		for (const pathElement of stageRef.querySelectorAll<SVGPathElement>(
+			"[data-connection-id]",
+		)) {
+			const connectionId = pathElement.getAttribute("data-connection-id");
 
-		if (connectionId && !resolvedIds.has(connectionId)) {
-			pathElement.parentElement?.remove();
+			if (connectionId && !resolvedIds.has(connectionId)) {
+				pathElement.parentElement?.remove();
+			}
 		}
 	}
 

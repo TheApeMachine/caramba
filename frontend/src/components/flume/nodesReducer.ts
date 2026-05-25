@@ -140,6 +140,79 @@ const removeConnections = (connections: Connections, nodeId: string) => ({
 	outputs: getFilteredTransputs(connections.outputs, nodeId),
 });
 
+const remapConnectionNodeIds = (
+	connections: Connections,
+	idMap: Map<string, string>,
+): Connections => {
+	const remapLinks = (links: Connection[]) =>
+		links.map((link) => ({
+			...link,
+			nodeId: idMap.get(link.nodeId) ?? link.nodeId,
+		}));
+
+	return {
+		inputs: Object.fromEntries(
+			Object.entries(connections.inputs).map(([portName, links]) => [
+				portName,
+				remapLinks(links),
+			]),
+		),
+		outputs: Object.fromEntries(
+			Object.entries(connections.outputs).map(([portName, links]) => [
+				portName,
+				remapLinks(links),
+			]),
+		),
+	};
+};
+
+/*
+pruneDanglingConnections removes input/output links whose endpoint node no
+longer exists. Persisted graphs often keep stale ids after default-node hydration.
+*/
+export const pruneDanglingConnections = (nodes: NodeMap): NodeMap => {
+	const nodeIds = new Set(Object.keys(nodes));
+	let changed = false;
+	const next: NodeMap = {};
+
+	for (const [nodeId, node] of Object.entries(nodes)) {
+		const inputs: ConnectionMap = {};
+
+		for (const [portName, links] of Object.entries(node.connections.inputs)) {
+			const filtered = links.filter((link) => nodeIds.has(link.nodeId));
+
+			if (filtered.length !== links.length) {
+				changed = true;
+			}
+
+			if (filtered.length > 0) {
+				inputs[portName] = filtered;
+			}
+		}
+
+		const outputs: ConnectionMap = {};
+
+		for (const [portName, links] of Object.entries(node.connections.outputs)) {
+			const filtered = links.filter((link) => nodeIds.has(link.nodeId));
+
+			if (filtered.length !== links.length) {
+				changed = true;
+			}
+
+			if (filtered.length > 0) {
+				outputs[portName] = filtered;
+			}
+		}
+
+		next[nodeId] = {
+			...node,
+			connections: { inputs, outputs },
+		};
+	}
+
+	return changed ? next : nodes;
+};
+
 const removeNode = (startNodes: NodeMap, nodeId: string) => {
 	let { [nodeId]: _deletedNode, ...nodes } = startNodes;
 	nodes = Object.values(nodes).reduce<NodeMap>((obj, node) => {
@@ -233,7 +306,7 @@ const reconcileNodes = (
 		{},
 	);
 
-	return reconciledNodes;
+	return pruneDanglingConnections(reconciledNodes);
 };
 
 export const getInitialNodes = (
@@ -481,20 +554,37 @@ const nodesReducer = (
 		}
 
 		case NodesActionType.HYDRATE_DEFAULT_NODES: {
-			const newNodes = { ...nodes };
-			Object.keys(newNodes).forEach((key) => {
-				if (newNodes[key].defaultNode) {
-					const newNodeId = createFlumeId();
-					const {
-						id: _oldId,
-						defaultNode: _oldDefault,
-						...node
-					} = newNodes[key];
-					newNodes[newNodeId] = { ...node, id: newNodeId };
-					delete newNodes[key];
+			const idMap = new Map<string, string>();
+			let newNodes = { ...nodes };
+
+			for (const key of Object.keys(newNodes)) {
+				if (!newNodes[key].defaultNode) {
+					continue;
 				}
-			});
-			return newNodes;
+
+				const newNodeId = createFlumeId();
+				idMap.set(key, newNodeId);
+
+				const { id: _oldId, defaultNode: _oldDefault, ...node } = newNodes[key];
+				newNodes[newNodeId] = { ...node, id: newNodeId };
+				delete newNodes[key];
+			}
+
+			if (idMap.size === 0) {
+				return nodes;
+			}
+
+			newNodes = Object.fromEntries(
+				Object.entries(newNodes).map(([nodeId, node]) => [
+					nodeId,
+					{
+						...node,
+						connections: remapConnectionNodeIds(node.connections, idMap),
+					},
+				]),
+			);
+
+			return pruneDanglingConnections(newNodes);
 		}
 
 		case NodesActionType.SET_PORT_DATA: {

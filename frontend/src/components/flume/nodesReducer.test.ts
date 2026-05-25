@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildFlumeConfigFromSchemas } from "./build-config-from-schemas";
-import nodesReducer, { getInitialNodes, NodesActionType } from "./nodesReducer";
+import nodesReducer, {
+	getInitialNodes,
+	NodesActionType,
+	pruneDanglingConnections,
+} from "./nodesReducer";
 
 describe("reconcileNodes via getInitialNodes", () => {
 	it("drops nodes whose types are not in the current registry", () => {
@@ -94,5 +98,45 @@ describe("reconcileNodes via getInitialNodes", () => {
 		expect(
 			Object.values(reconciled).some((node) => node.type === "math.test"),
 		).toBe(false);
+	});
+});
+
+describe("pruneDanglingConnections", () => {
+	it("drops links whose endpoint node is missing", () => {
+		const pruned = pruneDanglingConnections({
+			gate: {
+				id: "gate",
+				type: "gate",
+				width: 300,
+				x: 420,
+				y: 180,
+				inputData: {},
+				connections: {
+					inputs: {
+						in: [{ nodeId: "missing-source", portName: "value" }],
+					},
+					outputs: {},
+				},
+			},
+			source: {
+				id: "source",
+				type: "source",
+				width: 280,
+				x: 120,
+				y: 180,
+				inputData: {},
+				connections: {
+					inputs: {},
+					outputs: {
+						value: [{ nodeId: "gate", portName: "in" }],
+					},
+				},
+			},
+		});
+
+		expect(pruned.gate.connections.inputs.in).toBeUndefined();
+		expect(pruned.source.connections.outputs.value).toEqual([
+			{ nodeId: "gate", portName: "in" },
+		]);
 	});
 });

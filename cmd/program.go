@@ -44,17 +44,29 @@ func runProgram(
 	graphBackend := execution.New(devicePool)
 	defer graphBackend.Close()
 
+	hubAdapter := hub.NewResolveAdapter(hub.NewClient(hubConfig))
+
+	includeResolver, err := program.NewIncludeResolver(program.IncludeResolverOptions{
+		Hub:      hubAdapter,
+		CacheDir: hubConfig.CacheDir,
+	})
+
+	if err != nil {
+		return fmt.Errorf("caramba: build include resolver: %w", err)
+	}
+
 	programOrchestrator, err := runtime.NewOrchestrator(runtime.OrchestratorOptions{
-		Hub: hub.NewResolveAdapter(hub.NewClient(hubConfig)),
+		Hub: hubAdapter,
 		Parser: func(archive []byte) (types.Parser, error) {
 			return safetensors.NewParser(archive)
 		},
-		Compute:       graphBackend,
-		Host:          program.NewHost(program.HostOptions{Stdin: os.Stdin, HubConfig: hubConfig}),
-		StateMemory:   stateMemory,
-		CacheDir:      hubConfig.CacheDir,
-		Stdin:         os.Stdin,
-		InitialValues: initialValues,
+		Compute:         graphBackend,
+		Host:            program.NewHost(program.HostOptions{Stdin: os.Stdin, HubConfig: hubConfig}),
+		StateMemory:     stateMemory,
+		CacheDir:        hubConfig.CacheDir,
+		Stdin:           os.Stdin,
+		InitialValues:   initialValues,
+		IncludeResolver: includeResolver,
 	})
 
 	if err != nil {

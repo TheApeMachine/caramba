@@ -339,13 +339,15 @@ export const NodeEditor = React.forwardRef(
 
 				const existingInputs =
 					inputNode.connections.inputs[connection.input.portName] ?? [];
-				const alreadyConnected = existingInputs.some(
+				const nodeIds = new Set(nodeList.map((node) => node.id));
+				const hasValidConnection = existingInputs.some(
 					(link) =>
+						nodeIds.has(link.nodeId) &&
 						link.nodeId === outputNode.id &&
 						link.portName === connection.output.portName,
 				);
 
-				if (alreadyConnected) continue;
+				if (hasValidConnection) continue;
 
 				dispatchNodes({
 					type: NodesActionType.ADD_CONNECTION,
