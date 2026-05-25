@@ -18,3 +18,13 @@ __pycache__/
 .claude/
 .curious/state.json
 .curious/
+alcatraz.txt
+errnie.txt
+hf.txt
+manifesto.txt
+puter-cpu.txt
+puter-cuda.txt
+puter-metal.txt
+puter-xla.txt
+puter.txt
+qpool.txt

@@ -1,9 +1,18 @@
-.PHONY: build test check verify generate clean chat diffusion diffusion-diagnose image research serve
+.PHONY: build test check verify generate clean chat diffusion diffusion-diagnose image research serve dump
 
-DUMP ?= caramba.txt
+DUMP_SCRIPT := $(CURDIR)/scripts/dump-repo.py
+DUMP_OUTPUT_DIR := $(CURDIR)
+DUMP_TARGETS := \
+	caramba:. \
+	manifesto:../manifesto \
+	hf:../hf \
+	alcatraz:../alcatraz \
+	qpool:../qpool \
+	errnie:../errnie
 
 # Metal kernels and metallib generation live in the puter module (go.mod replace).
 PUTER_ROOT := ../puter
+PUTER_BACKEND_DUMPS := cpu metal cuda xla
 
 # The pool package uses go:linkname to access runtime scheduling
 # primitives (dropg, readgstatus) for zero-overhead goroutine parking.
@@ -11,7 +20,21 @@ PUTER_ROOT := ../puter
 LDFLAGS := -ldflags='-checklinkname=0'
 
 dump:
-	python3 "$(CURDIR)/scripts/dump-repo.py" "$(DUMP)"
+	@set -e; \
+	for spec in $(DUMP_TARGETS); do \
+		name=$${spec%%:*}; \
+		root=$${spec#*:}; \
+		python3 "$(DUMP_SCRIPT)" "$(DUMP_OUTPUT_DIR)/$$name.txt" "$(DUMP_OUTPUT_DIR)/$$root"; \
+	done; \
+	for backend in $(PUTER_BACKEND_DUMPS); do \
+		python3 "$(DUMP_SCRIPT)" "$(DUMP_OUTPUT_DIR)/puter-$$backend.txt" "$(DUMP_OUTPUT_DIR)/$(PUTER_ROOT)" \
+			--include-prefix "device/$$backend/"; \
+	done; \
+	python3 "$(DUMP_SCRIPT)" "$(DUMP_OUTPUT_DIR)/puter.txt" "$(DUMP_OUTPUT_DIR)/$(PUTER_ROOT)" \
+		--exclude-prefix device/cpu/ \
+		--exclude-prefix device/metal/ \
+		--exclude-prefix device/cuda/ \
+		--exclude-prefix device/xla/
 
 metal:
 	cd $(PUTER_ROOT)/device/metal && CGO_ENABLED=1 go generate

@@ -2,15 +2,17 @@ module github.com/theapemachine/caramba
 
 go 1.26.1
 
-replace github.com/theapemachine/manifesto => ../manifesto
+// replace github.com/theapemachine/manifesto => ../manifesto
 
-replace github.com/theapemachine/puter => ../puter
+// replace github.com/theapemachine/puter => ../puter
 
-replace github.com/theapemachine/errnie => ../errnie
+// replace github.com/theapemachine/errnie => ../errnie
 
-replace github.com/theapemachine/alcatraz => ../alcatraz
+// replace github.com/theapemachine/alcatraz => ../alcatraz
 
-replace github.com/theapemachine/hf => ../hf
+// replace github.com/theapemachine/hf => ../hf
+
+// replace github.com/theapemachine/qpool => ../qpool
 
 require (
 	capnproto.org/go/capnp/v3 v3.1.0-alpha.2
@@ -100,5 +102,3 @@ require (
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
 )
-
-replace github.com/theapemachine/qpool => ../qpool
