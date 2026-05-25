@@ -1,4 +1,10 @@
-.PHONY: build test check verify generate clean chat diffusion diffusion-diagnose image research serve dump
+.PHONY: build test check verify generate clean chat diffusion diffusion-diagnose image research serve dump tag
+
+# Positional args after `tag` become dummy goals; see scripts/tag-release.sh.
+ifeq (tag,$(firstword $(MAKECMDGOALS)))
+  TAG_RUN_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(foreach arg,$(TAG_RUN_ARGS),$(eval $(arg):;@:))
+endif
 
 DUMP_SCRIPT := $(CURDIR)/scripts/dump-repo.py
 DUMP_OUTPUT_DIR := $(CURDIR)
@@ -78,3 +84,8 @@ research:
 
 serve:
 	go run $(LDFLAGS) main.go serve
+
+tag:
+	@bash "$(CURDIR)/scripts/tag-release.sh" \
+		"$(if $(TAG),$(TAG),$(word 2,$(MAKECMDGOALS)))" \
+		"$(if $(MESSAGE),$(MESSAGE),$(wordlist 3,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS)))"
