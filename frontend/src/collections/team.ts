@@ -1,6 +1,7 @@
 import { electricCollectionOptions } from "@tanstack/electric-db-collection";
 import { createCollection } from "@tanstack/react-db";
 import { z } from "zod";
+import { shapeUrl } from "#/lib/electric-shape";
 import { createTeam } from "#/server/create-team";
 
 export const Team = z.object({
@@ -15,18 +16,13 @@ export const Team = z.object({
 
 export type TeamRow = z.infer<typeof Team>;
 
-const shapeUrl =
-	typeof window !== "undefined"
-		? `${window.location.origin}/api/shape/teams`
-		: "/api/shape/teams";
-
 export const teamCollection = createCollection(
 	electricCollectionOptions({
 		id: "teams",
 		schema: Team,
 		getKey: (item) => item.id,
 		shapeOptions: {
-			url: shapeUrl,
+			url: shapeUrl("teams"),
 			parser: {
 				timestamptz: (value: string) => new Date(value),
 			},

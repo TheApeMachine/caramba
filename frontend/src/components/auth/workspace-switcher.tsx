@@ -6,6 +6,7 @@ import {
 	useOrganizationList,
 } from "@clerk/tanstack-react-start";
 import { useLiveQuery } from "@tanstack/react-db";
+import { ClientOnly } from "@tanstack/react-router";
 import {
 	BuildingIcon,
 	CheckIcon,
@@ -44,7 +45,26 @@ WorkspaceSwitcher replaces the old org-only menu with a combined
 org + team picker. Section 1: Clerk organizations (and personal).
 Section 2: teams inside the active org, synced via Electric.
 */
-export const WorkspaceSwitcher = () => {
+const WorkspaceSwitcherFallback = () => {
+	const { t } = useTranslation();
+
+	return (
+		<Button
+			aria-label={t("auth.switchWorkspace")}
+			className="max-w-[min(100vw-8rem,18rem)] gap-2 text-foreground"
+			disabled
+			size="sm"
+			type="button"
+			variant="outline"
+		>
+			<BuildingIcon aria-hidden className="size-4 shrink-0 opacity-80" />
+			<span className="min-w-0 flex-1 truncate text-start opacity-60">…</span>
+			<ChevronDownIcon aria-hidden className="size-4 shrink-0 opacity-80" />
+		</Button>
+	);
+};
+
+const WorkspaceSwitcherContent = () => {
 	const { t } = useTranslation();
 	const { orgId } = useAuth();
 	const { organization, isLoaded: organizationLoaded } = useOrganization();
@@ -156,9 +176,7 @@ export const WorkspaceSwitcher = () => {
 					>
 						{t("auth.teams", { defaultValue: "Teams" })}
 					</Typography.Span>
-					<MenuItem
-						onClick={() => setActiveTeam(orgId, null)}
-					>
+					<MenuItem onClick={() => setActiveTeam(orgId, null)}>
 						<OrgOrTeamRow
 							label={t("auth.allTeams", { defaultValue: "All teams" })}
 							selected={activeTeamId === null}
@@ -219,6 +237,12 @@ export const WorkspaceSwitcher = () => {
 	);
 };
 
+export const WorkspaceSwitcher = () => (
+	<ClientOnly fallback={<WorkspaceSwitcherFallback />}>
+		<WorkspaceSwitcherContent />
+	</ClientOnly>
+);
+
 const OrgOrTeamRow = ({
 	label,
 	selected,
@@ -232,9 +256,7 @@ const OrgOrTeamRow = ({
 			<span className="min-w-0 flex-1 truncate" title={label}>
 				{label}
 			</span>
-			{selected ? (
-				<CheckIcon aria-hidden className="size-4 shrink-0" />
-			) : null}
+			{selected ? <CheckIcon aria-hidden className="size-4 shrink-0" /> : null}
 		</Flex.Row>
 	);
 };
@@ -258,7 +280,9 @@ const CreateTeamDialog = ({
 		const trimmed = name.trim();
 
 		if (!trimmed) {
-			setError(t("auth.teamNameRequired", { defaultValue: "Name is required." }));
+			setError(
+				t("auth.teamNameRequired", { defaultValue: "Name is required." }),
+			);
 			return;
 		}
 
@@ -309,8 +333,8 @@ const CreateTeamDialog = ({
 								onKeyDown={(event) => {
 									if (event.key === "Enter" && !submitting) {
 										void submit();
-								}
-							}}
+									}
+								}}
 								placeholder={t("auth.teamNamePlaceholder", {
 									defaultValue: "e.g. Architecture",
 								})}
