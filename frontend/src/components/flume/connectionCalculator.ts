@@ -442,7 +442,6 @@ export const calculateEdgePath = (
 			const h = obstaclesHorizontal ?? v;
 			return calculateOrthogonalEdgePath(from, to, v, h);
 		}
-		case "smooth":
 		default:
 			return calculateSmoothCurve(from, to);
 	}
@@ -660,17 +659,15 @@ export const createConnections = (
 		positionOverrides,
 	);
 
-	if (resolved.length > 0) {
-		const resolvedIds = new Set(resolved.map((connection) => connection.id));
+	const resolvedIds = new Set(resolved.map((connection) => connection.id));
 
-		for (const pathElement of stageRef.querySelectorAll<SVGPathElement>(
-			"[data-connection-id]",
-		)) {
-			const connectionId = pathElement.getAttribute("data-connection-id");
+	for (const pathElement of stageRef.querySelectorAll<SVGPathElement>(
+		"[data-connection-id]",
+	)) {
+		const staleConnectionId = pathElement.getAttribute("data-connection-id");
 
-			if (connectionId && !resolvedIds.has(connectionId)) {
-				pathElement.parentElement?.remove();
-			}
+		if (staleConnectionId && !resolvedIds.has(staleConnectionId)) {
+			pathElement.parentElement?.remove();
 		}
 	}
 

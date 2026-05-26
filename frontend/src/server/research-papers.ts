@@ -19,6 +19,39 @@ const UpdatePaperInput = z.object({
 	summary: z.string().default(""),
 });
 
+export class ResearchPaperRevisionConflictError extends Error {
+	serverRevision: number;
+
+	constructor(serverRevision: number, body: string) {
+		super(`revision conflict (409): ${body}`);
+		this.name = "ResearchPaperRevisionConflictError";
+		this.serverRevision = serverRevision;
+	}
+
+	static fromUnknown(err: unknown): ResearchPaperRevisionConflictError | null {
+		if (err instanceof ResearchPaperRevisionConflictError) {
+			return err;
+		}
+
+		const message = err instanceof Error ? err.message : String(err);
+
+		if (!message.includes("(409)") && !message.includes("revision conflict")) {
+			return null;
+		}
+
+		const match = message.match(/"revision"\s*:\s*(\d+)/);
+
+		if (!match) {
+			return null;
+		}
+
+		return new ResearchPaperRevisionConflictError(
+			Number.parseInt(match[1], 10),
+			message,
+		);
+	}
+}
+
 export type ResearchPaperDocumentState = z.infer<
 	typeof UpdatePaperInput
 >["document"];
@@ -80,6 +113,13 @@ async function backendPut(
 
 	if (response.status === 409) {
 		const text = await response.text();
+		const match = text.match(/"revision"\s*:\s*(\d+)/);
+		const serverRevision = match ? Number.parseInt(match[1], 10) : Number.NaN;
+
+		if (Number.isFinite(serverRevision)) {
+			throw new ResearchPaperRevisionConflictError(serverRevision, text);
+		}
+
 		throw new Error(`revision conflict (409): ${text}`);
 	}
 

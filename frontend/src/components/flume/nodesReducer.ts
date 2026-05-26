@@ -11,6 +11,7 @@ import type {
 	ConnectionMap,
 	Connections,
 	ControlData,
+	DefaultConnection,
 	DefaultNode,
 	FlumeNode,
 	InputData,
@@ -37,21 +38,46 @@ export enum NodesActionType {
 	RECONCILE_NODE_TYPES = "RECONCILE_NODE_TYPES",
 }
 
+const emptyConnections = (): Connections => ({
+	inputs: {},
+	outputs: {},
+});
+
+/*
+normalizeFlumeNode fills missing graph fields on persisted or partial nodes.
+Local storage rows are schema-loose and may omit connections or inputData.
+*/
+export const normalizeFlumeNode = (node: FlumeNode): FlumeNode => ({
+	...node,
+	inputData: node.inputData ?? {},
+	connections: {
+		inputs: node.connections?.inputs ?? {},
+		outputs: node.connections?.outputs ?? {},
+	},
+});
+
 const addConnection = (
 	nodes: NodeMap,
 	input: ProposedConnection,
 	output: ProposedConnection,
 ) => {
+	const inputNode = nodes[input.nodeId];
+	const outputNode = nodes[output.nodeId];
+
+	if (!inputNode?.connections || !outputNode?.connections) {
+		return nodes;
+	}
+
 	const newNodes = {
 		...nodes,
 		[input.nodeId]: {
-			...nodes[input.nodeId],
+			...inputNode,
 			connections: {
-				...nodes[input.nodeId].connections,
+				...inputNode.connections,
 				inputs: {
-					...nodes[input.nodeId].connections.inputs,
+					...inputNode.connections.inputs,
 					[input.portName]: [
-						...(nodes[input.nodeId].connections.inputs[input.portName] || []),
+						...(inputNode.connections.inputs[input.portName] || []),
 						{
 							nodeId: output.nodeId,
 							portName: output.portName,
@@ -61,14 +87,13 @@ const addConnection = (
 			},
 		},
 		[output.nodeId]: {
-			...nodes[output.nodeId],
+			...outputNode,
 			connections: {
-				...nodes[output.nodeId].connections,
+				...outputNode.connections,
 				outputs: {
-					...nodes[output.nodeId].connections.outputs,
+					...outputNode.connections.outputs,
 					[output.portName]: [
-						...(nodes[output.nodeId].connections.outputs[output.portName] ||
-							[]),
+						...(outputNode.connections.outputs[output.portName] || []),
 						{
 							nodeId: input.nodeId,
 							portName: input.portName,
@@ -176,9 +201,10 @@ export const pruneDanglingConnections = (nodes: NodeMap): NodeMap => {
 	const next: NodeMap = {};
 
 	for (const [nodeId, node] of Object.entries(nodes)) {
+		const connections = node.connections ?? emptyConnections();
 		const inputs: ConnectionMap = {};
 
-		for (const [portName, links] of Object.entries(node.connections.inputs)) {
+		for (const [portName, links] of Object.entries(connections.inputs)) {
 			const filtered = links.filter((link) => nodeIds.has(link.nodeId));
 
 			if (filtered.length !== links.length) {
@@ -192,7 +218,7 @@ export const pruneDanglingConnections = (nodes: NodeMap): NodeMap => {
 
 		const outputs: ConnectionMap = {};
 
-		for (const [portName, links] of Object.entries(node.connections.outputs)) {
+		for (const [portName, links] of Object.entries(connections.outputs)) {
 			const filtered = links.filter((link) => nodeIds.has(link.nodeId));
 
 			if (filtered.length !== links.length) {
@@ -237,7 +263,7 @@ const reconcileNodes = (
 
 	for (const [nodeId, node] of Object.entries(initialNodes)) {
 		if (node?.type && nodeTypes[node.type]) {
-			knownNodes[nodeId] = node;
+			knownNodes[nodeId] = normalizeFlumeNode(node);
 			continue;
 		}
 
@@ -309,12 +335,59 @@ const reconcileNodes = (
 	return pruneDanglingConnections(reconciledNodes);
 };
 
+const findNodeByType = (
+	nodes: NodeMap,
+	nodeType: string,
+): FlumeNode | undefined =>
+	Object.values(nodes).find((node) => node.type === nodeType);
+
+/*
+applyDefaultConnections wires demo edges by node type after default nodes exist.
+Runs during init so connection endpoints use stable node ids from the start.
+*/
+export const applyDefaultConnections = (
+	nodes: NodeMap,
+	defaultConnections: DefaultConnection[],
+): NodeMap => {
+	let nextNodes = nodes;
+
+	for (const connection of defaultConnections) {
+		const outputNode = findNodeByType(nextNodes, connection.output.nodeType);
+		const inputNode = findNodeByType(nextNodes, connection.input.nodeType);
+
+		if (!outputNode || !inputNode) {
+			continue;
+		}
+
+		const existingInputs =
+			inputNode.connections?.inputs[connection.input.portName] ?? [];
+		const hasValidConnection = existingInputs.some(
+			(link) =>
+				link.nodeId === outputNode.id &&
+				link.portName === connection.output.portName,
+		);
+
+		if (hasValidConnection) {
+			continue;
+		}
+
+		nextNodes = addConnection(
+			nextNodes,
+			{ nodeId: inputNode.id, portName: connection.input.portName },
+			{ nodeId: outputNode.id, portName: connection.output.portName },
+		);
+	}
+
+	return nextNodes;
+};
+
 export const getInitialNodes = (
 	initialNodes: NodeMap = {},
 	defaultNodes: DefaultNode[] = [],
 	nodeTypes: NodeTypeMap,
 	portTypes: PortTypeMap,
 	context: unknown,
+	defaultConnections: DefaultConnection[] = [],
 ): NodeMap => {
 	const reconciledNodes = reconcileNodes(
 		initialNodes,
@@ -323,29 +396,29 @@ export const getInitialNodes = (
 		context,
 	);
 
-	return {
-		...reconciledNodes,
-		...defaultNodes.reduce((nodes, dNode, i) => {
-			const nodeNotAdded = !Object.values(initialNodes).find(
-				(n) => n.type === dNode.type,
+	const withDefaultNodes = defaultNodes.reduce((nodes, dNode) => {
+		const nodeNotAdded = !Object.values(initialNodes).find(
+			(node) => node.type === dNode.type,
+		);
+
+		if (nodeNotAdded && nodeTypes[dNode.type]) {
+			return nodesReducer(
+				nodes,
+				{
+					type: NodesActionType.ADD_NODE,
+					id: createFlumeId(),
+					x: dNode.x || 0,
+					y: dNode.y || 0,
+					nodeType: dNode.type,
+				},
+				{ nodeTypes, portTypes, context },
 			);
-			if (nodeNotAdded && nodeTypes[dNode.type]) {
-				nodes = nodesReducer(
-					nodes,
-					{
-						type: NodesActionType.ADD_NODE,
-						id: `default-${i}`,
-						defaultNode: true,
-						x: dNode.x || 0,
-						y: dNode.y || 0,
-						nodeType: dNode.type,
-					},
-					{ nodeTypes, portTypes, context },
-				);
-			}
-			return nodes;
-		}, {}),
-	};
+		}
+
+		return nodes;
+	}, reconciledNodes);
+
+	return applyDefaultConnections(withDefaultNodes, defaultConnections);
 };
 
 const getDefaultData = ({
@@ -363,9 +436,12 @@ const getDefaultData = ({
 		return {};
 	}
 
+	const nodeConnections = node.connections ?? emptyConnections();
+	const nodeInputData = node.inputData ?? {};
+
 	const inputs = Array.isArray(nodeType.inputs)
 		? nodeType.inputs
-		: nodeType.inputs(node.inputData, node.connections, context);
+		: (nodeType.inputs?.(nodeInputData, nodeConnections, context) ?? []);
 
 	return inputs.reduce<InputData>((obj, input) => {
 		const inputType = portTypes[input.type];
@@ -455,8 +531,13 @@ const nodesReducer = (
 	switch (action.type) {
 		case NodesActionType.ADD_CONNECTION: {
 			const { input, output } = action;
-			const inputIsNotConnected =
-				!nodes[input.nodeId].connections.inputs[input.portName];
+			const inputNode = nodes[input.nodeId];
+
+			if (!inputNode?.connections) {
+				return nodes;
+			}
+
+			const inputIsNotConnected = !inputNode.connections.inputs[input.portName];
 			if (inputIsNotConnected) {
 				const allowCircular =
 					circularBehavior === "warn" || circularBehavior === "allow";

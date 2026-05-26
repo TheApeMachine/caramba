@@ -41,7 +41,7 @@ export type Schema = {
 	initial_width: number;
 	inputs: OperationPort[];
 	outputs: OperationPort[];
-	config: ConfigParam[];
+	config?: ConfigParam[] | null;
 	system?: {
 		topology: {
 			nodes: TopologyNode[];

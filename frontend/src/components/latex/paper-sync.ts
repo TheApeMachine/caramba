@@ -11,6 +11,7 @@ import {
 	useState,
 } from "react";
 import {
+	coercePaperRevision,
 	type ResearchPaperRowType,
 	researchPaperCollection,
 } from "#/collections/research_paper";
@@ -21,10 +22,18 @@ import {
 import type { PaperAction } from "#/components/latex/model/paper-reducer";
 import { createInitialPaperBlocks } from "#/components/latex/model/paper-reducer";
 import type { PaperBlock, PaperMetadata } from "#/components/latex/model/types";
+import { ResearchPaperRevisionConflictError } from "#/server/research-papers";
 
 const AUTOSAVE_MS = 1200;
+const STRUCTURAL_AUTOSAVE_MS = 200;
 
 const DRAFT_STORAGE_PREFIX = "caramba:research-paper-bootstrap:";
+
+const paperDocumentSnapshot = (
+	documentMetadata: PaperMetadata,
+	documentBlocks: PaperBlock[],
+): string =>
+	JSON.stringify(serializePaperDocument(documentMetadata, documentBlocks));
 
 const UUID_RE =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -95,11 +104,39 @@ export function useResearchPaperCollectionSync({
 
 	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const autosaveGenerationRef = useRef(0);
+	const saveInFlightRef = useRef(false);
+	const persistedRevisionRef = useRef<number | null>(null);
+	const lastPersistedSnapshotRef = useRef<string | null>(null);
+	const blockStructureRef = useRef("");
+
+	const rememberPersistedSnapshot = useCallback(
+		(documentMetadata: PaperMetadata, documentBlocks: PaperBlock[]) => {
+			lastPersistedSnapshotRef.current = paperDocumentSnapshot(
+				documentMetadata,
+				documentBlocks,
+			);
+		},
+		[],
+	);
+
+	const isLocallyDirty = useCallback(() => {
+		if (lastPersistedSnapshotRef.current === null) {
+			return false;
+		}
+
+		return (
+			paperDocumentSnapshot(metadata, blocksRef.current) !==
+			lastPersistedSnapshotRef.current
+		);
+	}, [metadata, blocksRef]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset hydration when resolved paper id changes
 	useEffect(() => {
 		setHydratedRevision(null);
 		setSaveError(null);
+		persistedRevisionRef.current = null;
+		lastPersistedSnapshotRef.current = null;
+		blockStructureRef.current = "";
 	}, [effectivePaperId]);
 
 	useEffect(() => {
@@ -246,14 +283,118 @@ export function useResearchPaperCollectionSync({
 				return;
 			}
 
-			setHydratedRevision(row.revision);
+			persistedRevisionRef.current = coercePaperRevision(row.revision);
+			setHydratedRevision(coercePaperRevision(row.revision));
+			rememberPersistedSnapshot(parsed.metadata, parsed.blocks);
 			dispatch({ type: "REPLACE_BLOCKS", blocks: parsed.blocks });
 			metadataForm.setFieldValue("title", parsed.metadata.title);
 			metadataForm.setFieldValue("authors", parsed.metadata.authors);
 			metadataForm.setFieldValue("keywords", parsed.metadata.keywords);
 			metadataForm.setFieldValue("abstract", parsed.metadata.abstract);
 		},
-		[dispatch, metadataForm],
+		[dispatch, metadataForm, rememberPersistedSnapshot],
+	);
+
+	useEffect(() => {
+		if (remoteRow?.revision === undefined) {
+			return;
+		}
+
+		const remoteRevision = coercePaperRevision(remoteRow.revision);
+
+		persistedRevisionRef.current = Math.max(
+			persistedRevisionRef.current ?? 0,
+			remoteRevision,
+		);
+	}, [remoteRow?.revision]);
+
+	const flushSave = useCallback(
+		async (retryRevision?: number) => {
+			if (
+				!effectivePaperId ||
+				!remoteRow ||
+				remoteRow.id !== effectivePaperId
+			) {
+				return;
+			}
+
+			if (hydratedRevision === null) {
+				return;
+			}
+
+			if (saveInFlightRef.current) {
+				return;
+			}
+
+			const blocksSnapshot = blocksRef.current;
+			const document = serializePaperDocument(metadata, blocksSnapshot);
+			const titleFromMeta = metadata.title.trim();
+			const firstHeading = blocksSnapshot.find(
+				(block) => block.type === "heading",
+			);
+			const title =
+				titleFromMeta ||
+				(firstHeading?.type === "heading" ? firstHeading.text.trim() : "") ||
+				"Untitled paper";
+			const expectedRevision =
+				retryRevision ??
+				persistedRevisionRef.current ??
+				coercePaperRevision(remoteRow.revision);
+
+			saveInFlightRef.current = true;
+
+			try {
+				setSaveError(null);
+
+				const transaction = researchPaperCollection.update(
+					effectivePaperId,
+					{
+						metadata: {
+							summary: "autosave",
+							expected_revision: expectedRevision,
+						},
+					},
+					(draft) => {
+						draft.title = title;
+						draft.document = document;
+						draft.updated_at = new Date();
+						draft.revision = expectedRevision + 1;
+					},
+				);
+
+				await transaction.isPersisted.promise;
+
+				const nextRevision = expectedRevision + 1;
+				persistedRevisionRef.current = nextRevision;
+				setHydratedRevision(nextRevision);
+				rememberPersistedSnapshot(metadata, blocksSnapshot);
+			} catch (err) {
+				const conflict = ResearchPaperRevisionConflictError.fromUnknown(err);
+
+				if (conflict !== null && retryRevision === undefined) {
+					persistedRevisionRef.current = conflict.serverRevision;
+					setHydratedRevision(conflict.serverRevision);
+					setSaveError(conflict.message);
+					saveInFlightRef.current = false;
+					await flushSave(conflict.serverRevision);
+
+					return;
+				}
+
+				const message = err instanceof Error ? err.message : String(err);
+				setSaveError(message);
+			} finally {
+				saveInFlightRef.current = false;
+			}
+		},
+		[
+			effectivePaperId,
+			remoteRow,
+			hydratedRevision,
+			metadata,
+			blocksRef,
+			rememberPersistedSnapshot,
+		],
 	);
 
 	useEffect(() => {
@@ -267,52 +408,27 @@ export function useResearchPaperCollectionSync({
 			return;
 		}
 
-		if (remoteRow.revision > hydratedRevision) {
+		const remoteRevision = coercePaperRevision(remoteRow.revision);
+
+		if (remoteRevision > hydratedRevision) {
+			if (isLocallyDirty()) {
+				persistedRevisionRef.current = remoteRevision;
+				setHydratedRevision(remoteRevision);
+				void flushSave();
+
+				return;
+			}
+
 			hydrateFromRemote(remoteRow);
 		}
-	}, [effectivePaperId, remoteRow, hydratedRevision, hydrateFromRemote]);
-
-	const flushSave = useCallback(async () => {
-		if (!effectivePaperId || !remoteRow || remoteRow.id !== effectivePaperId) {
-			return;
-		}
-
-		if (hydratedRevision === null) {
-			return;
-		}
-
-		const blocksSnapshot = blocksRef.current;
-		const document = serializePaperDocument(metadata, blocksSnapshot);
-		const titleFromMeta = metadata.title.trim();
-		const firstHeading = blocksSnapshot.find(
-			(block) => block.type === "heading",
-		);
-		const title =
-			titleFromMeta ||
-			(firstHeading?.type === "heading" ? firstHeading.text.trim() : "") ||
-			"Untitled paper";
-
-		try {
-			setSaveError(null);
-
-			await researchPaperCollection.update(
-				effectivePaperId,
-				{ summary: "autosave" },
-				(draft: ResearchPaperRowType) => {
-					draft.title = title;
-					draft.document = document;
-					draft.updated_at = new Date();
-				},
-			);
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			setSaveError(message);
-
-			if (message.includes("revision conflict") || message.includes("(409)")) {
-				setHydratedRevision(null);
-			}
-		}
-	}, [effectivePaperId, remoteRow, hydratedRevision, metadata, blocksRef]);
+	}, [
+		effectivePaperId,
+		remoteRow,
+		hydratedRevision,
+		hydrateFromRemote,
+		isLocallyDirty,
+		flushSave,
+	]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: document edits must restart autosave debounce
 	useEffect(() => {
@@ -320,12 +436,19 @@ export function useResearchPaperCollectionSync({
 			return;
 		}
 
+		const blockStructure = blocks.map((block) => block.id).join("|");
+		const structureChanged =
+			blockStructureRef.current !== "" &&
+			blockStructureRef.current !== blockStructure;
+		blockStructureRef.current = blockStructure;
+
 		if (saveTimerRef.current !== null) {
 			clearTimeout(saveTimerRef.current);
 		}
 
 		autosaveGenerationRef.current += 1;
 		const generation = autosaveGenerationRef.current;
+		const debounceMs = structureChanged ? STRUCTURAL_AUTOSAVE_MS : AUTOSAVE_MS;
 
 		saveTimerRef.current = setTimeout(() => {
 			saveTimerRef.current = null;
@@ -335,7 +458,7 @@ export function useResearchPaperCollectionSync({
 			}
 
 			void flushSave();
-		}, AUTOSAVE_MS);
+		}, debounceMs);
 
 		return () => {
 			if (saveTimerRef.current !== null) {

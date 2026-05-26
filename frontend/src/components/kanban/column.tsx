@@ -93,7 +93,7 @@ export function KanbanColumnView({
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: Kanban column is a drag-and-drop sink.
 		<div
-			className="flex w-72 shrink-0 flex-col rounded-2xl border bg-muted/40"
+			className="flex h-full w-72 shrink-0 flex-col rounded-2xl border bg-muted/40"
 			onDragOver={(e) => handleDragOver(e, cards.length)}
 			onDrop={(e) => handleDrop(e, cards.length)}
 		>

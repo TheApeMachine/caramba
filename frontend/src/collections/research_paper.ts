@@ -3,6 +3,7 @@ import { createCollection } from "@tanstack/react-db";
 import { z } from "zod";
 import {
 	createResearchPaper,
+	ResearchPaperRevisionConflictError,
 	updateResearchPaper,
 } from "#/server/research-papers";
 
@@ -13,6 +14,27 @@ revision increments on each server-accepted save; paper_revision_events stores
 history (snapshots and optional RFC 6902 patch) for collaborative audit trails.
 */
 export const ResearchPaperDocument = z.record(z.string(), z.unknown());
+
+/*
+coercePaperRevision normalizes Electric/Postgres BIGINT revisions for JS math.
+*/
+export const coercePaperRevision = (value: unknown): number => {
+	if (typeof value === "bigint") {
+		return Number(value);
+	}
+
+	if (typeof value === "number" && Number.isFinite(value)) {
+		return value;
+	}
+
+	const parsed = Number(value);
+
+	if (Number.isFinite(parsed)) {
+		return parsed;
+	}
+
+	return 0;
+};
 
 export const ResearchPaperRow = z.object({
 	id: z.uuid(),
@@ -30,12 +52,53 @@ export const ResearchPaperRow = z.object({
 
 		return value;
 	}, ResearchPaperDocument),
-	revision: z.coerce.number().int().nonnegative(),
+	revision: z.preprocess(coercePaperRevision, z.number().int().nonnegative()),
 	created_at: z.coerce.date(),
 	updated_at: z.coerce.date(),
 });
 
 export type ResearchPaperRowType = z.infer<typeof ResearchPaperRow>;
+
+type ResearchPaperUpdateMetadata = {
+	summary?: string;
+	expected_revision?: number;
+};
+
+const awaitElectricTxid = (
+	result: { txid?: number } | undefined,
+): { timeout: number; txid: number } | undefined => {
+	if (import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true") {
+		return undefined;
+	}
+
+	if (typeof result?.txid !== "number") {
+		return undefined;
+	}
+
+	return { timeout: 60_000, txid: result.txid };
+};
+
+const persistPaperUpdate = async ({
+	row,
+	expectedRevision,
+	summary,
+}: {
+	row: ResearchPaperRowType;
+	expectedRevision: number;
+	summary: string;
+}) => {
+	const result = await updateResearchPaper({
+		data: {
+			id: row.id,
+			expected_revision: expectedRevision,
+			title: row.title,
+			document: row.document,
+			summary,
+		},
+	});
+
+	return awaitElectricTxid(result);
+};
 
 const shapeUrl =
 	typeof window !== "undefined"
@@ -104,28 +167,34 @@ export const researchPaperCollection = createCollection(
 				throw new Error("research paper update missing prior row");
 			}
 
-			const meta = (transaction.metadata ?? {}) as { summary?: string };
+			const meta = (transaction.metadata ?? {}) as ResearchPaperUpdateMetadata;
+
+			const expectedRevision =
+				meta.expected_revision ?? coercePaperRevision(original.revision);
 
 			try {
-				const result = await updateResearchPaper({
-					data: {
-						id: row.id,
-						expected_revision: original.revision,
-						title: row.title,
-						document: row.document,
+				try {
+					return await persistPaperUpdate({
+						row,
+						expectedRevision,
 						summary: meta.summary ?? "update",
-					},
-				});
+					});
+				} catch (err) {
+					const conflict = ResearchPaperRevisionConflictError.fromUnknown(err);
 
-				if (import.meta.env.VITE_ELECTRIC_SKIP_TXID_AWAIT === "true") {
-					return;
+					if (
+						conflict === null ||
+						conflict.serverRevision === expectedRevision
+					) {
+						throw err;
+					}
+
+					return await persistPaperUpdate({
+						row,
+						expectedRevision: conflict.serverRevision,
+						summary: meta.summary ?? "update",
+					});
 				}
-
-				if (typeof result?.txid !== "number") {
-					return;
-				}
-
-				return { timeout: 60_000, txid: result.txid };
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				console.error(`updateResearchPaper failed: ${message}`);

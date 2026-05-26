@@ -167,13 +167,15 @@ const schemaToNodeType = (config: FlumeConfig, schema: Schema) => {
 		});
 	});
 
-	if (schema.config.length > 0) {
+	const configParams = Array.isArray(schema.config) ? schema.config : [];
+
+	if (configParams.length > 0) {
 		inputPorts.unshift(
 			ports.any({
 				name: "_config",
 				label: "Config",
 				hidePort: true,
-				controls: schema.config.map(configParamToControl),
+				controls: configParams.map(configParamToControl),
 			}),
 		);
 	}

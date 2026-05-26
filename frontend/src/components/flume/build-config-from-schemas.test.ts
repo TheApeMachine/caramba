@@ -42,4 +42,23 @@ describe("buildFlumeConfigFromSchemas", () => {
 		expect(config.nodeTypes["math.test"]).toBeDefined();
 		expect(config.nodeTypes.source).toBeDefined();
 	});
+
+	it("registers operation schemas when config is null", () => {
+		const config = buildFlumeConfigFromSchemas({
+			"math.null_config": {
+				kind: "operation",
+				category: "math",
+				op: "math.null_config",
+				name: "math.null_config",
+				label: "Null config",
+				description: "Op with null config from backend JSON",
+				initial_width: 280,
+				inputs: [{ name: "x", type: "tensor", description: "" }],
+				outputs: [{ name: "y", type: "tensor", description: "" }],
+				config: null,
+			},
+		});
+
+		expect(config.nodeTypes["math.null_config"]).toBeDefined();
+	});
 });
