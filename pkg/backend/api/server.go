@@ -91,6 +91,7 @@ func (server *Server) Up() error {
 	server.app.Post("/backend/research-projects/provision", wrap(server.researchProjects.Provision))
 	server.app.Get("/backend/teams", wrap(server.teams.List))
 	server.app.Post("/backend/teams", wrap(server.teams.Create))
+	server.app.Put("/backend/teams", wrap(server.teams.Update))
 	server.app.Get("/backend/researcher-profile", wrap(server.researcherProfiles.Get))
 	server.app.Put("/backend/researcher-profile", wrap(server.researcherProfiles.Save))
 	server.app.Post("/backend/research-papers", wrap(server.researchPapers.Create))

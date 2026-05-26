@@ -29,6 +29,7 @@ import { Route as BenchmarksNewRouteImport } from './routes/benchmarks/new'
 import { Route as BenchmarksChartsRouteImport } from './routes/benchmarks/charts'
 import { Route as BenchmarksRunIdRouteImport } from './routes/benchmarks/$runId'
 import { Route as ApiAssistantRouteImport } from './routes/api/assistant'
+import { Route as OrgSlugTeamSlugRouteImport } from './routes/$orgSlug.$teamSlug'
 import { Route as ResearchEditRouteRouteImport } from './routes/research/edit/route'
 import { Route as ResearchEditIndexRouteImport } from './routes/research/edit/index'
 import { Route as ResearchEditResearchPaperRouteImport } from './routes/research/edit/research-paper'
@@ -43,6 +44,7 @@ import { Route as ApiShapeAssistantSessionPersonasRouteImport } from './routes/a
 import { Route as ApiShapeAssistantPersonasRouteImport } from './routes/api/shape/assistant-personas'
 import { Route as ApiShapeAssistantMessagesRouteImport } from './routes/api/shape/assistant-messages'
 import { Route as ApiComputeOptimizerRouteImport } from './routes/api/compute/optimizer'
+import { Route as OrgSlugTeamSlugSetupRouteImport } from './routes/$orgSlug.$teamSlug.setup'
 
 const SignUpRoute = SignUpRouteImport.update({
   id: '/sign-up',
@@ -144,6 +146,11 @@ const ApiAssistantRoute = ApiAssistantRouteImport.update({
   path: '/api/assistant',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OrgSlugTeamSlugRoute = OrgSlugTeamSlugRouteImport.update({
+  id: '/$orgSlug/$teamSlug',
+  path: '/$orgSlug/$teamSlug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResearchEditRouteRoute = ResearchEditRouteRouteImport.update({
   id: '/research/edit',
   path: '/research/edit',
@@ -221,6 +228,11 @@ const ApiComputeOptimizerRoute = ApiComputeOptimizerRouteImport.update({
   path: '/api/compute/optimizer',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OrgSlugTeamSlugSetupRoute = OrgSlugTeamSlugSetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => OrgSlugTeamSlugRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -232,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
   '/research/edit': typeof ResearchEditRouteRouteWithChildren
+  '/$orgSlug/$teamSlug': typeof OrgSlugTeamSlugRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
   '/benchmarks/$runId': typeof BenchmarksRunIdRoute
   '/benchmarks/charts': typeof BenchmarksChartsRoute
@@ -244,6 +257,7 @@ export interface FileRoutesByFullPath {
   '/docs/': typeof DocsIndexRoute
   '/kanban/': typeof KanbanIndexRoute
   '/research/': typeof ResearchIndexRoute
+  '/$orgSlug/$teamSlug/setup': typeof OrgSlugTeamSlugSetupRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
   '/api/shape/assistant-messages': typeof ApiShapeAssistantMessagesRoute
   '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
@@ -267,6 +281,7 @@ export interface FileRoutesByTo {
   '/request-feature': typeof RequestFeatureRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/$orgSlug/$teamSlug': typeof OrgSlugTeamSlugRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
   '/benchmarks/$runId': typeof BenchmarksRunIdRoute
   '/benchmarks/charts': typeof BenchmarksChartsRoute
@@ -279,6 +294,7 @@ export interface FileRoutesByTo {
   '/docs': typeof DocsIndexRoute
   '/kanban': typeof KanbanIndexRoute
   '/research': typeof ResearchIndexRoute
+  '/$orgSlug/$teamSlug/setup': typeof OrgSlugTeamSlugSetupRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
   '/api/shape/assistant-messages': typeof ApiShapeAssistantMessagesRoute
   '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
@@ -304,6 +320,7 @@ export interface FileRoutesById {
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
   '/research/edit': typeof ResearchEditRouteRouteWithChildren
+  '/$orgSlug/$teamSlug': typeof OrgSlugTeamSlugRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
   '/benchmarks/$runId': typeof BenchmarksRunIdRoute
   '/benchmarks/charts': typeof BenchmarksChartsRoute
@@ -316,6 +333,7 @@ export interface FileRoutesById {
   '/docs/': typeof DocsIndexRoute
   '/kanban/': typeof KanbanIndexRoute
   '/research/': typeof ResearchIndexRoute
+  '/$orgSlug/$teamSlug/setup': typeof OrgSlugTeamSlugSetupRoute
   '/api/compute/optimizer': typeof ApiComputeOptimizerRoute
   '/api/shape/assistant-messages': typeof ApiShapeAssistantMessagesRoute
   '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
@@ -342,6 +360,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/research/edit'
+    | '/$orgSlug/$teamSlug'
     | '/api/assistant'
     | '/benchmarks/$runId'
     | '/benchmarks/charts'
@@ -354,6 +373,7 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/kanban/'
     | '/research/'
+    | '/$orgSlug/$teamSlug/setup'
     | '/api/compute/optimizer'
     | '/api/shape/assistant-messages'
     | '/api/shape/assistant-personas'
@@ -377,6 +397,7 @@ export interface FileRouteTypes {
     | '/request-feature'
     | '/sign-in'
     | '/sign-up'
+    | '/$orgSlug/$teamSlug'
     | '/api/assistant'
     | '/benchmarks/$runId'
     | '/benchmarks/charts'
@@ -389,6 +410,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/kanban'
     | '/research'
+    | '/$orgSlug/$teamSlug/setup'
     | '/api/compute/optimizer'
     | '/api/shape/assistant-messages'
     | '/api/shape/assistant-personas'
@@ -413,6 +435,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/research/edit'
+    | '/$orgSlug/$teamSlug'
     | '/api/assistant'
     | '/benchmarks/$runId'
     | '/benchmarks/charts'
@@ -425,6 +448,7 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/kanban/'
     | '/research/'
+    | '/$orgSlug/$teamSlug/setup'
     | '/api/compute/optimizer'
     | '/api/shape/assistant-messages'
     | '/api/shape/assistant-personas'
@@ -450,6 +474,7 @@ export interface RootRouteChildren {
   SignInRoute: typeof SignInRoute
   SignUpRoute: typeof SignUpRoute
   ResearchEditRouteRoute: typeof ResearchEditRouteRouteWithChildren
+  OrgSlugTeamSlugRoute: typeof OrgSlugTeamSlugRouteWithChildren
   ApiAssistantRoute: typeof ApiAssistantRoute
   BenchmarksRunIdRoute: typeof BenchmarksRunIdRoute
   BenchmarksChartsRoute: typeof BenchmarksChartsRoute
@@ -616,6 +641,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAssistantRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$orgSlug/$teamSlug': {
+      id: '/$orgSlug/$teamSlug'
+      path: '/$orgSlug/$teamSlug'
+      fullPath: '/$orgSlug/$teamSlug'
+      preLoaderRoute: typeof OrgSlugTeamSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/research/edit': {
       id: '/research/edit'
       path: '/research/edit'
@@ -714,6 +746,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiComputeOptimizerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$orgSlug/$teamSlug/setup': {
+      id: '/$orgSlug/$teamSlug/setup'
+      path: '/setup'
+      fullPath: '/$orgSlug/$teamSlug/setup'
+      preLoaderRoute: typeof OrgSlugTeamSlugSetupRouteImport
+      parentRoute: typeof OrgSlugTeamSlugRoute
+    }
   }
 }
 
@@ -732,6 +771,18 @@ const ResearchEditRouteRouteChildren: ResearchEditRouteRouteChildren = {
 const ResearchEditRouteRouteWithChildren =
   ResearchEditRouteRoute._addFileChildren(ResearchEditRouteRouteChildren)
 
+interface OrgSlugTeamSlugRouteChildren {
+  OrgSlugTeamSlugSetupRoute: typeof OrgSlugTeamSlugSetupRoute
+}
+
+const OrgSlugTeamSlugRouteChildren: OrgSlugTeamSlugRouteChildren = {
+  OrgSlugTeamSlugSetupRoute: OrgSlugTeamSlugSetupRoute,
+}
+
+const OrgSlugTeamSlugRouteWithChildren = OrgSlugTeamSlugRoute._addFileChildren(
+  OrgSlugTeamSlugRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
@@ -742,6 +793,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignInRoute: SignInRoute,
   SignUpRoute: SignUpRoute,
   ResearchEditRouteRoute: ResearchEditRouteRouteWithChildren,
+  OrgSlugTeamSlugRoute: OrgSlugTeamSlugRouteWithChildren,
   ApiAssistantRoute: ApiAssistantRoute,
   BenchmarksRunIdRoute: BenchmarksRunIdRoute,
   BenchmarksChartsRoute: BenchmarksChartsRoute,

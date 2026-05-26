@@ -6,7 +6,8 @@ import {
 	useOrganizationList,
 } from "@clerk/tanstack-react-start";
 import { useLiveQuery } from "@tanstack/react-db";
-import { ClientOnly } from "@tanstack/react-router";
+import { useForm } from "@tanstack/react-form";
+import { ClientOnly, useNavigate } from "@tanstack/react-router";
 import {
 	BuildingIcon,
 	CheckIcon,
@@ -27,9 +28,9 @@ import {
 	DialogPopup,
 	DialogTitle,
 } from "#/components/ui/dialog";
+import { Field } from "#/components/ui/field";
 import { Flex } from "#/components/ui/flex";
 import { Input } from "#/components/ui/input";
-import { Label } from "#/components/ui/label";
 import {
 	Menu,
 	MenuItem,
@@ -39,6 +40,7 @@ import {
 } from "#/components/ui/menu";
 import { Typography } from "#/components/ui/typography";
 import { setActiveTeam, useActiveTeam } from "#/lib/active-team";
+import { deriveSlug } from "#/lib/derive-slug";
 
 /*
 WorkspaceSwitcher replaces the old org-only menu with a combined
@@ -272,45 +274,41 @@ const CreateTeamDialog = ({
 }) => {
 	const { orgId } = useAuth();
 	const { t } = useTranslation();
-	const [name, setName] = useState("");
-	const [submitting, setSubmitting] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+	const navigate = useNavigate();
+	const [submitError, setSubmitError] = useState<string | null>(null);
 
-	const submit = async () => {
-		const trimmed = name.trim();
+	const form = useForm({
+		defaultValues: { name: "" },
+		onSubmit: async ({ value, formApi }) => {
+			const trimmed = value.name.trim();
+			setSubmitError(null);
 
-		if (!trimmed) {
-			setError(
-				t("auth.teamNameRequired", { defaultValue: "Name is required." }),
-			);
-			return;
-		}
+			try {
+				const id = crypto.randomUUID();
+				const slug = deriveSlug(trimmed);
+				const transaction = teamCollection.insert({
+					id,
+					organization_slug: organizationSlug,
+					name: trimmed,
+					slug,
+					description: "",
+					created_at: new Date(),
+					updated_at: new Date(),
+				});
 
-		setError(null);
-		setSubmitting(true);
-
-		try {
-			const id = crypto.randomUUID();
-			const transaction = teamCollection.insert({
-				id,
-				organization_slug: organizationSlug,
-				name: trimmed,
-				slug: "",
-				description: "",
-				created_at: new Date(),
-				updated_at: new Date(),
-			});
-
-			await transaction.isPersisted.promise;
-			setActiveTeam(orgId, id);
-			setName("");
-			onOpenChange(false);
-		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
-		} finally {
-			setSubmitting(false);
-		}
-	};
+				await transaction.isPersisted.promise;
+				setActiveTeam(orgId, id);
+				formApi.reset();
+				onOpenChange(false);
+				navigate({
+					to: "/$orgSlug/$teamSlug/setup",
+					params: { orgSlug: organizationSlug, teamSlug: slug },
+				});
+			} catch (err) {
+				setSubmitError(err instanceof Error ? err.message : String(err));
+			}
+		},
+	});
 
 	return (
 		<Dialog onOpenChange={onOpenChange} open={open}>
@@ -320,50 +318,92 @@ const CreateTeamDialog = ({
 						{t("auth.createTeamTitle", { defaultValue: "Create team" })}
 					</DialogTitle>
 				</DialogHeader>
-				<DialogPanel>
-					<Flex.Column className="gap-3">
-						<Flex.Column className="gap-1.5">
-							<Label htmlFor="new-team-name">
-								{t("auth.teamName", { defaultValue: "Team name" })}
-							</Label>
-							<Input
-								autoFocus
-								id="new-team-name"
-								onChange={(event) => setName(event.target.value)}
-								onKeyDown={(event) => {
-									if (event.key === "Enter" && !submitting) {
-										void submit();
-									}
+				<form
+					onSubmit={(event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						void form.handleSubmit();
+					}}
+				>
+					<DialogPanel>
+						<Flex.Column className="gap-3">
+							<form.Field
+								name="name"
+								validators={{
+									onChange: ({ value }) =>
+										value.trim().length < 1
+											? t("auth.teamNameRequired", {
+													defaultValue: "Name is required.",
+												})
+											: undefined,
 								}}
-								placeholder={t("auth.teamNamePlaceholder", {
-									defaultValue: "e.g. Architecture",
-								})}
-								value={name}
-							/>
+							>
+								{(field) => (
+									<Field
+										data-invalid={
+											field.state.meta.isTouched && !field.state.meta.isValid
+										}
+									>
+										<Field.Label htmlFor={field.name}>
+											{t("auth.teamName", { defaultValue: "Team name" })}
+										</Field.Label>
+										<Input
+											aria-invalid={
+												field.state.meta.isTouched && !field.state.meta.isValid
+											}
+											autoFocus
+											id={field.name}
+											name={field.name}
+											onBlur={field.handleBlur}
+											onChange={(event) =>
+												field.handleChange(event.target.value)
+											}
+											placeholder={t("auth.teamNamePlaceholder", {
+												defaultValue: "e.g. Architecture",
+											})}
+											value={field.state.value}
+										/>
+										{field.state.meta.isTouched &&
+										field.state.meta.errors.length ? (
+											<Field.Error>
+												{field.state.meta.errors.join(", ")}
+											</Field.Error>
+										) : null}
+									</Field>
+								)}
+							</form.Field>
+							{submitError ? (
+								<Typography.Span variant="error" className="text-xs">
+									{submitError}
+								</Typography.Span>
+							) : null}
 						</Flex.Column>
-						{error ? (
-							<Typography.Span variant="error" className="text-xs">
-								{error}
-							</Typography.Span>
-						) : null}
-					</Flex.Column>
-				</DialogPanel>
-				<DialogFooter>
-					<DialogClose
-						render={
-							<Button disabled={submitting} type="button" variant="ghost">
-								{t("common.cancel", { defaultValue: "Cancel" })}
-							</Button>
-						}
-					/>
-					<Button
-						disabled={submitting || !name.trim()}
-						onClick={() => void submit()}
-						type="button"
-					>
-						{t("auth.createTeamSubmit", { defaultValue: "Create team" })}
-					</Button>
-				</DialogFooter>
+					</DialogPanel>
+					<DialogFooter>
+						<DialogClose
+							render={
+								<Button type="button" variant="ghost">
+									{t("common.cancel", { defaultValue: "Cancel" })}
+								</Button>
+							}
+						/>
+						<form.Subscribe
+							selector={(state) =>
+								[state.canSubmit, state.isSubmitting] as const
+							}
+						>
+							{([canSubmit, isSubmitting]) => (
+								<Button disabled={!canSubmit || isSubmitting} type="submit">
+									{isSubmitting
+										? t("auth.creatingTeam", { defaultValue: "Creating…" })
+										: t("auth.createTeamSubmit", {
+												defaultValue: "Create team",
+											})}
+								</Button>
+							)}
+						</form.Subscribe>
+					</DialogFooter>
+				</form>
 			</DialogPopup>
 		</Dialog>
 	);

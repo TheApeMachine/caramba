@@ -115,6 +115,11 @@ export interface ModelScopeProps {
 	nodeThreat?: number[];
 	onNodeSelect?: (nodeIndex: number, nodeName: string) => void;
 	onNodeHover?: (nodeIndex: number, nodeName: string) => void;
+	/**
+	 * Controlled selection. When provided, drives the simulator's
+	 * highlighted node so external panels can select nodes too.
+	 */
+	selectedNodeName?: string | null;
 	onTimeRangeChange?: (from: number, to: number) => void;
 	className?: string;
 	/**
@@ -144,6 +149,7 @@ export function ModelScope({
 	onTimeRangeChange,
 	className,
 	metricsContrast = 2.0,
+	selectedNodeName,
 }: ModelScopeProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -991,6 +997,28 @@ export function ModelScope({
 	useEffect(() => {
 		applyThreatMask(nodeThreat);
 	}, [nodeThreat, applyThreatMask]);
+
+	useEffect(() => {
+		const graph = externalGraph;
+		const simulator = simulatorRef.current;
+
+		if (!simulator) return;
+
+		if (selectedNodeName == null) {
+			simulator.setSelectedNode(-1);
+			selectedNodeRef.current = null;
+			return;
+		}
+
+		const node = graph?.nodes?.[selectedNodeName];
+
+		if (node == null) {
+			return;
+		}
+
+		simulator.setSelectedNode(node.id);
+		selectedNodeRef.current = selectedNodeName;
+	}, [selectedNodeName, externalGraph, graphVersion]);
 
 	const formatTime = useCallback(
 		(t: number) => {

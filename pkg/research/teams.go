@@ -25,6 +25,18 @@ type createTeamRequest struct {
 	Name        string `json:"name"`
 	Slug        string `json:"slug"`
 	Description string `json:"description"`
+	Color       string `json:"color"`
+	Emoji       string `json:"emoji"`
+	PrivacyMode string `json:"privacy_mode"`
+}
+
+type updateTeamRequest struct {
+	ID          string  `json:"id"`
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+	Color       *string `json:"color"`
+	Emoji       *string `json:"emoji"`
+	PrivacyMode *string `json:"privacy_mode"`
 }
 
 type teamListRow struct {
@@ -33,6 +45,9 @@ type teamListRow struct {
 	Name             string    `json:"name"`
 	Slug             string    `json:"slug"`
 	Description      string    `json:"description"`
+	Color            string    `json:"color"`
+	Emoji            string    `json:"emoji"`
+	PrivacyMode      string    `json:"privacy_mode"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 	Role             string    `json:"role"`
@@ -47,6 +62,15 @@ Create inserts a team row and an owner membership for the calling user.
 */
 func (service *TeamService) Create(ctx fiber.Ctx) error {
 	return apidata.Mutate(ctx, "team", service.create)
+}
+
+/*
+Update patches a team's mutable fields. Only fields the caller explicitly
+sends in the JSON payload are written; missing fields are left alone.
+Requires the caller to be a member of the team.
+*/
+func (service *TeamService) Update(ctx fiber.Ctx) error {
+	return apidata.Mutate(ctx, "team update", service.update)
 }
 
 /*
@@ -71,6 +95,7 @@ func (service *TeamService) List(ctx fiber.Ctx) error {
 	rows, err := database.QueryContext(
 		ctx.Context(),
 		`SELECT t.id, t.organization_slug, t.name, t.slug, t.description,
+            t.color, t.emoji, t.privacy_mode,
             t.created_at, t.updated_at,
             COALESCE(m.role, '') AS role
        FROM teams t
@@ -99,6 +124,9 @@ func (service *TeamService) List(ctx fiber.Ctx) error {
 			&row.Name,
 			&row.Slug,
 			&row.Description,
+			&row.Color,
+			&row.Emoji,
+			&row.PrivacyMode,
 			&row.CreatedAt,
 			&row.UpdatedAt,
 			&row.Role,
@@ -163,15 +191,27 @@ func (service *TeamService) create(
 
 		now := time.Now().UTC()
 
+		privacyMode := strings.TrimSpace(request.PrivacyMode)
+
+		if privacyMode != "shared" && privacyMode != "local" {
+			privacyMode = "shared"
+		}
+
 		_, err = transaction.ExecContext(
 			ctx.Context(),
-			`INSERT INTO teams (id, organization_slug, name, slug, description, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $6)`,
+			`INSERT INTO teams (
+        id, organization_slug, name, slug, description, color, emoji,
+        privacy_mode, created_at, updated_at
+      )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
 			teamID,
 			orgSlug,
 			name,
 			slug,
 			strings.TrimSpace(request.Description),
+			strings.TrimSpace(request.Color),
+			strings.TrimSpace(request.Emoji),
+			privacyMode,
 			now,
 		)
 
@@ -239,4 +279,113 @@ func (service *TeamService) resolveTeamSlug(
 	}
 
 	return "", fmt.Errorf("could not allocate a unique team slug")
+}
+
+func (service *TeamService) update(
+	ctx fiber.Ctx,
+	identity apidata.ClerkIdentity,
+	request updateTeamRequest,
+) (int64, error) {
+	database, err := service.pool.Open()
+
+	if err != nil {
+		return 0, err
+	}
+
+	teamID := strings.TrimSpace(request.ID)
+
+	if teamID == "" {
+		return 0, fmt.Errorf("team id is required")
+	}
+
+	return apidata.RunWithTxid(ctx, database, func(transaction *sql.Tx) error {
+		if err := assertTeamMembership(ctx, transaction, teamID, identity.Subject); err != nil {
+			return err
+		}
+
+		assignments := []string{"updated_at = $1"}
+		args := []any{time.Now().UTC()}
+		position := 2
+
+		appendString := func(column string, value *string, trim bool) {
+			if value == nil {
+				return
+			}
+
+			raw := *value
+
+			if trim {
+				raw = strings.TrimSpace(raw)
+			}
+
+			assignments = append(assignments, fmt.Sprintf("%s = $%d", column, position))
+			args = append(args, raw)
+			position++
+		}
+
+		appendString("name", request.Name, true)
+		appendString("description", request.Description, true)
+		appendString("color", request.Color, true)
+		appendString("emoji", request.Emoji, true)
+
+		if request.PrivacyMode != nil {
+			mode := strings.TrimSpace(*request.PrivacyMode)
+
+			if mode != "shared" && mode != "local" {
+				return fmt.Errorf("privacy_mode must be 'shared' or 'local'")
+			}
+
+			assignments = append(assignments, fmt.Sprintf("privacy_mode = $%d", position))
+			args = append(args, mode)
+			position++
+		}
+
+		if len(assignments) == 1 {
+			// Only updated_at — nothing meaningful to write.
+			return nil
+		}
+
+		args = append(args, teamID)
+
+		query := fmt.Sprintf(
+			"UPDATE teams SET %s WHERE id = $%d",
+			strings.Join(assignments, ", "),
+			position,
+		)
+
+		if _, err := transaction.ExecContext(ctx.Context(), query, args...); err != nil {
+			return fmt.Errorf("team update: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func assertTeamMembership(
+	ctx fiber.Ctx,
+	transaction *sql.Tx,
+	teamID string,
+	userID string,
+) error {
+	var exists bool
+
+	err := transaction.QueryRowContext(
+		ctx.Context(),
+		`SELECT EXISTS (
+      SELECT 1 FROM team_memberships
+      WHERE team_id = $1 AND user_id = $2
+    )`,
+		teamID,
+		userID,
+	).Scan(&exists)
+
+	if err != nil {
+		return fmt.Errorf("team membership check: %w", err)
+	}
+
+	if !exists {
+		return apidata.Forbidden(fmt.Errorf("not a member of this team"))
+	}
+
+	return nil
 }

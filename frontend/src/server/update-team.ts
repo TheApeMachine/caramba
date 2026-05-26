@@ -1,10 +1,19 @@
 import { auth } from "@clerk/tanstack-react-start/server";
 import { createServerFn } from "@tanstack/react-start";
-import { Team } from "#/collections/team";
+import { z } from "zod";
 import { backendBaseURL } from "#/lib/backend-http";
 
-export const createTeam = createServerFn({ method: "POST" })
-	.inputValidator((data: unknown) => Team.parse(data))
+const UpdateTeamPayload = z.object({
+	id: z.uuid(),
+	name: z.string().min(1).optional(),
+	description: z.string().optional(),
+	color: z.string().optional(),
+	emoji: z.string().optional(),
+	privacy_mode: z.enum(["shared", "local"]).optional(),
+});
+
+export const updateTeam = createServerFn({ method: "POST" })
+	.inputValidator((data: unknown) => UpdateTeamPayload.parse(data))
 	.handler(async ({ data }) => {
 		const authenticationState = await auth();
 		const token = await authenticationState.getToken();
@@ -14,25 +23,17 @@ export const createTeam = createServerFn({ method: "POST" })
 		}
 
 		const response = await fetch(`${backendBaseURL()}/backend/teams`, {
-			method: "POST",
+			method: "PUT",
 			headers: {
 				Authorization: `Bearer ${token}`,
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({
-				id: data.id,
-				name: data.name,
-				slug: data.slug ?? "",
-				description: data.description ?? "",
-				color: data.color ?? "",
-				emoji: data.emoji ?? "",
-				privacy_mode: data.privacy_mode ?? "shared",
-			}),
+			body: JSON.stringify(data),
 		});
 
 		if (!response.ok) {
 			const text = await response.text();
-			throw new Error(`Team insert failed (${response.status}): ${text}`);
+			throw new Error(`Team update failed (${response.status}): ${text}`);
 		}
 
 		const json = (await response.json()) as unknown;
@@ -44,7 +45,7 @@ export const createTeam = createServerFn({ method: "POST" })
 			typeof (json as { txid: unknown }).txid !== "number"
 		) {
 			throw new Error(
-				"Insert API must return JSON with a numeric txid for Electric reconciliation.",
+				"Update API must return JSON with a numeric txid for Electric reconciliation.",
 			);
 		}
 
