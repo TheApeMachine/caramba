@@ -1,0 +1,210 @@
+export default {
+	"app": {
+		"title": "caramba",
+		"tagline": "Ein Substrat für KI-Forschung"
+	},
+	"common": {
+		"home": "Start",
+		"cancel": "Abbrechen",
+		"save": "Speichern",
+		"admin": "Admin",
+		"loadingSession": "Sitzung wird geladen…"
+	},
+	"errors": {
+		"pageNotFound": "Seite nicht gefunden"
+	},
+	"nav": {
+		"projects": "Projekte",
+		"research": "Forschung",
+		"models": "Modelle",
+		"agents": "Agenten",
+		"kanban": {
+			"title": "Kanban",
+			"description": "Projekte verwalten"
+		},
+		"requestFeature": {
+			"title": "Feature anfragen",
+			"description": "Anfragen an das Requests-Backlog senden"
+		},
+		"architecture": {
+			"title": "Architektur",
+			"description": "Forschungsarchitekturen erstellen und verwalten"
+		},
+		"benchmarks": {
+			"title": "Benchmarks",
+			"description": "Auswertungen starten und live verfolgen"
+		},
+		"newBenchmark": {
+			"title": "Neuer Benchmark",
+			"description": "Voreinstellung wählen oder von Grund auf konfigurieren"
+		},
+		"newResearchProject": {
+			"title": "Neues Forschungsprojekt",
+			"description": "Board, Paper und Team in einem Schritt einrichten"
+		}
+	},
+	"auth": {
+		"signIn": "Anmelden",
+		"signUp": "Registrieren",
+		"requestFeature": "Feature anfragen",
+		"personalAccount": "Persönliches Konto",
+		"loadMoreOrganizations": "Weitere Organisationen laden",
+		"switchWorkspace": "Arbeitsbereich wechseln"
+	},
+	"theme": {
+		"toggle": "Design umschalten",
+		"light": "Hell",
+		"dim": "Gedämpft",
+		"dark": "Dunkel",
+		"system": "System",
+		"highContrast": "Hoher Kontrast"
+	},
+	"language": {
+		"toggle": "Sprache ändern",
+		"en": "English",
+		"de": "Deutsch"
+	},
+	"research": {
+		"greetingMorning": "Guten Morgen",
+		"greetingAfternoon": "Guten Tag",
+		"greetingEvening": "Guten Abend",
+		"researcherFallback": "Forscher",
+		"workspaceLoading": "Forschungsarbeitsbereich",
+		"subtitle": "Projekte, Aufgaben und letzte Aktivitäten an einem Ort."
+	},
+	"kanban": {
+		"loadingHub": "Kanban-Hub wird geladen…",
+		"loadError": "Projekte für Kanban-Routing konnten nicht geladen werden.",
+		"title": "Kanban",
+		"subtitle": "Board pro Forschungsprojekt oder Sammelboard für alle Projekte mit Organisations-Slug.",
+		"organization": "Organisation",
+		"noOrganization": "Keine Organisation",
+		"aggregateDescription": "Sammelboard über alle Projekte in dieser Organisation.",
+		"projectBoards": "Projekt-Boards",
+		"projectCount_one": "{{count}} Projekt",
+		"projectCount_other": "{{count}} Projekte",
+		"noProjects": "Noch keine Forschungsprojekte synchronisiert.",
+		"personalUnsorted": "Persönlich / unsortiert",
+		"loadingBoard": "Board wird geladen…",
+		"projectKanban": "Projekt-Kanban",
+		"loadingOrgBoard": "Organisations-Board wird geladen…",
+		"organizationKanban": "Organisations-Kanban"
+	},
+	"requestFeature": {
+		"title": "Feature anfragen",
+		"description": "Anfragen werden zu Backlog-Karten im Requests-Projekt der konfigurierten Organisation (standardmäßig <1>caramba / requests</1>).",
+		"success": "Danke — Ihre Anfrage wurde dem Requests-Backlog hinzugefügt.",
+		"submitted": "Gesendet",
+		"submitError": "Senden fehlgeschlagen",
+		"titleTooShort": "Titel ist zu kurz",
+		"titleLabel": "Titel",
+		"descriptionRequired": "Beschreibung ist erforderlich",
+		"descriptionLabel": "Beschreibung",
+		"contactEmailLabel": "Kontakt-E-Mail (optional)",
+		"contactEmailPlaceholder": "sie@beispiel.de",
+		"kanbanHub": "Kanban-Hub",
+		"sending": "Wird gesendet…",
+		"submit": "Anfrage senden"
+	},
+	"benchmarks": {
+		"title": "Benchmarks",
+		"subtitle": "Auswertung starten, live verfolgen, Ergebnisse vergleichen.",
+		"chartGallery": "Diagramm-Galerie",
+		"newBenchmark": "Neuer Benchmark",
+		"runPreset": "Voreinstellung starten",
+		"estimatedMinutes": "~{{count}} Min.",
+		"recentRuns": "Letzte Läufe",
+		"storedLocally": "{{count}} lokal gespeichert",
+		"noRunsYet": "Noch keine Läufe",
+		"noRunsHint": "Voreinstellung oben starten oder von Grund auf erstellen.",
+		"untitledRun": "Unbenannter Lauf",
+		"justNow": "gerade eben",
+		"minutesAgo": "vor {{count}} Min.",
+		"hoursAgo": "vor {{count}} Std.",
+		"lossPrefix": "Verlust {{value}}",
+		"deleteRun": "Lauf löschen",
+		"runNotFound": "Lauf nicht gefunden",
+		"runNotFoundHint": "Lokale Laufdaten wurden möglicherweise gelöscht. Starten Sie einen neuen Benchmark für die Live-Ansicht.",
+		"backToBenchmarks": "Zurück zu Benchmarks",
+		"status": {
+			"done": "fertig",
+			"running": "läuft",
+			"queued": "wartend",
+			"failed": "fehlgeschlagen"
+		}
+	},
+	"measurement": {
+		"card": {
+			"progress": {
+				"notStarted": "Nicht begonnen",
+				"started": "Begonnen",
+				"finished": "Abgeschlossen"
+			}
+		}
+	},
+	"assistant": {
+		"title": "Assistent",
+		"researchTeam": "Forschungsteam ({{count}})",
+		"headerDescription": "Sitzungen, Personas und Team-Chat verwalten.",
+		"footerStreaming": "Antworten können unvollständig sein, solange das Team streamt.",
+		"messageTeam": "Nachricht an Ihr Team ({{names}})…",
+		"messagePlaceholder": "Nachricht…",
+		"chat": "Chat",
+		"team": "Team",
+		"messageLabel": "Nachricht",
+		"sessions": "Sitzungen",
+		"reasoning": "Begründung",
+		"toolError": "Tool-Fehler",
+		"toolResult": "Tool-Ergebnis",
+		"thinking": "Denkt nach…",
+		"you": "Sie",
+		"readySingle": "Fragen Sie alles — ich bin bereit.",
+		"readyTeam": "Fragen Sie alles — Ihr Forschungsteam ist bereit.",
+		"newConversation": "Neues Gespräch",
+		"scope": {
+			"global": "Global",
+			"team": "Team",
+			"personal": "Persönlich"
+		},
+		"adapter": {
+			"openai": "OpenAI (Cloud)",
+			"ollama": "Ollama (lokal)",
+			"openaiCompat": "OpenAI-kompatibel"
+		},
+		"settings": {
+			"personaNamePlaceholder": "Persona-Name",
+			"scope": "Bereich",
+			"adapter": "Adapter",
+			"endpointUrl": "Endpunkt-URL",
+			"systemPromptPlaceholder": "System-Prompt…",
+			"model": "Modell",
+			"temperature": "Temperatur",
+			"maxTokens": "Max. Tokens",
+			"newPersonaName": "Forscher {{count}}",
+			"defaultSystemPrompt": "Sie sind ein spezialisierter Forscher. Bauen Sie auf dem Gespräch auf und fügen Sie neue Erkenntnisse hinzu.",
+			"localOnlyMode": "Nur-lokal-Modus",
+			"localOnlyDescription": "Alles im Browser-Speicher. Chat geht an lokale Endpunkte pro Persona.",
+			"defaultLocalEndpoint": "Standard lokaler Endpunkt",
+			"authHeaderOptional": "Auth-Header (optional)",
+			"authHeaderPlaceholder": "Bearer sk-…",
+			"personas": "Personas",
+			"addPersona": "Persona hinzufügen",
+			"contextWindow": "Kontextfenster (Nachrichten)",
+			"contextWindowHint": "Die erste Nachricht bleibt fixiert. Der restliche Kontext gleitet über die letzten N Nachrichten."
+		},
+		"defaultPersona": {
+			"name": "Assistent",
+			"systemPrompt": "Sie sind ein hilfreicher Forschungsassistent. Sie können bei Bedarf arXiv nach Papers durchsuchen."
+		},
+		"models": {
+			"gpt-5.5": "GPT 5.5",
+			"gpt-5.4-mini": "GPT 5.4 mini",
+			"claude-opus-4-7": "Claude Opus 4.7",
+			"claude-sonnet-4-6": "Claude Sonnet 4.6",
+			"gemini-3.1-pro": "Gemini 3.1 Pro",
+			"gemini-3.1-flash": "Gemini 3.1 Flash",
+			"grok-4.3": "Grok 4.3",
+			"grok-4.3-mini": "Grok 4.3 mini"
+		}
+	}
+} as const;

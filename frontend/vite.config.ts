@@ -8,6 +8,9 @@ import { defineConfig } from "vite";
 
 const config = defineConfig({
 	resolve: { tsconfigPaths: true },
+	json: {
+		stringify: true,
+	},
 	plugins: [
 		devtools(),
 		tanstackStart(),

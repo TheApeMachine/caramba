@@ -20,6 +20,22 @@ import (
 	"github.com/theapemachine/puter/pool"
 )
 
+// devicePoolPinTarget is the tensor.Location the chat / program path
+// pins its device pool to. Today this is Host because the dispatcher
+// still loads weights through tensor.Backend.Upload and the Metal
+// backend's Upload returns a DeviceTensor whose MTLBuffer is not yet
+// fully wired (puter ARCHITECTURE.md §3.1 lines 1223-1237 and
+// GAPS.md §8.3 step 6 — "brings chat.yml up on CPU before validating
+// the same chain against Metal"). Without pinning, MemoryBackend
+// picks Metal, Upload returns a half-initialised DeviceTensor, and
+// the first kernel dispatch crashes with SIGSEGV at offset 0x20
+// (the buffer field of an uninitialised metal.DeviceTensor).
+//
+// Once the buffer-handle plumbing lands, flip this to tensor.Metal
+// (or wire it to a CLI flag) — the rest of program.go below does not
+// need to change.
+var devicePoolPinTarget = tensor.Host
+
 func runProgram(
 	command *cobra.Command,
 	programPath string,
@@ -39,6 +55,13 @@ func runProgram(
 	}
 
 	defer devicePool.Close()
+
+	// Narrow the discovered devices to devicePoolPinTarget. See the
+	// constant's doc-comment for why. Errors here mean the target
+	// location isn't present (e.g. asking for Metal on Linux); fall
+	// through with the discovered pool so the diagnostic surfaces at
+	// the first kernel dispatch rather than at pool init.
+	_ = devicePool.PinTo(devicePoolPinTarget)
 
 	stateMemory, _, err := devicePool.MemoryBackend()
 
