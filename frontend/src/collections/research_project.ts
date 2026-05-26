@@ -12,6 +12,10 @@ export const ResearchProject = z.object({
 		(v) => (v === "" ? null : v),
 		z.string().min(1).nullable().optional(),
 	),
+	team_id: z.preprocess(
+		(v) => (v === "" ? null : v),
+		z.uuid().nullable().optional(),
+	),
 	created_at: z.coerce.date(),
 	updated_at: z.coerce.date(),
 });

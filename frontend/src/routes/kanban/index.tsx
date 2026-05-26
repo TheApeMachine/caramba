@@ -1,12 +1,14 @@
 import { useAuth } from "@clerk/tanstack-react-start";
 import { useLiveQuery } from "@tanstack/react-db";
 import { ClientOnly, createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRightIcon, KanbanIcon, LayersIcon } from "lucide-react";
+import { ArrowRightIcon, KanbanIcon, LayersIcon, UsersIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { researchProjectCollection } from "#/collections/research_project";
+import { teamCollection } from "#/collections/team";
 import { Badge } from "#/components/ui/badge";
 import { Flex } from "#/components/ui/flex";
 import { Typography } from "#/components/ui/typography";
+import { useActiveTeam } from "#/lib/active-team";
 
 /*
 KanbanHubPending shows a shared loading state for the ClientOnly
@@ -60,12 +62,17 @@ path is the most discoverable.
 const OrganizationHeroCard = ({
 	orgSlug,
 	projectCount,
+	scopeLabel,
+	scopeKind,
 }: {
 	orgSlug: string | null | undefined;
 	projectCount: number;
+	scopeLabel: string;
+	scopeKind: "organization" | "team";
 }) => {
 	const { t } = useTranslation();
 	const resolvedSlug = orgSlug ?? "";
+	const ScopeIcon = scopeKind === "team" ? UsersIcon : LayersIcon;
 
 	return (
 		<Link
@@ -76,15 +83,20 @@ const OrganizationHeroCard = ({
 			<Flex.Row className="items-center justify-between gap-4">
 				<Flex.Row className="items-center gap-3">
 					<div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary">
-						<LayersIcon aria-hidden className="size-5" />
+						<ScopeIcon aria-hidden className="size-5" />
 					</div>
 					<Flex.Column gap={1}>
-						<span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
-							{t("kanban.organization")}
-						</span>
-						<h2 className="font-semibold text-base text-foreground">
-							{orgSlug ?? t("kanban.noOrganization")}
-						</h2>
+						<Typography.Span
+							className="text-xs font-medium uppercase tracking-wider"
+							variant="muted"
+						>
+							{scopeKind === "team"
+								? t("kanban.team", { defaultValue: "Team" })
+								: t("kanban.organization")}
+						</Typography.Span>
+						<Typography.Subtitle className="text-base">
+							{scopeLabel}
+						</Typography.Subtitle>
 					</Flex.Column>
 				</Flex.Row>
 				<Flex.Row className="shrink-0 items-center gap-3">
@@ -101,7 +113,12 @@ const OrganizationHeroCard = ({
 				className="max-w-prose text-sm"
 				variant="muted"
 			>
-				{t("kanban.aggregateDescription")}
+				{scopeKind === "team"
+					? t("kanban.teamAggregateDescription", {
+							defaultValue:
+								"Aggregate board across every project in this team.",
+						})
+					: t("kanban.aggregateDescription")}
 			</Typography.Paragraph>
 			<BoardPreview />
 		</Link>
@@ -226,8 +243,9 @@ const ProjectBoardsSection = ({
 };
 
 const KanbanHubContent = () => {
-	const { orgSlug } = useAuth();
+	const { orgId, orgSlug } = useAuth();
 	const { t } = useTranslation();
+	const activeTeamId = useActiveTeam(orgId);
 
 	const { data, isLoading, isError } = useLiveQuery((query) =>
 		query
@@ -236,7 +254,15 @@ const KanbanHubContent = () => {
 				id: project.id,
 				name: project.name,
 				organization_slug: project.organization_slug,
+				team_id: project.team_id,
 			})),
+	);
+
+	const { data: teamData } = useLiveQuery((query) =>
+		query.from({ team: teamCollection }).select(({ team }) => ({
+			id: team.id,
+			name: team.name,
+		})),
 	);
 
 	if (isLoading) {
@@ -253,7 +279,13 @@ const KanbanHubContent = () => {
 		);
 	}
 
-	const projects = data ?? [];
+	const allProjects = data ?? [];
+	const projects = activeTeamId
+		? allProjects.filter((project) => project.team_id === activeTeamId)
+		: allProjects;
+
+	const activeTeam =
+		(teamData ?? []).find((team) => team.id === activeTeamId) ?? null;
 
 	return (
 		<Flex.Column className="mx-auto min-h-0 w-full max-w-6xl flex-1 gap-10 p-8">
@@ -261,6 +293,10 @@ const KanbanHubContent = () => {
 			<OrganizationHeroCard
 				orgSlug={orgSlug}
 				projectCount={projects.length}
+				scopeLabel={
+					activeTeam ? activeTeam.name : orgSlug ?? t("kanban.noOrganization")
+				}
+				scopeKind={activeTeam ? "team" : "organization"}
 			/>
 			<ProjectBoardsSection projects={projects} />
 		</Flex.Column>

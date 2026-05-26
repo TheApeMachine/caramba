@@ -7,10 +7,6 @@ import { Flex } from "#/components/ui/flex";
 import { Typography } from "#/components/ui/typography";
 import { useBreadcrumbOverride } from "#/lib/breadcrumb-overrides";
 
-export const Route = createFileRoute("/kanban/project/$projectId")({
-	component: KanbanProjectBoardRoute,
-});
-
 const KanbanProjectBoardPending = () => {
 	const { t } = useTranslation();
 
@@ -78,3 +74,7 @@ const KanbanProjectBoardRoute = () => {
 		</ClientOnly>
 	);
 };
+
+export const Route = createFileRoute("/kanban/project/$projectId")({
+	component: KanbanProjectBoardRoute,
+});

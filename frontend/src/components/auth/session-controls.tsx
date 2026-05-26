@@ -7,7 +7,7 @@ import {
 import { Link } from "@tanstack/react-router";
 import { LightbulbIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { OrganizationAccountMenu } from "#/components/auth/organization-account-menu";
+import { WorkspaceSwitcher } from "#/components/auth/workspace-switcher";
 import { LanguageToggle } from "#/components/layout/language-toggle";
 import { ModeToggle } from "#/components/layout/mode-toggle";
 import { Badge } from "#/components/ui/badge";
@@ -48,7 +48,7 @@ export function SessionControls() {
 							{t("auth.requestFeature")}
 						</Button>
 					</Link>
-					<OrganizationAccountMenu />
+					<WorkspaceSwitcher />
 					<UserButton />
 				</div>
 			</Show>
