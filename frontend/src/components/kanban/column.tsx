@@ -2,6 +2,7 @@
 
 import {
 	CheckIcon,
+	InboxIcon,
 	MoreHorizontalIcon,
 	PlusIcon,
 	Trash2Icon,
@@ -9,6 +10,17 @@ import {
 import { useState } from "react";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
+import {
+	Card,
+	CardFrame,
+	CardFrameAction,
+	CardFrameDescription,
+	CardFrameHeader,
+	CardFrameTitle,
+	CardPanel,
+} from "#/components/ui/card";
+import { Empty } from "#/components/ui/empty";
+import { Flex } from "#/components/ui/flex";
 import { Input } from "#/components/ui/input";
 import {
 	Menu,
@@ -18,6 +30,7 @@ import {
 	MenuTrigger,
 } from "#/components/ui/menu";
 import { ScrollArea } from "#/components/ui/scroll-area";
+import { Typography } from "#/components/ui/typography";
 import { CardItem } from "./card-item";
 import { useBoardContext } from "./context";
 import type { KanbanColumn } from "./model";
@@ -31,53 +44,172 @@ interface KanbanColumnProps {
 	allowAddCard?: boolean;
 }
 
-export function KanbanColumnView({
+const ColumnTitleEditor = ({
+	column,
+	editable,
+	onCommit,
+}: {
+	column: KanbanColumn;
+	editable: boolean;
+	onCommit: (next: string) => void;
+}) => {
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState(column.title);
+
+	if (editable && editing) {
+		return (
+			<Input
+				autoFocus
+				className="h-6 flex-1"
+				onBlur={() => {
+					onCommit(draft.trim());
+					setEditing(false);
+				}}
+				onChange={(event) => setDraft(event.target.value)}
+				onKeyDown={(event) => {
+					if (event.key === "Enter") {
+						onCommit(draft.trim());
+						setEditing(false);
+					}
+					if (event.key === "Escape") {
+						setDraft(column.title);
+						setEditing(false);
+					}
+				}}
+				size="sm"
+				value={draft}
+			/>
+		);
+	}
+
+	if (editable) {
+		return (
+			<button
+				className="cursor-pointer text-left text-foreground hover:text-foreground/80"
+				onClick={() => setEditing(true)}
+				type="button"
+			>
+				{column.title}
+			</button>
+		);
+	}
+
+	return <Typography.Span>{column.title}</Typography.Span>;
+};
+
+const ColumnMenu = ({
+	atLimit,
+	allowAddCard,
+	onAddCard,
+	onDelete,
+}: {
+	atLimit: boolean;
+	allowAddCard: boolean;
+	onAddCard: () => void;
+	onDelete: () => void;
+}) => {
+	return (
+		<Menu>
+			<MenuTrigger
+				aria-label="Column options"
+				render={<Button size="icon-xs" variant="ghost" />}
+			>
+				<MoreHorizontalIcon />
+			</MenuTrigger>
+			<MenuPopup align="end">
+				<MenuItem
+					disabled={atLimit || !allowAddCard}
+					onClick={() => allowAddCard && !atLimit && onAddCard()}
+				>
+					<PlusIcon />
+					Add card
+				</MenuItem>
+				<MenuSeparator />
+				<MenuItem
+					className="text-destructive-foreground focus:bg-destructive/8"
+					onClick={onDelete}
+				>
+					<Trash2Icon />
+					Delete column
+				</MenuItem>
+			</MenuPopup>
+		</Menu>
+	);
+};
+
+const AddCardForm = ({
+	onSubmit,
+	onCancel,
+}: {
+	onSubmit: (title: string) => void;
+	onCancel: () => void;
+}) => {
+	const [title, setTitle] = useState("");
+
+	const commit = () => {
+		const trimmed = title.trim();
+
+		if (!trimmed) {
+			onCancel();
+			return;
+		}
+
+		onSubmit(trimmed);
+		setTitle("");
+	};
+
+	return (
+		<Flex.Column className="gap-1.5">
+			<Input
+				autoFocus
+				onChange={(event) => setTitle(event.target.value)}
+				onKeyDown={(event) => {
+					if (event.key === "Enter") {
+						commit();
+					}
+					if (event.key === "Escape") {
+						setTitle("");
+						onCancel();
+					}
+				}}
+				placeholder="Card title…"
+				size="sm"
+				value={title}
+			/>
+			<Flex.Row className="gap-1">
+				<Button onClick={commit} size="xs">
+					<CheckIcon />
+					Add
+				</Button>
+				<Button
+					onClick={() => {
+						setTitle("");
+						onCancel();
+					}}
+					size="xs"
+					variant="ghost"
+				>
+					Cancel
+				</Button>
+			</Flex.Row>
+		</Flex.Column>
+	);
+};
+
+export const KanbanColumnView = ({
 	column,
 	onDragOver,
 	onDrop,
 	dragState,
 	columnsEditable = true,
 	allowAddCard = true,
-}: KanbanColumnProps) {
+}: KanbanColumnProps) => {
 	const { board, dispatch } = useBoardContext();
 	const [addingCard, setAddingCard] = useState(false);
-	const [newCardTitle, setNewCardTitle] = useState("");
-	const [editingTitle, setEditingTitle] = useState(false);
-	const [titleInput, setTitleInput] = useState(column.title);
 	const [dropIndex, setDropIndex] = useState<number | null>(null);
 
 	const cards = column.cardIds.map((id) => board.cards[id]).filter(Boolean);
-
 	const atLimit = column.limit !== null && cards.length >= column.limit;
-
-	const commitNewCard = () => {
-		const trimmed = newCardTitle.trim();
-		if (!trimmed) {
-			setAddingCard(false);
-			return;
-		}
-		dispatch({
-			type: "ADD_CARD",
-			columnId: column.id,
-			card: {
-				title: trimmed,
-				description: "",
-				priority: "medium",
-				labels: [],
-				assignees: [],
-				dueDate: null,
-			},
-		});
-		setNewCardTitle("");
-		setAddingCard(false);
-	};
-
-	const commitTitle = () => {
-		const trimmed = titleInput.trim();
-		if (trimmed)
-			dispatch({ type: "UPDATE_COLUMN", id: column.id, title: trimmed });
-		setEditingTitle(false);
-	};
 
 	const handleDragOver = (e: React.DragEvent, index: number) => {
 		e.preventDefault();
@@ -90,173 +222,172 @@ export function KanbanColumnView({
 		onDrop(e, column.id, index);
 	};
 
+	const handleAddCard = (title: string) => {
+		dispatch({
+			type: "ADD_CARD",
+			columnId: column.id,
+			card: {
+				title,
+				description: "",
+				priority: "medium",
+				labels: [],
+				assignees: [],
+				dueDate: null,
+			},
+		});
+		setAddingCard(false);
+	};
+
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: Kanban column is a drag-and-drop sink.
-		<div
-			className="flex h-full w-72 shrink-0 flex-col rounded-2xl border bg-muted/40"
-			onDragOver={(e) => handleDragOver(e, cards.length)}
-			onDrop={(e) => handleDrop(e, cards.length)}
+		<CardFrame
+			className="flex h-full w-full min-w-72 flex-col"
+			onDragOver={(event) => handleDragOver(event, cards.length)}
+			onDrop={(event) => handleDrop(event, cards.length)}
 		>
-			<div className="flex items-center gap-2 px-3 py-2.5">
-				<span
-					className="size-2.5 rounded-full shrink-0"
-					style={{ backgroundColor: column.color }}
-				/>
+			<CardFrameHeader className="py-3">
+				<CardFrameTitle>
+					<Flex.Row className="items-center gap-2">
+						<span
+							aria-hidden
+							className="size-2.5 shrink-0 rounded-full"
+							style={{ backgroundColor: column.color }}
+						/>
+						<ColumnTitleEditor
+							column={column}
+							editable={columnsEditable}
+							onCommit={(next) => {
+								if (next) {
+									dispatch({
+										type: "UPDATE_COLUMN",
+										id: column.id,
+										title: next,
+									});
+								}
+							}}
+						/>
+					</Flex.Row>
+				</CardFrameTitle>
+				{column.limit !== null ? (
+					<CardFrameDescription className="text-xs">
+						{atLimit ? "At WIP limit" : `${cards.length} of ${column.limit}`}
+					</CardFrameDescription>
+				) : null}
+				<CardFrameAction>
+					<Flex.Row className="items-center gap-1">
+						<Badge size="sm" variant={atLimit ? "warning" : "outline"}>
+							{cards.length}
+							{column.limit !== null ? `/${column.limit}` : ""}
+						</Badge>
+						{columnsEditable ? (
+							<ColumnMenu
+								allowAddCard={allowAddCard}
+								atLimit={atLimit}
+								onAddCard={() => setAddingCard(true)}
+								onDelete={() =>
+									dispatch({ type: "DELETE_COLUMN", id: column.id })
+								}
+							/>
+						) : null}
+					</Flex.Row>
+				</CardFrameAction>
+			</CardFrameHeader>
 
-				{columnsEditable && editingTitle ? (
-					<Input
-						autoFocus
-						size="sm"
-						value={titleInput}
-						onChange={(e) => setTitleInput(e.target.value)}
-						onBlur={commitTitle}
-						onKeyDown={(e) => {
-							if (e.key === "Enter") commitTitle();
-							if (e.key === "Escape") {
-								setTitleInput(column.title);
-								setEditingTitle(false);
-							}
-						}}
-						className="h-6 flex-1"
-					/>
-				) : columnsEditable ? (
-					<button
-						type="button"
-						className="flex-1 text-left text-sm font-semibold hover:text-foreground/80"
-						onClick={() => setEditingTitle(true)}
-					>
-						{column.title}
-					</button>
-				) : (
-					<span className="flex-1 text-left text-sm font-semibold">
-						{column.title}
-					</span>
-				)}
+			<Card className="flex min-h-0 flex-1 flex-col">
+				<CardPanel className="flex min-h-0 flex-1 flex-col p-0">
+					<ScrollArea className="min-h-0 flex-1">
+						<Flex.Column className="gap-2 p-2">
+							{cards.length === 0 && !addingCard ? (
+								<Empty className="py-8">
+									<Empty.Header>
+										<Empty.Media variant="icon">
+											<InboxIcon />
+										</Empty.Media>
+										<Empty.Title className="text-base">
+											No cards yet
+										</Empty.Title>
+										<Empty.Description>
+											{allowAddCard
+												? "Drop a card here or add one below."
+												: "Drop a card here to get started."}
+										</Empty.Description>
+									</Empty.Header>
+									{allowAddCard ? (
+										<Empty.Content>
+											<Button
+												disabled={atLimit}
+												onClick={() => setAddingCard(true)}
+												size="sm"
+												variant="outline"
+											>
+												<PlusIcon />
+												Add card
+											</Button>
+										</Empty.Content>
+									) : null}
+								</Empty>
+							) : (
+								cards.map((card, index) => (
+									// biome-ignore lint/a11y/noStaticElementInteractions: reorder targets within a column.
+									<div
+										key={card.id}
+										onDragOver={(event) => {
+											event.stopPropagation();
+											handleDragOver(event, index);
+										}}
+										onDrop={(event) => {
+											event.stopPropagation();
+											handleDrop(event, index);
+										}}
+									>
+										{dropIndex === index &&
+										dragState &&
+										dragState.cardId !== card.id ? (
+											<div className="mb-2 h-0.5 rounded-full bg-ring/60" />
+										) : null}
+										<CardItem
+											card={card}
+											draggable
+											isDragging={dragState?.cardId === card.id}
+											onDragEnd={() => {}}
+											onDragStart={(event) => {
+												event.dataTransfer.setData("cardId", card.id);
+												event.dataTransfer.setData(
+													"fromColumnId",
+													column.id,
+												);
+											}}
+										/>
+									</div>
+								))
+							)}
 
-				<div className="flex items-center gap-1">
-					<Badge variant="outline" size="sm">
-						{cards.length}
-						{column.limit !== null ? `/${column.limit}` : ""}
-					</Badge>
+							{dropIndex === cards.length && dragState ? (
+								<div className="h-0.5 rounded-full bg-ring/60" />
+							) : null}
 
-					{columnsEditable ? (
-						<Menu>
-							<MenuTrigger
-								render={<Button size="icon-xs" variant="ghost" />}
-								aria-label="Column options"
-							>
-								<MoreHorizontalIcon />
-							</MenuTrigger>
-							<MenuPopup align="end">
-								<MenuItem
-									disabled={atLimit || !allowAddCard}
-									onClick={() =>
-										allowAddCard && !atLimit && setAddingCard(true)
-									}
+							{allowAddCard && addingCard ? (
+								<AddCardForm
+									onCancel={() => setAddingCard(false)}
+									onSubmit={handleAddCard}
+								/>
+							) : null}
+
+							{cards.length > 0 && allowAddCard && !addingCard ? (
+								<Button
+									className="w-full justify-start text-muted-foreground"
+									disabled={atLimit}
+									onClick={() => setAddingCard(true)}
+									size="sm"
+									variant="ghost"
 								>
 									<PlusIcon />
 									Add card
-								</MenuItem>
-								<MenuSeparator />
-								<MenuItem
-									className="text-destructive-foreground focus:bg-destructive/8"
-									onClick={() =>
-										dispatch({ type: "DELETE_COLUMN", id: column.id })
-									}
-								>
-									<Trash2Icon />
-									Delete column
-								</MenuItem>
-							</MenuPopup>
-						</Menu>
-					) : null}
-				</div>
-			</div>
-
-			<ScrollArea className="flex-1 px-2">
-				<div className="flex flex-col gap-2 py-1 pb-2">
-					{cards.map((card, index) => (
-						// biome-ignore lint/a11y/noStaticElementInteractions: Kanban reorder targets within a column.
-						<div
-							key={card.id}
-							onDragOver={(e) => {
-								e.stopPropagation();
-								handleDragOver(e, index);
-							}}
-							onDrop={(e) => {
-								e.stopPropagation();
-								handleDrop(e, index);
-							}}
-						>
-							{dropIndex === index &&
-								dragState &&
-								dragState.cardId !== card.id && (
-									<div className="mb-2 h-0.5 rounded-full bg-ring/60" />
-								)}
-							<CardItem
-								card={card}
-								draggable
-								isDragging={dragState?.cardId === card.id}
-								onDragStart={(e) => {
-									e.dataTransfer.setData("cardId", card.id);
-									e.dataTransfer.setData("fromColumnId", column.id);
-								}}
-								onDragEnd={() => {}}
-							/>
-						</div>
-					))}
-
-					{dropIndex === cards.length && dragState && (
-						<div className="h-0.5 rounded-full bg-ring/60" />
-					)}
-
-					{allowAddCard && addingCard ? (
-						<div className="flex flex-col gap-1.5">
-							<Input
-								autoFocus
-								size="sm"
-								placeholder="Card title…"
-								value={newCardTitle}
-								onChange={(e) => setNewCardTitle(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === "Enter") commitNewCard();
-									if (e.key === "Escape") {
-										setNewCardTitle("");
-										setAddingCard(false);
-									}
-								}}
-							/>
-							<div className="flex gap-1">
-								<Button size="xs" onClick={commitNewCard}>
-									<CheckIcon />
-									Add
 								</Button>
-								<Button
-									size="xs"
-									variant="ghost"
-									onClick={() => {
-										setNewCardTitle("");
-										setAddingCard(false);
-									}}
-								>
-									Cancel
-								</Button>
-							</div>
-						</div>
-					) : allowAddCard ? (
-						<Button
-							variant="ghost"
-							size="sm"
-							className="w-full justify-start text-muted-foreground"
-							disabled={atLimit}
-							onClick={() => setAddingCard(true)}
-						>
-							<PlusIcon />
-							Add card
-						</Button>
-					) : null}
-				</div>
-			</ScrollArea>
-		</div>
+							) : null}
+						</Flex.Column>
+					</ScrollArea>
+				</CardPanel>
+			</Card>
+		</CardFrame>
 	);
-}
+};

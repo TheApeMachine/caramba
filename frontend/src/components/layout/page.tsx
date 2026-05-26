@@ -23,13 +23,24 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from "#/components/ui/sheet";
+import { useBreadcrumbOverrides } from "#/lib/breadcrumb-overrides";
 import { cn } from "#/lib/utils";
 import { Navigation } from "./navigation";
 
-const humanize = (segment: string) =>
-	decodeURIComponent(segment)
+const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const humanize = (segment: string) => {
+	const decoded = decodeURIComponent(segment);
+
+	if (UUID_PATTERN.test(decoded)) {
+		return `${decoded.slice(0, 8)}…${decoded.slice(-4)}`;
+	}
+
+	return decoded
 		.replace(/[-_]+/g, " ")
 		.replace(/\b\w/g, (character) => character.toUpperCase());
+};
 
 /*
 PageContentWidth selects how routed main content is sized in the shell.
@@ -65,12 +76,17 @@ export function resolvePageContentWidth(
 
 const useRouteCrumbs = () => {
 	const { pathname } = useLocation();
+	const overrides = useBreadcrumbOverrides();
 	const segments = pathname.split("/").filter(Boolean);
 
-	return segments.map((segment, index) => ({
-		href: `/${segments.slice(0, index + 1).join("/")}`,
-		label: humanize(segment),
-	}));
+	return segments.map((segment, index) => {
+		const href = `/${segments.slice(0, index + 1).join("/")}`;
+
+		return {
+			href,
+			label: overrides[href] ?? humanize(segment),
+		};
+	});
 };
 
 const RouteCrumb = ({

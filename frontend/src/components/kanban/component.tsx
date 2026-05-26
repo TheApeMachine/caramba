@@ -7,7 +7,9 @@ import { KanbanColumnView } from "#/components/kanban/column";
 import { BoardContext } from "#/components/kanban/context";
 import type { KanbanBoard as KanbanBoardState } from "#/components/kanban/model";
 import { type BoardAction, boardReducer } from "#/components/kanban/reducer";
+import { Flex } from "#/components/ui/flex";
 import { ScrollArea } from "#/components/ui/scroll-area";
+import { Typography } from "#/components/ui/typography";
 import {
 	assigneesJsonFromKanban,
 	collectOrderingUpdates,
@@ -323,37 +325,40 @@ export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
 
 	if (cardsQuery.isLoading || projectsQuery.isLoading) {
 		return (
-			<div className="flex flex-1 items-center justify-center p-6 text-muted-foreground text-sm">
-				Loading board…
-			</div>
+			<Flex.Center className="flex-1 p-6">
+				<Typography.Paragraph variant="muted">
+					Loading board…
+				</Typography.Paragraph>
+			</Flex.Center>
 		);
 	}
 
 	if (cardsQuery.isError || projectsQuery.isError) {
 		return (
-			<div className="flex flex-1 items-center justify-center p-6 text-center text-muted-foreground text-sm">
-				Could not sync Kanban data. Confirm{" "}
-				<code className="text-foreground">VITE_ELECTRIC_SHAPE_URL</code> exposes
-				shapes for <code className="text-foreground">kanban_cards</code> and{" "}
-				<code className="text-foreground">research_projects</code>, and{" "}
-				<code className="text-foreground">DATABASE_URL</code> is set for server
-				writes.
-			</div>
+			<Flex.Center className="flex-1 p-6 text-center">
+				<Typography.Paragraph variant="muted">
+					Could not sync Kanban data. Confirm{" "}
+					<Typography.Code>VITE_ELECTRIC_SHAPE_URL</Typography.Code> exposes
+					shapes for <Typography.Code>kanban_cards</Typography.Code> and{" "}
+					<Typography.Code>research_projects</Typography.Code>, and{" "}
+					<Typography.Code>DATABASE_URL</Typography.Code> is set for server
+					writes.
+				</Typography.Paragraph>
+			</Flex.Center>
 		);
 	}
 
 	return (
 		<BoardContext.Provider value={{ board, dispatch: wrappedDispatch }}>
-			<div className="flex h-full min-h-0 flex-col">
-				<ScrollArea className="flex-1">
+			<Flex.Column className="min-h-0 flex-1">
+				<ScrollArea className="min-h-0 flex-1">
 					<ul
-						className="flex min-h-0 list-none gap-3 p-4"
-						style={{ minHeight: "calc(100vh - 8rem)" }}
-						onDragStart={handleDragStart}
+						className="flex h-full min-h-0 list-none gap-3 px-1 py-1"
 						onDragEnd={() => setDragState(null)}
+						onDragStart={handleDragStart}
 					>
 						{board.columns.map((column) => (
-							<li key={column.id}>
+							<li className="flex min-w-72 flex-1" key={column.id}>
 								<KanbanColumnView
 									allowAddCard={allowAddCard}
 									column={column}
@@ -366,7 +371,7 @@ export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
 						))}
 					</ul>
 				</ScrollArea>
-			</div>
+			</Flex.Column>
 		</BoardContext.Provider>
 	);
 }
