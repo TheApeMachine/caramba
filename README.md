@@ -1,3 +1,5 @@
+![Header image of the caramba logo, a rainbow C shape, with the most notable features mentioned](header1.png)
+
 # 🌈 caramba
 
 **A substrate for A.I. research.**
