@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -26,6 +27,19 @@ func runProgram(
 	programPath string,
 	initialValues map[string]any,
 ) error {
+	return runProgramWithInput(command, programPath, initialValues, os.Stdin)
+}
+
+func runProgramWithInput(
+	command *cobra.Command,
+	programPath string,
+	initialValues map[string]any,
+	stdin io.Reader,
+) error {
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+
 	computeConfig := config.NewComputeConfig()
 	hubConfig := config.NewHubConfig()
 	qpoolConfig := config.NewQPoolConfig()
@@ -83,10 +97,10 @@ func runProgram(
 			return safetensors.NewParser(archive)
 		},
 		Compute:         graphBackend,
-		Host:            program.NewHost(program.HostOptions{Stdin: os.Stdin, HubConfig: hubConfig}),
+		Host:            program.NewHost(program.HostOptions{Stdin: stdin, HubConfig: hubConfig}),
 		StateMemory:     stateMemory,
 		CacheDir:        hubConfig.CacheDir,
-		Stdin:           os.Stdin,
+		Stdin:           stdin,
 		InitialValues:   initialValues,
 		IncludeResolver: includeResolver,
 
@@ -114,15 +128,7 @@ func runProgram(
 		// by the KV cache page count (chat.yml's key_pages first dim
 		// is 4096). "T" is the conventional sequence-length symbol
 		// surface area uses for transformer activations.
-		PlannerBindings: ir.SymbolMap{
-			"N":  4096,
-			"T":  4096,
-			"KV": 4096,
-			"P":  4096,
-			"S":  16,
-			"L":  16,
-			"B":  1,
-		},
+		PlannerBindings: defaultPlannerBindings(),
 	})
 
 	if err != nil {
@@ -130,6 +136,18 @@ func runProgram(
 	}
 
 	return programOrchestrator.Run(command.Context(), programPath)
+}
+
+func defaultPlannerBindings() ir.SymbolMap {
+	return ir.SymbolMap{
+		"N":  4096,
+		"T":  4096,
+		"KV": 4096,
+		"P":  4096,
+		"S":  16,
+		"L":  16,
+		"B":  1,
+	}
 }
 
 func computeDeviceLocation(raw string) (tensor.Location, error) {

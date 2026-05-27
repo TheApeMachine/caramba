@@ -20,6 +20,7 @@ import { ToastProvider } from "#/components/ui/toast";
 import { isAuthenticationPublicPath } from "#/lib/authentication-public-path";
 import "#/i18n";
 import { I18nProvider } from "#/providers/i18n";
+import { JazzClerkProvider } from "#/providers/jazz";
 import { ThemeProvider } from "#/providers/theme";
 import appCss from "../styles.css?url";
 
@@ -42,7 +43,9 @@ const RootDocument = ({ children }: { children: React.ReactNode }) => {
 									<Page.Nav />
 									<Page.Main>
 										<Page.MainBody>
-											<AuthenticatedBoundary>{children}</AuthenticatedBoundary>
+											<AuthenticatedBoundary>
+												<JazzClerkProvider>{children}</JazzClerkProvider>
+											</AuthenticatedBoundary>
 										</Page.MainBody>
 									</Page.Main>
 									<Page.Aside>{/* reserved for layout */}</Page.Aside>

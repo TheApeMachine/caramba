@@ -53,9 +53,18 @@ type Store struct {
 	memory  tensor.Backend
 	entries map[string]tensorEntry
 
-	mu              sync.Mutex
-	cache           map[string]tensor.Tensor
-	transposedCache map[string]tensor.Tensor
+	mu                   sync.Mutex
+	cache                map[string]tensor.Tensor
+	sliceCache           map[weightSliceKey]tensor.Tensor
+	transposedCache      map[string]tensor.Tensor
+	transposedSliceCache map[weightSliceKey]tensor.Tensor
+}
+
+type weightSliceKey struct {
+	name  string
+	axis  string
+	start int64
+	end   int64
 }
 
 /*
@@ -73,10 +82,12 @@ func New(memory tensor.Backend, files []string) (*Store, error) {
 	}
 
 	store := &Store{
-		memory:          memory,
-		entries:         make(map[string]tensorEntry),
-		cache:           make(map[string]tensor.Tensor),
-		transposedCache: make(map[string]tensor.Tensor),
+		memory:               memory,
+		entries:              make(map[string]tensorEntry),
+		cache:                make(map[string]tensor.Tensor),
+		sliceCache:           make(map[weightSliceKey]tensor.Tensor),
+		transposedCache:      make(map[string]tensor.Tensor),
+		transposedSliceCache: make(map[weightSliceKey]tensor.Tensor),
 	}
 
 	for _, path := range files {
@@ -316,36 +327,10 @@ func (store *Store) LookupTransposed(name string) (tensor.Tensor, error) {
 		return nil, err
 	}
 
-	dims := shape.Dims()
-
-	if len(dims) != 2 {
-		return nil, fmt.Errorf(
-			"weights store: %q has rank %d, transpose requires rank 2",
-			name, len(dims),
-		)
-	}
-
-	rows, cols := dims[0], dims[1]
-
-	transposedBytes := make([]byte, rows*cols*4)
-
-	for rowIndex := 0; rowIndex < rows; rowIndex++ {
-		rowBase := rowIndex * cols
-
-		for colIndex := 0; colIndex < cols; colIndex++ {
-			outOffset := (colIndex*rows + rowIndex) * 4
-
-			binary.LittleEndian.PutUint32(
-				transposedBytes[outOffset:],
-				math.Float32bits(source[rowBase+colIndex]),
-			)
-		}
-	}
-
-	transposedShape, err := tensor.NewShape([]int{cols, rows})
+	transposedShape, transposedBytes, err := transposeFloat32Tensor(name, shape, source)
 
 	if err != nil {
-		return nil, fmt.Errorf("weights store: shape for transposed %q: %w", name, err)
+		return nil, err
 	}
 
 	transposed, err := store.memory.Upload(transposedShape, dtype.Float32, transposedBytes)
@@ -368,3 +353,5 @@ func (store *Store) LookupTransposed(name string) (tensor.Tensor, error) {
 
 var _ execution.WeightStore = (*Store)(nil)
 var _ execution.TransposedLookup = (*Store)(nil)
+var _ execution.SliceLookup = (*Store)(nil)
+var _ execution.TransposedSliceLookup = (*Store)(nil)

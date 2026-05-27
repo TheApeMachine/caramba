@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"io"
+	"strings"
+
 	"github.com/spf13/cobra"
 )
 
@@ -12,9 +15,18 @@ var diffusionCmd = &cobra.Command{
 		"produce an image. The default include set is FLUX.2 Klein 4B; swap " +
 		"the include sources in the YAML to target a different FLUX-2-shaped " +
 		"checkpoint without recompiling.",
+	Args: cobra.ArbitraryArgs,
 	RunE: func(command *cobra.Command, args []string) error {
-		return runProgram(command, "runtime/diffusion.yml", nil)
+		return runProgramWithInput(command, "runtime/diffusion.yml", nil, diffusionPromptReader(args))
 	},
+}
+
+func diffusionPromptReader(args []string) io.Reader {
+	if len(args) == 0 {
+		return nil
+	}
+
+	return strings.NewReader(strings.Join(args, " ") + "\n")
 }
 
 func init() {
