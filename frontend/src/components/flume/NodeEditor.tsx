@@ -133,6 +133,7 @@ export const NodeEditor = ({
 		nodes,
 		actions: nodeActions,
 		isLoading: nodesHydrating,
+		hasRow,
 		seed: seedNodes,
 	} = useNodesState({
 		graphId,
@@ -156,8 +157,12 @@ export const NodeEditor = ({
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reconcile graph when node/port registries change
 	React.useEffect(() => {
+		if (!hasRow) {
+			return;
+		}
+
 		nodeActions.reconcileNodeTypes();
-	}, [nodeTypeRegistryKey, portTypeRegistryKey]);
+	}, [hasRow, nodeTypeRegistryKey, portTypeRegistryKey]);
 
 	const visibleNodes = React.useMemo(
 		() => Object.values(nodes).filter((node) => nodeTypes[node.type]),

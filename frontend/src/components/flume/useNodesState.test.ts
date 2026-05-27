@@ -87,6 +87,18 @@ describe("useNodesState", () => {
 		expect(Object.keys(secondRow?.nodes as object)).toHaveLength(2);
 	});
 
+	it("reconcileNodeTypes is a no-op when no collection row exists", () => {
+		const { result } = renderUseNodesState("graph-missing");
+
+		expect(() => {
+			act(() => {
+				result.current.actions.reconcileNodeTypes();
+			});
+		}).not.toThrow();
+
+		expect(researchGraphCollection.get("graph-missing")).toBeUndefined();
+	});
+
 	it("setNodeCoordinates reconciles the draft so actions see a normalized shape", () => {
 		// Pre-seed a stale row: a node missing the connections field that
 		// the actions expect. reconcileNodes-on-write should fill it in.

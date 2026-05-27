@@ -66,38 +66,49 @@ const renderInputControl = ({
 		allData: data,
 		inputData,
 		isMonoControl,
-		key: control.name,
 	} as const;
 
 	switch (control.type) {
 		case "text": {
 			const value =
 				(data[control.name] as string | undefined) ?? control.defaultValue;
-			return <Control {...control} {...shared} data={value} />;
+			return (
+				<Control key={control.name} {...control} {...shared} data={value} />
+			);
 		}
 		case "number": {
 			const value =
 				(data[control.name] as number | undefined) ?? control.defaultValue;
-			return <Control {...control} {...shared} data={value} />;
+			return (
+				<Control key={control.name} {...control} {...shared} data={value} />
+			);
 		}
 		case "checkbox": {
 			const value =
 				(data[control.name] as boolean | undefined) ?? control.defaultValue;
-			return <Control {...control} {...shared} data={value} />;
+			return (
+				<Control key={control.name} {...control} {...shared} data={value} />
+			);
 		}
 		case "select": {
 			const value =
 				(data[control.name] as string | undefined) ?? control.defaultValue;
-			return <Control {...control} {...shared} data={value} />;
+			return (
+				<Control key={control.name} {...control} {...shared} data={value} />
+			);
 		}
 		case "multiselect": {
 			const value =
 				(data[control.name] as string[] | undefined) ?? control.defaultValue;
-			return <Control {...control} {...shared} data={value} />;
+			return (
+				<Control key={control.name} {...control} {...shared} data={value} />
+			);
 		}
 		case "custom": {
 			const value = data[control.name];
-			return <Control {...control} {...shared} data={value} />;
+			return (
+				<Control key={control.name} {...control} {...shared} data={value} />
+			);
 		}
 		default:
 			return null;

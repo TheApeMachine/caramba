@@ -105,6 +105,10 @@ const runMutation = (
 	getEnv: () => NodeActionsEnv,
 	mutator: Mutator,
 ): void => {
+	if (!researchGraphCollection.get(graphId)) {
+		return;
+	}
+
 	const env = getEnv();
 
 	researchGraphCollection.update(graphId, (draft) => {
