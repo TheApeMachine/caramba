@@ -17,6 +17,12 @@ no dispatch chain. Topology changes call NodeActions methods.
 */
 
 export {
+	buildInitialNodes,
+	createNodeActions,
+	type NodeActions,
+	type NodeActionsEnv,
+} from "./nodes-actions";
+export {
 	emptyConnections,
 	getDefaultData,
 	normalizeFlumeNode,
@@ -24,9 +30,3 @@ export {
 	reconcileNodes,
 } from "./nodes-helpers";
 export { applyDefaultConnections } from "./nodes-mutations";
-export {
-	buildInitialNodes,
-	createNodeActions,
-	type NodeActions,
-	type NodeActionsEnv,
-} from "./nodes-actions";

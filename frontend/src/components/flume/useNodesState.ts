@@ -7,7 +7,6 @@ import {
 	type NodeActionsEnv,
 } from "#/components/flume/nodes-actions";
 import { reconcileNodes } from "#/components/flume/nodes-helpers";
-import { useNodeActions } from "#/components/flume/useNodeActions";
 import type {
 	DefaultConnection,
 	DefaultNode,
@@ -15,6 +14,7 @@ import type {
 	NodeTypeMap,
 	PortTypeMap,
 } from "#/components/flume/types";
+import { useNodeActions } from "#/components/flume/useNodeActions";
 
 /*
 useNodesState is the only sanctioned source of truth for Flume graph

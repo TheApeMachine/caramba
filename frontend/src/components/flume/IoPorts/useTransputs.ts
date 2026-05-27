@@ -1,8 +1,5 @@
 import React from "react";
-import {
-	ContextContext,
-	NodeActionsContext,
-} from "#/components/flume/context";
+import { ContextContext, NodeActionsContext } from "#/components/flume/context";
 import type {
 	Connections,
 	InputData,

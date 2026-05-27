@@ -191,6 +191,39 @@ const dropConnectionPair = (
 	return removeConnectionPure(current, input, output);
 };
 
+/*
+patchNode applies a shallow patch to a single node, returning undefined
+when the node is missing or when every patched field already matches.
+Centralizes the "node exists + something changed" guard that every
+single-node setter would otherwise repeat.
+*/
+const patchNode = (
+	current: NodeMap,
+	nodeId: string,
+	patch: Partial<FlumeNode>,
+): NodeMap | undefined => {
+	const node = current[nodeId];
+
+	if (!node) {
+		return undefined;
+	}
+
+	let changed = false;
+
+	for (const key of Object.keys(patch) as (keyof FlumeNode)[]) {
+		if (node[key] !== patch[key]) {
+			changed = true;
+			break;
+		}
+	}
+
+	if (!changed) {
+		return undefined;
+	}
+
+	return { ...current, [nodeId]: { ...node, ...patch } };
+};
+
 export const createNodeActions = (
 	graphId: string,
 	getEnv: () => NodeActionsEnv,
@@ -331,19 +364,7 @@ export const createNodeActions = (
 			}),
 
 		setNodeCoordinates: ({ nodeId, x, y }) =>
-			mutate((current) => {
-				const node = current[nodeId];
-
-				if (!node) {
-					return undefined;
-				}
-
-				if (node.x === x && node.y === y) {
-					return undefined;
-				}
-
-				return { ...current, [nodeId]: { ...node, x, y } };
-			}),
+			mutate((current) => patchNode(current, nodeId, { x, y })),
 
 		applyNodeCoordinates: (updates) =>
 			mutate((current) => {
@@ -353,11 +374,7 @@ export const createNodeActions = (
 				for (const { nodeId, x, y } of updates) {
 					const node = next[nodeId];
 
-					if (!node) {
-						continue;
-					}
-
-					if (node.x === x && node.y === y) {
+					if (!node || (node.x === x && node.y === y)) {
 						continue;
 					}
 
@@ -369,30 +386,10 @@ export const createNodeActions = (
 			}),
 
 		setNodeDimensions: ({ nodeId, width, height }) =>
-			mutate((current) => {
-				const node = current[nodeId];
-
-				if (!node) {
-					return undefined;
-				}
-
-				if (node.width === width && node.height === height) {
-					return undefined;
-				}
-
-				return { ...current, [nodeId]: { ...node, width, height } };
-			}),
+			mutate((current) => patchNode(current, nodeId, { width, height })),
 
 		setNodeSubGraph: ({ nodeId, subGraph }) =>
-			mutate((current) => {
-				const node = current[nodeId];
-
-				if (!node) {
-					return undefined;
-				}
-
-				return { ...current, [nodeId]: { ...node, subGraph } };
-			}),
+			mutate((current) => patchNode(current, nodeId, { subGraph })),
 
 		reconcileNodeTypes: () =>
 			mutate((current, env) =>
@@ -401,85 +398,4 @@ export const createNodeActions = (
 	};
 };
 
-/*
-buildInitialNodes seeds a NodeMap from defaults without going through
-the collection. Used by useNodesState.seed when inserting a brand-new
-row. Mirrors the old getInitialNodes shape but doesn't depend on a
-reducer — it composes pure helpers + a synthesized buildNewNode loop.
-*/
-export const buildInitialNodes = ({
-	initialNodes = {},
-	defaultNodes = [],
-	defaultConnections = [],
-	env,
-}: {
-	initialNodes?: NodeMap;
-	defaultNodes?: ReadonlyArray<{ type: string; x?: number; y?: number }>;
-	defaultConnections?: ReadonlyArray<{
-		output: { nodeType: string; portName: string };
-		input: { nodeType: string; portName: string };
-	}>;
-	env: NodeActionsEnv;
-}): NodeMap => {
-	const reconciled = reconcileNodes(
-		initialNodes,
-		env.nodeTypes,
-		env.portTypes,
-		env.context,
-	);
-
-	let withDefaults: NodeMap = { ...reconciled };
-
-	for (const dNode of defaultNodes) {
-		const alreadyHas = Object.values(initialNodes).some(
-			(node) => node.type === dNode.type,
-		);
-
-		if (alreadyHas || !env.nodeTypes[dNode.type]) {
-			continue;
-		}
-
-		const newNode = buildNewNode(
-			{ x: dNode.x ?? 0, y: dNode.y ?? 0, nodeType: dNode.type },
-			env,
-		);
-
-		if (!newNode) {
-			continue;
-		}
-
-		withDefaults[newNode.id] = newNode;
-	}
-
-	const findByType = (nodeType: string): FlumeNode | undefined =>
-		Object.values(withDefaults).find((node) => node.type === nodeType);
-
-	for (const connection of defaultConnections) {
-		const outputNode = findByType(connection.output.nodeType);
-		const inputNode = findByType(connection.input.nodeType);
-
-		if (!outputNode || !inputNode) {
-			continue;
-		}
-
-		const existing =
-			inputNode.connections?.inputs[connection.input.portName] ?? [];
-		const alreadyConnected = existing.some(
-			(link) =>
-				link.nodeId === outputNode.id &&
-				link.portName === connection.output.portName,
-		);
-
-		if (alreadyConnected) {
-			continue;
-		}
-
-		withDefaults = addConnectionPure(
-			withDefaults,
-			{ nodeId: inputNode.id, portName: connection.input.portName },
-			{ nodeId: outputNode.id, portName: connection.output.portName },
-		);
-	}
-
-	return withDefaults;
-};
+export { buildInitialNodes } from "./nodes-seed";
