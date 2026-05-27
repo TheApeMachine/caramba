@@ -82,11 +82,14 @@ export class FlumeGraphEngine {
 	/*
 	setGraph replaces only the node topology, preserving any port and
 	node layouts that have already been measured by the main thread.
-	Use this for incremental topology updates; loadSnapshot is only for
-	full state replacement (initial hydration).
+	Use this for incremental topology updates.
+
+	The main thread already plain-JSON-clones nodes before postMessage to
+	escape the collection's reactive proxies, so we treat the incoming
+	value as our own owned data — no second clone.
 	*/
 	setGraph(nodes: NodeMap): void {
-		this.nodes = structuredClone(nodes);
+		this.nodes = nodes;
 
 		// Drop layouts for nodes that no longer exist; keep the rest.
 		const liveIds = new Set(Object.keys(this.nodes));
@@ -104,33 +107,6 @@ export class FlumeGraphEngine {
 				this.portLayouts.delete(key);
 			}
 		}
-	}
-
-	loadSnapshot(snapshot: GraphSnapshot): void {
-		this.nodes = structuredClone(snapshot.nodes);
-		this.routingMode = snapshot.routingMode;
-		this.nodeLayouts.clear();
-		this.portLayouts.clear();
-
-		for (const layout of snapshot.nodeLayouts) {
-			this.nodeLayouts.set(layout.nodeId, {
-				width: layout.width,
-				height: layout.height,
-			});
-		}
-
-		for (const layout of snapshot.portLayouts) {
-			this.portLayouts.set(
-				portLayoutKey(layout.nodeId, layout.portName, layout.transputType),
-				{
-					offsetX: layout.offsetX,
-					offsetY: layout.offsetY,
-				},
-			);
-		}
-
-		this.dragNodeId = null;
-		this.dragPosition = null;
 	}
 
 	setRoutingMode(routingMode: EdgeRoutingMode): void {

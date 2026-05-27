@@ -2,8 +2,8 @@ import * as Comlink from "comlink";
 import React from "react";
 import type { EdgeRoutingMode } from "#/components/flume/connectionCalculator";
 import {
-	syncConnectionElements,
 	getStageRef,
+	syncConnectionElements,
 } from "#/components/flume/connectionCalculator";
 import type { FlumeGraphWorkerHandle } from "#/components/flume/context";
 import {
@@ -96,6 +96,25 @@ export const useFlumeGraphWorker = (
 		};
 	}, []);
 
+	const performRenderRef = React.useRef<() => Promise<void>>(() =>
+		Promise.resolve(),
+	);
+	const scheduleRenderRef = React.useRef<(() => void) | null>(null);
+
+	const scheduleRender = React.useCallback(() => {
+		if (renderingRef.current) {
+			renderDirtyRef.current = true;
+			return;
+		}
+
+		if (renderFrameRef.current !== null) return;
+
+		renderFrameRef.current = requestAnimationFrame(() => {
+			renderFrameRef.current = null;
+			void performRenderRef.current();
+		});
+	}, []);
+
 	const performRender = React.useCallback(async () => {
 		const api = apiRef.current;
 		if (!api) return;
@@ -112,32 +131,29 @@ export const useFlumeGraphWorker = (
 
 			if (renderDirtyRef.current) {
 				renderDirtyRef.current = false;
-				scheduleRender();
+				scheduleRenderRef.current?.();
 			}
 		}
 	}, [editorId]);
 
-	const scheduleRender = React.useCallback(() => {
-		if (renderingRef.current) {
-			renderDirtyRef.current = true;
-			return;
-		}
-
-		if (renderFrameRef.current !== null) return;
-
-		renderFrameRef.current = requestAnimationFrame(() => {
-			renderFrameRef.current = null;
-			void performRender();
-		});
-	}, [performRender]);
+	performRenderRef.current = performRender;
+	scheduleRenderRef.current = scheduleRender;
 
 	const setGraph = React.useCallback(
 		(nodes: NodeMap) => {
 			const api = apiRef.current;
 			if (!api) return;
 
-			lastNodesRef.current = nodes;
-			void api.setGraph(nodes);
+			// useLiveQuery hands back proxy-wrapped objects from the
+			// collection's reactive store. structuredClone (which
+			// postMessage uses internally) can't transfer those proxies,
+			// so JSON-roundtrip into a plain POJO before crossing the
+			// worker boundary. Functions and Symbols get stripped — the
+			// graph data is supposed to be pure data already.
+			const plain = JSON.parse(JSON.stringify(nodes)) as NodeMap;
+
+			lastNodesRef.current = plain;
+			void api.setGraph(plain);
 			scheduleRender();
 		},
 		[scheduleRender],
@@ -154,13 +170,7 @@ export const useFlumeGraphWorker = (
 			const api = apiRef.current;
 			if (!api) return;
 
-			void api.setPortLayout(
-				nodeId,
-				portName,
-				transputType,
-				offsetX,
-				offsetY,
-			);
+			void api.setPortLayout(nodeId, portName, transputType, offsetX, offsetY);
 			scheduleRender();
 		},
 		[scheduleRender],

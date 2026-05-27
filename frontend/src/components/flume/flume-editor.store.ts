@@ -47,7 +47,9 @@ if (typeof window !== "undefined") {
 
 export const setRoutingMode = (mode: FlumeRoutingMode): void => {
 	flumeEditorStore.setState((previous) =>
-		previous.routingMode === mode ? previous : { ...previous, routingMode: mode },
+		previous.routingMode === mode
+			? previous
+			: { ...previous, routingMode: mode },
 	);
 };
 

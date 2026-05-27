@@ -31,14 +31,17 @@ async function call(
 		throw new Error("Assistant writes require a signed-in account.");
 	}
 
-	const response = await fetch(`${backendBaseURL()}/backend/assistant/${path}`, {
-		method,
-		headers: {
-			Authorization: `Bearer ${token}`,
-			"Content-Type": "application/json",
+	const response = await fetch(
+		`${backendBaseURL()}/backend/assistant/${path}`,
+		{
+			method,
+			headers: {
+				Authorization: `Bearer ${token}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(body),
 		},
-		body: JSON.stringify(body),
-	});
+	);
 
 	if (!response.ok) {
 		throw new Error(

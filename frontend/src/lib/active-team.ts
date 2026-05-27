@@ -29,7 +29,9 @@ const readInitial = (): ActiveTeamMap => {
 
 	const result: ActiveTeamMap = {};
 
-	for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+	for (const [key, value] of Object.entries(
+		parsed as Record<string, unknown>,
+	)) {
 		if (typeof value === "string" || value === null) {
 			result[key] = value;
 		}

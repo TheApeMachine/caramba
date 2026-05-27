@@ -131,11 +131,15 @@ const sampleScatter = () => {
 	const families = ["base", "tuned", "distilled"] as const;
 	return Array.from({ length: 90 }, (_, idx) => {
 		const family = families[idx % families.length];
-		const familyBias = family === "tuned" ? 0.15 : family === "distilled" ? -0.05 : 0;
+		const familyBias =
+			family === "tuned" ? 0.15 : family === "distilled" ? -0.05 : 0;
 		const latency = 30 + rand() * 220;
 		const accuracy = Math.min(
 			0.99,
-			Math.max(0.4, 0.55 + 0.35 * (1 - latency / 250) + familyBias + (rand() - 0.5) * 0.06),
+			Math.max(
+				0.4,
+				0.55 + 0.35 * (1 - latency / 250) + familyBias + (rand() - 0.5) * 0.06,
+			),
 		);
 		return {
 			accuracy,
@@ -592,9 +596,7 @@ const Gallery = () => {
 					{ color: "var(--muted-foreground)", radius: 36000 },
 				],
 				valueFormat: ".0f",
-				vectors: [
-					{ color: "var(--color-chart-2)", im: 1500, re: 9500 },
-				],
+				vectors: [{ color: "var(--color-chart-2)", im: 1500, re: 9500 }],
 				xTitle: "Re(Ψ)",
 				yTitle: "Im(Ψ)",
 			}),

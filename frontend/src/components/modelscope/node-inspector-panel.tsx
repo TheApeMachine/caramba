@@ -131,13 +131,7 @@ const Breadcrumbs = ({
 	);
 };
 
-const Stat = ({
-	label,
-	value,
-}: {
-	label: string;
-	value: React.ReactNode;
-}) => {
+const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => {
 	return (
 		<Flex.Column gap={1}>
 			<Typography.Span
@@ -225,7 +219,9 @@ const ChildrenList = ({
 				const dims = parseShape(merged.shape);
 				const dtype = typeof merged.dtype === "string" ? merged.dtype : null;
 				const subChildren = childrenOf(graph, childName);
-				const tail = childName.slice(parent.length === 0 ? 0 : parent.length + 1);
+				const tail = childName.slice(
+					parent.length === 0 ? 0 : parent.length + 1,
+				);
 
 				const isGroupChild = subChildren.length > 0;
 
@@ -394,10 +390,7 @@ export const NodeInspectorPanel = ({
 							{dtype ? <Stat label="Dtype" value={dtype} /> : null}
 							{dims ? <Stat label="Rank" value={dims.length} /> : null}
 							{params !== null ? (
-								<Stat
-									label="Parameters"
-									value={params.toLocaleString()}
-								/>
+								<Stat label="Parameters" value={params.toLocaleString()} />
 							) : null}
 							<Stat
 								label="Connections"

@@ -51,8 +51,7 @@ export const Route = createFileRoute("/api/shape/assistant-personas")({
 
 function passthroughHeaders(response: Response): HeadersInit {
 	return {
-		"Content-Type":
-			response.headers.get("Content-Type") ?? "application/json",
+		"Content-Type": response.headers.get("Content-Type") ?? "application/json",
 		"Cache-Control": response.headers.get("Cache-Control") ?? "no-store",
 		"Electric-Cursor": response.headers.get("Electric-Cursor") ?? "",
 		"Electric-Handle": response.headers.get("Electric-Handle") ?? "",

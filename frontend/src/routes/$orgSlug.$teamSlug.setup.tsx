@@ -23,10 +23,7 @@ const TeamSetupInner = () => {
 		query
 			.from({ team: teamCollection })
 			.where(({ team }) =>
-				and(
-					eq(team.organization_slug, orgSlug),
-					eq(team.slug, teamSlug),
-				),
+				and(eq(team.organization_slug, orgSlug), eq(team.slug, teamSlug)),
 			)
 			.select(({ team }) => ({
 				id: team.id,

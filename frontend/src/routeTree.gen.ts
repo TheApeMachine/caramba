@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TestRouteImport } from './routes/test'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as RequestFeatureRouteImport } from './routes/request-feature'
@@ -46,6 +47,11 @@ import { Route as ApiShapeAssistantMessagesRouteImport } from './routes/api/shap
 import { Route as ApiComputeOptimizerRouteImport } from './routes/api/compute/optimizer'
 import { Route as OrgSlugTeamSlugSetupRouteImport } from './routes/$orgSlug.$teamSlug.setup'
 
+const TestRoute = TestRouteImport.update({
+  id: '/test',
+  path: '/test',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignUpRoute = SignUpRouteImport.update({
   id: '/sign-up',
   path: '/sign-up',
@@ -243,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/request-feature': typeof RequestFeatureRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/test': typeof TestRoute
   '/research/edit': typeof ResearchEditRouteRouteWithChildren
   '/$orgSlug/$teamSlug': typeof OrgSlugTeamSlugRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
@@ -281,6 +288,7 @@ export interface FileRoutesByTo {
   '/request-feature': typeof RequestFeatureRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/test': typeof TestRoute
   '/$orgSlug/$teamSlug': typeof OrgSlugTeamSlugRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
   '/benchmarks/$runId': typeof BenchmarksRunIdRoute
@@ -319,6 +327,7 @@ export interface FileRoutesById {
   '/request-feature': typeof RequestFeatureRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/test': typeof TestRoute
   '/research/edit': typeof ResearchEditRouteRouteWithChildren
   '/$orgSlug/$teamSlug': typeof OrgSlugTeamSlugRouteWithChildren
   '/api/assistant': typeof ApiAssistantRoute
@@ -359,6 +368,7 @@ export interface FileRouteTypes {
     | '/request-feature'
     | '/sign-in'
     | '/sign-up'
+    | '/test'
     | '/research/edit'
     | '/$orgSlug/$teamSlug'
     | '/api/assistant'
@@ -397,6 +407,7 @@ export interface FileRouteTypes {
     | '/request-feature'
     | '/sign-in'
     | '/sign-up'
+    | '/test'
     | '/$orgSlug/$teamSlug'
     | '/api/assistant'
     | '/benchmarks/$runId'
@@ -434,6 +445,7 @@ export interface FileRouteTypes {
     | '/request-feature'
     | '/sign-in'
     | '/sign-up'
+    | '/test'
     | '/research/edit'
     | '/$orgSlug/$teamSlug'
     | '/api/assistant'
@@ -473,6 +485,7 @@ export interface RootRouteChildren {
   RequestFeatureRoute: typeof RequestFeatureRoute
   SignInRoute: typeof SignInRoute
   SignUpRoute: typeof SignUpRoute
+  TestRoute: typeof TestRoute
   ResearchEditRouteRoute: typeof ResearchEditRouteRouteWithChildren
   OrgSlugTeamSlugRoute: typeof OrgSlugTeamSlugRouteWithChildren
   ApiAssistantRoute: typeof ApiAssistantRoute
@@ -501,6 +514,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/test': {
+      id: '/test'
+      path: '/test'
+      fullPath: '/test'
+      preLoaderRoute: typeof TestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sign-up': {
       id: '/sign-up'
       path: '/sign-up'
@@ -792,6 +812,7 @@ const rootRouteChildren: RootRouteChildren = {
   RequestFeatureRoute: RequestFeatureRoute,
   SignInRoute: SignInRoute,
   SignUpRoute: SignUpRoute,
+  TestRoute: TestRoute,
   ResearchEditRouteRoute: ResearchEditRouteRouteWithChildren,
   OrgSlugTeamSlugRoute: OrgSlugTeamSlugRouteWithChildren,
   ApiAssistantRoute: ApiAssistantRoute,

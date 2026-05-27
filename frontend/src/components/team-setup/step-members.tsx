@@ -104,10 +104,7 @@ export const StepMembers = ({
 									{name}
 								</Typography.Span>
 								{membership.publicUserData?.identifier ? (
-									<Typography.Span
-										className="truncate text-xs"
-										variant="muted"
-									>
+									<Typography.Span className="truncate text-xs" variant="muted">
 										{membership.publicUserData.identifier}
 									</Typography.Span>
 								) : null}

@@ -32,9 +32,7 @@ import { cn } from "#/lib/utils";
 const TeamDashboardPending = () => {
 	return (
 		<Flex.Center className="min-h-[60vh] p-6">
-			<Typography.Paragraph variant="muted">
-				Loading team…
-			</Typography.Paragraph>
+			<Typography.Paragraph variant="muted">Loading team…</Typography.Paragraph>
 		</Flex.Center>
 	);
 };
@@ -217,8 +215,8 @@ const ComingSoonPanel = ({
 						<Empty.Header>
 							<Empty.Title className="text-base">Coming soon</Empty.Title>
 							<Empty.Description>
-								Wiring this in is the next pass — schema and data are
-								already in place.
+								Wiring this in is the next pass — schema and data are already in
+								place.
 							</Empty.Description>
 						</Empty.Header>
 					</Empty>

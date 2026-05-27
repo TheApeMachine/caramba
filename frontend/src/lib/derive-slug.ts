@@ -14,8 +14,7 @@ export const deriveSlug = (input: string): string => {
 
 	for (const character of normalized) {
 		const code = character.codePointAt(0) ?? 0;
-		const isLetter =
-			(code >= 0x61 && code <= 0x7a) || /\p{L}/u.test(character);
+		const isLetter = (code >= 0x61 && code <= 0x7a) || /\p{L}/u.test(character);
 		const isDigit = (code >= 0x30 && code <= 0x39) || /\p{N}/u.test(character);
 
 		if (isLetter || isDigit) {

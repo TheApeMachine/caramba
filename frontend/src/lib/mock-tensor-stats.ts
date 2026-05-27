@@ -56,9 +56,32 @@ export type TensorStats = {
 };
 
 const MOCK_TOKENS = [
-	"the", " of", " and", " to", " a", "ing", " is", " in", " for", " was",
-	" with", " on", " as", " by", " he", " she", " they", " it", " be", " an",
-	"\\n", " new", " people", " world", " time", " way",
+	"the",
+	" of",
+	" and",
+	" to",
+	" a",
+	"ing",
+	" is",
+	" in",
+	" for",
+	" was",
+	" with",
+	" on",
+	" as",
+	" by",
+	" he",
+	" she",
+	" they",
+	" it",
+	" be",
+	" an",
+	"\\n",
+	" new",
+	" people",
+	" world",
+	" time",
+	" way",
 ];
 
 const HEATMAP_MAX = 64;

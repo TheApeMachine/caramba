@@ -2,7 +2,12 @@
 
 import { useAuth } from "@clerk/tanstack-react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangleIcon, ChevronRightIcon, HomeIcon, RefreshCwIcon } from "lucide-react";
+import {
+	AlertTriangleIcon,
+	ChevronRightIcon,
+	HomeIcon,
+	RefreshCwIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
@@ -169,16 +174,12 @@ const ToolbarRow = ({
 	graph: Graph | undefined;
 	onSearchPick: (name: string) => void;
 }) => {
-	const noModels =
-		!modelsLoading && !modelsError && modelNames.length === 0;
+	const noModels = !modelsLoading && !modelsError && modelNames.length === 0;
 
 	return (
 		<Flex.Column className="shrink-0 gap-1.5 rounded-xl border bg-muted/48 px-3 py-2">
 			<Flex.Row align="center" gap={3}>
-				<Typography.Span
-					className="whitespace-nowrap text-xs"
-					variant="muted"
-				>
+				<Typography.Span className="whitespace-nowrap text-xs" variant="muted">
 					Model
 				</Typography.Span>
 				<Select
@@ -218,12 +219,13 @@ const ToolbarRow = ({
 					type="button"
 					variant="ghost"
 				>
-					<RefreshCwIcon
-						className={modelsLoading ? "animate-spin" : ""}
-					/>
+					<RefreshCwIcon className={modelsLoading ? "animate-spin" : ""} />
 				</Button>
 
-				<Badge size="sm" variant={modelNames.length > 0 ? "outline" : "warning"}>
+				<Badge
+					size="sm"
+					variant={modelNames.length > 0 ? "outline" : "warning"}
+				>
 					{modelNames.length} available
 				</Badge>
 
@@ -369,7 +371,11 @@ export const ModelScopeInspector = () => {
 			/>
 
 			<div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_400px]">
-				<Flex.Column className="min-h-0 overflow-hidden rounded-xl border bg-card/20" fullHeight fullWidth>
+				<Flex.Column
+					className="min-h-0 overflow-hidden rounded-xl border bg-card/20"
+					fullHeight
+					fullWidth
+				>
 					<Flex.Row className="items-center justify-between border-b">
 						<DrillBreadcrumb onPick={setSubgraphRoot} root={subgraphRoot} />
 						{subgraphRoot !== "__model__" && subgraphRoot !== "" ? (
@@ -416,10 +422,7 @@ export const ModelScopeInspector = () => {
 							<Tabs.Tab value="attention">Attention</Tabs.Tab>
 							<Tabs.Tab value="logitlens">Logit Lens</Tabs.Tab>
 						</Tabs.List>
-						<Tabs.Panel
-							className="min-h-0 flex-1 overflow-auto"
-							value="node"
-						>
+						<Tabs.Panel className="min-h-0 flex-1 overflow-auto" value="node">
 							<NodeInspectorPanel
 								graph={fullGraph}
 								onDrillInto={drillInto}
@@ -431,10 +434,7 @@ export const ModelScopeInspector = () => {
 							className="min-h-0 flex-1 overflow-auto"
 							value="weights"
 						>
-							<WeightsPanel
-								graph={fullGraph}
-								selectedName={selectedNode}
-							/>
+							<WeightsPanel graph={fullGraph} selectedName={selectedNode} />
 						</Tabs.Panel>
 						<Tabs.Panel
 							className="min-h-0 flex-1 overflow-auto"

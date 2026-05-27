@@ -100,9 +100,9 @@ export const StepPrivacy = ({
 						className="mt-0.5 size-4 shrink-0 text-warning"
 					/>
 					<Typography.Paragraph className="text-xs" variant="muted">
-						Local teams cannot be shared, exported through Electric, or recovered
-						if browser storage is cleared. Switching to Shared later requires
-						re-creating the team.
+						Local teams cannot be shared, exported through Electric, or
+						recovered if browser storage is cleared. Switching to Shared later
+						requires re-creating the team.
 					</Typography.Paragraph>
 				</Flex.Row>
 			) : null}

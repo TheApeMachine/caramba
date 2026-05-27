@@ -44,7 +44,8 @@ export const Route = createFileRoute("/api/shape/assistant-sessions")({
 					status: upstreamResponse.status,
 					headers: {
 						"Content-Type":
-							upstreamResponse.headers.get("Content-Type") ?? "application/json",
+							upstreamResponse.headers.get("Content-Type") ??
+							"application/json",
 						"Cache-Control":
 							upstreamResponse.headers.get("Cache-Control") ?? "no-store",
 						"Electric-Cursor":

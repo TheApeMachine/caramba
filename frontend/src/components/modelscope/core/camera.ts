@@ -9,7 +9,10 @@ interface CameraProps {
 	cameraRef: RefObject<THREE.PerspectiveCamera | null>;
 	controlsRef: RefObject<OrbitControls | null>;
 	simulatorRef: RefObject<Simulator | null>;
-	lastLayoutBoundsRef: RefObject<{ center: THREE.Vector3; radius: number } | null>;
+	lastLayoutBoundsRef: RefObject<{
+		center: THREE.Vector3;
+		radius: number;
+	} | null>;
 	lastCameraSaveMsRef: RefObject<number>;
 }
 

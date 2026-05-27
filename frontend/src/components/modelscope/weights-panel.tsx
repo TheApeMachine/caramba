@@ -172,8 +172,8 @@ export const WeightsPanel = ({
 				<Empty.Header>
 					<Empty.Title className="text-sm">No tensor selected</Empty.Title>
 					<Empty.Description>
-						Pick a leaf node from the graph or the Node panel to see its
-						weight statistics.
+						Pick a leaf node from the graph or the Node panel to see its weight
+						statistics.
 					</Empty.Description>
 				</Empty.Header>
 			</Empty>
@@ -264,8 +264,8 @@ export const WeightsPanel = ({
 					<CardFrameHeader>
 						<CardFrameTitle>Heatmap</CardFrameTitle>
 						<CardFrameDescription>
-							Diverging map (blue ↔ orange) over a top-left slice of the
-							tensor. Sliced for performance.
+							Diverging map (blue ↔ orange) over a top-left slice of the tensor.
+							Sliced for performance.
 						</CardFrameDescription>
 					</CardFrameHeader>
 					<Card>

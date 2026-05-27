@@ -13,6 +13,7 @@ import { BarVertical } from "#/components/charts/bar-vertical";
 import {
 	ConnectionRecalculateContext,
 	FlumeGraphWorkerContext,
+	GraphIdContext,
 	NodeDispatchContext,
 	NodeTypesContext,
 	PortTypesContext,
@@ -171,16 +172,13 @@ const Node = ({
 		}
 	};
 
-	const handleSubGraphChange = React.useCallback(
-		(next: NodeMap) => {
-			nodesDispatch?.({
-				type: NodesActionType.SET_NODE_SUBGRAPH,
-				nodeId: id,
-				subGraph: next,
-			});
-		},
-		[id, nodesDispatch],
-	);
+	// Subgraph editors are full NodeEditor instances bound to their own
+	// collection row at "${parentGraphId}:${nodeId}". No callback-driven
+	// sync is needed — the sub-editor writes directly to its row and
+	// useLiveQuery subscribers on either side re-render off the same
+	// source of truth.
+	const parentGraphId = React.useContext(GraphIdContext);
+	const subgraphId = `${parentGraphId}:${id}`;
 
 	const suppressEmbeddedPortControlPrep = React.useCallback(
 		(e: React.MouseEvent<HTMLDivElement>) => {
@@ -218,10 +216,9 @@ const Node = ({
 		resolvedSubGraph !== undefined && subGraphOpen ? (
 			<React.Suspense fallback={null}>
 				<NodeEditor
-					nodes={resolvedSubGraph}
+					graphId={subgraphId}
 					nodeTypes={nodeTypes}
 					portTypes={portTypes}
-					onChange={handleSubGraphChange}
 					disableComments
 					disableFocusCapture
 					className="rounded-lg border border-border/48 bg-background/80"
@@ -257,10 +254,9 @@ const Node = ({
 						<div className="min-h-0 flex-1">
 							<React.Suspense fallback={null}>
 								<NodeEditor
-									nodes={resolvedSubGraph}
+									graphId={subgraphId}
 									nodeTypes={nodeTypes}
 									portTypes={portTypes}
-									onChange={handleSubGraphChange}
 									disableComments
 									className="h-full w-full"
 								/>

@@ -3,7 +3,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon } from "lucide-react";
 import { useMemo, useState } from "react";
-import { teamCollection, type TeamRow } from "#/collections/team";
+import { type TeamRow, teamCollection } from "#/collections/team";
 import { Button } from "#/components/ui/button";
 import {
 	Card,
@@ -21,11 +21,7 @@ import { StepMembers } from "./step-members";
 import { StepPrivacy } from "./step-privacy";
 import { draftFromTeam, WIZARD_STEPS, type WizardDraft } from "./types";
 
-const StepIndicator = ({
-	currentIndex,
-}: {
-	currentIndex: number;
-}) => {
+const StepIndicator = ({ currentIndex }: { currentIndex: number }) => {
 	return (
 		<Flex.Row className="items-center gap-2">
 			{WIZARD_STEPS.map((step, index) => {
@@ -38,8 +34,7 @@ const StepIndicator = ({
 							className={cn(
 								"size-7 shrink-0 rounded-full border text-xs font-semibold transition-colors",
 								isActive && "border-primary bg-primary text-primary-foreground",
-								isComplete &&
-									"border-primary/40 bg-primary/10 text-primary",
+								isComplete && "border-primary/40 bg-primary/10 text-primary",
 								!isActive &&
 									!isComplete &&
 									"border-border text-muted-foreground",

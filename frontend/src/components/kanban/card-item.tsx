@@ -12,8 +12,8 @@ import {
 } from "#/components/ui/card";
 import { Flex } from "#/components/ui/flex";
 import { Typography } from "#/components/ui/typography";
-import { cn } from "#/lib/utils";
 import { relativeTime } from "#/lib/relative-time";
+import { cn } from "#/lib/utils";
 import { CardDialog } from "./card-dialog";
 import type { KanbanCard, Priority } from "./model";
 
@@ -175,9 +175,7 @@ export const CardItem = ({
 											)}
 										>
 											<CalendarIcon className="size-3" />
-											<Typography.Span
-												variant={overdue ? "error" : "muted"}
-											>
+											<Typography.Span variant={overdue ? "error" : "muted"}>
 												{new Date(card.dueDate).toLocaleDateString(undefined, {
 													month: "short",
 													day: "numeric",

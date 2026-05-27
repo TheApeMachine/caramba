@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
+import type { FlumeNode } from "#/components/flume/types";
 import { FlumeGraphEngine } from "#/workers/flume-graph.engine";
 
-const sourceNode = {
+const sourceNode: FlumeNode = {
 	id: "source-1",
 	type: "source",
 	width: 200,
 	height: 80,
-	x: 100,
-	y: 100,
+	x: -200,
+	y: 80,
 	inputData: {},
 	connections: {
 		inputs: {},
@@ -17,13 +18,13 @@ const sourceNode = {
 	},
 };
 
-const sinkNode = {
+const sinkNode: FlumeNode = {
 	id: "sink-1",
 	type: "sink",
 	width: 200,
 	height: 80,
-	x: 500,
-	y: 100,
+	x: 200,
+	y: 80,
 	inputData: {},
 	connections: {
 		inputs: {
@@ -33,37 +34,25 @@ const sinkNode = {
 	},
 };
 
-describe("FlumeGraphEngine", () => {
-	it("computes edge paths from graph snapshot and port offsets", () => {
-		const engine = new FlumeGraphEngine();
+const seedTwoNode = (
+	engine: FlumeGraphEngine,
+	routing: "straight" | "orthogonal",
+) => {
+	engine.setGraph({
+		"source-1": sourceNode,
+		"sink-1": sinkNode,
+	});
+	engine.setRoutingMode(routing);
+	engine.setNodeLayout("source-1", 200, 80);
+	engine.setNodeLayout("sink-1", 200, 80);
+	engine.setPortLayout("source-1", "value", "output", 200, 40);
+	engine.setPortLayout("sink-1", "value", "input", 0, 40);
+};
 
-		engine.loadSnapshot({
-			nodes: {
-				"source-1": sourceNode,
-				"sink-1": sinkNode,
-			},
-			routingMode: "straight",
-			nodeLayouts: [
-				{ nodeId: "source-1", width: 200, height: 80 },
-				{ nodeId: "sink-1", width: 200, height: 80 },
-			],
-			portLayouts: [
-				{
-					nodeId: "source-1",
-					portName: "value",
-					transputType: "output",
-					offsetX: 200,
-					offsetY: 40,
-				},
-				{
-					nodeId: "sink-1",
-					portName: "value",
-					transputType: "input",
-					offsetX: 0,
-					offsetY: 40,
-				},
-			],
-		});
+describe("FlumeGraphEngine", () => {
+	it("computes edge paths from graph + port offsets", () => {
+		const engine = new FlumeGraphEngine();
+		seedTwoNode(engine, "straight");
 
 		const paths = engine.computePaths();
 
@@ -73,34 +62,7 @@ describe("FlumeGraphEngine", () => {
 
 	it("updates paths while dragging a single node", () => {
 		const engine = new FlumeGraphEngine();
-
-		engine.loadSnapshot({
-			nodes: {
-				"source-1": sourceNode,
-				"sink-1": sinkNode,
-			},
-			routingMode: "straight",
-			nodeLayouts: [
-				{ nodeId: "source-1", width: 200, height: 80 },
-				{ nodeId: "sink-1", width: 200, height: 80 },
-			],
-			portLayouts: [
-				{
-					nodeId: "source-1",
-					portName: "value",
-					transputType: "output",
-					offsetX: 200,
-					offsetY: 40,
-				},
-				{
-					nodeId: "sink-1",
-					portName: "value",
-					transputType: "input",
-					offsetX: 0,
-					offsetY: 40,
-				},
-			],
-		});
+		seedTwoNode(engine, "straight");
 
 		const beforeDrag = engine.computePaths();
 		const duringDrag = engine.updateDrag("source-1", 220, 160);
@@ -114,45 +76,26 @@ describe("FlumeGraphEngine", () => {
 
 	it("routes orthogonal edges through the occupancy grid", () => {
 		const engine = new FlumeGraphEngine();
-
-		engine.loadSnapshot({
-			nodes: {
-				"source-1": sourceNode,
-				"sink-1": sinkNode,
-				"block-1": {
-					id: "block-1",
-					type: "gate",
-					width: 120,
-					height: 120,
-					x: 280,
-					y: 80,
-					inputData: {},
-					connections: { inputs: {}, outputs: {} },
-				},
+		engine.setGraph({
+			"source-1": sourceNode,
+			"sink-1": sinkNode,
+			"block-1": {
+				id: "block-1",
+				type: "gate",
+				width: 120,
+				height: 120,
+				x: 280,
+				y: 80,
+				inputData: {},
+				connections: { inputs: {}, outputs: {} },
 			},
-			routingMode: "orthogonal",
-			nodeLayouts: [
-				{ nodeId: "source-1", width: 200, height: 80 },
-				{ nodeId: "sink-1", width: 200, height: 80 },
-				{ nodeId: "block-1", width: 120, height: 120 },
-			],
-			portLayouts: [
-				{
-					nodeId: "source-1",
-					portName: "value",
-					transputType: "output",
-					offsetX: 200,
-					offsetY: 40,
-				},
-				{
-					nodeId: "sink-1",
-					portName: "value",
-					transputType: "input",
-					offsetX: 0,
-					offsetY: 40,
-				},
-			],
 		});
+		engine.setRoutingMode("orthogonal");
+		engine.setNodeLayout("source-1", 200, 80);
+		engine.setNodeLayout("sink-1", 200, 80);
+		engine.setNodeLayout("block-1", 120, 120);
+		engine.setPortLayout("source-1", "value", "output", 200, 40);
+		engine.setPortLayout("sink-1", "value", "input", 0, 40);
 
 		const paths = engine.computePaths();
 

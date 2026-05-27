@@ -2,49 +2,31 @@ import React, { useId } from "react";
 import Cache from "#/components/flume/Cache";
 import Comment from "#/components/flume/Comment/Comment";
 import Connections from "#/components/flume/Connections/Connections";
-import commentsReducer from "#/components/flume/commentsReducer";
 import type { EdgeRoutingMode } from "#/components/flume/connectionCalculator";
 import {
 	DRAG_CONNECTION_ID,
 	PORT_LAYER_ID,
 	STAGE_ID,
 } from "#/components/flume/constants";
-import Node from "#/components/flume/Node/Node";
-import Stage from "#/components/flume/Stage/Stage";
 import {
 	setDragOverride as setDragOverrideInStore,
 	useDragOverride,
 } from "#/components/flume/flume-editor.store";
+import Node from "#/components/flume/Node/Node";
+import Stage from "#/components/flume/Stage/Stage";
 import { portLayoutKey } from "#/components/flume/spatial-index";
 import { useFlumeGraphWorker } from "#/components/flume/useFlumeGraphWorker";
 import {
-	ObstacleIndexContext,
-	PortLayoutRegistrationContext,
+	type PortLayoutRegistrationContext,
 	useSpatialIndex,
 } from "#/components/flume/useSpatialIndex";
 import { Button } from "#/components/ui/button";
 import { Flex } from "#/components/ui/flex";
 import usePrevious from "#/hooks/usePrevious";
 import { cn } from "@/lib/utils";
-import {
-	CacheContext,
-	ConnectionRecalculateContext,
-	ContextContext,
-	EdgeRoutingContext,
-	EditorIdContext,
-	FlumeGraphWorkerContext,
-	NodeDispatchContext,
-	NodeDragOverrideContext,
-	NodeMapContext,
-	NodeTypesContext,
-	PortTypesContext,
-	RecalculateStageRectContext,
-	StageContext,
-} from "./context";
+import { FlumeProviders } from "./FlumeProviders";
 import { dispatchGraphLayout, type GraphLayoutMode } from "./graphLayout";
 import { NodesActionType } from "./nodesReducer";
-import { useNodesState } from "./useNodesState";
-import stageReducer from "./stageReducer";
 import styles from "./styles.module.css";
 import { dispatchFlumeToastAction, type ToastAction } from "./toastsReducer";
 import type {
@@ -57,34 +39,37 @@ import type {
 	NodeTypeMap,
 	PortTypeMap,
 } from "./types";
+import { useCommentsState, useViewportState } from "./useGraphRowState";
+import { useNodesState } from "./useNodesState";
 
 const defaultContext = {};
 
 export type NodeEditorHandle = {
 	getNodes: () => NodeMap;
 	getComments: () => FlumeCommentMap;
+	/**
+	 * Insert a starter graph if the row is empty. Idempotent — no-op
+	 * if the row already has nodes.
+	 */
+	seed: (params: {
+		defaultNodes?: DefaultNode[];
+		defaultConnections?: DefaultConnection[];
+	}) => void;
+	hasNodes: () => boolean;
 };
 
 interface NodeEditorProps {
 	ref?: React.Ref<NodeEditorHandle>;
-	comments?: FlumeCommentMap;
-	nodes?: NodeMap;
 	nodeTypes: NodeTypeMap;
 	portTypes: PortTypeMap;
-	defaultNodes?: DefaultNode[];
-	defaultConnections?: DefaultConnection[];
 	context?: unknown;
 	/**
-	 * When provided, topology is read from and written to the
-	 * researchGraphCollection under this id; the local useReducer is
-	 * skipped and `nodes`/`onChange` props are ignored. The collection is
-	 * the single source of truth in this mode.
+	 * Persistence is mandatory. Every editor instance (including embedded
+	 * sub-editors) reads from and writes to researchGraphCollection under
+	 * its own id. There is no inline-state mode.
 	 */
-	graphId?: string;
+	graphId: string;
 	projectId?: string | null;
-	onChange?: (nodes: NodeMap) => void;
-	onCommentsChange?: (comments: FlumeCommentMap) => void;
-	initialScale?: number;
 	spaceToPan?: boolean;
 	hideComments?: boolean;
 	disableComments?: boolean;
@@ -102,18 +87,11 @@ interface NodeEditorProps {
 
 export const NodeEditor = ({
 	ref,
-	comments: initialComments,
-	nodes: initialNodes,
 	nodeTypes = {},
 	portTypes = {},
-	defaultNodes = [],
-	defaultConnections = [],
 	context = defaultContext,
 	graphId,
 	projectId,
-	onChange,
-	onCommentsChange,
-	initialScale,
 	spaceToPan = false,
 	hideComments = false,
 	disableComments = false,
@@ -150,28 +128,24 @@ export const NodeEditor = ({
 
 	const [sideEffectToasts, setSideEffectToasts] = React.useState<ToastAction>();
 
-	const [nodes, dispatchNodes] = React.useReducer(
-		connectNodesReducer(
-			nodesReducer,
-			() => environmentRef.current,
-			setSideEffectToasts,
-		),
-		{},
-		() =>
-			getInitialNodes(
-				initialNodes,
-				defaultNodes,
-				nodeTypes,
-				portTypes,
-				context,
-				defaultConnections,
-			),
-	);
+	const getEnvironment = React.useCallback(() => environmentRef.current, []);
 
-	const [comments, dispatchComments] = React.useReducer(
-		commentsReducer,
-		initialComments || {},
-	);
+	const {
+		nodes,
+		dispatch: dispatchNodes,
+		isLoading: nodesHydrating,
+		seed: seedNodes,
+	} = useNodesState({
+		graphId,
+		projectId,
+		nodeTypes,
+		portTypes,
+		context,
+		getEnvironment,
+		setSideEffectToasts,
+	});
+
+	const { comments, dispatch: dispatchComments } = useCommentsState(graphId);
 
 	const nodeTypeRegistryKey = React.useMemo(
 		() => Object.keys(nodeTypes).sort().join("\0"),
@@ -192,13 +166,8 @@ export const NodeEditor = ({
 		[nodes, nodeTypes],
 	);
 
-	const [stageState, dispatchStageState] = React.useReducer(stageReducer, {
-		scale:
-			typeof initialScale === "number"
-				? Math.min(7, Math.max(0.1, initialScale))
-				: 1,
-		translate: { x: 0, y: 0 },
-	});
+	const { viewport: stageState, dispatch: dispatchStageState } =
+		useViewportState(graphId);
 
 	React.useLayoutEffect(() => {
 		scaleRef.current = stageState.scale;
@@ -212,9 +181,9 @@ export const NodeEditor = ({
 	const nodesRef = React.useRef(nodes);
 	nodesRef.current = nodes;
 
-	const graphWorkerRef = React.useRef<
-		ReturnType<typeof useFlumeGraphWorker> | null
-	>(null);
+	const graphWorkerRef = React.useRef<ReturnType<
+		typeof useFlumeGraphWorker
+	> | null>(null);
 
 	const onNodeLayoutChange = React.useCallback(
 		(nodeId: string, width: number, height: number) => {
@@ -257,16 +226,12 @@ export const NodeEditor = ({
 		graphWorkerBase.setGraph(nodes);
 	}, [graphWorkerBase, nodes]);
 
-	const recalculateConnections = React.useCallback(
-		(positionOverrides?: Record<string, { x: number; y: number }>) => {
-			// All routing math lives in the worker. This call just nudges
-			// the render pipeline; the worker already has the current
-			// state via incremental setters.
-			graphWorker.recalculate(nodes, positionOverrides);
-		},
-		[nodes, graphWorker],
-	);
-
+	// Single signal across the editor: "something changed, ask the worker
+	// to re-render." All routing math lives in the worker; consumers
+	// downstream (IoPorts, Draggable, layout effects) call this when they
+	// emit a state mutation. Position-override piggybacking is gone —
+	// drag flows through beginDrag/updateDrag/endDrag instead.
+	const recalculateConnections = graphWorkerBase.scheduleRender;
 	const recalculateConnectionsRef = React.useRef(recalculateConnections);
 	recalculateConnectionsRef.current = recalculateConnections;
 
@@ -307,12 +272,7 @@ export const NodeEditor = ({
 		recalculateConnections();
 	}, [recalculateConnections]);
 
-	const triggerRecalculation = React.useCallback(
-		(positionOverrides?: Record<string, { x: number; y: number }>) => {
-			recalculateConnections(positionOverrides);
-		},
-		[recalculateConnections],
-	);
+	const triggerRecalculation = recalculateConnections;
 
 	const nodesRefForLayout = nodesRef;
 
@@ -329,6 +289,7 @@ export const NodeEditor = ({
 		nodesRefForLayout,
 		prevGraphLayout,
 		triggerRecalculation,
+		dispatchNodes,
 	]);
 
 	React.useImperativeHandle(ref, () => ({
@@ -338,23 +299,13 @@ export const NodeEditor = ({
 		getComments: () => {
 			return comments;
 		},
+		seed: seedNodes,
+		hasNodes: () => Object.keys(nodes).length > 0,
 	}));
 
-	const previousNodes = usePrevious(nodes);
-
-	React.useEffect(() => {
-		if (previousNodes && onChange && nodes !== previousNodes) {
-			onChange(nodes);
-		}
-	}, [nodes, previousNodes, onChange]);
-
-	const previousComments = usePrevious(comments);
-
-	React.useEffect(() => {
-		if (previousComments && onCommentsChange && comments !== previousComments) {
-			onCommentsChange(comments);
-		}
-	}, [comments, previousComments, onCommentsChange]);
+	// Persistence is owned by the collection — no onChange/onCommentsChange
+	// fan-out. The collection.update inside useNodesState writes immediately
+	// and useLiveQuery subscribers re-render off the same source.
 
 	React.useEffect(() => {
 		if (sideEffectToasts) {
@@ -363,6 +314,22 @@ export const NodeEditor = ({
 		}
 	}, [sideEffectToasts]);
 
+	if (nodesHydrating) {
+		return (
+			<Flex.Column
+				className={cn(
+					"min-h-0 flex-1 items-center justify-center text-muted-foreground text-sm",
+					className,
+				)}
+				style={style}
+				fullHeight
+				fullWidth
+			>
+				Hydrating graph…
+			</Flex.Column>
+		);
+	}
+
 	return (
 		<Flex.Column
 			className={cn("min-h-0 flex-1", className)}
@@ -370,123 +337,100 @@ export const NodeEditor = ({
 			fullHeight
 			fullWidth
 		>
-			<ObstacleIndexContext.Provider value={indexRef}>
-				<PortLayoutRegistrationContext.Provider value={registerPortLayout}>
-					<FlumeGraphWorkerContext.Provider value={graphWorker}>
-						<NodeDragOverrideContext.Provider value={dragOverride}>
-							<NodeMapContext.Provider value={nodes}>
-								<EdgeRoutingContext.Provider value={edgeRoutingMode}>
-									<PortTypesContext.Provider value={portTypes}>
-										<NodeTypesContext.Provider value={nodeTypes}>
-											<NodeDispatchContext.Provider value={dispatchNodes}>
-												<ConnectionRecalculateContext.Provider
-													value={triggerRecalculation}
-												>
-													<ContextContext.Provider value={context}>
-														<StageContext.Provider value={stageState}>
-															<CacheContext.Provider value={cache}>
-																<EditorIdContext.Provider value={editorId}>
-																	<RecalculateStageRectContext.Provider
-																		value={recalculateStageRect}
-																	>
-																		<Stage
-																			editorId={editorId}
-																			scale={stageState.scale}
-																			translate={stageState.translate}
-																			spaceToPan={spaceToPan}
-																			disablePan={disablePan}
-																			disableZoom={disableZoom}
-																			dispatchStageState={dispatchStageState}
-																			dispatchComments={dispatchComments}
-																			disableComments={
-																				disableComments || hideComments
-																			}
-																			disableFocusCapture={disableFocusCapture}
-																			stageRef={stage}
-																			numNodes={Object.keys(nodes).length}
-																			outerStageChildren={
-																				debug ? (
-																					<div className={styles.debugWrapper}>
-																						<Button
-																							type="button"
-																							variant="outline"
-																							size="sm"
-																							onClick={() => console.log(nodes)}
-																						>
-																							Log Nodes
-																						</Button>
-																						<Button
-																							type="button"
-																							variant="outline"
-																							size="sm"
-																							onClick={() =>
-																								console.log(
-																									JSON.stringify(nodes),
-																								)
-																							}
-																						>
-																							Export Nodes
-																						</Button>
-																						<Button
-																							type="button"
-																							variant="outline"
-																							size="sm"
-																							onClick={() =>
-																								console.log(comments)
-																							}
-																						>
-																							Log Comments
-																						</Button>
-																					</div>
-																				) : null
-																			}
-																		>
-																			<div
-																				className={styles.portLayer}
-																				id={`${PORT_LAYER_ID}${editorId}`}
-																			/>
-																			{!hideComments &&
-																				Object.values(comments).map(
-																					(comment) => (
-																						<Comment
-																							{...comment}
-																							stageRect={stage}
-																							dispatch={dispatchComments}
-																							onDragStart={recalculateStageRect}
-																							key={comment.id}
-																						/>
-																					),
-																				)}
-																			{visibleNodes.map((node) => (
-																				<Node
-																					{...node}
-																					stageRect={stage}
-																					onDragStart={recalculateStageRect}
-																					renderNodeHeader={renderNodeHeader}
-																					key={node.id}
-																				/>
-																			))}
-																			<Connections editorId={editorId} />
-																			<div
-																				className={styles.dragWrapper}
-																				id={`${DRAG_CONNECTION_ID}${editorId}`}
-																			/>
-																		</Stage>
-																	</RecalculateStageRectContext.Provider>
-																</EditorIdContext.Provider>
-															</CacheContext.Provider>
-														</StageContext.Provider>
-													</ContextContext.Provider>
-												</ConnectionRecalculateContext.Provider>
-											</NodeDispatchContext.Provider>
-										</NodeTypesContext.Provider>
-									</PortTypesContext.Provider>
-								</EdgeRoutingContext.Provider>
-							</NodeMapContext.Provider>
-						</NodeDragOverrideContext.Provider>
-					</FlumeGraphWorkerContext.Provider>
-				</PortLayoutRegistrationContext.Provider>
-			</ObstacleIndexContext.Provider>
+			<FlumeProviders
+				value={{
+					indexRef,
+					registerPortLayout,
+					graphWorker,
+					dragOverride,
+					nodes,
+					edgeRoutingMode,
+					portTypes,
+					nodeTypes,
+					dispatchNodes,
+					triggerRecalculation,
+					context,
+					stageState,
+					cache,
+					graphId,
+					editorId,
+					recalculateStageRect,
+				}}
+			>
+				<Stage
+					editorId={editorId}
+					scale={stageState.scale}
+					translate={stageState.translate}
+					spaceToPan={spaceToPan}
+					disablePan={disablePan}
+					disableZoom={disableZoom}
+					dispatchStageState={dispatchStageState}
+					dispatchComments={dispatchComments}
+					disableComments={disableComments || hideComments}
+					disableFocusCapture={disableFocusCapture}
+					stageRef={stage}
+					numNodes={Object.keys(nodes).length}
+					outerStageChildren={
+						debug ? (
+							<div className={styles.debugWrapper}>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={() => console.log(nodes)}
+								>
+									Log Nodes
+								</Button>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={() => console.log(JSON.stringify(nodes))}
+								>
+									Export Nodes
+								</Button>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={() => console.log(comments)}
+								>
+									Log Comments
+								</Button>
+							</div>
+						) : null
+					}
+				>
+					<div
+						className={styles.portLayer}
+						id={`${PORT_LAYER_ID}${editorId}`}
+					/>
+					{!hideComments &&
+						Object.values(comments).map((comment) => (
+							<Comment
+								{...comment}
+								stageRect={stage}
+								dispatch={dispatchComments}
+								onDragStart={recalculateStageRect}
+								key={comment.id}
+							/>
+						))}
+					{visibleNodes.map((node) => (
+						<Node
+							{...node}
+							stageRect={stage}
+							onDragStart={recalculateStageRect}
+							renderNodeHeader={renderNodeHeader}
+							key={node.id}
+						/>
+					))}
+					<Connections editorId={editorId} />
+					<div
+						className={styles.dragWrapper}
+						id={`${DRAG_CONNECTION_ID}${editorId}`}
+					/>
+				</Stage>
+			</FlumeProviders>
 		</Flex.Column>
 	);
 };

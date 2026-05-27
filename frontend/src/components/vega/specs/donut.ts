@@ -27,8 +27,9 @@ export const donutSpec = ({
 	// plotting `width`/`height` signals already exclude legend space, so
 	// `min(width, height) / 2` is the largest radius that won't clip.
 	// Caller-supplied overrides take precedence and stay fixed in pixels.
-	const outer: number | { expr: string } =
-		outerRadius ?? { expr: "max(20, min(width, height) / 2 - 4)" };
+	const outer: number | { expr: string } = outerRadius ?? {
+		expr: "max(20, min(width, height) / 2 - 4)",
+	};
 	const inner: number | { expr: string } =
 		innerRadius ??
 		(typeof outer === "number"

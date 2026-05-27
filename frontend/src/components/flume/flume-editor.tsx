@@ -1,33 +1,31 @@
 "use client";
 
-import { useLiveQuery } from "@tanstack/react-db";
 import {
 	GitCommitVerticalIcon,
+	SparklesIcon,
 	SplineIcon,
 	WaypointsIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { researchGraphCollection } from "#/collections/research_graph";
+import { useMemo, useRef } from "react";
+import { Button } from "#/components/ui/button";
 import { Flex } from "#/components/ui/flex";
 import { ToggleGroup, ToggleGroupItem } from "#/components/ui/toggle-group";
 import { Typography } from "#/components/ui/typography";
 import { useOperations } from "#/service/compute";
 import { buildFlumeConfigFromSchemas } from "./build-config-from-schemas";
 import type { EdgeRoutingMode } from "./connectionCalculator";
-import {
-	setRoutingMode,
-	useRoutingMode,
-} from "./flume-editor.store";
-import { NodeEditor } from "./NodeEditor";
-import type { NodeMap } from "./types";
+import { setRoutingMode, useRoutingMode } from "./flume-editor.store";
+import { NodeEditor, type NodeEditorHandle } from "./NodeEditor";
 
-const demoDefaultNodes = [
+const LOCAL_GRAPH_ID = "local-default";
+
+const EXAMPLE_NODES = [
 	{ type: "source", x: 120, y: 180 },
 	{ type: "gate", x: 420, y: 180 },
 	{ type: "sink", x: 720, y: 180 },
 ] as const;
 
-const demoDefaultConnections = [
+const EXAMPLE_CONNECTIONS = [
 	{
 		output: { nodeType: "source", portName: "value" },
 		input: { nodeType: "gate", portName: "in" },
@@ -37,8 +35,6 @@ const demoDefaultConnections = [
 		input: { nodeType: "sink", portName: "value" },
 	},
 ] as const;
-
-const LOCAL_GRAPH_ID = "local-default";
 
 const ROUTING_OPTIONS: ReadonlyArray<{
 	value: EdgeRoutingMode;
@@ -116,56 +112,8 @@ type FlumeEditorProps = {
 export const FlumeEditor = ({ projectId }: FlumeEditorProps) => {
 	const { data: operations, isPending, isError, isSuccess } = useOperations();
 	const graphId = projectId ?? LOCAL_GRAPH_ID;
-	const [nodes, setNodes] = useState<NodeMap>({});
-	const [graphHydrated, setGraphHydrated] = useState(false);
 	const routingMode = useRoutingMode();
-
-	const graphQuery = useLiveQuery((query) =>
-		query.from({ graph: researchGraphCollection }),
-	);
-
-	const storedRow = useMemo(
-		() => graphQuery.data?.find((row) => row.id === graphId),
-		[graphId, graphQuery.data],
-	);
-
-	useEffect(() => {
-		if (graphQuery.isLoading) {
-			return;
-		}
-
-		const nextNodes = (storedRow?.nodes as NodeMap | undefined) ?? {};
-		setNodes(nextNodes);
-		setGraphHydrated(true);
-	}, [graphQuery.isLoading, storedRow?.nodes]);
-
-	const persistGraph = useCallback(
-		(nextNodes: NodeMap) => {
-			setNodes(nextNodes);
-
-			const updatedAt = new Date();
-
-			if (storedRow) {
-				void researchGraphCollection.update(
-					storedRow.id,
-					{ metadata: {} },
-					(draft) => {
-						draft.nodes = nextNodes;
-						draft.updated_at = updatedAt;
-					},
-				);
-				return;
-			}
-
-			void researchGraphCollection.insert({
-				id: graphId,
-				project_id: projectId ?? null,
-				nodes: nextNodes,
-				updated_at: updatedAt,
-			});
-		},
-		[graphId, projectId, storedRow],
-	);
+	const editorHandleRef = useRef<NodeEditorHandle | null>(null);
 
 	const flumeConfig = useMemo(
 		() => buildFlumeConfigFromSchemas(operations ?? {}),
@@ -174,7 +122,14 @@ export const FlumeEditor = ({ projectId }: FlumeEditorProps) => {
 
 	const editorMode = isError || !isSuccess ? "builtin-only" : "full";
 
-	if (isPending || graphQuery.isLoading || !graphHydrated) {
+	const insertExample = () => {
+		editorHandleRef.current?.seed({
+			defaultNodes: [...EXAMPLE_NODES],
+			defaultConnections: [...EXAMPLE_CONNECTIONS],
+		});
+	};
+
+	if (isPending) {
 		return (
 			<div className="flex min-h-[75vh] flex-1 items-center justify-center text-muted-foreground text-sm">
 				Loading operation schemas…
@@ -195,19 +150,28 @@ export const FlumeEditor = ({ projectId }: FlumeEditorProps) => {
 							{Object.keys(flumeConfig.nodeTypes).length} node types
 						</Typography.Span>
 					)}
+					<Button
+						onClick={insertExample}
+						size="sm"
+						title="Seed a Source → Gate → Sink example (idempotent — no-op if the graph already has nodes)"
+						type="button"
+						variant="ghost"
+					>
+						<SparklesIcon />
+						Insert example
+					</Button>
 				</Flex.Row>
 				<EdgeRoutingToggle onChange={setRoutingMode} value={routingMode} />
 			</Flex.Row>
 			<NodeEditor
 				key={`${editorMode}:${graphId}`}
 				className="min-h-0 flex-1"
-				defaultConnections={[...demoDefaultConnections]}
-				defaultNodes={[...demoDefaultNodes]}
 				edgeRoutingMode={routingMode}
+				graphId={graphId}
 				nodeTypes={flumeConfig.nodeTypes}
-				nodes={nodes}
-				onChange={persistGraph}
 				portTypes={flumeConfig.portTypes}
+				projectId={projectId ?? null}
+				ref={editorHandleRef}
 				style={{ minHeight: isError ? "70vh" : "75vh" }}
 			/>
 		</div>

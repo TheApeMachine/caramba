@@ -94,10 +94,7 @@ export const phasePlotSpec = ({
 		0,
 	);
 	const maxRing = rings.reduce((acc, ring) => Math.max(acc, ring.radius), 0);
-	const maxArc = arcSegments.reduce(
-		(acc, arc) => Math.max(acc, arc.radius),
-		0,
-	);
+	const maxArc = arcSegments.reduce((acc, arc) => Math.max(acc, arc.radius), 0);
 	const maxVector = vectors.reduce(
 		(acc, vector) => Math.max(acc, Math.hypot(vector.re, vector.im)),
 		0,

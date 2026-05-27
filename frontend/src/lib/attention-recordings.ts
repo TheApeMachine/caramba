@@ -3,9 +3,7 @@ attention-recordings — type definitions for attention weight recordings
 captured from transformer model forward passes.
 */
 
-export type HeadMode =
-	| { kind: "mean" }
-	| { kind: "head"; index: number };
+export type HeadMode = { kind: "mean" } | { kind: "head"; index: number };
 
 export type AttnMatrix = number[][];
 

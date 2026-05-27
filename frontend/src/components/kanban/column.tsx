@@ -351,10 +351,7 @@ export const KanbanColumnView = ({
 											onDragEnd={() => {}}
 											onDragStart={(event) => {
 												event.dataTransfer.setData("cardId", card.id);
-												event.dataTransfer.setData(
-													"fromColumnId",
-													column.id,
-												);
+												event.dataTransfer.setData("fromColumnId", column.id);
 											}}
 										/>
 									</div>

@@ -47,9 +47,7 @@ export const StepDetails = ({
 			</Field>
 
 			<Flex.Column gap={2}>
-				<Typography.Span className="text-sm font-medium">
-					Color
-				</Typography.Span>
+				<Typography.Span className="text-sm font-medium">Color</Typography.Span>
 				<Flex.Row className="flex-wrap gap-2">
 					{TEAM_COLOR_PALETTE.map((color) => (
 						<button

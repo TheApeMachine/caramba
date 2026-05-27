@@ -26,7 +26,12 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 function readStoredTheme(): Theme {
 	if (typeof window === "undefined") return "dark";
 	const stored = window.localStorage.getItem(STORAGE_KEY_THEME);
-	if (stored === "light" || stored === "dim" || stored === "dark" || stored === "system") {
+	if (
+		stored === "light" ||
+		stored === "dim" ||
+		stored === "dark" ||
+		stored === "system"
+	) {
 		return stored;
 	}
 	return "dark";
@@ -49,8 +54,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 	const [contrast, setContrastState] = useState<boolean>(() =>
 		readStoredContrast(),
 	);
-	const [systemTheme, setSystemTheme] = useState<Exclude<Theme, "system">>(
-		() => resolveSystemTheme(),
+	const [systemTheme, setSystemTheme] = useState<Exclude<Theme, "system">>(() =>
+		resolveSystemTheme(),
 	);
 
 	useEffect(() => {

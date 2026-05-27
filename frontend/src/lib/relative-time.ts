@@ -3,7 +3,10 @@ relativeTime renders a coarse "x ago" / "in x" string from an ISO date
 without pulling in a date library. Resolution is per-minute below an
 hour and degrades to days, months, years.
 */
-const UNITS: ReadonlyArray<{ seconds: number; unit: Intl.RelativeTimeFormatUnit }> = [
+const UNITS: ReadonlyArray<{
+	seconds: number;
+	unit: Intl.RelativeTimeFormatUnit;
+}> = [
 	{ seconds: 60, unit: "second" },
 	{ seconds: 60 * 60, unit: "minute" },
 	{ seconds: 60 * 60 * 24, unit: "hour" },

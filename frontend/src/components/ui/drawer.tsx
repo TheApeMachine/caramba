@@ -298,7 +298,7 @@ Drawer.Description = ({
 			{...props}
 		/>
 	);
-}
+};
 
 Drawer.Panel = ({
 	className,
@@ -336,7 +336,7 @@ Drawer.Panel = ({
 	}
 
 	return content;
-}
+};
 
 Drawer.Bar = ({
 	className,

@@ -13,29 +13,28 @@ export const createResearchProject = createServerFn({ method: "POST" })
 			throw new Error("Research project writes require a signed-in account.");
 		}
 
-		const res = await fetch(
-			`${backendBaseURL()}/backend/research-projects`,
-			{
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					id: data.id,
-					name: data.name,
-					description: data.description,
-					project_slug: data.project_slug ?? null,
-				}),
+		const res = await fetch(`${backendBaseURL()}/backend/research-projects`, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${token}`,
+				"Content-Type": "application/json",
 			},
-		);
+			body: JSON.stringify({
+				id: data.id,
+				name: data.name,
+				description: data.description,
+				project_slug: data.project_slug ?? null,
+			}),
+		});
 
 		if (!res.ok) {
 			const text = await res.text();
-			throw new Error(`Research project insert failed (${res.status}): ${text}`);
+			throw new Error(
+				`Research project insert failed (${res.status}): ${text}`,
+			);
 		}
 
-		const json = await res.json() as unknown;
+		const json = (await res.json()) as unknown;
 
 		if (
 			typeof json !== "object" ||

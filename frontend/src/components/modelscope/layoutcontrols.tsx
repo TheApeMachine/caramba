@@ -167,12 +167,7 @@ export function NodeGraphLegacyLayoutControls({
 				}}
 				title="Grid 3D"
 			>
-				<img
-					src="/textures/square.png"
-					width="32"
-					height="32"
-					alt="Grid 3D"
-				/>
+				<img src="/textures/square.png" width="32" height="32" alt="Grid 3D" />
 			</button>
 
 			<button

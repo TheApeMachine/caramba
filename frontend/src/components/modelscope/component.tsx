@@ -54,7 +54,10 @@ const loadFontTexture = async (): Promise<THREE.Texture> => {
 			},
 			undefined,
 			(error: unknown) => {
-				console.warn("[Font] Failed to load font texture, labels disabled:", error);
+				console.warn(
+					"[Font] Failed to load font texture, labels disabled:",
+					error,
+				);
 				resolve(new THREE.Texture());
 			},
 		);

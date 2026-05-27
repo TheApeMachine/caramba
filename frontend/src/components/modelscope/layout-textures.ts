@@ -241,8 +241,9 @@ export function createLayoutTextureGenerators({
 		const nodeCount = nodeNames.length;
 		if (nodeCount === 0) return null;
 
-		const nodesById: Array<{ id: number; edges: number[] } | null> =
-			new Array(nodeCount).fill(null);
+		const nodesById: Array<{ id: number; edges: number[] } | null> = new Array(
+			nodeCount,
+		).fill(null);
 		for (const n of Object.values(g.nodes)) {
 			if (n.id >= 0 && n.id < nodeCount) nodesById[n.id] = n;
 		}
@@ -358,8 +359,9 @@ export function createLayoutTextureGenerators({
 		const nodeCount = nodeNames.length;
 		if (nodeCount === 0) return null;
 
-		const nodesById: Array<{ id: number; edges: number[] } | null> =
-			new Array(nodeCount).fill(null);
+		const nodesById: Array<{ id: number; edges: number[] } | null> = new Array(
+			nodeCount,
+		).fill(null);
 		for (const n of Object.values(g.nodes)) {
 			if (n.id >= 0 && n.id < nodeCount) nodesById[n.id] = n;
 		}
@@ -479,8 +481,9 @@ export function createLayoutTextureGenerators({
 		const nodeCount = nodeNames.length;
 		if (nodeCount === 0) return null;
 
-		const nodesById: Array<{ id: number; edges: number[] } | null> =
-			new Array(nodeCount).fill(null);
+		const nodesById: Array<{ id: number; edges: number[] } | null> = new Array(
+			nodeCount,
+		).fill(null);
 		for (const n of Object.values(g.nodes)) {
 			if (n.id >= 0 && n.id < nodeCount) nodesById[n.id] = n;
 		}
@@ -595,8 +598,9 @@ export function createLayoutTextureGenerators({
 		const nodeCount = nodeNames.length;
 		if (nodeCount === 0) return null;
 
-		const nodesById: Array<{ id: number; edges: number[] } | null> =
-			new Array(nodeCount).fill(null);
+		const nodesById: Array<{ id: number; edges: number[] } | null> = new Array(
+			nodeCount,
+		).fill(null);
 		for (const n of Object.values(g.nodes)) {
 			if (n.id >= 0 && n.id < nodeCount) nodesById[n.id] = n;
 		}
@@ -778,8 +782,9 @@ export function createLayoutTextureGenerators({
 		const nodeCount = nodeNames.length;
 		if (nodeCount === 0) return null;
 
-		const nodesById: Array<{ id: number; edges: number[] } | null> =
-			new Array(nodeCount).fill(null);
+		const nodesById: Array<{ id: number; edges: number[] } | null> = new Array(
+			nodeCount,
+		).fill(null);
 		for (const n of Object.values(g.nodes)) {
 			if (n.id >= 0 && n.id < nodeCount) nodesById[n.id] = n;
 		}
@@ -1003,8 +1008,7 @@ export function createLayoutTextureGenerators({
 		) => {
 			const upperPos = indexInLayer(upper);
 			const scored = lower.map((n) => {
-				const neighbors =
-					dir === "down" ? (dagIn[n] ?? []) : (dagOut[n] ?? []);
+				const neighbors = dir === "down" ? (dagIn[n] ?? []) : (dagOut[n] ?? []);
 				let sum = 0;
 				let cnt = 0;
 				for (const m of neighbors) {
@@ -1111,7 +1115,8 @@ export function createLayoutTextureGenerators({
 		if (nodeCount === 0) return null;
 
 		const idByName: Record<string, number> = {};
-		for (const [name, node] of Object.entries(g.nodes)) idByName[name] = node.id;
+		for (const [name, node] of Object.entries(g.nodes))
+			idByName[name] = node.id;
 
 		const outEdges: number[][] = new Array(nodeCount).fill(0).map(() => []);
 		const inEdges: number[][] = new Array(nodeCount).fill(0).map(() => []);
@@ -1198,8 +1203,7 @@ export function createLayoutTextureGenerators({
 		) => {
 			const upperPos = indexInLayer(upper);
 			const scored = lower.map((n) => {
-				const neighbors =
-					dir === "down" ? (dagIn[n] ?? []) : (dagOut[n] ?? []);
+				const neighbors = dir === "down" ? (dagIn[n] ?? []) : (dagOut[n] ?? []);
 				let sum = 0;
 				let cnt = 0;
 				for (const m of neighbors) {
@@ -1305,8 +1309,9 @@ export function createLayoutTextureGenerators({
 		const nodeCount = nodeNames.length;
 		if (nodeCount === 0) return null;
 
-		const nodesById: Array<{ id: number; edges: number[] } | null> =
-			new Array(nodeCount).fill(null);
+		const nodesById: Array<{ id: number; edges: number[] } | null> = new Array(
+			nodeCount,
+		).fill(null);
 		for (const n of Object.values(g.nodes)) {
 			if (n.id >= 0 && n.id < nodeCount) nodesById[n.id] = n;
 		}

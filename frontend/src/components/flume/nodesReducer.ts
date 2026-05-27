@@ -4,25 +4,40 @@ import {
 	deleteConnection,
 	deleteConnectionsByNodeId,
 } from "./connectionCalculator";
+import {
+	getDefaultData,
+	pruneDanglingConnections,
+	reconcileNodes,
+} from "./nodes-helpers";
 import type { ToastAction } from "./toastsReducer";
 import type {
 	CircularBehavior,
 	Connection,
 	ConnectionMap,
 	Connections,
-	ControlData,
 	DefaultConnection,
 	DefaultNode,
 	FlumeNode,
 	InputData,
 	NodeMap,
-	NodeType,
 	NodeTypeMap,
 	PortTypeMap,
 	TransputType,
 	ValueSetter,
 } from "./types";
 import { checkForCircularNodes, createFlumeId } from "./utilities";
+
+/*
+Re-export the pure topology helpers so existing consumers that import
+from "./nodesReducer" keep working. The implementations live in
+nodes-helpers; this barrel exists for backward compatibility.
+*/
+export {
+	getDefaultData,
+	normalizeFlumeNode,
+	pruneDanglingConnections,
+	reconcileNodes,
+} from "./nodes-helpers";
 
 export enum NodesActionType {
 	ADD_CONNECTION = "ADD_CONNECTION",
@@ -38,23 +53,7 @@ export enum NodesActionType {
 	RECONCILE_NODE_TYPES = "RECONCILE_NODE_TYPES",
 }
 
-const emptyConnections = (): Connections => ({
-	inputs: {},
-	outputs: {},
-});
-
-/*
-normalizeFlumeNode fills missing graph fields on persisted or partial nodes.
-Local storage rows are schema-loose and may omit connections or inputData.
-*/
-export const normalizeFlumeNode = (node: FlumeNode): FlumeNode => ({
-	...node,
-	inputData: node.inputData ?? {},
-	connections: {
-		inputs: node.connections?.inputs ?? {},
-		outputs: node.connections?.outputs ?? {},
-	},
-});
+type ProposedConnection = { nodeId: string; portName: string };
 
 const addConnection = (
 	nodes: NodeMap,
@@ -191,54 +190,6 @@ const remapConnectionNodeIds = (
 	};
 };
 
-/*
-pruneDanglingConnections removes input/output links whose endpoint node no
-longer exists. Persisted graphs often keep stale ids after default-node hydration.
-*/
-export const pruneDanglingConnections = (nodes: NodeMap): NodeMap => {
-	const nodeIds = new Set(Object.keys(nodes));
-	let changed = false;
-	const next: NodeMap = {};
-
-	for (const [nodeId, node] of Object.entries(nodes)) {
-		const connections = node.connections ?? emptyConnections();
-		const inputs: ConnectionMap = {};
-
-		for (const [portName, links] of Object.entries(connections.inputs)) {
-			const filtered = links.filter((link) => nodeIds.has(link.nodeId));
-
-			if (filtered.length !== links.length) {
-				changed = true;
-			}
-
-			if (filtered.length > 0) {
-				inputs[portName] = filtered;
-			}
-		}
-
-		const outputs: ConnectionMap = {};
-
-		for (const [portName, links] of Object.entries(connections.outputs)) {
-			const filtered = links.filter((link) => nodeIds.has(link.nodeId));
-
-			if (filtered.length !== links.length) {
-				changed = true;
-			}
-
-			if (filtered.length > 0) {
-				outputs[portName] = filtered;
-			}
-		}
-
-		next[nodeId] = {
-			...node,
-			connections: { inputs, outputs },
-		};
-	}
-
-	return changed ? next : nodes;
-};
-
 const removeNode = (startNodes: NodeMap, nodeId: string) => {
 	let { [nodeId]: _deletedNode, ...nodes } = startNodes;
 	nodes = Object.values(nodes).reduce<NodeMap>((obj, node) => {
@@ -251,88 +202,6 @@ const removeNode = (startNodes: NodeMap, nodeId: string) => {
 	}, {});
 	deleteConnectionsByNodeId(nodeId);
 	return nodes;
-};
-
-const reconcileNodes = (
-	initialNodes: NodeMap,
-	nodeTypes: NodeTypeMap,
-	portTypes: PortTypeMap,
-	context: unknown,
-): NodeMap => {
-	const knownNodes: NodeMap = {};
-
-	for (const [nodeId, node] of Object.entries(initialNodes)) {
-		if (node?.type && nodeTypes[node.type]) {
-			knownNodes[nodeId] = normalizeFlumeNode(node);
-			continue;
-		}
-
-		if (typeof document !== "undefined") {
-			deleteConnectionsByNodeId(nodeId);
-		}
-	}
-
-	// Reconcile input data for each node
-	let reconciledNodes = Object.values(knownNodes).reduce<NodeMap>(
-		(nodesObj, node) => {
-			const nodeType = nodeTypes[node.type];
-
-			if (!nodeType) {
-				return nodesObj;
-			}
-
-			const defaultInputData = getDefaultData({
-				node,
-				nodeType,
-				portTypes,
-				context,
-			});
-			const currentInputData = Object.entries(node.inputData).reduce<InputData>(
-				(dataObj, [key, data]) => {
-					if (defaultInputData[key] !== undefined) {
-						dataObj[key] = data;
-					}
-					return dataObj;
-				},
-				{},
-			);
-			const newInputData = {
-				...defaultInputData,
-				...currentInputData,
-			};
-			nodesObj[node.id] = {
-				...node,
-				inputData: newInputData,
-			};
-			return nodesObj;
-		},
-		{},
-	);
-
-	// Reconcile node attributes for each node
-	reconciledNodes = Object.values(reconciledNodes).reduce<NodeMap>(
-		(nodesObj, node) => {
-			const nodeType = nodeTypes[node.type];
-
-			if (!nodeType) {
-				return nodesObj;
-			}
-
-			const newNode = { ...node };
-			if (nodeType.root !== node.root) {
-				if (nodeType.root && !node.root) {
-					newNode.root = nodeType.root;
-				} else if (!nodeType.root && node.root) {
-					delete newNode.root;
-				}
-			}
-			nodesObj[node.id] = newNode;
-			return nodesObj;
-		},
-		{},
-	);
-
-	return pruneDanglingConnections(reconciledNodes);
 };
 
 const findNodeByType = (
@@ -420,44 +289,6 @@ export const getInitialNodes = (
 
 	return applyDefaultConnections(withDefaultNodes, defaultConnections);
 };
-
-const getDefaultData = ({
-	node,
-	nodeType,
-	portTypes,
-	context,
-}: {
-	node: FlumeNode;
-	nodeType: NodeType;
-	portTypes: PortTypeMap;
-	context: unknown;
-}): InputData => {
-	if (!nodeType) {
-		return {};
-	}
-
-	const nodeConnections = node.connections ?? emptyConnections();
-	const nodeInputData = node.inputData ?? {};
-
-	const inputs = Array.isArray(nodeType.inputs)
-		? nodeType.inputs
-		: (nodeType.inputs?.(nodeInputData, nodeConnections, context) ?? []);
-
-	return inputs.reduce<InputData>((obj, input) => {
-		const inputType = portTypes[input.type];
-		obj[input.name || inputType.name] = (
-			input.controls ||
-			inputType.controls ||
-			[]
-		).reduce<InputData>((obj2, control) => {
-			obj2[control.name] = control.defaultValue as ControlData;
-			return obj2;
-		}, {});
-		return obj;
-	}, {});
-};
-
-type ProposedConnection = { nodeId: string; portName: string };
 
 export type NodesAction =
 	| {

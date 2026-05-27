@@ -37,6 +37,13 @@ export const RecalculateStageRectContext = React.createContext<
 >(null);
 export const EditorIdContext = React.createContext<string>("");
 
+/*
+GraphIdContext exposes the collection row id the current NodeEditor is
+bound to. Subgraph editors derive composite ids from it so they also
+persist through researchGraphCollection — no inline state anywhere.
+*/
+export const GraphIdContext = React.createContext<string>("");
+
 /** Maps node IDs to their full node data for consumers that need the full graph. */
 export const NodeMapContext = React.createContext<NodeMap>({});
 

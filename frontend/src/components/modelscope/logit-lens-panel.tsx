@@ -39,8 +39,26 @@ layers converge on noisy tokens, later layers progressively lock onto
 the input tokens themselves.
 */
 const MOCK_VOCAB = [
-	"the", "of", "and", "to", "a", "in", "is", "it", "you", "that",
-	"he", "was", "for", "on", "are", "with", "as", "his", "they", "at",
+	"the",
+	"of",
+	"and",
+	"to",
+	"a",
+	"in",
+	"is",
+	"it",
+	"you",
+	"that",
+	"he",
+	"was",
+	"for",
+	"on",
+	"are",
+	"with",
+	"as",
+	"his",
+	"they",
+	"at",
 ];
 
 const mockRun = (prompt: string, layerCount: number): LogitLensRun => {
@@ -159,9 +177,7 @@ const LensGrid = ({
 									className="flex-1 min-w-0 cursor-pointer"
 									// biome-ignore lint/suspicious/noArrayIndexKey: position is the key
 									key={position}
-									onClick={() =>
-										onSelectCell({ layer: layer.index, position })
-									}
+									onClick={() => onSelectCell({ layer: layer.index, position })}
 									type="button"
 								>
 									<ProbabilityCell
@@ -232,7 +248,10 @@ const CellDetails = ({
 						</Flex.Row>
 						<div className="h-1 overflow-hidden rounded-full bg-border/60">
 							<div
-								className={cn("h-full rounded-full", probabilityColor(alt.probability).replace("/30", ""))}
+								className={cn(
+									"h-full rounded-full",
+									probabilityColor(alt.probability).replace("/30", ""),
+								)}
 								style={{ width: `${alt.probability * 100}%` }}
 							/>
 						</div>
@@ -243,11 +262,7 @@ const CellDetails = ({
 	);
 };
 
-export const LogitLensPanel = ({
-	layerCount,
-}: {
-	layerCount: number;
-}) => {
+export const LogitLensPanel = ({ layerCount }: { layerCount: number }) => {
 	const [prompt, setPrompt] = useState("The capital of France is");
 	const [run, setRun] = useState<LogitLensRun | null>(null);
 	const [selected, setSelected] = useState<{
@@ -272,13 +287,10 @@ export const LogitLensPanel = ({
 				<Typography.PageTitle className="text-xl">
 					Logit Lens
 				</Typography.PageTitle>
-				<Typography.Paragraph
-					className="max-w-prose text-sm"
-					variant="muted"
-				>
+				<Typography.Paragraph className="max-w-prose text-sm" variant="muted">
 					Decode every layer's hidden state through the unembedding matrix and
-					watch the model commit to a token. Backend wiring is pending — for
-					now this runs against a mock so the UI shape is real.
+					watch the model commit to a token. Backend wiring is pending — for now
+					this runs against a mock so the UI shape is real.
 				</Typography.Paragraph>
 			</Flex.Column>
 

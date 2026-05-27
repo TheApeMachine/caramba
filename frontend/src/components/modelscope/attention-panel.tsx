@@ -17,11 +17,11 @@ import { Field } from "#/components/ui/field";
 import { Flex } from "#/components/ui/flex";
 import { Input } from "#/components/ui/input";
 import { Typography } from "#/components/ui/typography";
-import { cn } from "#/lib/utils";
 import {
 	type AttentionPattern,
 	getMockAttentionPattern,
 } from "#/lib/mock-tensor-stats";
+import { cn } from "#/lib/utils";
 
 const HeadMatrix = ({
 	pattern,
@@ -87,10 +87,7 @@ const HeadMatrix = ({
 			onClick={onSelect}
 			type="button"
 		>
-			<Typography.Span
-				className="px-1 font-mono text-[9px]"
-				variant="muted"
-			>
+			<Typography.Span className="px-1 font-mono text-[9px]" variant="muted">
 				L{layer}·H{head}
 			</Typography.Span>
 			<canvas
@@ -127,9 +124,10 @@ export const AttentionPanel = ({
 }) => {
 	const [prompt, setPrompt] = useState("The capital of France is");
 	const [pattern, setPattern] = useState<AttentionPattern | null>(null);
-	const [focused, setFocused] = useState<{ layer: number; head: number } | null>(
-		null,
-	);
+	const [focused, setFocused] = useState<{
+		layer: number;
+		head: number;
+	} | null>(null);
 
 	const effectiveLayers = useMemo(
 		() => Math.max(2, Math.min(24, layerCount)),
@@ -156,10 +154,7 @@ export const AttentionPanel = ({
 				<Typography.PageTitle className="text-xl">
 					Attention
 				</Typography.PageTitle>
-				<Typography.Paragraph
-					className="max-w-prose text-sm"
-					variant="muted"
-				>
+				<Typography.Paragraph className="max-w-prose text-sm" variant="muted">
 					Each cell is a heads-eye view of a layer's attention pattern. Click
 					one to inspect token-token weights up close.
 				</Typography.Paragraph>
@@ -270,7 +265,8 @@ const FocusedHead = ({
 }) => {
 	const { tokens, matrix, heads } = pattern;
 	const tokenCount = tokens.length;
-	const offset = (focused.layer * heads + focused.head) * tokenCount * tokenCount;
+	const offset =
+		(focused.layer * heads + focused.head) * tokenCount * tokenCount;
 
 	return (
 		<Flex.Column className="gap-2 overflow-x-auto">

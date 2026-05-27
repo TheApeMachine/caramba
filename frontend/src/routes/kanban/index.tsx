@@ -1,7 +1,12 @@
 import { useAuth } from "@clerk/tanstack-react-start";
 import { useLiveQuery } from "@tanstack/react-db";
 import { ClientOnly, createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRightIcon, KanbanIcon, LayersIcon, UsersIcon } from "lucide-react";
+import {
+	ArrowRightIcon,
+	KanbanIcon,
+	LayersIcon,
+	UsersIcon,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { researchProjectCollection } from "#/collections/research_project";
 import { teamCollection } from "#/collections/team";
@@ -109,10 +114,7 @@ const OrganizationHeroCard = ({
 					/>
 				</Flex.Row>
 			</Flex.Row>
-			<Typography.Paragraph
-				className="max-w-prose text-sm"
-				variant="muted"
-			>
+			<Typography.Paragraph className="max-w-prose text-sm" variant="muted">
 				{scopeKind === "team"
 					? t("kanban.teamAggregateDescription", {
 							defaultValue:
@@ -294,7 +296,7 @@ const KanbanHubContent = () => {
 				orgSlug={orgSlug}
 				projectCount={projects.length}
 				scopeLabel={
-					activeTeam ? activeTeam.name : orgSlug ?? t("kanban.noOrganization")
+					activeTeam ? activeTeam.name : (orgSlug ?? t("kanban.noOrganization"))
 				}
 				scopeKind={activeTeam ? "team" : "organization"}
 			/>

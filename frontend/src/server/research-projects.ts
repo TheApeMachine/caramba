@@ -19,7 +19,10 @@ async function getAuthToken(): Promise<string> {
 	return token;
 }
 
-async function authenticatedFetch(path: string, token: string): Promise<Response> {
+async function authenticatedFetch(
+	path: string,
+	token: string,
+): Promise<Response> {
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 

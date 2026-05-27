@@ -4,17 +4,12 @@ import type { NodeMap, TransputType } from "#/components/flume/types";
 import { FlumeGraphEngine } from "#/workers/flume-graph.engine";
 import type {
 	ConnectionPathResult,
-	GraphSnapshot,
 	RecalculateResult,
 } from "#/workers/flume-graph.types";
 
 const engine = new FlumeGraphEngine();
 
 const api = {
-	loadSnapshot(snapshot: GraphSnapshot): void {
-		engine.loadSnapshot(snapshot);
-	},
-
 	setGraph(nodes: NodeMap): void {
 		engine.setGraph(nodes);
 	},
@@ -51,10 +46,6 @@ const api = {
 
 	recalculate(): RecalculateResult {
 		return engine.recalculate();
-	},
-
-	getSnapshot(): GraphSnapshot {
-		return engine.getSnapshot();
 	},
 };
 
