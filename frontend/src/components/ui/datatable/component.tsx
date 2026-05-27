@@ -19,11 +19,9 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Frame } from "@/components/ui/frame";
-import { Spinner } from "@/components/ui/spinner";
+import { Loadable } from "@/components/ui/loadable";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { Flex } from "../flex";
-import { Typography } from "../typography";
 import { DataTableFooter } from "./footer";
 import { DataTableHeader } from "./header";
 
@@ -203,50 +201,40 @@ function buildColumns<TData extends object>(
 	return [selectCol, ...dataCols, ...extraCols];
 }
 
+const EmptyTable = () => (
+	<Frame className="w-full">
+		<Table variant="card">
+			<TableBody>
+				<TableRow>
+					<TableCell className="h-24 text-center text-muted-foreground">
+						No results.
+					</TableCell>
+				</TableRow>
+			</TableBody>
+		</Table>
+	</Frame>
+);
+
 export function CollectionTable<TData extends object>({
 	query,
 	errorMessage,
 	...props
 }: CollectionTableProps<TData>) {
 	const { data, isLoading, isError } = useLiveQuery(query);
-
-	if (isLoading) {
-		return (
-			<div className="flex items-center justify-center p-8">
-				<Spinner />
-			</div>
-		);
-	}
-
-	if (isError) {
-		return (
-			<Flex.Center padding={8}>
-				<Typography.Paragraph variant="muted">
-					{errorMessage ?? "Failed to load data."}
-				</Typography.Paragraph>
-			</Flex.Center>
-		);
-	}
-
 	const rows = (data ?? []) as TData[];
 
-	if (rows.length === 0) {
-		return (
-			<Frame className="w-full">
-				<Table variant="card">
-					<TableBody>
-						<TableRow>
-							<TableCell className="h-24 text-center text-muted-foreground">
-								No results.
-							</TableCell>
-						</TableRow>
-					</TableBody>
-				</Table>
-			</Frame>
-		);
-	}
-
-	return <DataTable data={rows} {...props} />;
+	return (
+		<Loadable
+			name="data"
+			isLoading={isLoading}
+			isError={isError}
+			isEmpty={!isLoading && !isError && rows.length === 0}
+			errorMessage={errorMessage ?? "Failed to load data."}
+			empty={<EmptyTable />}
+		>
+			<DataTable data={rows} {...props} />
+		</Loadable>
+	);
 }
 
 export const DataTable = <TData extends object>({

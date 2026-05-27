@@ -1,5 +1,10 @@
+import { electricCollectionOptions } from "@tanstack/electric-db-collection";
+import {
+	createCollection,
+	localStorageCollectionOptions,
+} from "@tanstack/react-db";
 import { z } from "zod";
-import { createDualModeCollection } from "#/lib/dual-mode-collection";
+import { shapeUrl } from "#/lib/electric-shape";
 
 export const AssistantSessionPersona = z.object({
 	session_id: z.uuid(),
@@ -14,16 +19,22 @@ export type AssistantSessionPersonaRow = z.infer<
 const compositeKey = (item: AssistantSessionPersonaRow): string =>
 	`${item.session_id}:${item.persona_id}`;
 
-export const getSessionPersonasCollection = createDualModeCollection({
-	cacheKey: "assistant_session_personas",
-	schema: AssistantSessionPersona,
-	getKey: compositeKey,
-	cloud: {
+export const assistantSessionPersonasCollection = createCollection(
+	electricCollectionOptions({
 		id: "assistant_session_personas",
-		shapePath: "assistant-session-personas",
-	},
-	local: {
+		schema: AssistantSessionPersona,
+		getKey: compositeKey,
+		shapeOptions: {
+			url: shapeUrl("assistant-session-personas"),
+		},
+	}),
+);
+
+export const assistantSessionPersonasLocalCollection = createCollection(
+	localStorageCollectionOptions({
 		id: "assistant_session_personas_local",
 		storageKey: "caramba:assistant:session_personas",
-	},
-});
+		schema: AssistantSessionPersona,
+		getKey: compositeKey,
+	}),
+);

@@ -1,7 +1,7 @@
 import { auth } from "@clerk/tanstack-react-start/server";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { MAX_PROJECT_PAPERS_AT_PROVISION } from "#/components/research/new-project-model";
+import { MAX_PROJECT_PAPERS_AT_PROVISION } from "#/components/research/new-project/model";
 import { backendBaseURL } from "#/lib/backend-http";
 
 const provisionPaperSchema = z.object({

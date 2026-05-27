@@ -1,0 +1,190 @@
+/*
+Claymorphism — soft inflated surfaces, inner highlights, playful pastels.
+*/
+
+html.theme-claymorphism {
+	--clay-radius: calc(var(--radius) * 1.35);
+	--clay-shadow:
+		0 14px 28px color-mix(in srgb, var(--foreground) 12%, transparent),
+		inset 0 2px 0 color-mix(in srgb, var(--color-white) 55%, transparent),
+		inset 0 -3px 8px color-mix(in srgb, var(--foreground) 8%, transparent);
+	--clay-shadow-sm:
+		0 8px 18px color-mix(in srgb, var(--foreground) 10%, transparent),
+		inset 0 1px 0 color-mix(in srgb, var(--color-white) 50%, transparent);
+}
+
+html.theme-claymorphism.light {
+	--background: #f3e8ff;
+	--card: #fbcfe8;
+	--popover: #fde68a;
+	--muted: #a7f3d0;
+	--secondary: #bfdbfe;
+	--accent: #fed7aa;
+	--input: #fff1f2;
+	--foreground: #4c1d95;
+	--card-foreground: #831843;
+	--popover-foreground: #78350f;
+	--muted-foreground: #065f46;
+	--primary: #7c3aed;
+	--primary-foreground: #ffffff;
+	--border: color-mix(in srgb, #7c3aed 18%, transparent);
+	--ring: #7c3aed;
+}
+
+html.theme-claymorphism.dim {
+	--background: #312e81;
+	--card: #6d28d9;
+	--popover: #7c3aed;
+	--muted: #4f46e5;
+	--secondary: #4338ca;
+	--accent: #db2777;
+	--input: #4c1d95;
+	--foreground: #ede9fe;
+	--card-foreground: #faf5ff;
+	--popover-foreground: #faf5ff;
+	--muted-foreground: #e0e7ff;
+	--primary: #f9a8d4;
+	--primary-foreground: #312e81;
+	--border: color-mix(in srgb, #ede9fe 22%, transparent);
+	--ring: #f9a8d4;
+}
+
+html.theme-claymorphism.dark {
+	--background: #1e1b4b;
+	--card: #5b21b6;
+	--popover: #6d28d9;
+	--muted: #3730a3;
+	--secondary: #4338ca;
+	--accent: #be185d;
+	--input: #312e81;
+	--foreground: #ede9fe;
+	--card-foreground: #f5f3ff;
+	--popover-foreground: #f5f3ff;
+	--muted-foreground: #ddd6fe;
+	--primary: #fda4af;
+	--primary-foreground: #1e1b4b;
+	--border: color-mix(in srgb, #ede9fe 20%, transparent);
+	--ring: #fda4af;
+}
+
+html.theme-claymorphism.contrast.light {
+	--background: #ffffff;
+	--card: #ff6b9d;
+	--popover: #ffd166;
+	--muted: #06d6a0;
+	--secondary: #118ab2;
+	--accent: #ef476f;
+	--input: #ffffff;
+	--foreground: #000000;
+	--card-foreground: #000000;
+	--popover-foreground: #000000;
+	--muted-foreground: #000000;
+	--primary: #000000;
+	--primary-foreground: #ffffff;
+	--border: #000000;
+	--ring: #000000;
+	--clay-shadow:
+		0 10px 0 #000000,
+		inset 0 2px 0 color-mix(in srgb, #ffffff 70%, transparent);
+	--clay-shadow-sm: 0 6px 0 #000000;
+}
+
+html.theme-claymorphism.contrast.dim {
+	--background: #000000;
+	--card: #ff006e;
+	--popover: #ffbe0b;
+	--muted: #00f5d4;
+	--secondary: #3a86ff;
+	--accent: #fb5607;
+	--input: #1a1a1a;
+	--foreground: #ffffff;
+	--card-foreground: #000000;
+	--popover-foreground: #000000;
+	--muted-foreground: #000000;
+	--primary: #ffffff;
+	--primary-foreground: #000000;
+	--border: #ffffff;
+	--ring: #ffffff;
+	--clay-shadow:
+		0 10px 0 #ffffff,
+		inset 0 2px 0 color-mix(in srgb, #ffffff 35%, transparent);
+	--clay-shadow-sm: 0 6px 0 #ffffff;
+}
+
+html.theme-claymorphism.contrast.dark {
+	--background: #000000;
+	--card: #ff006e;
+	--popover: #ffbe0b;
+	--muted: #00bbf9;
+	--secondary: #9b5de5;
+	--accent: #f15bb5;
+	--input: #000000;
+	--foreground: #ffffff;
+	--card-foreground: #000000;
+	--popover-foreground: #000000;
+	--muted-foreground: #000000;
+	--primary: #ffff00;
+	--primary-foreground: #000000;
+	--border: #ffffff;
+	--ring: #ffffff;
+	--clay-shadow:
+		0 10px 0 #ffffff,
+		inset 0 2px 0 color-mix(in srgb, #ffffff 35%, transparent);
+	--clay-shadow-sm: 0 6px 0 #ffffff;
+}
+
+html.theme-claymorphism :is(
+	[data-slot="card"],
+	[data-slot="card-frame"],
+	[data-slot="frame"],
+	[data-slot="menu-popup"],
+	.bg-popover
+) {
+	border-radius: var(--clay-radius);
+	border-color: var(--border);
+	box-shadow: var(--clay-shadow);
+}
+
+html.theme-claymorphism
+	:is(
+		[data-slot="card"],
+		[data-slot="card-frame"],
+		[data-slot="frame"],
+		[data-slot="menu-popup"]
+	)::before {
+	box-shadow: none;
+	opacity: 0;
+}
+
+html.theme-claymorphism
+	:where(
+		[data-slot="input"],
+		[data-slot="textarea"],
+		textarea,
+		input:not([type="checkbox"]):not([type="radio"]):not([type="range"])
+	) {
+	border-radius: var(--clay-radius);
+	border-color: var(--border);
+	box-shadow: var(--clay-shadow-sm);
+	background: var(--input);
+}
+
+html.theme-claymorphism button.rounded-lg::before {
+	opacity: 0;
+}
+
+html.theme-claymorphism button.rounded-lg {
+	border-radius: var(--clay-radius);
+	box-shadow: var(--clay-shadow-sm);
+}
+
+html.theme-claymorphism button.rounded-lg.border-input.bg-popover,
+html.theme-claymorphism button.rounded-lg.bg-secondary {
+	background: var(--card);
+	border-color: var(--border);
+}
+
+html.theme-claymorphism .rounded-xl.border.bg-muted {
+	border-radius: var(--clay-radius);
+	box-shadow: var(--clay-shadow-sm);
+}

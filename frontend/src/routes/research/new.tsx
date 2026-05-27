@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { NewProjectWizard } from "#/components/research/new-project-wizard";
+import { NewProjectWizard } from "#/components/research/new-project";
 
 const RouteComponent = () => {
 	return (

@@ -1,3 +1,9 @@
+import {
+	attachChartInteraction,
+	boundedScale,
+	extentNumbers,
+	legendOpacityEncoding,
+} from "#/components/vega/interaction";
 import type { SeriesPoint, Spec } from "./types";
 
 interface AreaSpecOptions {
@@ -31,6 +37,9 @@ export const areaSpec = ({
 		})),
 	);
 
+	const dates = data.map((point) => point.date).filter(Number.isFinite);
+	const xBounds = extentNumbers(dates);
+
 	const xEnc = {
 		axis: {
 			domain: false,
@@ -42,6 +51,7 @@ export const areaSpec = ({
 			title: null,
 		},
 		field: "date",
+		scale: boundedScale(xBounds),
 		type: "temporal" as const,
 	};
 
@@ -63,6 +73,7 @@ export const areaSpec = ({
 		type: "quantitative" as const,
 	};
 
+	const multiSeries = seriesKeys.length > 1;
 	const colorEnc = {
 		field: "series",
 		legend: {
@@ -73,54 +84,64 @@ export const areaSpec = ({
 		},
 		type: "nominal" as const,
 	};
+	const seriesOpacity = multiSeries ? legendOpacityEncoding() : undefined;
+	const areaOpacity = seriesOpacity ?? { value: stacked ? 0.9 : 0.45 };
 
-	return {
-		$schema: "https://vega.github.io/schema/vega-lite/v6.json",
-		autosize: { contains: "padding", resize: true, type: "fit" },
-		background: "transparent",
-		data: { values: vegaData },
-		height: "container",
-		layer: [
-			{
-				encoding: {
-					color: colorEnc,
-					opacity: { value: stacked ? 0.9 : 0.45 },
-					tooltip: [
-						{
-							field: "date",
-							format: "%b %d, %Y",
-							title: "Date",
-							type: "temporal",
-						},
-						{ field: "series", title: "Series", type: "nominal" },
-						{
-							field: "value",
-							format: yFormat ?? ".0f",
-							title: "Value",
-							type: "quantitative",
-						},
-					],
-					x: xEnc,
-					y: yEnc,
+	return attachChartInteraction(
+		{
+			$schema: "https://vega.github.io/schema/vega-lite/v6.json",
+			autosize: { contains: "padding", resize: true, type: "fit" },
+			background: "transparent",
+			data: { values: vegaData },
+			height: "container",
+			layer: [
+				{
+					encoding: {
+						color: colorEnc,
+						opacity: areaOpacity,
+						tooltip: [
+							{
+								field: "date",
+								format: "%b %d, %Y",
+								title: "Date",
+								type: "temporal",
+							},
+							{ field: "series", title: "Series", type: "nominal" },
+							{
+								field: "value",
+								format: yFormat ?? ".0f",
+								title: "Value",
+								type: "quantitative",
+							},
+						],
+						x: xEnc,
+						y: yEnc,
+					},
+					mark: { interpolate: "monotone", line: false, type: "area" },
 				},
-				mark: { interpolate: "monotone", line: false, type: "area" },
-			},
-			{
-				encoding: {
-					color: colorEnc,
-					x: xEnc,
-					y: yEnc,
+				{
+					encoding: {
+						color: colorEnc,
+						opacity: seriesOpacity,
+						x: xEnc,
+						y: yEnc,
+					},
+					mark: {
+						interpolate: "monotone",
+						strokeCap: "round",
+						strokeJoin: "round",
+						strokeWidth: 1.75,
+						type: "line",
+					},
 				},
-				mark: {
-					interpolate: "monotone",
-					strokeCap: "round",
-					strokeJoin: "round",
-					strokeWidth: 1.75,
-					type: "line",
-				},
-			},
-		],
-		padding: { bottom: 4, left: 4, right: 8, top: 4 },
-		width: "container",
-	} as unknown as Spec;
+			],
+			padding: { bottom: 4, left: 4, right: 8, top: 4 },
+			width: "container",
+		} as unknown as Spec,
+		{
+			profile: "x",
+			bounds: { x: xBounds },
+			legendField: multiSeries ? "series" : undefined,
+		},
+	);
 };

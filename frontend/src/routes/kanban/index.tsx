@@ -12,58 +12,41 @@ import { researchProjectCollection } from "#/collections/research_project";
 import { teamCollection } from "#/collections/team";
 import { Badge } from "#/components/ui/badge";
 import { Flex } from "#/components/ui/flex";
+import { Loadable, LoadablePending } from "#/components/ui/loadable";
 import { Typography } from "#/components/ui/typography";
 import { useActiveTeam } from "#/lib/active-team";
 
-/*
-KanbanHubPending shows a shared loading state for the ClientOnly
-fallback and the live-query loading phase, so the swap between them
-does not flash.
-*/
-const KanbanHubPending = () => {
-	const { t } = useTranslation();
-
-	return (
-		<Flex.Center className="min-h-[60vh] p-6">
-			<Typography.Paragraph variant="muted">
-				{t("kanban.loadingHub")}
-			</Typography.Paragraph>
-		</Flex.Center>
-	);
+type ProjectRow = {
+	id: string;
+	name: string;
+	organization_slug: string | null | undefined;
+	team_id: string | null | undefined;
 };
 
-/*
-BoardPreview is a decorative three-column kanban sketch placed inside
-hub cards so each entry reads as an actual board rather than a plain
-link tile.
-*/
-const BoardPreview = () => {
-	return (
-		<Flex.Row className="mt-auto h-14 gap-1.5 rounded-lg border border-border/60 bg-background/40 p-1.5">
-			{[2, 3, 1].map((cardCount, columnIndex) => (
-				<Flex.Column
-					// biome-ignore lint/suspicious/noArrayIndexKey: static decorative columns
-					key={columnIndex}
-					className="h-full flex-1 gap-1 rounded-md bg-muted/40 p-1.5"
-				>
-					{Array.from({ length: cardCount }).map((_, cardIndex) => (
-						<div
-							// biome-ignore lint/suspicious/noArrayIndexKey: static decorative bars
-							key={cardIndex}
-							className="h-1.5 rounded-full bg-muted-foreground/25"
-						/>
-					))}
-				</Flex.Column>
-			))}
-		</Flex.Row>
-	);
-};
+type TeamRow = { id: string; name: string };
 
-/*
-OrganizationHeroCard is the primary entry to the aggregate board.
-It is intentionally larger than project cards so the "view everything"
-path is the most discoverable.
-*/
+const BoardPreview = () => (
+	<Flex.Row gap={2} className="mt-auto h-14 rounded-lg border border-border/60 bg-background/40 p-1.5">
+		{[2, 3, 1].map((cardCount, columnIndex) => (
+			<Flex.Column
+				// biome-ignore lint/suspicious/noArrayIndexKey: static decorative columns
+				key={columnIndex}
+				gap={1}
+				padding={1}
+				className="h-full flex-1 rounded-md bg-muted/40"
+			>
+				{Array.from({ length: cardCount }).map((_, cardIndex) => (
+					<div
+						// biome-ignore lint/suspicious/noArrayIndexKey: static decorative bars
+						key={cardIndex}
+						className="h-1.5 rounded-full bg-muted-foreground/25"
+					/>
+				))}
+			</Flex.Column>
+		))}
+	</Flex.Row>
+);
+
 const OrganizationHeroCard = ({
 	orgSlug,
 	projectCount,
@@ -85,15 +68,15 @@ const OrganizationHeroCard = ({
 			params={{ organizationSlug: resolvedSlug }}
 			to="/kanban/org/$organizationSlug"
 		>
-			<Flex.Row className="items-center justify-between gap-4">
-				<Flex.Row className="items-center gap-3">
-					<div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary">
+			<Flex.Row align="center" justify="between" gap={4}>
+				<Flex.Row align="center" gap={3}>
+					<Flex.Center className="size-10 shrink-0 rounded-xl border border-primary/30 bg-primary/10 text-primary">
 						<ScopeIcon aria-hidden className="size-5" />
-					</div>
+					</Flex.Center>
 					<Flex.Column gap={1}>
 						<Typography.Span
-							className="text-xs font-medium uppercase tracking-wider"
 							variant="muted"
+							className="text-xs font-medium uppercase tracking-wider"
 						>
 							{scopeKind === "team"
 								? t("kanban.team", { defaultValue: "Team" })
@@ -104,7 +87,7 @@ const OrganizationHeroCard = ({
 						</Typography.Subtitle>
 					</Flex.Column>
 				</Flex.Row>
-				<Flex.Row className="shrink-0 items-center gap-3">
+				<Flex.Row align="center" gap={3} className="shrink-0">
 					<Badge variant="outline">
 						{t("kanban.projectCount", { count: projectCount })}
 					</Badge>
@@ -114,7 +97,7 @@ const OrganizationHeroCard = ({
 					/>
 				</Flex.Row>
 			</Flex.Row>
-			<Typography.Paragraph className="max-w-prose text-sm" variant="muted">
+			<Typography.Paragraph variant="muted" className="max-w-prose text-sm">
 				{scopeKind === "team"
 					? t("kanban.teamAggregateDescription", {
 							defaultValue:
@@ -127,11 +110,6 @@ const OrganizationHeroCard = ({
 	);
 };
 
-/*
-ProjectBoardCard renders one project as a clickable board tile in the
-grid. The org slug is rendered as monospace so the auto-generated suffix
-is readable but visually demoted.
-*/
 const ProjectBoardCard = ({
 	id,
 	name,
@@ -152,22 +130,29 @@ const ProjectBoardCard = ({
 			params={{ projectId: id }}
 			to="/kanban/project/$projectId"
 		>
-			<Flex.Row className="items-start justify-between gap-3">
-				<div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors group-hover:border-primary/40 group-hover:text-primary">
+			<Flex.Row align="start" justify="between" gap={3}>
+				<Flex.Center className="size-9 shrink-0 rounded-lg border border-border bg-background text-muted-foreground transition-colors group-hover:border-primary/40 group-hover:text-primary">
 					<KanbanIcon aria-hidden className="size-4" />
-				</div>
+				</Flex.Center>
 				<ArrowRightIcon
 					aria-hidden
 					className="size-4 text-muted-foreground/60 transition-all group-hover:translate-x-0.5 group-hover:text-primary"
 				/>
 			</Flex.Row>
-			<Flex.Column className="min-w-0 gap-1">
-				<span className="truncate font-medium text-foreground text-sm group-hover:text-primary">
+			<Flex.Column gap={1} className="min-w-0">
+				<Typography.Span
+					truncate
+					className="font-medium text-foreground text-sm group-hover:text-primary"
+				>
 					{name}
-				</span>
-				<span className="truncate font-mono text-muted-foreground text-xs">
+				</Typography.Span>
+				<Typography.Span
+					truncate
+					variant="muted"
+					className="font-mono text-xs"
+				>
 					{slugLabel}
-				</span>
+				</Typography.Span>
 			</Flex.Column>
 			<BoardPreview />
 		</Link>
@@ -179,15 +164,15 @@ const KanbanHubHeader = () => {
 
 	return (
 		<Flex.Column gap={3}>
-			<Flex.Row className="items-center gap-3">
-				<div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-primary">
+			<Flex.Row align="center" gap={3}>
+				<Flex.Center className="size-10 shrink-0 rounded-xl border border-border bg-card text-primary">
 					<KanbanIcon aria-hidden className="size-5" />
-				</div>
-				<h1 className="font-semibold text-2xl text-foreground tracking-tight">
+				</Flex.Center>
+				<Typography.PageTitle className="text-2xl tracking-tight">
 					{t("kanban.title")}
-				</h1>
+				</Typography.PageTitle>
 			</Flex.Row>
-			<Typography.Paragraph className="max-w-2xl" variant="muted">
+			<Typography.Paragraph variant="muted" className="max-w-2xl">
 				{t("kanban.subtitle")}
 			</Typography.Paragraph>
 		</Flex.Column>
@@ -197,25 +182,21 @@ const KanbanHubHeader = () => {
 const ProjectBoardsSection = ({
 	projects,
 }: {
-	projects: ReadonlyArray<{
-		id: string;
-		name: string;
-		organization_slug: string | null | undefined;
-	}>;
+	projects: ReadonlyArray<ProjectRow>;
 }) => {
 	const { t } = useTranslation();
 
 	return (
 		<Flex.Column gap={4}>
-			<Flex.Row className="items-center justify-between gap-3">
-				<Flex.Row className="items-center gap-2">
+			<Flex.Row align="center" justify="between" gap={3}>
+				<Flex.Row align="center" gap={2}>
 					<KanbanIcon
 						aria-hidden
 						className="size-4 shrink-0 text-muted-foreground"
 					/>
-					<h2 className="font-medium text-foreground text-sm">
+					<Typography.Subtitle className="text-sm font-medium">
 						{t("kanban.projectBoards")}
-					</h2>
+					</Typography.Subtitle>
 				</Flex.Row>
 				<Badge variant="outline">
 					{t("kanban.projectCount", { count: projects.length })}
@@ -223,7 +204,10 @@ const ProjectBoardsSection = ({
 			</Flex.Row>
 
 			{projects.length === 0 ? (
-				<Flex.Center className="rounded-2xl border border-border border-dashed bg-card/30 p-12">
+				<Flex.Center
+					padding={12}
+					className="rounded-2xl border border-border border-dashed bg-card/30"
+				>
 					<Typography.Paragraph variant="muted">
 						{t("kanban.noProjects")}
 					</Typography.Paragraph>
@@ -249,69 +233,66 @@ const KanbanHubContent = () => {
 	const { t } = useTranslation();
 	const activeTeamId = useActiveTeam(orgId);
 
-	const { data, isLoading, isError } = useLiveQuery((query) =>
-		query
-			.from({ project: researchProjectCollection })
-			.select(({ project }) => ({
-				id: project.id,
-				name: project.name,
-				organization_slug: project.organization_slug,
-				team_id: project.team_id,
-			})),
+	const projectsQuery = useLiveQuery((query) =>
+		query.from({ project: researchProjectCollection }).select(({ project }) => ({
+			id: project.id,
+			name: project.name,
+			organization_slug: project.organization_slug,
+			team_id: project.team_id,
+		})),
 	);
 
-	const { data: teamData } = useLiveQuery((query) =>
+	const teamsQuery = useLiveQuery((query) =>
 		query.from({ team: teamCollection }).select(({ team }) => ({
 			id: team.id,
 			name: team.name,
 		})),
 	);
 
-	if (isLoading) {
-		return <KanbanHubPending />;
-	}
+	const isLoading = projectsQuery.isLoading;
+	const isError = projectsQuery.isError || teamsQuery.isError;
 
-	if (isError) {
-		return (
-			<Flex.Center className="min-h-[60vh] p-6">
-				<Typography.Paragraph variant="muted">
-					{t("kanban.loadError")}
-				</Typography.Paragraph>
-			</Flex.Center>
-		);
-	}
+	const allProjects: ProjectRow[] = projectsQuery.data ?? [];
+	const allTeams: TeamRow[] = teamsQuery.data ?? [];
 
-	const allProjects = data ?? [];
 	const projects = activeTeamId
 		? allProjects.filter((project) => project.team_id === activeTeamId)
 		: allProjects;
 
-	const activeTeam =
-		(teamData ?? []).find((team) => team.id === activeTeamId) ?? null;
+	const activeTeam = allTeams.find((team) => team.id === activeTeamId) ?? null;
 
 	return (
-		<Flex.Column className="mx-auto min-h-0 w-full max-w-6xl flex-1 gap-10 p-8">
-			<KanbanHubHeader />
-			<OrganizationHeroCard
-				orgSlug={orgSlug}
-				projectCount={projects.length}
-				scopeLabel={
-					activeTeam ? activeTeam.name : (orgSlug ?? t("kanban.noOrganization"))
-				}
-				scopeKind={activeTeam ? "team" : "organization"}
-			/>
-			<ProjectBoardsSection projects={projects} />
-		</Flex.Column>
+		<Loadable
+			name="kanban hub"
+			isLoading={isLoading}
+			isError={isError}
+			errorMessage={t("kanban.loadError")}
+		>
+			<Flex.Column
+				gap={10}
+				padding={8}
+				className="mx-auto min-h-0 w-full max-w-6xl flex-1"
+			>
+				<KanbanHubHeader />
+				<OrganizationHeroCard
+					orgSlug={orgSlug}
+					projectCount={projects.length}
+					scopeLabel={
+						activeTeam ? activeTeam.name : (orgSlug ?? t("kanban.noOrganization"))
+					}
+					scopeKind={activeTeam ? "team" : "organization"}
+				/>
+				<ProjectBoardsSection projects={projects} />
+			</Flex.Column>
+		</Loadable>
 	);
 };
 
-const KanbanIndexRoute = () => {
-	return (
-		<ClientOnly fallback={<KanbanHubPending />}>
-			<KanbanHubContent />
-		</ClientOnly>
-	);
-};
+const KanbanIndexRoute = () => (
+	<ClientOnly fallback={<LoadablePending name="kanban hub" />}>
+		<KanbanHubContent />
+	</ClientOnly>
+);
 
 export const Route = createFileRoute("/kanban/")({
 	component: KanbanIndexRoute,

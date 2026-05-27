@@ -1,3 +1,8 @@
+import {
+	attachChartInteraction,
+	boundedScale,
+	extentNumbers,
+} from "#/components/vega/interaction";
 import type { Spec } from "./types";
 
 interface HistogramSpecOptions {
@@ -23,6 +28,8 @@ export const histogramSpec = ({
 	xFormat,
 	highlightQuantiles = true,
 }: HistogramSpecOptions): Spec => {
+	const xBounds = extentNumbers(values);
+
 	const layers: Record<string, unknown>[] = [
 		{
 			encoding: {
@@ -52,6 +59,7 @@ export const histogramSpec = ({
 					},
 					bin: { maxbins: bins },
 					field: "value",
+					scale: boundedScale(xBounds),
 					type: "quantitative",
 				},
 				x2: { bin: { maxbins: bins }, field: "value" },
@@ -135,14 +143,20 @@ export const histogramSpec = ({
 		});
 	}
 
-	return {
-		$schema: "https://vega.github.io/schema/vega-lite/v6.json",
-		autosize: { contains: "padding", resize: true, type: "fit" },
-		background: "transparent",
-		data: { values: values.map((value) => ({ value })) },
-		height: "container",
-		layer: layers,
-		padding: { bottom: 4, left: 4, right: 4, top: 4 },
-		width: "container",
-	} as unknown as Spec;
+	return attachChartInteraction(
+		{
+			$schema: "https://vega.github.io/schema/vega-lite/v6.json",
+			autosize: { contains: "padding", resize: true, type: "fit" },
+			background: "transparent",
+			data: { values: values.map((value) => ({ value })) },
+			height: "container",
+			layer: layers,
+			padding: { bottom: 4, left: 4, right: 4, top: 4 },
+			width: "container",
+		} as unknown as Spec,
+		{
+			profile: "x",
+			bounds: { x: xBounds },
+		},
+	);
 };

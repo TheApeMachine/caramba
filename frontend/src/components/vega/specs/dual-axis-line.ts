@@ -1,3 +1,8 @@
+import {
+	attachChartInteraction,
+	boundedScale,
+	extentNumbers,
+} from "#/components/vega/interaction";
 import type { Spec } from "./types";
 
 interface DualAxisLineOptions {
@@ -54,6 +59,11 @@ export const dualAxisLineSpec = ({
 		type: rightScale,
 		zero: rightScale === "linear" ? false : undefined,
 	};
+	const xValues = data
+		.map((row) => Number(row[xField]))
+		.filter(Number.isFinite);
+	const xBounds = extentNumbers(xValues);
+
 	const xEnc = {
 		axis: {
 			domain: false,
@@ -64,102 +74,108 @@ export const dualAxisLineSpec = ({
 			title: xTitle ?? null,
 		},
 		field: xField,
-		scale: { nice: false },
+		scale: boundedScale(xBounds),
 		type: xType,
 	};
 
-	return {
-		$schema: "https://vega.github.io/schema/vega-lite/v6.json",
-		autosize: { contains: "padding", resize: true, type: "fit" },
-		background: "transparent",
-		data: { values: data },
-		height: "container",
-		layer: [
-			{
-				encoding: {
-					tooltip: [
-						{ field: xField, title: xTitle ?? xField, type: xType },
-						{
+	return attachChartInteraction(
+		{
+			$schema: "https://vega.github.io/schema/vega-lite/v6.json",
+			autosize: { contains: "padding", resize: true, type: "fit" },
+			background: "transparent",
+			data: { values: data },
+			height: "container",
+			layer: [
+				{
+					encoding: {
+						tooltip: [
+							{ field: xField, title: xTitle ?? xField, type: xType },
+							{
+								field: leftField,
+								format: leftFormat ?? ".3f",
+								title: leftLabel ?? leftField,
+								type: "quantitative",
+							},
+						],
+						x: xEnc,
+						y: {
+							axis: {
+								domain: false,
+								format: leftFormat,
+								grid: true,
+								gridDash: [2, 4],
+								gridOpacity: 0.35,
+								labelColor: leftColor,
+								labelPadding: 6,
+								tickCount: 4,
+								ticks: false,
+								title: leftLabel ?? leftField,
+								titleColor: leftColor,
+							},
 							field: leftField,
-							format: leftFormat ?? ".3f",
-							title: leftLabel ?? leftField,
+							scale: leftScaleSpec,
 							type: "quantitative",
 						},
-					],
-					x: xEnc,
-					y: {
-						axis: {
-							domain: false,
-							format: leftFormat,
-							grid: true,
-							gridDash: [2, 4],
-							gridOpacity: 0.35,
-							labelColor: leftColor,
-							labelPadding: 6,
-							tickCount: 4,
-							ticks: false,
-							title: leftLabel ?? leftField,
-							titleColor: leftColor,
-						},
-						field: leftField,
-						scale: leftScaleSpec,
-						type: "quantitative",
+					},
+					mark: {
+						color: leftColor,
+						interpolate: "monotone",
+						point: { fill: leftColor, size: 30 },
+						strokeCap: "round",
+						strokeJoin: "round",
+						strokeWidth: 2,
+						type: "line",
 					},
 				},
-				mark: {
-					color: leftColor,
-					interpolate: "monotone",
-					point: { fill: leftColor, size: 30 },
-					strokeCap: "round",
-					strokeJoin: "round",
-					strokeWidth: 2,
-					type: "line",
-				},
-			},
-			{
-				encoding: {
-					tooltip: [
-						{ field: xField, title: xTitle ?? xField, type: xType },
-						{
+				{
+					encoding: {
+						tooltip: [
+							{ field: xField, title: xTitle ?? xField, type: xType },
+							{
+								field: rightField,
+								format: rightFormat ?? ".3f",
+								title: rightLabel ?? rightField,
+								type: "quantitative",
+							},
+						],
+						x: xEnc,
+						y: {
+							axis: {
+								domain: false,
+								format: rightFormat,
+								grid: false,
+								labelColor: rightColor,
+								labelPadding: 6,
+								orient: "right",
+								tickCount: 4,
+								ticks: false,
+								title: rightLabel ?? rightField,
+								titleColor: rightColor,
+							},
 							field: rightField,
-							format: rightFormat ?? ".3f",
-							title: rightLabel ?? rightField,
+							scale: rightScaleSpec,
 							type: "quantitative",
 						},
-					],
-					x: xEnc,
-					y: {
-						axis: {
-							domain: false,
-							format: rightFormat,
-							grid: false,
-							labelColor: rightColor,
-							labelPadding: 6,
-							orient: "right",
-							tickCount: 4,
-							ticks: false,
-							title: rightLabel ?? rightField,
-							titleColor: rightColor,
-						},
-						field: rightField,
-						scale: rightScaleSpec,
-						type: "quantitative",
+					},
+					mark: {
+						color: rightColor,
+						interpolate: "monotone",
+						point: { fill: rightColor, size: 30 },
+						strokeCap: "round",
+						strokeDash: rightDashed ? [5, 4] : undefined,
+						strokeJoin: "round",
+						strokeWidth: 2,
+						type: "line",
 					},
 				},
-				mark: {
-					color: rightColor,
-					interpolate: "monotone",
-					point: { fill: rightColor, size: 30 },
-					strokeCap: "round",
-					strokeDash: rightDashed ? [5, 4] : undefined,
-					strokeJoin: "round",
-					strokeWidth: 2,
-					type: "line",
-				},
-			},
-		],
-		padding: { bottom: 4, left: 4, right: 8, top: 4 },
-		resolve: { scale: { y: "independent" } },
-		width: "container",
-	} as unknown as Spec;
+			],
+			padding: { bottom: 4, left: 4, right: 8, top: 4 },
+			resolve: { scale: { y: "independent" } },
+			width: "container",
+		} as unknown as Spec,
+		{
+			profile: "x",
+			bounds: { x: xBounds },
+		},
+	);
 };

@@ -1,3 +1,4 @@
+import { attachChartInteraction } from "#/components/vega/interaction";
 import type { Spec } from "./types";
 
 interface HeatmapTrace {
@@ -181,13 +182,22 @@ export const denseHeatmapSpec = ({
 		});
 	});
 
-	return {
-		$schema: "https://vega.github.io/schema/vega-lite/v6.json",
-		autosize: { contains: "padding", resize: true, type: "fit" },
-		background: "transparent",
-		height: "container",
-		layer: layers,
-		padding: { bottom: 4, left: 4, right: 8, top: 4 },
-		width: "container",
-	} as unknown as Spec;
+	const xBounds: [number, number] = [x0, x1];
+	const yBounds: [number, number] = [y0, y1];
+
+	return attachChartInteraction(
+		{
+			$schema: "https://vega.github.io/schema/vega-lite/v6.json",
+			autosize: { contains: "padding", resize: true, type: "fit" },
+			background: "transparent",
+			height: "container",
+			layer: layers,
+			padding: { bottom: 4, left: 4, right: 8, top: 4 },
+			width: "container",
+		} as unknown as Spec,
+		{
+			profile: "xy",
+			bounds: { x: xBounds, y: yBounds },
+		},
+	);
 };

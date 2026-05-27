@@ -5,48 +5,50 @@ import {
 	createPaperDraft,
 	MAX_PROJECT_PAPERS_AT_PROVISION,
 	type NewResearchProjectSpec,
-} from "#/components/research/new-project-model";
+} from "#/components/research/new-project/model";
 import { Button } from "#/components/ui/button";
 import { Field } from "#/components/ui/field";
 import { Flex } from "#/components/ui/flex";
 import { Input } from "#/components/ui/input";
 import { Typography } from "#/components/ui/typography";
 
-export const NewProjectPapersStep = ({
-	spec,
-	onChange,
+/*
+StepPapers manages an inline list of papers that will be provisioned
+together with the project. The list lives entirely in the wizard
+draft; nothing is written until the user submits.
+*/
+export const StepPapers = ({
+	draft,
+	merge,
 }: {
-	spec: NewResearchProjectSpec;
-	onChange: (next: NewResearchProjectSpec) => void;
+	draft: NewResearchProjectSpec;
+	merge: (patch: Partial<NewResearchProjectSpec>) => void;
 }) => {
-	const atPaperLimit = spec.papers.length >= MAX_PROJECT_PAPERS_AT_PROVISION;
+	const atLimit = draft.papers.length >= MAX_PROJECT_PAPERS_AT_PROVISION;
 
 	const updatePaperTitle = (paperId: string, title: string) => {
-		onChange({
-			...spec,
-			papers: spec.papers.map((paper) =>
+		merge({
+			papers: draft.papers.map((paper) =>
 				paper.id === paperId ? { ...paper, title } : paper,
 			),
 		});
 	};
 
 	const removePaper = (paperId: string) => {
-		onChange({
-			...spec,
-			papers: spec.papers.filter((paper) => paper.id !== paperId),
+		merge({
+			papers: draft.papers.filter((paper) => paper.id !== paperId),
 		});
 	};
 
 	const addPaper = () => {
-		if (atPaperLimit) {
+		if (atLimit) {
 			return;
 		}
 
-		const nextIndex = spec.papers.length + 1;
+		const nextIndex = draft.papers.length + 1;
 
-		onChange({
-			...spec,
-			papers: [...spec.papers, createPaperDraft(`Paper ${nextIndex}`)],
+		merge({
+			papers: [...draft.papers, createPaperDraft(`Paper ${nextIndex}`)],
 		});
 	};
 
@@ -58,11 +60,14 @@ export const NewProjectPapersStep = ({
 				the research paper editor.
 			</Typography.Paragraph>
 
-			<ul className="flex flex-col gap-2">
-				{spec.papers.map((paper, index) => (
-					<li
+			<Flex.Column gap={2}>
+				{draft.papers.map((paper, index) => (
+					<Flex.Row
 						key={paper.id}
-						className="flex flex-col gap-2 rounded-xl border bg-background/60 p-3 sm:flex-row sm:items-end"
+						align="end"
+						gap={2}
+						wrap="wrap"
+						className="rounded-xl border bg-background/60 p-3"
 					>
 						<Field className="min-w-0 flex-1">
 							<Field.Label htmlFor={`paper-title-${paper.id}`}>
@@ -86,28 +91,22 @@ export const NewProjectPapersStep = ({
 						>
 							<Trash2Icon className="size-4" />
 						</Button>
-					</li>
+					</Flex.Row>
 				))}
-			</ul>
+			</Flex.Column>
 
-			<Flex.Row className="flex-wrap items-center gap-2">
+			<Flex.Row align="center" wrap="wrap" gap={2}>
 				<Button
 					type="button"
 					variant="outline"
 					size="sm"
-					disabled={atPaperLimit}
+					disabled={atLimit}
 					onClick={addPaper}
 				>
 					<PlusIcon className="size-4" />
 					Add another paper
 				</Button>
-				{spec.papers.length === 0 ? (
-					<Typography.Paragraph variant="muted">
-						Skip papers for now — create them from the editor when you are
-						ready.
-					</Typography.Paragraph>
-				) : null}
-				{atPaperLimit ? (
+				{atLimit ? (
 					<Typography.Paragraph variant="muted">
 						Up to {MAX_PROJECT_PAPERS_AT_PROVISION} papers at launch; add more
 						after the project exists.
@@ -115,7 +114,7 @@ export const NewProjectPapersStep = ({
 				) : null}
 			</Flex.Row>
 
-			{spec.papers.length === 0 ? (
+			{draft.papers.length === 0 ? (
 				<Button type="button" variant="ghost" size="sm" onClick={addPaper}>
 					<FileTextIcon className="size-4" />
 					Start with one paper

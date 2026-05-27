@@ -1,0 +1,231 @@
+/*
+Aurora — vivid mesh gradients behind frosted, color-tinted panels.
+*/
+
+html.theme-aurora {
+	--aurora-blur: 20px;
+	--aurora-saturate: 1.5;
+	--aurora-border: color-mix(in srgb, var(--color-white) 35%, transparent);
+	--aurora-panel: color-mix(in srgb, var(--card) 45%, transparent);
+	--aurora-panel-strong: color-mix(in srgb, var(--card) 62%, transparent);
+	--aurora-glow: 0 12px 48px color-mix(in srgb, var(--color-brand) 28%, transparent);
+}
+
+html.theme-aurora.light {
+	--background: #0f172a;
+	--card: color-mix(in srgb, #f8fafc 40%, transparent);
+	--popover: color-mix(in srgb, #f8fafc 48%, transparent);
+	--muted: color-mix(in srgb, #e2e8f0 32%, transparent);
+	--secondary: color-mix(in srgb, #cbd5e1 36%, transparent);
+	--accent: color-mix(in srgb, #fce7f3 40%, transparent);
+	--input: color-mix(in srgb, #f1f5f9 42%, transparent);
+	--foreground: #f8fafc;
+	--card-foreground: #f1f5f9;
+	--popover-foreground: #f1f5f9;
+	--muted-foreground: #e2e8f0;
+	--primary: #c084fc;
+	--primary-foreground: #1e1b4b;
+	--border: color-mix(in srgb, #f8fafc 28%, transparent);
+	--ring: #e879f9;
+}
+
+html.theme-aurora.dim {
+	--background: #0c1222;
+	--card: color-mix(in srgb, #1e293b 50%, transparent);
+	--popover: color-mix(in srgb, #1e293b 58%, transparent);
+	--muted: color-mix(in srgb, #334155 38%, transparent);
+	--secondary: color-mix(in srgb, #475569 42%, transparent);
+	--accent: color-mix(in srgb, #4c1d95 35%, transparent);
+	--input: color-mix(in srgb, #1e293b 48%, transparent);
+	--foreground: #f1f5f9;
+	--card-foreground: #f8fafc;
+	--popover-foreground: #f8fafc;
+	--muted-foreground: #cbd5e1;
+	--primary: #a78bfa;
+	--primary-foreground: #1e1b4b;
+	--border: color-mix(in srgb, #94a3b8 30%, transparent);
+	--ring: #f472b6;
+}
+
+html.theme-aurora.dark {
+	--background: #030712;
+	--card: color-mix(in srgb, #111827 55%, transparent);
+	--popover: color-mix(in srgb, #111827 62%, transparent);
+	--muted: color-mix(in srgb, #1f2937 42%, transparent);
+	--secondary: color-mix(in srgb, #374151 45%, transparent);
+	--accent: color-mix(in srgb, #581c87 38%, transparent);
+	--input: color-mix(in srgb, #111827 52%, transparent);
+	--foreground: #f9fafb;
+	--card-foreground: #f3f4f6;
+	--popover-foreground: #f3f4f6;
+	--muted-foreground: #d1d5db;
+	--primary: #e879f9;
+	--primary-foreground: #3b0764;
+	--border: color-mix(in srgb, #6b7280 32%, transparent);
+	--ring: #22d3ee;
+}
+
+html.theme-aurora.contrast.light {
+	--background: #000000;
+	--card: color-mix(in srgb, #ffffff 18%, transparent);
+	--popover: color-mix(in srgb, #ffffff 24%, transparent);
+	--muted: color-mix(in srgb, #ffffff 12%, transparent);
+	--secondary: color-mix(in srgb, #ffffff 14%, transparent);
+	--accent: color-mix(in srgb, #ff00ff 20%, transparent);
+	--input: color-mix(in srgb, #ffffff 16%, transparent);
+	--foreground: #ffffff;
+	--card-foreground: #ffffff;
+	--popover-foreground: #ffffff;
+	--muted-foreground: #ffffff;
+	--primary: #ffff00;
+	--primary-foreground: #000000;
+	--border: #ffffff;
+	--ring: #00ffff;
+	--aurora-border: #ffffff;
+	--aurora-glow: 0 0 24px color-mix(in srgb, #00ffff 45%, transparent);
+}
+
+html.theme-aurora.contrast.dim {
+	--background: #000000;
+	--card: color-mix(in srgb, #ffffff 14%, transparent);
+	--popover: color-mix(in srgb, #ffffff 20%, transparent);
+	--muted: color-mix(in srgb, #00ffff 12%, transparent);
+	--secondary: color-mix(in srgb, #ff00ff 14%, transparent);
+	--accent: color-mix(in srgb, #ffff00 16%, transparent);
+	--input: color-mix(in srgb, #000000 80%, transparent);
+	--foreground: #ffffff;
+	--card-foreground: #ffffff;
+	--popover-foreground: #ffffff;
+	--muted-foreground: #ffffff;
+	--primary: #00ffff;
+	--primary-foreground: #000000;
+	--border: #ffffff;
+	--ring: #ffff00;
+	--aurora-border: #ffffff;
+	--aurora-glow: 0 0 28px color-mix(in srgb, #ff00ff 50%, transparent);
+}
+
+html.theme-aurora.contrast.dark {
+	--background: #000000;
+	--card: color-mix(in srgb, #ffffff 12%, transparent);
+	--popover: color-mix(in srgb, #ffffff 18%, transparent);
+	--muted: color-mix(in srgb, #00ffff 10%, transparent);
+	--secondary: color-mix(in srgb, #ff00ff 12%, transparent);
+	--accent: color-mix(in srgb, #ffff00 14%, transparent);
+	--input: color-mix(in srgb, #000000 85%, transparent);
+	--foreground: #ffffff;
+	--card-foreground: #ffffff;
+	--popover-foreground: #ffffff;
+	--muted-foreground: #ffffff;
+	--primary: #ffff00;
+	--primary-foreground: #000000;
+	--border: #ffffff;
+	--ring: #00ffff;
+	--aurora-border: #ffffff;
+	--aurora-glow: 0 0 32px color-mix(in srgb, #00ffff 55%, transparent);
+}
+
+html.theme-aurora body {
+	background-color: var(--background);
+	background-image:
+		radial-gradient(
+			ellipse 90% 60% at 8% 12%,
+			color-mix(in srgb, #a855f7 55%, transparent),
+			transparent 62%
+		),
+		radial-gradient(
+			ellipse 75% 55% at 92% 8%,
+			color-mix(in srgb, #22d3ee 50%, transparent),
+			transparent 65%
+		),
+		radial-gradient(
+			ellipse 80% 50% at 50% 95%,
+			color-mix(in srgb, #ec4899 45%, transparent),
+			transparent 68%
+		),
+		radial-gradient(
+			ellipse 60% 40% at 70% 45%,
+			color-mix(in srgb, #4ade80 35%, transparent),
+			transparent 70%
+		),
+		linear-gradient(180deg, var(--background), var(--background));
+	background-attachment: fixed;
+}
+
+html.theme-aurora.contrast body {
+	background-image:
+		radial-gradient(
+			ellipse 80% 55% at 10% 15%,
+			color-mix(in srgb, #ff00ff 40%, transparent),
+			transparent 65%
+		),
+		radial-gradient(
+			ellipse 70% 50% at 90% 20%,
+			color-mix(in srgb, #00ffff 38%, transparent),
+			transparent 68%
+		),
+		radial-gradient(
+			ellipse 75% 45% at 50% 100%,
+			color-mix(in srgb, #ffff00 32%, transparent),
+			transparent 70%
+		),
+		linear-gradient(180deg, var(--background), var(--background));
+}
+
+html.theme-aurora :is(
+	[data-slot="card"],
+	[data-slot="card-frame"],
+	[data-slot="frame"],
+	[data-slot="menu-popup"],
+	.bg-popover
+) {
+	-webkit-backdrop-filter: blur(var(--aurora-blur)) saturate(var(--aurora-saturate));
+	backdrop-filter: blur(var(--aurora-blur)) saturate(var(--aurora-saturate));
+	background: var(--aurora-panel-strong);
+	border-color: var(--aurora-border);
+	box-shadow: var(--aurora-glow);
+}
+
+html.theme-aurora
+	:is(
+		[data-slot="card"],
+		[data-slot="card-frame"],
+		[data-slot="frame"],
+		[data-slot="menu-popup"]
+	)::before {
+	box-shadow: none;
+	opacity: 0;
+}
+
+html.theme-aurora
+	:where(
+		[data-slot="input"],
+		[data-slot="textarea"],
+		textarea,
+		input:not([type="checkbox"]):not([type="radio"]):not([type="range"])
+	) {
+	-webkit-backdrop-filter: blur(14px) saturate(1.35);
+	backdrop-filter: blur(14px) saturate(1.35);
+	background: var(--aurora-panel);
+	border-color: var(--aurora-border);
+}
+
+html.theme-aurora button.rounded-lg::before {
+	opacity: 0;
+}
+
+html.theme-aurora button.rounded-lg.border-input.bg-popover,
+html.theme-aurora button.rounded-lg.bg-secondary {
+	-webkit-backdrop-filter: blur(16px) saturate(1.4);
+	backdrop-filter: blur(16px) saturate(1.4);
+	background: var(--aurora-panel);
+	border-color: var(--aurora-border);
+	box-shadow: var(--aurora-glow);
+}
+
+html.theme-aurora .rounded-xl.border.bg-muted {
+	-webkit-backdrop-filter: blur(14px) saturate(1.3);
+	backdrop-filter: blur(14px) saturate(1.3);
+	background: var(--aurora-panel);
+	border-color: var(--aurora-border);
+}

@@ -1,8 +1,10 @@
-import { z } from "zod";
+import { electricCollectionOptions } from "@tanstack/electric-db-collection";
 import {
-	createDualModeCollection,
-	electricAwaitOptions,
-} from "#/lib/dual-mode-collection";
+	createCollection,
+	localStorageCollectionOptions,
+} from "@tanstack/react-db";
+import { z } from "zod";
+import { electricAwaitOptions, shapeUrl } from "#/lib/electric-shape";
 import {
 	createSession,
 	deleteSession,
@@ -26,16 +28,17 @@ type SessionMutationContext = {
 	personaIds?: string[];
 };
 
-export const getSessionsCollection = createDualModeCollection({
-	cacheKey: "assistant_sessions",
-	schema: AssistantSession,
-	getKey: (item) => item.id,
-	cloud: {
+export const assistantSessionsCollection = createCollection(
+	electricCollectionOptions({
 		id: "assistant_sessions",
-		shapePath: "assistant-sessions",
-		parser: { timestamptz: (value: string) => new Date(value) },
+		schema: AssistantSession,
+		getKey: (item) => item.id,
+		shapeOptions: {
+			url: shapeUrl("assistant-sessions"),
+			parser: { timestamptz: (value: string) => new Date(value) },
+		},
 		onInsert: async ({ transaction }) => {
-			const row = transaction.mutations[0].modified as AssistantSessionRow;
+			const row = transaction.mutations[0].modified;
 			const meta = (transaction.metadata ?? {}) as SessionMutationContext;
 			const result = await createSession({
 				data: {
@@ -50,7 +53,7 @@ export const getSessionsCollection = createDualModeCollection({
 			return electricAwaitOptions(result?.txid);
 		},
 		onUpdate: async ({ transaction }) => {
-			const row = transaction.mutations[0].modified as AssistantSessionRow;
+			const row = transaction.mutations[0].modified;
 			const meta = (transaction.metadata ?? {}) as SessionMutationContext;
 			const result = await updateSession({
 				data: {
@@ -65,14 +68,19 @@ export const getSessionsCollection = createDualModeCollection({
 			return electricAwaitOptions(result?.txid);
 		},
 		onDelete: async ({ transaction }) => {
-			const row = transaction.mutations[0].original as AssistantSessionRow;
+			const row = transaction.mutations[0].original;
 			const result = await deleteSession({ data: { id: row.id } });
 
 			return electricAwaitOptions(result?.txid);
 		},
-	},
-	local: {
+	}),
+);
+
+export const assistantSessionsLocalCollection = createCollection(
+	localStorageCollectionOptions({
 		id: "assistant_sessions_local",
 		storageKey: "caramba:assistant:sessions",
-	},
-});
+		schema: AssistantSession,
+		getKey: (item) => item.id,
+	}),
+);

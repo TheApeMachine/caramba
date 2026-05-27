@@ -1,0 +1,201 @@
+/*
+Neo-brutalism visual theme — hard offset shadows, heavy borders, flat color blocks.
+Color mode (light / dim / dark) and contrast still come from the base stylesheet.
+*/
+
+html.theme-neo-brutalism {
+	--brutal-border-width: 2px;
+	--brutal-shadow: 4px 4px 0 0 var(--foreground);
+	--brutal-shadow-sm: 2px 2px 0 0 var(--foreground);
+	--brutal-shadow-lg: 6px 6px 0 0 var(--foreground);
+	--brutal-shadow-active: 1px 1px 0 0 var(--foreground);
+}
+
+html.theme-neo-brutalism.light {
+	--background: #fff8e1;
+	--card: #ffffff;
+	--popover: #ffffff;
+	--muted: #ffe566;
+	--secondary: #7dd3fc;
+	--accent: #fda4af;
+	--primary: #111111;
+	--primary-foreground: #ffffff;
+	--border: #111111;
+	--input: #ffffff;
+	--ring: #111111;
+}
+
+html.theme-neo-brutalism.dim {
+	--background: #2d2640;
+	--card: #3d3458;
+	--popover: #3d3458;
+	--muted: #fbbf24;
+	--secondary: #38bdf8;
+	--accent: #fb7185;
+	--primary: #fef08a;
+	--primary-foreground: #111111;
+	--border: #fef08a;
+	--input: #3d3458;
+	--ring: #fef08a;
+}
+
+html.theme-neo-brutalism.dark {
+	--background: #111111;
+	--card: #1a1a1a;
+	--popover: #1a1a1a;
+	--muted: #facc15;
+	--secondary: #22d3ee;
+	--accent: #f472b6;
+	--primary: #fef08a;
+	--primary-foreground: #111111;
+	--border: #fef08a;
+	--input: #1a1a1a;
+	--ring: #fef08a;
+}
+
+html.theme-neo-brutalism.contrast.light {
+	--background: #ffffff;
+	--card: #ffffff;
+	--popover: #ffffff;
+	--muted: #ffff00;
+	--secondary: #00ffff;
+	--accent: #ff00ff;
+	--foreground: #000000;
+	--card-foreground: #000000;
+	--popover-foreground: #000000;
+	--muted-foreground: #000000;
+	--primary: #000000;
+	--primary-foreground: #ffffff;
+	--border: #000000;
+	--input: #ffffff;
+	--ring: #000000;
+	--brutal-border-width: 3px;
+	--brutal-shadow: 6px 6px 0 0 #000000;
+	--brutal-shadow-sm: 3px 3px 0 0 #000000;
+	--brutal-shadow-lg: 8px 8px 0 0 #000000;
+	--brutal-shadow-active: 2px 2px 0 0 #000000;
+}
+
+html.theme-neo-brutalism.contrast.dim {
+	--background: #1a1a2e;
+	--card: #1a1a2e;
+	--popover: #1a1a2e;
+	--muted: #ffff00;
+	--secondary: #00ffff;
+	--accent: #ff6ec7;
+	--foreground: #ffffff;
+	--card-foreground: #ffffff;
+	--popover-foreground: #ffffff;
+	--muted-foreground: #ffffff;
+	--primary: #ffff00;
+	--primary-foreground: #000000;
+	--border: #ffffff;
+	--input: #1a1a2e;
+	--ring: #ffffff;
+	--brutal-border-width: 3px;
+	--brutal-shadow: 6px 6px 0 0 #ffffff;
+	--brutal-shadow-sm: 3px 3px 0 0 #ffffff;
+	--brutal-shadow-lg: 8px 8px 0 0 #ffffff;
+	--brutal-shadow-active: 2px 2px 0 0 #ffffff;
+}
+
+html.theme-neo-brutalism.contrast.dark {
+	--background: #000000;
+	--card: #000000;
+	--popover: #000000;
+	--muted: #ffff00;
+	--secondary: #00ffff;
+	--accent: #ff6ec7;
+	--foreground: #ffffff;
+	--card-foreground: #ffffff;
+	--popover-foreground: #ffffff;
+	--muted-foreground: #ffffff;
+	--primary: #ffff00;
+	--primary-foreground: #000000;
+	--border: #ffffff;
+	--input: #000000;
+	--ring: #ffffff;
+	--brutal-border-width: 3px;
+	--brutal-shadow: 6px 6px 0 0 #ffffff;
+	--brutal-shadow-sm: 3px 3px 0 0 #ffffff;
+	--brutal-shadow-lg: 8px 8px 0 0 #ffffff;
+	--brutal-shadow-active: 2px 2px 0 0 #ffffff;
+}
+
+html.theme-neo-brutalism :is(
+	[data-slot="card"],
+	[data-slot="card-frame"],
+	[data-slot="frame"],
+	[data-slot="menu-popup"],
+	.bg-popover
+) {
+	border-width: var(--brutal-border-width);
+	border-style: solid;
+	border-color: var(--border);
+	box-shadow: var(--brutal-shadow);
+}
+
+html.theme-neo-brutalism
+	:is(
+		[data-slot="card"],
+		[data-slot="card-frame"],
+		[data-slot="frame"],
+		[data-slot="menu-popup"]
+	)::before {
+	box-shadow: none;
+	opacity: 0;
+}
+
+html.theme-neo-brutalism
+	:where(
+		[data-slot="input"],
+		[data-slot="textarea"],
+		textarea,
+		input:not([type="checkbox"]):not([type="radio"]):not([type="range"])
+	) {
+	border-width: var(--brutal-border-width);
+	border-style: solid;
+	border-color: var(--border);
+	box-shadow: var(--brutal-shadow-sm);
+	background: var(--input);
+}
+
+html.theme-neo-brutalism button.rounded-lg::before {
+	opacity: 0;
+}
+
+html.theme-neo-brutalism button.rounded-lg {
+	border-width: var(--brutal-border-width);
+	border-style: solid;
+	box-shadow: var(--brutal-shadow);
+}
+
+html.theme-neo-brutalism button.rounded-lg:active,
+html.theme-neo-brutalism button.rounded-lg[data-pressed] {
+	box-shadow: var(--brutal-shadow-active);
+	transform: translate(2px, 2px);
+}
+
+html.theme-neo-brutalism button.rounded-lg.border-input.bg-popover,
+html.theme-neo-brutalism button.rounded-lg.bg-secondary {
+	background: var(--card);
+	border-color: var(--border);
+}
+
+html.theme-neo-brutalism button.rounded-lg.bg-primary,
+html.theme-neo-brutalism button.rounded-lg.bg-brand {
+	border-color: var(--border);
+}
+
+html.theme-neo-brutalism .rounded-xl.border.bg-muted {
+	border-width: var(--brutal-border-width);
+	border-color: var(--border);
+	box-shadow: var(--brutal-shadow-sm);
+}
+
+html.theme-neo-brutalism .bg-primary.text-primary-foreground.rounded-xl {
+	border-width: var(--brutal-border-width);
+	border-style: solid;
+	border-color: var(--border);
+	box-shadow: var(--brutal-shadow-sm);
+}

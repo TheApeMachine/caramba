@@ -1,8 +1,10 @@
-import { z } from "zod";
+import { electricCollectionOptions } from "@tanstack/electric-db-collection";
 import {
-	createDualModeCollection,
-	electricAwaitOptions,
-} from "#/lib/dual-mode-collection";
+	createCollection,
+	localStorageCollectionOptions,
+} from "@tanstack/react-db";
+import { z } from "zod";
+import { electricAwaitOptions, shapeUrl } from "#/lib/electric-shape";
 import {
 	createPersona,
 	deletePersona,
@@ -27,16 +29,17 @@ export const AssistantPersona = z.object({
 
 export type AssistantPersonaRow = z.infer<typeof AssistantPersona>;
 
-export const getPersonasCollection = createDualModeCollection({
-	cacheKey: "assistant_personas",
-	schema: AssistantPersona,
-	getKey: (item) => item.id,
-	cloud: {
+export const assistantPersonasCollection = createCollection(
+	electricCollectionOptions({
 		id: "assistant_personas",
-		shapePath: "assistant-personas",
-		parser: { timestamptz: (value: string) => new Date(value) },
+		schema: AssistantPersona,
+		getKey: (item) => item.id,
+		shapeOptions: {
+			url: shapeUrl("assistant-personas"),
+			parser: { timestamptz: (value: string) => new Date(value) },
+		},
 		onInsert: async ({ transaction }) => {
-			const row = transaction.mutations[0].modified as AssistantPersonaRow;
+			const row = transaction.mutations[0].modified;
 			const result = await createPersona({
 				data: {
 					id: row.id,
@@ -54,7 +57,7 @@ export const getPersonasCollection = createDualModeCollection({
 			return electricAwaitOptions(result?.txid);
 		},
 		onUpdate: async ({ transaction }) => {
-			const row = transaction.mutations[0].modified as AssistantPersonaRow;
+			const row = transaction.mutations[0].modified;
 			const result = await updatePersona({
 				data: {
 					id: row.id,
@@ -72,16 +75,21 @@ export const getPersonasCollection = createDualModeCollection({
 			return electricAwaitOptions(result?.txid);
 		},
 		onDelete: async ({ transaction }) => {
-			const row = transaction.mutations[0].original as AssistantPersonaRow;
+			const row = transaction.mutations[0].original;
 			const result = await deletePersona({
 				data: { id: row.id, scope: row.scope },
 			});
 
 			return electricAwaitOptions(result?.txid);
 		},
-	},
-	local: {
+	}),
+);
+
+export const assistantPersonasLocalCollection = createCollection(
+	localStorageCollectionOptions({
 		id: "assistant_personas_local",
 		storageKey: "caramba:assistant:personas",
-	},
-});
+		schema: AssistantPersona,
+		getKey: (item) => item.id,
+	}),
+);

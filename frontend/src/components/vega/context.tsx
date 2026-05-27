@@ -69,6 +69,11 @@ export const defaultVegaConfig: Record<string, unknown> = {
 		subtitleColor: "var(--muted-foreground)",
 	},
 	view: { stroke: "transparent" },
+	selection: {
+		interval: {
+			mark: { fill: "transparent", stroke: "transparent" },
+		},
+	},
 };
 
 const VegaContext = createContext<VegaContextValue>({

@@ -1,3 +1,9 @@
+import {
+	attachChartInteraction,
+	boundedScale,
+	extentNumbers,
+	legendOpacityEncoding,
+} from "#/components/vega/interaction";
 import type { Spec } from "./types";
 
 interface LineSpecOptions {
@@ -53,8 +59,16 @@ export const lineSpec = ({
 			}))
 		: [];
 
+	const xValues = data
+		.map((row) => Number(row[xField]))
+		.filter(Number.isFinite);
+
 	const yScale: Record<string, unknown> = { nice: true, zero: zeroY };
 	const interpolate = smooth ? "monotone" : "linear";
+	const multiSeries = seriesKeys.length > 1;
+	const seriesOpacity = multiSeries
+		? legendOpacityOnColorEncoding("series")
+		: undefined;
 
 	const colorEnc = {
 		field: "series",
@@ -80,7 +94,7 @@ export const lineSpec = ({
 			title: xTitle ?? null,
 		},
 		field: "x",
-		scale: { nice: false },
+		scale: boundedScale(extentNumbers(xValues)),
 		type: xType,
 	};
 
@@ -107,7 +121,7 @@ export const lineSpec = ({
 		layers.push({
 			encoding: {
 				color: { field: "series", legend: null, type: "nominal" },
-				opacity: { value: 0.14 },
+				opacity: seriesOpacity ?? { value: 0.14 },
 				x: xEnc,
 				y: yEnc,
 			},
@@ -118,6 +132,7 @@ export const lineSpec = ({
 	layers.push({
 		encoding: {
 			color: colorEnc,
+			opacity: seriesOpacity,
 			x: xEnc,
 			y: yEnc,
 		},
@@ -205,14 +220,21 @@ export const lineSpec = ({
 		});
 	}
 
-	return {
-		$schema: "https://vega.github.io/schema/vega-lite/v6.json",
-		autosize: { contains: "padding", resize: true, type: "fit" },
-		background: "transparent",
-		data: { values: long },
-		height: "container",
-		layer: layers,
-		padding: { bottom: 4, left: 4, right: 36, top: 4 },
-		width: "container",
-	} as unknown as Spec;
+	return attachChartInteraction(
+		{
+			$schema: "https://vega.github.io/schema/vega-lite/v6.json",
+			autosize: { contains: "padding", resize: true, type: "fit" },
+			background: "transparent",
+			data: { values: long },
+			height: "container",
+			layer: layers,
+			padding: { bottom: 4, left: 4, right: 36, top: 4 },
+			width: "container",
+		} as unknown as Spec,
+		{
+			profile: "x",
+			bounds: { x: extentNumbers(xValues) },
+			legendField: multiSeries ? "series" : undefined,
+		},
+	);
 };

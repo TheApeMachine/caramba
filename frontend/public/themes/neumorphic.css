@@ -1,0 +1,188 @@
+/*
+Neumorphic visual theme — loaded when html has .theme-neumorphic.
+Color mode (light / dim / dark) and contrast still come from the base stylesheet.
+*/
+
+html.theme-neumorphic {
+	--neu-highlight: var(--color-white);
+	--neu-shadow: color-mix(in srgb, var(--foreground) 22%, var(--background));
+	--neu-raised:
+		6px 6px 14px var(--neu-shadow), -6px -6px 14px var(--neu-highlight);
+	--neu-raised-sm:
+		4px 4px 10px var(--neu-shadow), -4px -4px 10px var(--neu-highlight);
+	--neu-inset:
+		inset 4px 4px 10px var(--neu-shadow),
+		inset -4px -4px 10px var(--neu-highlight);
+	--neu-flat: 0 0 0 1px color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+html.theme-neumorphic.light {
+	--background: #e4e9f0;
+	--card: #e4e9f0;
+	--popover: #e4e9f0;
+	--muted: #d8dfea;
+	--secondary: #d8dfea;
+	--accent: #d8dfea;
+	--input: #e4e9f0;
+	--border: color-mix(in srgb, var(--foreground) 8%, transparent);
+	--neu-highlight: #ffffff;
+	--neu-shadow: #b8c5d6;
+}
+
+html.theme-neumorphic.dim {
+	--background: #3a3f4b;
+	--card: #3a3f4b;
+	--popover: #3a3f4b;
+	--muted: #454b58;
+	--secondary: #454b58;
+	--accent: #454b58;
+	--input: #3a3f4b;
+	--border: color-mix(in srgb, var(--foreground) 10%, transparent);
+	--neu-highlight: #4a5160;
+	--neu-shadow: #2a2e36;
+}
+
+html.theme-neumorphic.dark {
+	--background: #2b2f36;
+	--card: #2b2f36;
+	--popover: #2b2f36;
+	--muted: #353a44;
+	--secondary: #353a44;
+	--accent: #353a44;
+	--input: #2b2f36;
+	--border: color-mix(in srgb, var(--foreground) 10%, transparent);
+	--neu-highlight: #383e48;
+	--neu-shadow: #1a1d22;
+}
+
+html.theme-neumorphic.contrast.light {
+	--background: #eceff4;
+	--card: #eceff4;
+	--popover: #eceff4;
+	--muted: #d8dee9;
+	--secondary: #d8dee9;
+	--accent: #d8dee9;
+	--input: #eceff4;
+	--foreground: #000000;
+	--card-foreground: #000000;
+	--popover-foreground: #000000;
+	--muted-foreground: #1a1a1a;
+	--primary: #000000;
+	--primary-foreground: #ffffff;
+	--border: #000000;
+	--ring: #000000;
+	--neu-highlight: #ffffff;
+	--neu-shadow: #000000;
+	--neu-raised: 7px 7px 0 var(--neu-shadow), -7px -7px 0 var(--neu-highlight);
+	--neu-raised-sm: 4px 4px 0 var(--neu-shadow), -4px -4px 0 var(--neu-highlight);
+	--neu-inset:
+		inset 4px 4px 0 var(--neu-shadow), inset -4px -4px 0 var(--neu-highlight);
+}
+
+html.theme-neumorphic.contrast.dim {
+	--background: #2e3440;
+	--card: #2e3440;
+	--popover: #2e3440;
+	--muted: #3b4252;
+	--secondary: #3b4252;
+	--accent: #3b4252;
+	--input: #2e3440;
+	--foreground: #ffffff;
+	--card-foreground: #ffffff;
+	--popover-foreground: #ffffff;
+	--muted-foreground: #e5e9f0;
+	--primary: #ffffff;
+	--primary-foreground: #000000;
+	--border: #ffffff;
+	--ring: #ffffff;
+	--neu-highlight: #4c566a;
+	--neu-shadow: #000000;
+	--neu-raised: 7px 7px 0 var(--neu-shadow), -7px -7px 0 var(--neu-highlight);
+	--neu-raised-sm: 4px 4px 0 var(--neu-shadow), -4px -4px 0 var(--neu-highlight);
+	--neu-inset:
+		inset 4px 4px 0 var(--neu-shadow), inset -4px -4px 0 var(--neu-highlight);
+}
+
+html.theme-neumorphic.contrast.dark {
+	--background: #1a1d22;
+	--card: #1a1d22;
+	--popover: #1a1d22;
+	--muted: #252930;
+	--secondary: #252930;
+	--accent: #252930;
+	--input: #1a1d22;
+	--foreground: #ffffff;
+	--card-foreground: #ffffff;
+	--popover-foreground: #ffffff;
+	--muted-foreground: #e5e9f0;
+	--primary: #ffffff;
+	--primary-foreground: #000000;
+	--border: #ffffff;
+	--ring: #ffffff;
+	--neu-highlight: #2d323b;
+	--neu-shadow: #000000;
+	--neu-raised: 7px 7px 0 var(--neu-shadow), -7px -7px 0 var(--neu-highlight);
+	--neu-raised-sm: 4px 4px 0 var(--neu-shadow), -4px -4px 0 var(--neu-highlight);
+	--neu-inset:
+		inset 4px 4px 0 var(--neu-shadow), inset -4px -4px 0 var(--neu-highlight);
+}
+
+html.theme-neumorphic :is(
+	[data-slot="card"],
+	[data-slot="card-frame"],
+	[data-slot="frame"]
+) {
+	border-color: transparent;
+	box-shadow: var(--neu-raised);
+}
+
+html.theme-neumorphic
+	:is([data-slot="card"], [data-slot="card-frame"], [data-slot="frame"])::before {
+	box-shadow: none;
+	opacity: 0;
+}
+
+html.theme-neumorphic :is(.bg-popover, .bg-background) {
+	box-shadow: var(--neu-flat);
+}
+
+html.theme-neumorphic
+	:where(
+		[data-slot="input"],
+		[data-slot="textarea"],
+		textarea,
+		input:not([type="checkbox"]):not([type="radio"]):not([type="range"])
+	) {
+	border-color: transparent;
+	box-shadow: var(--neu-inset);
+}
+
+html.theme-neumorphic button.rounded-lg::before {
+	opacity: 0;
+}
+
+html.theme-neumorphic button.rounded-lg.border-input.bg-popover,
+html.theme-neumorphic button.rounded-lg.bg-secondary {
+	background: var(--background);
+	border-color: transparent;
+	box-shadow: var(--neu-raised-sm);
+}
+
+html.theme-neumorphic button.rounded-lg.border-input.bg-popover:hover,
+html.theme-neumorphic button.rounded-lg.bg-secondary:hover {
+	box-shadow: var(--neu-raised);
+}
+
+html.theme-neumorphic button.rounded-lg.bg-primary,
+html.theme-neumorphic button.rounded-lg.bg-brand {
+	box-shadow: var(--neu-raised-sm), var(--neu-flat);
+}
+
+html.theme-neumorphic .rounded-xl.border.bg-muted {
+	border-color: transparent;
+	box-shadow: var(--neu-inset);
+}
+
+html.theme-neumorphic .bg-primary.text-primary-foreground.rounded-xl {
+	box-shadow: var(--neu-raised-sm);
+}

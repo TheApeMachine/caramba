@@ -1,3 +1,8 @@
+import {
+	attachChartInteraction,
+	boundedScale,
+	extentNumbers,
+} from "#/components/vega/interaction";
 import type { Spec } from "./types";
 
 interface ScatterSpecOptions {
@@ -32,6 +37,15 @@ export const scatterSpec = ({
 	yFormat,
 	sizeRange = [30, 240],
 }: ScatterSpecOptions): Spec => {
+	const xValues = data
+		.map((row) => Number(row[xField]))
+		.filter(Number.isFinite);
+	const yValues = data
+		.map((row) => Number(row[yField]))
+		.filter(Number.isFinite);
+	const xBounds = extentNumbers(xValues);
+	const yBounds = extentNumbers(yValues);
+
 	const xEnc = {
 		axis: {
 			domain: false,
@@ -45,7 +59,7 @@ export const scatterSpec = ({
 			title: xTitle ?? null,
 		},
 		field: xField,
-		scale: { nice: true, zero: false },
+		scale: boundedScale(xBounds, { zero: false }),
 		type: "quantitative" as const,
 	};
 
@@ -62,7 +76,7 @@ export const scatterSpec = ({
 			title: yTitle ?? null,
 		},
 		field: yField,
-		scale: { nice: true, zero: false },
+		scale: boundedScale(yBounds, { zero: false }),
 		type: "quantitative" as const,
 	};
 
@@ -131,32 +145,38 @@ export const scatterSpec = ({
 
 	encoding.tooltip = tooltip;
 
-	return {
-		$schema: "https://vega.github.io/schema/vega-lite/v6.json",
-		autosize: { contains: "padding", resize: true, type: "fit" },
-		background: "transparent",
-		data: { values: data },
-		encoding,
-		height: "container",
-		mark: {
-			filled: true,
-			size: sizeField ? undefined : 60,
-			stroke: "var(--background)",
-			strokeWidth: 1,
-			type: "point",
-		},
-		padding: { bottom: 4, left: 4, right: 8, top: 4 },
-		params: [
-			{
-				name: "pointHover",
-				select: {
-					clear: "pointerout",
-					nearest: true,
-					on: "pointerover",
-					type: "point",
-				},
+	return attachChartInteraction(
+		{
+			$schema: "https://vega.github.io/schema/vega-lite/v6.json",
+			autosize: { contains: "padding", resize: true, type: "fit" },
+			background: "transparent",
+			data: { values: data },
+			encoding,
+			height: "container",
+			mark: {
+				filled: true,
+				size: sizeField ? undefined : 60,
+				stroke: "var(--background)",
+				strokeWidth: 1,
+				type: "point",
 			},
-		],
-		width: "container",
-	} as unknown as Spec;
+			padding: { bottom: 4, left: 4, right: 8, top: 4 },
+			params: [
+				{
+					name: "pointHover",
+					select: {
+						clear: "pointerout",
+						nearest: true,
+						on: "pointerover",
+						type: "point",
+					},
+				},
+			],
+			width: "container",
+		} as unknown as Spec,
+		{
+			profile: "xy",
+			bounds: { x: xBounds, y: yBounds },
+		},
+	);
 };

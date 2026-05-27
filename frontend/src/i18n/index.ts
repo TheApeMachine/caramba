@@ -23,13 +23,15 @@ export function initI18n() {
 		return i18n;
 	}
 
-	void i18n
+	i18n
 		.use(LanguageDetector)
 		.use(initReactI18next)
 		.init({
 			resources,
 			fallbackLng: "en",
+			lng: "en",
 			supportedLngs: [...supportedLanguages],
+			initImmediate: false,
 			interpolation: {
 				escapeValue: false,
 			},

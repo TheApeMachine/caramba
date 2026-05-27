@@ -1,8 +1,20 @@
 import { createContext, type ReactNode, useContext, useMemo } from "react";
-import { getMessagesCollection } from "#/collections/assistant_messages";
-import { getPersonasCollection } from "#/collections/assistant_personas";
-import { getSessionPersonasCollection } from "#/collections/assistant_session_personas";
-import { getSessionsCollection } from "#/collections/assistant_sessions";
+import {
+	assistantMessagesCollection,
+	assistantMessagesLocalCollection,
+} from "#/collections/assistant_messages";
+import {
+	assistantPersonasCollection,
+	assistantPersonasLocalCollection,
+} from "#/collections/assistant_personas";
+import {
+	assistantSessionPersonasCollection,
+	assistantSessionPersonasLocalCollection,
+} from "#/collections/assistant_session_personas";
+import {
+	assistantSessionsCollection,
+	assistantSessionsLocalCollection,
+} from "#/collections/assistant_sessions";
 import type { SyncMode } from "#/lib/electric-shape";
 import { useAssistantMode } from "./use-assistant-mode";
 
@@ -32,16 +44,25 @@ export const AssistantCollectionsProvider = ({
 	children: ReactNode;
 }) => {
 	const { mode } = useAssistantMode();
+	const isLocal = mode === "local";
 
 	const collections = useMemo<AssistantCollections>(
 		() => ({
 			mode,
-			personas: getPersonasCollection(mode),
-			sessions: getSessionsCollection(mode),
-			messages: getMessagesCollection(mode),
-			sessionPersonas: getSessionPersonasCollection(mode),
+			personas: isLocal
+				? assistantPersonasLocalCollection
+				: assistantPersonasCollection,
+			sessions: isLocal
+				? assistantSessionsLocalCollection
+				: assistantSessionsCollection,
+			messages: isLocal
+				? assistantMessagesLocalCollection
+				: assistantMessagesCollection,
+			sessionPersonas: isLocal
+				? assistantSessionPersonasLocalCollection
+				: assistantSessionPersonasCollection,
 		}),
-		[mode],
+		[isLocal, mode],
 	);
 
 	return (

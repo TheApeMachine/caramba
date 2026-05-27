@@ -1,0 +1,216 @@
+/*
+Glassmorphic visual theme — frosted surfaces over a soft gradient canvas.
+Color mode (light / dim / dark) and contrast still come from the base stylesheet.
+*/
+
+html.theme-glassmorphic {
+	--glass-blur: 18px;
+	--glass-saturate: 1.4;
+	--glass-border: color-mix(in srgb, var(--color-white) 42%, transparent);
+	--glass-shadow: 0 10px 40px color-mix(in srgb, var(--foreground) 10%, transparent);
+	--glass-surface: color-mix(in srgb, var(--card) 58%, transparent);
+	--glass-surface-strong: color-mix(in srgb, var(--card) 74%, transparent);
+}
+
+html.theme-glassmorphic.light {
+	--background: #dbe7f5;
+	--card: color-mix(in srgb, var(--color-white) 62%, transparent);
+	--popover: color-mix(in srgb, var(--color-white) 68%, transparent);
+	--muted: color-mix(in srgb, var(--color-white) 38%, transparent);
+	--secondary: color-mix(in srgb, var(--color-white) 44%, transparent);
+	--accent: color-mix(in srgb, var(--color-white) 50%, transparent);
+	--input: color-mix(in srgb, var(--color-white) 52%, transparent);
+	--border: color-mix(in srgb, var(--color-white) 55%, transparent);
+	--glass-border: color-mix(in srgb, var(--color-white) 72%, transparent);
+}
+
+html.theme-glassmorphic.dim {
+	--background: #2a3344;
+	--card: color-mix(in srgb, var(--color-white) 10%, transparent);
+	--popover: color-mix(in srgb, var(--color-white) 12%, transparent);
+	--muted: color-mix(in srgb, var(--color-white) 6%, transparent);
+	--secondary: color-mix(in srgb, var(--color-white) 8%, transparent);
+	--accent: color-mix(in srgb, var(--color-white) 9%, transparent);
+	--input: color-mix(in srgb, var(--color-white) 8%, transparent);
+	--border: color-mix(in srgb, var(--color-white) 16%, transparent);
+	--glass-border: color-mix(in srgb, var(--color-white) 22%, transparent);
+}
+
+html.theme-glassmorphic.dark {
+	--background: #121820;
+	--card: color-mix(in srgb, var(--color-white) 8%, transparent);
+	--popover: color-mix(in srgb, var(--color-white) 10%, transparent);
+	--muted: color-mix(in srgb, var(--color-white) 5%, transparent);
+	--secondary: color-mix(in srgb, var(--color-white) 7%, transparent);
+	--accent: color-mix(in srgb, var(--color-white) 8%, transparent);
+	--input: color-mix(in srgb, var(--color-white) 7%, transparent);
+	--border: color-mix(in srgb, var(--color-white) 14%, transparent);
+	--glass-border: color-mix(in srgb, var(--color-white) 18%, transparent);
+}
+
+html.theme-glassmorphic.contrast.light {
+	--background: #c5d4e8;
+	--card: color-mix(in srgb, var(--color-white) 88%, transparent);
+	--popover: color-mix(in srgb, var(--color-white) 92%, transparent);
+	--muted: color-mix(in srgb, var(--color-white) 72%, transparent);
+	--secondary: color-mix(in srgb, var(--color-white) 78%, transparent);
+	--accent: color-mix(in srgb, var(--color-white) 80%, transparent);
+	--input: color-mix(in srgb, var(--color-white) 85%, transparent);
+	--foreground: #000000;
+	--card-foreground: #000000;
+	--popover-foreground: #000000;
+	--muted-foreground: #111111;
+	--primary: #000000;
+	--primary-foreground: #ffffff;
+	--border: #000000;
+	--ring: #000000;
+	--glass-blur: 14px;
+	--glass-saturate: 1.1;
+	--glass-border: #000000;
+	--glass-shadow: 0 8px 24px color-mix(in srgb, #000000 22%, transparent);
+	--glass-surface: color-mix(in srgb, var(--color-white) 82%, transparent);
+	--glass-surface-strong: color-mix(in srgb, var(--color-white) 92%, transparent);
+}
+
+html.theme-glassmorphic.contrast.dim {
+	--background: #1e2430;
+	--card: color-mix(in srgb, var(--color-white) 22%, transparent);
+	--popover: color-mix(in srgb, var(--color-white) 26%, transparent);
+	--muted: color-mix(in srgb, var(--color-white) 14%, transparent);
+	--secondary: color-mix(in srgb, var(--color-white) 18%, transparent);
+	--accent: color-mix(in srgb, var(--color-white) 20%, transparent);
+	--input: color-mix(in srgb, var(--color-white) 20%, transparent);
+	--foreground: #ffffff;
+	--card-foreground: #ffffff;
+	--popover-foreground: #ffffff;
+	--muted-foreground: #f0f4f8;
+	--primary: #ffffff;
+	--primary-foreground: #000000;
+	--border: #ffffff;
+	--ring: #ffffff;
+	--glass-blur: 14px;
+	--glass-saturate: 1.1;
+	--glass-border: #ffffff;
+	--glass-shadow: 0 8px 24px color-mix(in srgb, #000000 45%, transparent);
+	--glass-surface: color-mix(in srgb, var(--color-white) 18%, transparent);
+	--glass-surface-strong: color-mix(in srgb, var(--color-white) 28%, transparent);
+}
+
+html.theme-glassmorphic.contrast.dark {
+	--background: #000000;
+	--card: color-mix(in srgb, var(--color-white) 14%, transparent);
+	--popover: color-mix(in srgb, var(--color-white) 18%, transparent);
+	--muted: color-mix(in srgb, var(--color-white) 10%, transparent);
+	--secondary: color-mix(in srgb, var(--color-white) 12%, transparent);
+	--accent: color-mix(in srgb, var(--color-white) 14%, transparent);
+	--input: color-mix(in srgb, var(--color-white) 12%, transparent);
+	--foreground: #ffffff;
+	--card-foreground: #ffffff;
+	--popover-foreground: #ffffff;
+	--muted-foreground: #f0f4f8;
+	--primary: #ffffff;
+	--primary-foreground: #000000;
+	--border: #ffffff;
+	--ring: #ffffff;
+	--glass-blur: 14px;
+	--glass-saturate: 1.1;
+	--glass-border: #ffffff;
+	--glass-shadow: 0 8px 24px color-mix(in srgb, #000000 55%, transparent);
+	--glass-surface: color-mix(in srgb, var(--color-white) 12%, transparent);
+	--glass-surface-strong: color-mix(in srgb, var(--color-white) 20%, transparent);
+}
+
+html.theme-glassmorphic body {
+	background-image:
+		radial-gradient(
+			ellipse 80% 55% at 12% 8%,
+			color-mix(in srgb, var(--color-brand) 28%, transparent),
+			transparent 68%
+		),
+		radial-gradient(
+			ellipse 70% 50% at 88% 18%,
+			color-mix(in srgb, var(--color-info) 22%, transparent),
+			transparent 72%
+		),
+		radial-gradient(
+			ellipse 65% 45% at 50% 100%,
+			color-mix(in srgb, var(--color-success) 16%, transparent),
+			transparent 70%
+		),
+		linear-gradient(160deg, var(--background), var(--background));
+	background-attachment: fixed;
+}
+
+html.theme-glassmorphic.contrast body {
+	background-image:
+		radial-gradient(
+			ellipse 70% 50% at 15% 10%,
+			color-mix(in srgb, var(--foreground) 8%, transparent),
+			transparent 70%
+		),
+		linear-gradient(160deg, var(--background), var(--background));
+}
+
+html.theme-glassmorphic :is(
+	[data-slot="card"],
+	[data-slot="card-frame"],
+	[data-slot="frame"],
+	[data-slot="menu-popup"],
+	.bg-popover
+) {
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	background: var(--glass-surface-strong);
+	border-color: var(--glass-border);
+	box-shadow: var(--glass-shadow);
+}
+
+html.theme-glassmorphic
+	:is(
+		[data-slot="card"],
+		[data-slot="card-frame"],
+		[data-slot="frame"],
+		[data-slot="menu-popup"]
+	)::before {
+	box-shadow: none;
+	opacity: 0;
+}
+
+html.theme-glassmorphic
+	:where(
+		[data-slot="input"],
+		[data-slot="textarea"],
+		textarea,
+		input:not([type="checkbox"]):not([type="radio"]):not([type="range"])
+	) {
+	-webkit-backdrop-filter: blur(12px) saturate(1.2);
+	backdrop-filter: blur(12px) saturate(1.2);
+	background: var(--glass-surface);
+	border-color: var(--glass-border);
+}
+
+html.theme-glassmorphic button.rounded-lg::before {
+	opacity: 0;
+}
+
+html.theme-glassmorphic button.rounded-lg.border-input.bg-popover,
+html.theme-glassmorphic button.rounded-lg.bg-secondary {
+	-webkit-backdrop-filter: blur(14px) saturate(1.25);
+	backdrop-filter: blur(14px) saturate(1.25);
+	background: var(--glass-surface);
+	border-color: var(--glass-border);
+	box-shadow: var(--glass-shadow);
+}
+
+html.theme-glassmorphic .rounded-xl.border.bg-muted {
+	-webkit-backdrop-filter: blur(12px) saturate(1.2);
+	backdrop-filter: blur(12px) saturate(1.2);
+	background: var(--glass-surface);
+	border-color: var(--glass-border);
+}
+
+html.theme-glassmorphic .bg-primary.text-primary-foreground.rounded-xl,
+html.theme-glassmorphic button.rounded-lg.bg-primary,
+html.theme-glassmorphic button.rounded-lg.bg-brand {
+	box-shadow: var(--glass-shadow);
+}

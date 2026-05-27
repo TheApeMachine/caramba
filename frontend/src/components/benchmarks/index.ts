@@ -9,5 +9,5 @@ export {
 	MODELS,
 	PRESETS,
 } from "./model";
+export { NewBenchmarkWizard } from "./new-run";
 export { loadRuns, type RunRecord, saveRun } from "./store";
-export { Wizard } from "./wizard";

@@ -388,7 +388,13 @@ body {
 	--code-highlight: --alpha(var(--color-white) / 4%);
 }
 
-.contrast {
+/*
+Default (coss) high-contrast only — visual themes ship their own .contrast.{light,dim,dark}
+tokens in public/themes/*.css so toggling contrast does not reset neumorphic/glass/brutal.
+*/
+html.contrast:not(.theme-neumorphic):not(.theme-glassmorphic):not(
+		.theme-neo-brutalism
+	):not(.theme-claymorphism):not(.theme-blueprint):not(.theme-aurora) {
 	&:not(.dark):not(.dim) {
 		--background: oklch(1 0 0);
 		--foreground: oklch(0 0 0);

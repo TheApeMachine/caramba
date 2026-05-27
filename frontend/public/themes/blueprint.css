@@ -1,0 +1,201 @@
+/*
+Blueprint — technical drawing aesthetic: grid canvas, cyan lines, monospace accents.
+*/
+
+html.theme-blueprint {
+	--blueprint-grid: color-mix(in srgb, var(--foreground) 14%, transparent);
+	--blueprint-line: color-mix(in srgb, var(--color-info) 85%, var(--foreground));
+	--blueprint-shadow: 0 0 0 1px var(--blueprint-line);
+}
+
+html.theme-blueprint.light {
+	--background: #e8f4fc;
+	--card: #f0f9ff;
+	--popover: #f0f9ff;
+	--muted: #dbeafe;
+	--secondary: #bae6fd;
+	--accent: #7dd3fc;
+	--input: #f8fafc;
+	--foreground: #0c4a6e;
+	--card-foreground: #0c4a6e;
+	--popover-foreground: #0c4a6e;
+	--muted-foreground: #075985;
+	--primary: #0369a1;
+	--primary-foreground: #f0f9ff;
+	--border: #0284c7;
+	--ring: #0ea5e9;
+	--blueprint-grid: color-mix(in srgb, #0369a1 16%, transparent);
+	--blueprint-line: #0284c7;
+}
+
+html.theme-blueprint.dim {
+	--background: #0f2744;
+	--card: #132f4c;
+	--popover: #132f4c;
+	--muted: #1e3a5f;
+	--secondary: #1d4ed8;
+	--accent: #38bdf8;
+	--input: #0f2744;
+	--foreground: #bae6fd;
+	--card-foreground: #e0f2fe;
+	--popover-foreground: #e0f2fe;
+	--muted-foreground: #7dd3fc;
+	--primary: #38bdf8;
+	--primary-foreground: #082f49;
+	--border: #38bdf8;
+	--ring: #7dd3fc;
+	--blueprint-grid: color-mix(in srgb, #38bdf8 22%, transparent);
+	--blueprint-line: #7dd3fc;
+}
+
+html.theme-blueprint.dark {
+	--background: #051525;
+	--card: #0a2137;
+	--popover: #0a2137;
+	--muted: #0f2d4a;
+	--secondary: #1e40af;
+	--accent: #22d3ee;
+	--input: #051525;
+	--foreground: #e0f2fe;
+	--card-foreground: #f0f9ff;
+	--popover-foreground: #f0f9ff;
+	--muted-foreground: #7dd3fc;
+	--primary: #22d3ee;
+	--primary-foreground: #082f49;
+	--border: #22d3ee;
+	--ring: #67e8f9;
+	--blueprint-grid: color-mix(in srgb, #22d3ee 18%, transparent);
+	--blueprint-line: #67e8f9;
+}
+
+html.theme-blueprint.contrast.light {
+	--background: #ffffff;
+	--card: #ffffff;
+	--popover: #ffffff;
+	--muted: #e0f2fe;
+	--secondary: #bae6fd;
+	--accent: #0ea5e9;
+	--input: #ffffff;
+	--foreground: #000000;
+	--card-foreground: #000000;
+	--popover-foreground: #000000;
+	--muted-foreground: #000000;
+	--primary: #000000;
+	--primary-foreground: #ffffff;
+	--border: #000000;
+	--ring: #000000;
+	--blueprint-grid: color-mix(in srgb, #000000 12%, transparent);
+	--blueprint-line: #000000;
+}
+
+html.theme-blueprint.contrast.dim {
+	--background: #000000;
+	--card: #000000;
+	--popover: #000000;
+	--muted: #0a1628;
+	--secondary: #1e3a8a;
+	--accent: #00ffff;
+	--input: #000000;
+	--foreground: #00ffff;
+	--card-foreground: #00ffff;
+	--popover-foreground: #00ffff;
+	--muted-foreground: #ffffff;
+	--primary: #00ffff;
+	--primary-foreground: #000000;
+	--border: #00ffff;
+	--ring: #ffffff;
+	--blueprint-grid: color-mix(in srgb, #00ffff 20%, transparent);
+	--blueprint-line: #00ffff;
+}
+
+html.theme-blueprint.contrast.dark {
+	--background: #000000;
+	--card: #000000;
+	--popover: #000000;
+	--muted: #001018;
+	--secondary: #004e7a;
+	--accent: #00ffff;
+	--input: #000000;
+	--foreground: #00ffff;
+	--card-foreground: #00ffff;
+	--popover-foreground: #00ffff;
+	--muted-foreground: #ffffff;
+	--primary: #ffff00;
+	--primary-foreground: #000000;
+	--border: #00ffff;
+	--ring: #ffffff;
+	--blueprint-grid: color-mix(in srgb, #00ffff 22%, transparent);
+	--blueprint-line: #00ffff;
+}
+
+html.theme-blueprint body {
+	background-color: var(--background);
+	background-image:
+		linear-gradient(var(--blueprint-grid) 1px, transparent 1px),
+		linear-gradient(90deg, var(--blueprint-grid) 1px, transparent 1px);
+	background-size: 24px 24px;
+	background-attachment: fixed;
+	font-feature-settings: "tnum" 1;
+}
+
+html.theme-blueprint :is(
+	[data-slot="card"],
+	[data-slot="card-frame"],
+	[data-slot="frame"],
+	[data-slot="menu-popup"],
+	.bg-popover
+) {
+	border-width: 1px;
+	border-style: solid;
+	border-color: var(--blueprint-line);
+	border-radius: calc(var(--radius) * 0.75);
+	box-shadow: var(--blueprint-shadow);
+	background: var(--card);
+	font-family: var(--font-mono);
+}
+
+html.theme-blueprint
+	:is(
+		[data-slot="card"],
+		[data-slot="card-frame"],
+		[data-slot="frame"],
+		[data-slot="menu-popup"]
+	)::before {
+	box-shadow: none;
+	opacity: 0;
+}
+
+html.theme-blueprint
+	:where(
+		[data-slot="input"],
+		[data-slot="textarea"],
+		textarea,
+		input:not([type="checkbox"]):not([type="radio"]):not([type="range"])
+	) {
+	border: 1px solid var(--blueprint-line);
+	border-radius: calc(var(--radius) * 0.6);
+	box-shadow: none;
+	background: var(--input);
+	font-family: var(--font-mono);
+}
+
+html.theme-blueprint button.rounded-lg::before {
+	opacity: 0;
+}
+
+html.theme-blueprint button.rounded-lg {
+	border: 1px solid var(--blueprint-line);
+	border-radius: calc(var(--radius) * 0.6);
+	box-shadow: var(--blueprint-shadow);
+	font-family: var(--font-mono);
+}
+
+html.theme-blueprint button.rounded-lg.border-input.bg-popover,
+html.theme-blueprint button.rounded-lg.bg-secondary {
+	background: var(--card);
+}
+
+html.theme-blueprint .rounded-xl.border.bg-muted {
+	border-color: var(--blueprint-line);
+	font-family: var(--font-mono);
+}

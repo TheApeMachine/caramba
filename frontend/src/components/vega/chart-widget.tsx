@@ -6,6 +6,7 @@ import type { View } from "vega";
 import type { EmbedOptions, Result, VisualizationSpec } from "vega-embed";
 import { cn } from "@/lib/utils";
 import { useVegaContext } from "./context";
+import { readChartInteraction } from "./interaction";
 import { resolveSpecColors, useThemeVersion } from "./theme";
 
 export interface ChartWidgetHandle {
@@ -37,6 +38,26 @@ export const ChartWidget = ({ spec, className }: ChartWidgetProps) => {
 	const themeVersion = useThemeVersion();
 	const viewRef = useRef<View | null>(null);
 	const wrapperRef = useRef<HTMLDivElement | null>(null);
+	const chartInteraction = useMemo(() => readChartInteraction(spec), [spec]);
+	const chartInteractionHint = useMemo(() => {
+		if (!chartInteraction) {
+			return undefined;
+		}
+
+		const hints: string[] = [];
+
+		if (chartInteraction.profile !== "none") {
+			hints.push(
+				"Scroll to zoom. Shift+scroll to pan. Double-click or Escape to reset.",
+			);
+		}
+
+		if (chartInteraction.legendField) {
+			hints.push("Click legend entries to highlight series.");
+		}
+
+		return hints.length > 0 ? hints.join(" ") : undefined;
+	}, [chartInteraction]);
 
 	const resolvedSpec = useMemo<VisualizationSpec>(() => {
 		// themeVersion participates so the resolver re-runs on theme switch;
@@ -100,9 +121,11 @@ export const ChartWidget = ({ spec, className }: ChartWidgetProps) => {
 		<div
 			className={cn(
 				"flex h-full w-full items-center justify-center overflow-hidden [&_svg]:block",
+				chartInteraction && chartInteraction.profile !== "none" && "touch-none",
 				className,
 			)}
 			ref={wrapperRef}
+			title={chartInteractionHint}
 		>
 			<VegaEmbed
 				className="flex h-full w-full items-center justify-center"

@@ -1,8 +1,10 @@
-import { z } from "zod";
+import { electricCollectionOptions } from "@tanstack/electric-db-collection";
 import {
-	createDualModeCollection,
-	electricAwaitOptions,
-} from "#/lib/dual-mode-collection";
+	createCollection,
+	localStorageCollectionOptions,
+} from "@tanstack/react-db";
+import { z } from "zod";
+import { electricAwaitOptions, shapeUrl } from "#/lib/electric-shape";
 import { createMessage } from "#/server/assistant-sessions";
 
 export const AssistantMessage = z.object({
@@ -17,16 +19,17 @@ export const AssistantMessage = z.object({
 
 export type AssistantMessageRow = z.infer<typeof AssistantMessage>;
 
-export const getMessagesCollection = createDualModeCollection({
-	cacheKey: "assistant_messages",
-	schema: AssistantMessage,
-	getKey: (item) => item.id,
-	cloud: {
+export const assistantMessagesCollection = createCollection(
+	electricCollectionOptions({
 		id: "assistant_messages",
-		shapePath: "assistant-messages",
-		parser: { timestamptz: (value: string) => new Date(value) },
+		schema: AssistantMessage,
+		getKey: (item) => item.id,
+		shapeOptions: {
+			url: shapeUrl("assistant-messages"),
+			parser: { timestamptz: (value: string) => new Date(value) },
+		},
 		onInsert: async ({ transaction }) => {
-			const row = transaction.mutations[0].modified as AssistantMessageRow;
+			const row = transaction.mutations[0].modified;
 			const result = await createMessage({
 				data: {
 					id: row.id,
@@ -40,9 +43,14 @@ export const getMessagesCollection = createDualModeCollection({
 
 			return electricAwaitOptions(result?.txid);
 		},
-	},
-	local: {
+	}),
+);
+
+export const assistantMessagesLocalCollection = createCollection(
+	localStorageCollectionOptions({
 		id: "assistant_messages_local",
 		storageKey: "caramba:assistant:messages",
-	},
-});
+		schema: AssistantMessage,
+		getKey: (item) => item.id,
+	}),
+);

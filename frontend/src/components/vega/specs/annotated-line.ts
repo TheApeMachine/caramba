@@ -1,3 +1,8 @@
+import {
+	attachChartInteraction,
+	boundedScale,
+	extentNumbers,
+} from "#/components/vega/interaction";
 import type { Spec } from "./types";
 
 interface PhaseMarker {
@@ -66,6 +71,11 @@ export const annotatedLineSpec = ({
 		})),
 	);
 
+	const xValues = data
+		.map((row) => Number(row[xField]))
+		.filter(Number.isFinite);
+	const xBounds = extentNumbers(xValues);
+
 	const xEnc = {
 		axis: {
 			domain: false,
@@ -76,7 +86,7 @@ export const annotatedLineSpec = ({
 			title: xTitle ?? null,
 		},
 		field: "x",
-		scale: { nice: false },
+		scale: boundedScale(xBounds),
 		type: xType,
 	};
 
@@ -221,13 +231,19 @@ export const annotatedLineSpec = ({
 		});
 	}
 
-	return {
-		$schema: "https://vega.github.io/schema/vega-lite/v6.json",
-		autosize: { contains: "padding", resize: true, type: "fit" },
-		background: "transparent",
-		height: "container",
-		layer: layers,
-		padding: { bottom: 4, left: 4, right: 64, top: 16 },
-		width: "container",
-	} as unknown as Spec;
+	return attachChartInteraction(
+		{
+			$schema: "https://vega.github.io/schema/vega-lite/v6.json",
+			autosize: { contains: "padding", resize: true, type: "fit" },
+			background: "transparent",
+			height: "container",
+			layer: layers,
+			padding: { bottom: 4, left: 4, right: 64, top: 16 },
+			width: "container",
+		} as unknown as Spec,
+		{
+			profile: "x",
+			bounds: { x: xBounds },
+		},
+	);
 };

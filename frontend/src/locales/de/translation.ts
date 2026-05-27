@@ -51,13 +51,23 @@ export default {
 		loadMoreOrganizations: "Weitere Organisationen laden",
 		switchWorkspace: "Arbeitsbereich wechseln",
 	},
-	theme: {
-		toggle: "Design umschalten",
+	mode: {
+		toggle: "Farbmodus umschalten",
 		light: "Hell",
 		dim: "Gedämpft",
 		dark: "Dunkel",
 		system: "System",
 		highContrast: "Hoher Kontrast",
+	},
+	visualTheme: {
+		label: "Theme",
+		default: "Standard",
+		neumorphic: "Neumorph",
+		glassmorphic: "Glassmorph",
+		"neo-brutalism": "Neo-Brutalismus",
+		claymorphism: "Claymorph",
+		blueprint: "Blueprint",
+		aurora: "Aurora",
 	},
 	language: {
 		toggle: "Sprache ändern",

@@ -15,8 +15,8 @@ plain JSON; we only allocate new arrays/objects on the path where a
 substitution actually happened, so unchanged subtrees are shared.
 
 useThemeVersion subscribes to mutations of the documentElement's classList
-(that's where theme classes "dark"/"dim" toggle) and bumps a counter, so
-specs can be re-resolved on theme switch via a useMemo dependency.
+(color mode, contrast, visual theme) and bumps a counter, so specs can be
+re-resolved on appearance changes via a useMemo dependency.
 */
 
 const VAR_PATTERN = /var\(\s*(--[\w-]+)\s*(?:,[^)]*)?\)/g;
@@ -99,7 +99,7 @@ const ensureObserver = () => {
 		for (const listener of subscribers) listener();
 	});
 	observer.observe(document.documentElement, {
-		attributeFilter: ["class", "style"],
+		attributeFilter: ["class", "data-visual-theme", "style"],
 		attributes: true,
 	});
 };

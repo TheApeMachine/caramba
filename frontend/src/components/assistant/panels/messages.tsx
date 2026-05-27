@@ -25,12 +25,12 @@ function ThinkingPart({ content }: { content: string }) {
 	return (
 		<Collapsible className="mb-2">
 			<CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer group">
-				<Brain className="size-3 shrink-0 text-violet-400" />
+				<Brain className="size-3 shrink-0 text-brand" />
 				<span className="italic">{t("assistant.reasoning")}</span>
 				<ChevronDown className="size-3 transition-transform group-data-open:rotate-180" />
 			</CollapsibleTrigger>
 			<CollapsiblePanel>
-				<div className="mt-1.5 text-xs text-muted-foreground leading-relaxed border-l-2 border-violet-300/40 pl-2.5 prose prose-xs dark:prose-invert max-w-none prose-p:my-1">
+				<div className="mt-1.5 text-xs text-muted-foreground leading-relaxed border-l-2 border-brand/40 pl-2.5 prose prose-xs dark:prose-invert max-w-none prose-p:my-1">
 					<ReactMarkdown>{content}</ReactMarkdown>
 				</div>
 			</CollapsiblePanel>
@@ -48,15 +48,15 @@ function ToolCallPart({ name, args }: { name: string; args: string }) {
 
 	return (
 		<Collapsible className="mb-1.5">
-			<CollapsibleTrigger className="flex items-center gap-1.5 text-xs hover:text-foreground transition-colors cursor-pointer group w-full">
-				<Wrench className="size-3 shrink-0 text-blue-400" />
-				<span className="font-medium text-blue-600 dark:text-blue-400 truncate">
+			<CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer group w-full">
+				<Wrench className="size-3 shrink-0 text-info" />
+				<span className="font-medium text-info-foreground truncate">
 					{name}
 				</span>
 				<ChevronDown className="size-3 ml-auto shrink-0 transition-transform group-data-open:rotate-180" />
 			</CollapsibleTrigger>
 			<CollapsiblePanel>
-				<pre className="mt-1.5 text-[11px] text-blue-700 dark:text-blue-300 whitespace-pre-wrap break-all border-l-2 border-blue-300/40 pl-2.5 leading-relaxed">
+				<pre className="mt-1.5 text-[11px] text-info-foreground whitespace-pre-wrap break-all border-l-2 border-info/40 pl-2.5 leading-relaxed">
 					{formatted}
 				</pre>
 			</CollapsiblePanel>
@@ -86,19 +86,17 @@ function ToolResultPart({
 
 	return (
 		<Collapsible className="mb-1.5" defaultOpen={isError}>
-			<CollapsibleTrigger className="flex items-center gap-1.5 text-xs hover:text-foreground transition-colors cursor-pointer group w-full">
+			<CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer group w-full">
 				<span
 					className={cn(
 						"size-2 rounded-full shrink-0",
-						isError ? "bg-destructive" : "bg-emerald-400",
+						isError ? "bg-destructive" : "bg-success",
 					)}
 				/>
 				<span
 					className={cn(
 						"font-medium truncate",
-						isError
-							? "text-destructive"
-							: "text-emerald-600 dark:text-emerald-400",
+						isError ? "text-destructive" : "text-success-foreground",
 					)}
 				>
 					{isError ? t("assistant.toolError") : t("assistant.toolResult")}
@@ -111,7 +109,7 @@ function ToolResultPart({
 						"mt-1.5 text-[11px] whitespace-pre-wrap break-all border-l-2 pl-2.5 leading-relaxed",
 						isError
 							? "text-destructive border-destructive/40"
-							: "text-emerald-700 dark:text-emerald-300 border-emerald-300/40",
+							: "text-success-foreground border-success/40",
 					)}
 				>
 					{formatted}
@@ -184,7 +182,7 @@ export function MessageFeed({
 						<div className="bg-muted rounded-xl px-3 py-2 flex items-center gap-2">
 							{reasoningActive ? (
 								<>
-									<Sparkles className="size-3.5 text-violet-400 animate-pulse" />
+									<Sparkles className="size-3.5 text-brand animate-pulse" />
 									<span className="text-xs italic bg-linear-to-r from-muted-foreground/40 via-foreground to-muted-foreground/40 bg-size-[200%_100%] bg-clip-text text-transparent animate-[shimmer_2s_linear_infinite]">
 										{t("assistant.thinking")}
 									</span>
@@ -224,14 +222,14 @@ export function MessageFeed({
 									"size-7 shrink-0 mt-0.5",
 									isUser
 										? "bg-primary text-primary-foreground"
-										: "bg-violet-500/15 text-violet-600 dark:text-violet-300",
+										: "bg-brand/15 text-brand",
 								)}
 							>
 								<AvatarFallback
 									className={cn(
 										isUser
 											? "bg-primary text-primary-foreground"
-											: "bg-violet-500/15 text-violet-600 dark:text-violet-300",
+											: "bg-brand/15 text-brand",
 									)}
 								>
 									{initials}

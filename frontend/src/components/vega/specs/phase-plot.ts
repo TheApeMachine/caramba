@@ -1,3 +1,4 @@
+import { attachChartInteraction } from "#/components/vega/interaction";
 import type { Spec } from "./types";
 
 interface PhasePoint {
@@ -370,14 +371,22 @@ export const phasePlotSpec = ({
 		});
 	}
 
-	return {
-		$schema: "https://vega.github.io/schema/vega-lite/v6.json",
-		autosize: { contains: "padding", resize: true, type: "fit" },
-		background: "transparent",
-		height: "container",
-		layer: layers,
-		padding: { bottom: 4, left: 4, right: 4, top: 4 },
-		view: { stroke: null },
-		width: "container",
-	} as unknown as Spec;
+	const planeBounds: [number, number] = [-lim, lim];
+
+	return attachChartInteraction(
+		{
+			$schema: "https://vega.github.io/schema/vega-lite/v6.json",
+			autosize: { contains: "padding", resize: true, type: "fit" },
+			background: "transparent",
+			height: "container",
+			layer: layers,
+			padding: { bottom: 4, left: 4, right: 4, top: 4 },
+			view: { stroke: null },
+			width: "container",
+		} as unknown as Spec,
+		{
+			profile: "xy",
+			bounds: { x: planeBounds, y: planeBounds },
+		},
+	);
 };

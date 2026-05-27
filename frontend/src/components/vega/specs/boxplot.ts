@@ -1,3 +1,8 @@
+import {
+	attachChartInteraction,
+	boundedScale,
+	extentNumbers,
+} from "#/components/vega/interaction";
 import type { Spec } from "./types";
 
 interface BoxPlotSpecOptions {
@@ -39,6 +44,9 @@ export const boxPlotSpec = ({
 		type: "nominal" as const,
 	};
 
+	const valueSamples = data.map((row) => row.value);
+	const valueBounds = extentNumbers(valueSamples);
+
 	const valueEnc = {
 		axis: {
 			domain: false,
@@ -52,39 +60,47 @@ export const boxPlotSpec = ({
 			title: valueTitle ?? null,
 		},
 		field: "value",
-		scale: { nice: true, zero: false },
+		scale: boundedScale(valueBounds, { zero: false }),
 		type: "quantitative" as const,
 	};
 
 	const horizontal = orientation === "horizontal";
 
-	return {
-		$schema: "https://vega.github.io/schema/vega-lite/v6.json",
-		autosize: { contains: "padding", resize: true, type: "fit" },
-		background: "transparent",
-		data: { values: data },
-		encoding: {
-			color: { field: "category", legend: null, type: "nominal" },
-			x: horizontal ? valueEnc : categoryEnc,
-			y: horizontal ? categoryEnc : valueEnc,
-		},
-		height: "container",
-		mark: {
-			box: { fillOpacity: 0.45, stroke: "var(--foreground)", strokeWidth: 1 },
-			extent,
-			median: { color: "var(--background)", strokeWidth: 1.5 },
-			outliers: {
-				fill: "var(--color-chart-2)",
-				filled: true,
-				size: 24,
-				stroke: "var(--background)",
-				strokeWidth: 0.75,
+	return attachChartInteraction(
+		{
+			$schema: "https://vega.github.io/schema/vega-lite/v6.json",
+			autosize: { contains: "padding", resize: true, type: "fit" },
+			background: "transparent",
+			data: { values: data },
+			encoding: {
+				color: { field: "category", legend: null, type: "nominal" },
+				x: horizontal ? valueEnc : categoryEnc,
+				y: horizontal ? categoryEnc : valueEnc,
 			},
-			rule: { color: "var(--foreground)", strokeWidth: 1 },
-			ticks: { color: "var(--foreground)" },
-			type: "boxplot",
+			height: "container",
+			mark: {
+				box: { fillOpacity: 0.45, stroke: "var(--foreground)", strokeWidth: 1 },
+				extent,
+				median: { color: "var(--background)", strokeWidth: 1.5 },
+				outliers: {
+					fill: "var(--color-chart-2)",
+					filled: true,
+					size: 24,
+					stroke: "var(--background)",
+					strokeWidth: 0.75,
+				},
+				rule: { color: "var(--foreground)", strokeWidth: 1 },
+				ticks: { color: "var(--foreground)" },
+				type: "boxplot",
+			},
+			padding: { bottom: 4, left: 4, right: 8, top: 4 },
+			width: "container",
+		} as unknown as Spec,
+		{
+			profile: horizontal ? "x" : "y",
+			bounds: {
+				[horizontal ? "x" : "y"]: valueBounds,
+			},
 		},
-		padding: { bottom: 4, left: 4, right: 8, top: 4 },
-		width: "container",
-	} as unknown as Spec;
+	);
 };

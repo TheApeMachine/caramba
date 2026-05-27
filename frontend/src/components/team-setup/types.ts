@@ -1,7 +1,5 @@
 import type { TeamRow } from "#/collections/team";
 
-export type WizardStep = "details" | "members" | "privacy";
-
 export type WizardDraft = {
 	description: string;
 	color: string;
@@ -9,28 +7,6 @@ export type WizardDraft = {
 	memberIds: ReadonlyArray<string>;
 	privacyMode: "shared" | "local";
 };
-
-export const WIZARD_STEPS: ReadonlyArray<{
-	id: WizardStep;
-	title: string;
-	subtitle: string;
-}> = [
-	{
-		id: "details",
-		title: "Team details",
-		subtitle: "Give your team an identity beyond a name.",
-	},
-	{
-		id: "members",
-		title: "Invite members",
-		subtitle: "Add teammates from your organization.",
-	},
-	{
-		id: "privacy",
-		title: "Privacy",
-		subtitle: "Where the team's data is stored.",
-	},
-];
 
 export const TEAM_COLOR_PALETTE = [
 	"#3b82f6",

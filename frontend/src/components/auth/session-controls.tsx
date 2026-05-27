@@ -4,7 +4,7 @@ import {
 	SignUpButton,
 	UserButton,
 } from "@clerk/tanstack-react-start";
-import { Link } from "@tanstack/react-router";
+import { ClientOnly, Link } from "@tanstack/react-router";
 import { LightbulbIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { WorkspaceSwitcher } from "#/components/auth/workspace-switcher";
@@ -27,7 +27,9 @@ export function SessionControls() {
 				<Badge variant="warning">{t("common.admin")}</Badge>
 			) : null}
 			<LanguageToggle />
-			<ModeToggle />
+			<ClientOnly fallback={null}>
+				<ModeToggle />
+			</ClientOnly>
 			<Show when="signed-out">
 				<SignInButton mode="modal">
 					<Button size="sm" type="button" variant="outline">
