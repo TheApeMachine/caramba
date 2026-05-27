@@ -1,39 +1,30 @@
 /*
-Jazz 2.0 row-level permissions — replaces the Electric shape proxy's
+Jazz 2.0 row-level permissions — replaces the Electric proxy's
 `where organization_slug = $1` scoping and the *_members RLS checks.
 
-Confirmed DSL (from Jazz 2.0 docs):
-  - permissions function receives (policy, session)
-  - policy.<table>.allowRead | allowInsert | allowUpdate | allowDelete
-  - .where({ column: session.user_id })  .always()  .where({})
-  - anyOf([...]) / allOf([...]) / { not: ... }
-  - session.user_id                         -> authenticated user (JWT sub)
-  - session.where({ "claims.<x>": value })  -> assert a JWT claim value
-  - policy.<table>.exists.where({ ... })     -> membership / "shares" table check
-  - relationship helpers: allowedTo.read("<ref>")
+API verified against jazz-tools@2.0.0-alpha.50 (dist/permissions/index.d.ts):
+  s.definePermissions(app, (ctx) => void)
+  ctx.policy.<table>.allowRead|allowInsert|allowUpdate|allowDelete
+  .where(input | (row) => condition) | .always() | .never()
+  ctx.policy.<table>.exists.where({ ... })        -> membership / "shares" check
+  ctx.session.user_id                              -> authenticated user (JWT sub)
+  ctx.session.where({ "claims.x": v })             -> assert a JWT claim
+  ctx.allowedTo.read("<refColumn>")                -> inherit access via a ref
+  ctx.anyOf([...]) / ctx.allOf([...]) / ctx.isCreator
 
-VERIFY against the installed jazz-tools@alpha (inferred, not yet runtime-checked):
-  1. The exact Clerk JWT claim key for org/role. Clerk's default session token does
-     NOT include org claims unless you add them via a JWT template. Decide the claim
-     names here (e.g. claims.org_slug, claims.org_role) and mirror them in the Clerk
-     JWT template. Until then, membership-table checks below are the safe path.
-  2. Whether `exists.where` compares a ref column by id as written here.
-  3. Whether `allowedTo.read("project")` chains across the kanbanCards->projects ref.
-
-Model: access is membership-driven. You can read/write a project's data iff you
+Model: access is membership-driven. A user can touch a project's data iff they
 are a row in projectMembers for that project; team data iff in teamMemberships.
-This is the documented "shares table" pattern and avoids depending on a custom
-Clerk JWT template on day one.
+This is the documented exists/relation pattern and avoids depending on a custom
+Clerk JWT template on day one. (To scope by org claim instead, add an org claim
+to the Clerk JWT template and use ctx.session.where({ "claims.org_slug": ... }).)
 */
 
-import type { Permissions } from "jazz-tools";
+import { schema as s } from "jazz-tools";
 import { app } from "./schema";
 
-// `allowedTo` is taken as a third parameter here (relationship-inheritance helper
-// seen in the docs as `allowedTo.read("<ref>")`). VERIFY its provenance against the
-// installed jazz-tools@alpha — it may instead be imported or hung off `policy`.
-export default ((policy, session, allowedTo) => {
-	// --- Teams: visible to members; mutations by team owners ---
+export default s.definePermissions(app, ({ policy, session, allowedTo }) => {
+	// --- Teams: members read; owners update; anyone signed-in can create ---
+	policy.teams.allowInsert.always();
 	policy.teams.allowRead.where((team) =>
 		policy.teamMemberships.exists.where({
 			team: team.id,
@@ -48,18 +39,21 @@ export default ((policy, session, allowedTo) => {
 		}),
 	);
 
-	// A user may read their own membership rows; writes are owner-gated.
+	// Membership rows: a user sees/creates their own. Inviting others needs an
+	// owner-gated flow — left as a follow-up.
 	policy.teamMemberships.allowRead.where({ user_id: session.user_id });
+	policy.teamMemberships.allowInsert.where({ user_id: session.user_id });
 	policy.projectMembers.allowRead.where({ user_id: session.user_id });
+	policy.projectMembers.allowInsert.where({ user_id: session.user_id });
 
-	// --- Projects: members read; owners mutate ---
+	// --- Projects: members read; owners update; anyone signed-in can create ---
+	policy.projects.allowInsert.always(); // app adds the creator as an owner member
 	policy.projects.allowRead.where((project) =>
 		policy.projectMembers.exists.where({
 			project: project.id,
 			user_id: session.user_id,
 		}),
 	);
-	policy.projects.allowInsert.where({}); // any authenticated user can create; creator is added as owner member by the app
 	policy.projects.allowUpdate.where((project) =>
 		policy.projectMembers.exists.where({
 			project: project.id,
@@ -68,41 +62,39 @@ export default ((policy, session, allowedTo) => {
 		}),
 	);
 
-	// --- Kanban cards/subtasks: scoped to project membership ---
-	for (const table of [policy.kanbanCards] as const) {
-		table.allowRead.where((card) =>
-			policy.projectMembers.exists.where({
-				project: card.project,
-				user_id: session.user_id,
-			}),
-		);
-		table.allowInsert.where((card) =>
-			policy.projectMembers.exists.where({
-				project: card.project,
-				user_id: session.user_id,
-			}),
-		);
-		table.allowUpdate.where((card) =>
-			policy.projectMembers.exists.where({
-				project: card.project,
-				user_id: session.user_id,
-			}),
-		);
-		table.allowDelete.where((card) =>
-			policy.projectMembers.exists.where({
-				project: card.project,
-				user_id: session.user_id,
-			}),
-		);
-	}
+	// --- Kanban cards: scoped to project membership ---
+	policy.kanbanCards.allowRead.where((card) =>
+		policy.projectMembers.exists.where({
+			project: card.project,
+			user_id: session.user_id,
+		}),
+	);
+	policy.kanbanCards.allowInsert.where((card) =>
+		policy.projectMembers.exists.where({
+			project: card.project,
+			user_id: session.user_id,
+		}),
+	);
+	policy.kanbanCards.allowUpdate.where((card) =>
+		policy.projectMembers.exists.where({
+			project: card.project,
+			user_id: session.user_id,
+		}),
+	);
+	policy.kanbanCards.allowDelete.where((card) =>
+		policy.projectMembers.exists.where({
+			project: card.project,
+			user_id: session.user_id,
+		}),
+	);
 
-	// Subtasks inherit access from their parent card's project.
+	// Subtasks inherit access from their parent card.
 	policy.kanbanSubtasks.allowRead.where(allowedTo.read("card"));
 	policy.kanbanSubtasks.allowInsert.where(allowedTo.read("card"));
 	policy.kanbanSubtasks.allowUpdate.where(allowedTo.read("card"));
 	policy.kanbanSubtasks.allowDelete.where(allowedTo.read("card"));
 
-	// --- Papers + blocks: scoped to project membership ---
+	// --- Papers: scoped to project membership; blocks inherit from paper ---
 	policy.papers.allowRead.where((paper) =>
 		policy.projectMembers.exists.where({
 			project: paper.project,
@@ -126,4 +118,4 @@ export default ((policy, session, allowedTo) => {
 	policy.paperBlocks.allowInsert.where(allowedTo.read("paper"));
 	policy.paperBlocks.allowUpdate.where(allowedTo.read("paper"));
 	policy.paperBlocks.allowDelete.where(allowedTo.read("paper"));
-}) satisfies Permissions<typeof app>;
+});

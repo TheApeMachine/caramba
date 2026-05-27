@@ -1,7 +1,9 @@
 "use client";
 
 import { useLiveQuery } from "@tanstack/react-db";
+import { useAll } from "jazz-tools/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { app } from "../../../schema";
 import { researchProjectCollection } from "#/collections/research_project";
 import { KanbanColumnView } from "#/components/kanban/column";
 import { BoardContext } from "#/components/kanban/context";
@@ -12,45 +14,38 @@ import { Loadable } from "#/components/ui/loadable";
 import { ScrollArea } from "#/components/ui/scroll-area";
 import { Typography } from "#/components/ui/typography";
 import {
-	assigneesJsonFromKanban,
 	collectOrderingUpdates,
 	kanbanBoardFromRows,
-	labelsJsonFromKanban,
 } from "#/lib/kanban-board-from-rows";
 import { kanbanColumnKeySchema } from "#/lib/kanban-card-schema";
-import { kanbanCardsCollection } from "#/lib/kanban-cards-collection";
-import {
-	deleteKanbanCard,
-	patchKanbanCard,
-	syncKanbanOrdering,
-} from "#/server/kanban-cards";
+import { useJazzDb } from "#/lib/jazz-db";
 
 export type KanbanBoardScope =
 	| { kind: "project"; researchProjectId: string }
 	| { kind: "aggregate"; organizationSlug: string };
 
 /*
-KanbanBoard renders columns and cards synced via Electric and persists mutations through Postgres.
+KanbanBoard renders columns and cards synced through Jazz (the CRDT-primary
+store). Reads come from useAll(app.kanbanCards...) and mutations are local-first
+writes via db.insert/update/delete — there is no server round-trip or txid await.
+The optimistic board state + reducer are preserved so the UI updates instantly;
+the pending guard holds the optimistic board until the local durable write lands
+and useAll re-emits, after which the synced board takes over.
 */
 export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
+	const db = useJazzDb();
 	const pendingMutationRef = useRef(0);
-	const cardsQuery = useLiveQuery((query) =>
-		query.from({ card: kanbanCardsCollection }).select(({ card }) => ({
-			id: card.id,
-			research_project_id: card.research_project_id,
-			column_key: card.column_key,
-			sort_order: card.sort_order,
-			title: card.title,
-			description: card.description,
-			priority: card.priority,
-			labels_json: card.labels_json,
-			assignees_json: card.assignees_json,
-			due_date: card.due_date,
-			requested_by: card.requested_by,
-			created_at: card.created_at,
-			updated_at: card.updated_at,
-		})),
+
+	const cardsQuery = useMemo(
+		() =>
+			scope.kind === "project"
+				? app.kanbanCards.where({ project: scope.researchProjectId })
+				: app.kanbanCards.where({ organization_slug: scope.organizationSlug }),
+		[scope],
 	);
+
+	const cardRows = useAll(cardsQuery);
+	const cardsLoading = cardRows === undefined;
 
 	const projectsQuery = useLiveQuery((query) =>
 		query
@@ -63,33 +58,23 @@ export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
 			})),
 	);
 
-	const filteredCardRows = useMemo(() => {
-		const rows = cardsQuery.data ?? [];
-
-		if (scope.kind === "project") {
-			return rows.filter(
-				(row) => row.research_project_id === scope.researchProjectId,
-			);
-		}
-
-		const organizationProjectIdentifiers = new Set(
-			(projectsQuery.data ?? [])
-				.filter(
-					(project) => project.organization_slug === scope.organizationSlug,
-				)
-				.map((project) => project.id),
-		);
-
-		return rows.filter((row) =>
-			organizationProjectIdentifiers.has(row.research_project_id),
-		);
-	}, [cardsQuery.data, projectsQuery.data, scope]);
+	const filteredCardRows = useMemo(() => cardRows ?? [], [cardRows]);
 
 	const projectsById = useMemo(() => {
 		const map = new Map<string, { name: string }>();
 
 		for (const project of projectsQuery.data ?? []) {
 			map.set(project.id, { name: project.name });
+		}
+
+		return map;
+	}, [projectsQuery.data]);
+
+	const projectOrgSlugById = useMemo(() => {
+		const map = new Map<string, string>();
+
+		for (const project of projectsQuery.data ?? []) {
+			map.set(project.id, project.organization_slug ?? "");
 		}
 
 		return map;
@@ -138,38 +123,38 @@ export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
 				pendingMutationRef.current++;
 
 				setBoard((previous) => {
-					const preferredCardId = action.preferredCardId ?? crypto.randomUUID();
 					const column = previous.columns.find(
 						(entry) => entry.id === action.columnId,
 					);
 					const sortOrder = column?.cardIds.length ?? 0;
+					const dueDate =
+						action.card.dueDate !== null && action.card.dueDate !== ""
+							? new Date(`${action.card.dueDate}T12:00:00Z`)
+							: null;
 
-					const transaction = kanbanCardsCollection.insert({
-						id: preferredCardId,
-						research_project_id: scope.researchProjectId,
+					const inserted = db.insert(app.kanbanCards, {
+						project: scope.researchProjectId,
+						organization_slug:
+							projectOrgSlugById.get(scope.researchProjectId) ?? "",
 						column_key: kanbanColumnKeySchema.parse(action.columnId),
 						sort_order: sortOrder,
 						title: action.card.title.trim(),
 						description: action.card.description.trim(),
 						priority: action.card.priority,
-						labels_json: labelsJsonFromKanban(action.card.labels),
-						assignees_json: assigneesJsonFromKanban(action.card.assignees),
-						due_date:
-							action.card.dueDate !== null && action.card.dueDate !== ""
-								? new Date(`${action.card.dueDate}T12:00:00Z`)
-								: null,
-						requested_by: null,
+						labels: action.card.labels,
+						assignees: action.card.assignees,
+						due_date: dueDate,
 						created_at: new Date(),
 						updated_at: new Date(),
 					});
 
-					void transaction.isPersisted.promise.finally(() => {
+					void inserted.wait({ tier: "local" }).finally(() => {
 						pendingMutationRef.current--;
 					});
 
 					return boardReducer(previous, {
 						...action,
-						preferredCardId,
+						preferredCardId: inserted.value.id,
 					});
 				});
 
@@ -184,21 +169,22 @@ export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
 						return previous;
 					}
 
-					void (async () => {
-						pendingMutationRef.current++;
+					pendingMutationRef.current++;
 
-						try {
-							const result = await syncKanbanOrdering({
-								data: {
-									updates: collectOrderingUpdates(nextBoard),
-								},
-							});
+					const now = new Date();
+					const handles = collectOrderingUpdates(nextBoard).map((update) =>
+						db.update(app.kanbanCards, update.id, {
+							column_key: update.column_key,
+							sort_order: update.sort_order,
+							updated_at: now,
+						}),
+					);
 
-							await kanbanCardsCollection.utils.awaitTxId(result.txid, 60_000);
-						} finally {
-							pendingMutationRef.current--;
-						}
-					})();
+					void Promise.allSettled(
+						handles.map((handle) => handle.wait({ tier: "local" })),
+					).finally(() => {
+						pendingMutationRef.current--;
+					});
 
 					return nextBoard;
 				});
@@ -215,32 +201,26 @@ export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
 						return previous;
 					}
 
-					void (async () => {
-						pendingMutationRef.current++;
+					pendingMutationRef.current++;
 
-						try {
-							const result = await patchKanbanCard({
-								data: {
-									id: action.id,
-									title: updatedCard.title,
-									description: updatedCard.description,
-									priority: updatedCard.priority,
-									labels_json: labelsJsonFromKanban(updatedCard.labels),
-									assignees_json: assigneesJsonFromKanban(
-										updatedCard.assignees,
-									),
-									due_date:
-										updatedCard.dueDate !== null && updatedCard.dueDate !== ""
-											? new Date(`${updatedCard.dueDate}T12:00:00Z`)
-											: null,
-								},
-							});
+					const dueDate =
+						updatedCard.dueDate !== null && updatedCard.dueDate !== ""
+							? new Date(`${updatedCard.dueDate}T12:00:00Z`)
+							: null;
 
-							await kanbanCardsCollection.utils.awaitTxId(result.txid, 60_000);
-						} finally {
-							pendingMutationRef.current--;
-						}
-					})();
+					const handle = db.update(app.kanbanCards, action.id, {
+						title: updatedCard.title,
+						description: updatedCard.description,
+						priority: updatedCard.priority,
+						labels: updatedCard.labels,
+						assignees: updatedCard.assignees,
+						due_date: dueDate,
+						updated_at: new Date(),
+					});
+
+					void handle.wait({ tier: "local" }).finally(() => {
+						pendingMutationRef.current--;
+					});
 
 					return nextBoard;
 				});
@@ -256,19 +236,13 @@ export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
 						return previous;
 					}
 
-					void (async () => {
-						pendingMutationRef.current++;
+					pendingMutationRef.current++;
 
-						try {
-							const result = await deleteKanbanCard({
-								data: { id: action.id },
-							});
+					const handle = db.delete(app.kanbanCards, action.id);
 
-							await kanbanCardsCollection.utils.awaitTxId(result.txid, 60_000);
-						} finally {
-							pendingMutationRef.current--;
-						}
-					})();
+					void handle.wait({ tier: "local" }).finally(() => {
+						pendingMutationRef.current--;
+					});
 
 					return nextBoard;
 				});
@@ -278,7 +252,7 @@ export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
 
 			setBoard((previous) => boardReducer(previous, action));
 		},
-		[scope],
+		[scope, db, projectOrgSlugById],
 	);
 
 	const handleDragStart = (e: React.DragEvent) => {
@@ -327,12 +301,8 @@ export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
 	const kanbanError = (
 		<Flex.Center padding={6} className="flex-1 text-center">
 			<Typography.Paragraph variant="muted">
-				Could not sync Kanban data. Confirm{" "}
-				<Typography.Code>VITE_ELECTRIC_SHAPE_URL</Typography.Code> exposes
-				shapes for <Typography.Code>kanban_cards</Typography.Code> and{" "}
-				<Typography.Code>research_projects</Typography.Code>, and{" "}
-				<Typography.Code>DATABASE_URL</Typography.Code> is set for server
-				writes.
+				Could not load Kanban projects. Confirm the research projects shape is
+				reachable.
 			</Typography.Paragraph>
 		</Flex.Center>
 	);
@@ -340,8 +310,8 @@ export function KanbanBoard({ scope }: { scope: KanbanBoardScope }) {
 	return (
 		<Loadable
 			name="board"
-			isLoading={cardsQuery.isLoading || projectsQuery.isLoading}
-			isError={cardsQuery.isError || projectsQuery.isError}
+			isLoading={cardsLoading || projectsQuery.isLoading}
+			isError={projectsQuery.isError}
 			error={kanbanError}
 		>
 			<BoardContext.Provider value={{ board, dispatch: wrappedDispatch }}>

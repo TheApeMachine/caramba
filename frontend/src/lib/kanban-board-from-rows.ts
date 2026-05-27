@@ -1,77 +1,63 @@
+import { app } from "../../schema";
 import type { KanbanBoard, KanbanCard } from "#/components/kanban/model";
 import { DEFAULT_BOARD } from "#/components/kanban/model";
-import type { KanbanCardRow } from "#/lib/kanban-card-schema";
-import {
-	type KanbanColumnKey,
-	kanbanColumnKeySchema,
-} from "#/lib/kanban-card-schema";
+import { type KanbanColumnKey, kanbanColumnKeySchema } from "#/lib/kanban-card-schema";
 
 /*
-labelsJsonFromKanban serializes label chips for Postgres JSON text columns.
+KanbanCardJazzRow is the row shape returned by useAll(app.kanbanCards...),
+derived straight from the schema so it can never drift. labels/assignees are
+native JSON (s.json() -> JsonValue); due_date/team/requested_by are nullable.
 */
-export function labelsJsonFromKanban(labels: KanbanCard["labels"]): string {
-	return JSON.stringify(labels);
-}
+type RowOf<TTable> = TTable extends { readonly _rowType: infer TRow }
+	? TRow
+	: never;
+
+export type KanbanCardJazzRow = RowOf<typeof app.kanbanCards>;
 
 /*
-assigneesJsonFromKanban serializes assignee identifiers for Postgres JSON text columns.
+parseKanbanLabels validates an already-parsed JSON value into label chips. Jazz
+hands back the stored array directly, so there is no JSON.parse here.
 */
-export function assigneesJsonFromKanban(
-	assignees: KanbanCard["assignees"],
-): string {
-	return JSON.stringify(assignees);
-}
-
-function parseKanbanLabels(raw: string): KanbanCard["labels"] {
-	try {
-		const value: unknown = JSON.parse(raw);
-		if (!Array.isArray(value)) {
-			return [];
-		}
-
-		const labels: KanbanCard["labels"] = [];
-
-		for (const item of value) {
-			if (
-				typeof item === "object" &&
-				item !== null &&
-				"id" in item &&
-				"text" in item &&
-				"color" in item &&
-				typeof (item as { id: unknown }).id === "string"
-			) {
-				labels.push({
-					id: (item as { id: string }).id,
-					text: String((item as { text: unknown }).text),
-					color: String((item as { color: unknown }).color),
-				});
-			}
-		}
-
-		return labels;
-	} catch {
+function parseKanbanLabels(value: unknown): KanbanCard["labels"] {
+	if (!Array.isArray(value)) {
 		return [];
 	}
+
+	const labels: KanbanCard["labels"] = [];
+
+	for (const item of value) {
+		if (
+			typeof item === "object" &&
+			item !== null &&
+			"id" in item &&
+			"text" in item &&
+			"color" in item &&
+			typeof (item as { id: unknown }).id === "string"
+		) {
+			labels.push({
+				id: (item as { id: string }).id,
+				text: String((item as { text: unknown }).text),
+				color: String((item as { color: unknown }).color),
+			});
+		}
+	}
+
+	return labels;
 }
 
-function parseKanbanAssignees(raw: string): KanbanCard["assignees"] {
-	try {
-		const value: unknown = JSON.parse(raw);
-		if (!Array.isArray(value)) {
-			return [];
-		}
-
-		return value.filter((entry): entry is string => typeof entry === "string");
-	} catch {
+function parseKanbanAssignees(value: unknown): KanbanCard["assignees"] {
+	if (!Array.isArray(value)) {
 		return [];
 	}
+
+	return value.filter((entry): entry is string => typeof entry === "string");
 }
 
 /*
 kanbanBoardFromRows materializes column/card structures expected by the Kanban UI.
 */
 export function kanbanBoardFromRows(
-	rows: KanbanCardRow[],
+	rows: KanbanCardJazzRow[],
 	projectsById: Map<string, { name: string }>,
 	aggregateMode: boolean,
 ): KanbanBoard {
@@ -94,7 +80,7 @@ export function kanbanBoardFromRows(
 		}
 
 		for (const row of columnRows) {
-			const projectRecord = projectsById.get(row.research_project_id);
+			const projectRecord = projectsById.get(row.project);
 
 			const sourceProjectName =
 				aggregateMode && projectRecord !== undefined
@@ -109,13 +95,13 @@ export function kanbanBoardFromRows(
 				title: row.title,
 				description: row.description,
 				priority: row.priority,
-				labels: parseKanbanLabels(row.labels_json),
-				assignees: parseKanbanAssignees(row.assignees_json),
+				labels: parseKanbanLabels(row.labels),
+				assignees: parseKanbanAssignees(row.assignees),
 				dueDate,
 				columnId: row.column_key,
 				order: row.sort_order,
 				createdAt: row.created_at.toISOString(),
-				researchProjectId: row.research_project_id,
+				researchProjectId: row.project,
 				sourceProjectName,
 			};
 			column.cardIds.push(row.id);

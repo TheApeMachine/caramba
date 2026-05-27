@@ -6,21 +6,24 @@ Flow: Clerk issues a session JWT, Jazz validates it against Clerk's JWKS
 available to permissions.ts. This is the CRDT-primary, single-WebSocket data
 layer that replaces the Electric shape proxies.
 
-NOT wired into __root.tsx yet — wire it in after `pnpm install` + adding
-jazzPlugin() to vite.config.ts, so an uninstalled import can't break dev.
+NOT wired into __root.tsx yet — wire it in once the migration of the data
+collections off Electric is far enough along that gated surfaces have a Jazz
+session to read through.
 
-Confidence:
-  - JazzProvider + config { appId, serverUrl, jwtToken } : from docs (high).
-  - Clerk getToken() for the JWT : standard Clerk (high). If org claims are
-    needed in permissions, mint with a JWT template: getToken({ template: "jazz" }).
-  - Token REFRESH (Clerk tokens are short-lived): docs show
-    `db.updateAuthToken(freshJwt)` for same-principal refresh, but the React hook
-    that hands you `db` is unverified here. Marked TODO below — confirm the hook
-    name against the installed jazz-tools@alpha (likely useDb()/useJazzContext()).
+Verified against jazz-tools@2.0.0-alpha.50 (dist/react/provider.d.ts):
+  - JazzProvider requires { config: DbConfig, createJazzClient, onJWTExpired? }.
+    createJazzClient is exported from jazz-tools/react.
+  - DbConfig: { appId, serverUrl?, jwtToken?, secret? } (jwtToken/secret are
+    mutually exclusive — JWT here, local seed in the /jazz-test demo).
+  - onJWTExpired: () => Promise<string | null | undefined>. Jazz calls it when
+    the bearer token expires and swaps the fresh token in place (no remount,
+    no full re-sync), which replaces the old fixed-interval refresher.
+  - If permissions need org/role claims, mint via a Clerk JWT template:
+    getToken({ template: "jazz" }).
 */
 
 import { useAuth } from "@clerk/tanstack-react-start";
-import { JazzProvider } from "jazz-tools/react";
+import { createJazzClient, JazzProvider } from "jazz-tools/react";
 import { type ReactNode, useEffect, useState } from "react";
 
 const APP_ID = import.meta.env.VITE_JAZZ_APP_ID as string;
@@ -56,14 +59,12 @@ export const JazzClerkProvider = ({ children }: { children: ReactNode }) => {
 	}
 
 	return (
-		<JazzProvider config={{ appId: APP_ID, serverUrl: SERVER_URL, jwtToken: token }}>
+		<JazzProvider
+			config={{ appId: APP_ID, serverUrl: SERVER_URL, jwtToken: token }}
+			createJazzClient={createJazzClient}
+			onJWTExpired={getToken}
+		>
 			{children}
-			{/*
-			TODO(verify alpha): mount a small child here that holds the `db` handle
-			and calls db.updateAuthToken(await getToken()) on a timer / Clerk token
-			change, so the short-lived Clerk JWT is refreshed in place instead of
-			remounting the provider (which would force a full re-sync).
-			*/}
 		</JazzProvider>
 	);
 };

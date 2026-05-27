@@ -3,12 +3,13 @@
 import { useUser } from "@clerk/tanstack-react-start";
 import { useLiveQuery } from "@tanstack/react-db";
 import { ClientOnly } from "@tanstack/react-router";
+import { useAll } from "jazz-tools/react";
 import { useMemo } from "react";
+import { app } from "../../../schema";
 import { researchProjectCollection } from "#/collections/research_project";
 import { Flex } from "#/components/ui/flex";
 import { Loadable, LoadablePending } from "#/components/ui/loadable";
 import { Typography } from "#/components/ui/typography";
-import { kanbanCardsCollection } from "#/lib/kanban-cards-collection";
 import { parseKanbanAssignees } from "#/lib/parse-kanban-assignees";
 
 const StatTile = ({
@@ -43,13 +44,11 @@ const StatsGrid = () => {
 	const projectsQuery = useLiveQuery((query) =>
 		query.from({ project: researchProjectCollection }),
 	);
-	const cardsQuery = useLiveQuery((query) =>
-		query.from({ card: kanbanCardsCollection }),
-	);
+	const cardRows = useAll(app.kanbanCards.where({}));
 
-	const isLoading = projectsQuery.isLoading || cardsQuery.isLoading;
-	const isError = projectsQuery.isError || cardsQuery.isError;
-	const cards = cardsQuery.data ?? [];
+	const isLoading = projectsQuery.isLoading || cardRows === undefined;
+	const isError = projectsQuery.isError;
+	const cards = cardRows ?? [];
 	const projectCount = projectsQuery.data?.length ?? 0;
 	const openCards = cards.filter((card) => card.column_key !== "done").length;
 
@@ -61,7 +60,7 @@ const StatsGrid = () => {
 		return cards.filter(
 			(card) =>
 				card.column_key !== "done" &&
-				parseKanbanAssignees(card.assignees_json).includes(user.id),
+				parseKanbanAssignees(card.assignees).includes(user.id),
 		).length;
 	}, [cards, user]);
 

@@ -2,14 +2,15 @@
 
 import { useLiveQuery } from "@tanstack/react-db";
 import { ClientOnly } from "@tanstack/react-router";
+import { useAll } from "jazz-tools/react";
 import { FolderIcon, ListChecksIcon } from "lucide-react";
 import { useMemo } from "react";
+import { app } from "../../../schema";
 import { researchProjectCollection } from "#/collections/research_project";
 import { Badge } from "#/components/ui/badge";
 import { Flex } from "#/components/ui/flex";
 import { Loadable, LoadablePending } from "#/components/ui/loadable";
 import { Typography } from "#/components/ui/typography";
-import { kanbanCardsCollection } from "#/lib/kanban-cards-collection";
 
 type ActivityEntry = {
 	id: string;
@@ -61,12 +62,10 @@ const ActivityFeed = () => {
 		})),
 	);
 
-	const cardsQuery = useLiveQuery((query) =>
-		query.from({ card: kanbanCardsCollection }),
-	);
+	const cardRows = useAll(app.kanbanCards.where({}));
 
-	const isLoading = projectsQuery.isLoading || cardsQuery.isLoading;
-	const isError = projectsQuery.isError || cardsQuery.isError;
+	const isLoading = projectsQuery.isLoading || cardRows === undefined;
+	const isError = projectsQuery.isError;
 
 	const items = useMemo<ActivityEntry[]>(() => {
 		const entries: ActivityEntry[] = [];
@@ -80,7 +79,7 @@ const ActivityFeed = () => {
 			});
 		}
 
-		for (const card of cardsQuery.data ?? []) {
+		for (const card of cardRows ?? []) {
 			entries.push({
 				id: `c:${card.id}`,
 				title: card.title,
@@ -93,7 +92,7 @@ const ActivityFeed = () => {
 		return entries
 			.sort((left, right) => right.when.getTime() - left.when.getTime())
 			.slice(0, 10);
-	}, [projectsQuery.data, cardsQuery.data]);
+	}, [projectsQuery.data, cardRows]);
 
 	return (
 		<Loadable

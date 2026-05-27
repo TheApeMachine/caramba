@@ -15,6 +15,7 @@ import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as RequestFeatureRouteImport } from './routes/request-feature'
 import { Route as NodegraphDevRouteImport } from './routes/nodegraph-dev'
 import { Route as NodegraphRouteImport } from './routes/nodegraph'
+import { Route as JazzTestRouteImport } from './routes/jazz-test'
 import { Route as FlumeRouteImport } from './routes/flume'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
@@ -77,6 +78,11 @@ const NodegraphDevRoute = NodegraphDevRouteImport.update({
 const NodegraphRoute = NodegraphRouteImport.update({
   id: '/nodegraph',
   path: '/nodegraph',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JazzTestRoute = JazzTestRouteImport.update({
+  id: '/jazz-test',
+  path: '/jazz-test',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FlumeRoute = FlumeRouteImport.update({
@@ -257,6 +263,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/flume': typeof FlumeRoute
+  '/jazz-test': typeof JazzTestRoute
   '/nodegraph': typeof NodegraphRoute
   '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
@@ -298,6 +305,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/flume': typeof FlumeRoute
+  '/jazz-test': typeof JazzTestRoute
   '/nodegraph': typeof NodegraphRoute
   '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
@@ -339,6 +347,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/flume': typeof FlumeRoute
+  '/jazz-test': typeof JazzTestRoute
   '/nodegraph': typeof NodegraphRoute
   '/nodegraph-dev': typeof NodegraphDevRoute
   '/request-feature': typeof RequestFeatureRoute
@@ -382,6 +391,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/flume'
+    | '/jazz-test'
     | '/nodegraph'
     | '/nodegraph-dev'
     | '/request-feature'
@@ -423,6 +433,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/flume'
+    | '/jazz-test'
     | '/nodegraph'
     | '/nodegraph-dev'
     | '/request-feature'
@@ -463,6 +474,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/flume'
+    | '/jazz-test'
     | '/nodegraph'
     | '/nodegraph-dev'
     | '/request-feature'
@@ -505,6 +517,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
   FlumeRoute: typeof FlumeRoute
+  JazzTestRoute: typeof JazzTestRoute
   NodegraphRoute: typeof NodegraphRoute
   NodegraphDevRoute: typeof NodegraphDevRoute
   RequestFeatureRoute: typeof RequestFeatureRoute
@@ -581,6 +594,13 @@ declare module '@tanstack/react-router' {
       path: '/nodegraph'
       fullPath: '/nodegraph'
       preLoaderRoute: typeof NodegraphRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jazz-test': {
+      id: '/jazz-test'
+      path: '/jazz-test'
+      fullPath: '/jazz-test'
+      preLoaderRoute: typeof JazzTestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/flume': {
@@ -848,6 +868,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
   FlumeRoute: FlumeRoute,
+  JazzTestRoute: JazzTestRoute,
   NodegraphRoute: NodegraphRoute,
   NodegraphDevRoute: NodegraphDevRoute,
   RequestFeatureRoute: RequestFeatureRoute,
