@@ -302,8 +302,33 @@ export const routeOrthogonalWithGrid = (
 
 	const routePoints: Coordinate[] = [from, startStub];
 
+	// Bridge from startStub (port y) to first cell center (cell y) with an
+	// axis-aligned elbow so we never emit a diagonal between them.
+	if (cellPath.length > 0) {
+		const firstCell = grid.cellCenterWorld(
+			cellPath[0].cellX,
+			cellPath[0].cellY,
+		);
+
+		if (firstCell.y !== startStub.y) {
+			routePoints.push({ x: startStub.x, y: firstCell.y });
+		}
+	}
+
 	for (const cell of cellPath) {
 		routePoints.push(grid.cellCenterWorld(cell.cellX, cell.cellY));
+	}
+
+	// Same bridge on the way out: last cell center → endStub (port y).
+	if (cellPath.length > 0) {
+		const lastCell = grid.cellCenterWorld(
+			cellPath[cellPath.length - 1].cellX,
+			cellPath[cellPath.length - 1].cellY,
+		);
+
+		if (lastCell.y !== endStub.y) {
+			routePoints.push({ x: endStub.x, y: lastCell.y });
+		}
 	}
 
 	routePoints.push(endStub, to);

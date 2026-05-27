@@ -189,10 +189,12 @@ const ChildrenList = ({
 	graph,
 	parent,
 	onNavigate,
+	onDrillInto,
 }: {
 	graph: Graph;
 	parent: string;
 	onNavigate: (name: string) => void;
+	onDrillInto?: (name: string) => void;
 }) => {
 	const children = useMemo(() => childrenOf(graph, parent), [graph, parent]);
 
@@ -225,13 +227,21 @@ const ChildrenList = ({
 				const subChildren = childrenOf(graph, childName);
 				const tail = childName.slice(parent.length === 0 ? 0 : parent.length + 1);
 
+				const isGroupChild = subChildren.length > 0;
+
 				return (
 					<button
 						className={cn(
 							"flex items-center justify-between gap-2 rounded-lg border border-border bg-card/60 px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-card",
 						)}
 						key={childName}
-						onClick={() => onNavigate(childName)}
+						onClick={() => {
+							if (isGroupChild && onDrillInto) {
+								onDrillInto(childName);
+							} else {
+								onNavigate(childName);
+							}
+						}}
 						type="button"
 					>
 						<Flex.Column className="min-w-0 flex-1 gap-0.5">
@@ -270,10 +280,12 @@ export const NodeInspectorPanel = ({
 	graph,
 	selectedName,
 	onSelect,
+	onDrillInto,
 }: {
 	graph: Graph | undefined;
 	selectedName: string | null;
 	onSelect: (name: string | null) => void;
+	onDrillInto?: (name: string) => void;
 }) => {
 	if (!graph) {
 		return (
@@ -414,6 +426,7 @@ export const NodeInspectorPanel = ({
 					<CardPanel className="p-3">
 						<ChildrenList
 							graph={graph}
+							onDrillInto={onDrillInto}
 							onNavigate={onSelect}
 							parent={selectedName}
 						/>

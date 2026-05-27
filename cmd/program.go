@@ -128,9 +128,13 @@ func runProgram(
 		// is 4096). "T" is the conventional sequence-length symbol
 		// surface area uses for transformer activations.
 		PlannerBindings: ir.SymbolMap{
-			"N": 4096,
-			"T": 4096,
-			"B": 1,
+			"N":  4096,
+			"T":  4096,
+			"KV": 4096,
+			"P":  4096,
+			"S":  16,
+			"L":  16,
+			"B":  1,
 		},
 	})
 

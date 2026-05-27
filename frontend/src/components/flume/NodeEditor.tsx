@@ -3,10 +3,7 @@ import Cache from "#/components/flume/Cache";
 import Comment from "#/components/flume/Comment/Comment";
 import Connections from "#/components/flume/Connections/Connections";
 import commentsReducer from "#/components/flume/commentsReducer";
-import {
-	createConnections,
-	type EdgeRoutingMode,
-} from "#/components/flume/connectionCalculator";
+import type { EdgeRoutingMode } from "#/components/flume/connectionCalculator";
 import {
 	DRAG_CONNECTION_ID,
 	PORT_LAYER_ID,
@@ -14,6 +11,10 @@ import {
 } from "#/components/flume/constants";
 import Node from "#/components/flume/Node/Node";
 import Stage from "#/components/flume/Stage/Stage";
+import {
+	setDragOverride as setDragOverrideInStore,
+	useDragOverride,
+} from "#/components/flume/flume-editor.store";
 import { portLayoutKey } from "#/components/flume/spatial-index";
 import { useFlumeGraphWorker } from "#/components/flume/useFlumeGraphWorker";
 import {
@@ -41,11 +42,8 @@ import {
 	StageContext,
 } from "./context";
 import { dispatchGraphLayout, type GraphLayoutMode } from "./graphLayout";
-import nodesReducer, {
-	connectNodesReducer,
-	getInitialNodes,
-	NodesActionType,
-} from "./nodesReducer";
+import { NodesActionType } from "./nodesReducer";
+import { useNodesState } from "./useNodesState";
 import stageReducer from "./stageReducer";
 import styles from "./styles.module.css";
 import { dispatchFlumeToastAction, type ToastAction } from "./toastsReducer";
@@ -76,6 +74,14 @@ interface NodeEditorProps {
 	defaultNodes?: DefaultNode[];
 	defaultConnections?: DefaultConnection[];
 	context?: unknown;
+	/**
+	 * When provided, topology is read from and written to the
+	 * researchGraphCollection under this id; the local useReducer is
+	 * skipped and `nodes`/`onChange` props are ignored. The collection is
+	 * the single source of truth in this mode.
+	 */
+	graphId?: string;
+	projectId?: string | null;
 	onChange?: (nodes: NodeMap) => void;
 	onCommentsChange?: (comments: FlumeCommentMap) => void;
 	initialScale?: number;
@@ -103,6 +109,8 @@ export const NodeEditor = ({
 	defaultNodes = [],
 	defaultConnections = [],
 	context = defaultContext,
+	graphId,
+	projectId,
 	onChange,
 	onCommentsChange,
 	initialScale,
@@ -196,17 +204,24 @@ export const NodeEditor = ({
 		scaleRef.current = stageState.scale;
 	}, [stageState.scale]);
 
-	const [dragOverride, setDragOverride] = React.useState<Record<
-		string,
-		{ x: number; y: number }
-	> | null>(null);
+	// Ephemeral drag state lives in the Flume store so other panels
+	// (e.g. inspector overlays) can subscribe to it too without prop
+	// drilling. Keyed per editorId so multiple editors don't collide.
+	const dragOverride = useDragOverride(editorId);
 
 	const nodesRef = React.useRef(nodes);
 	nodesRef.current = nodes;
 
-	const onNodeLayoutChange = React.useCallback(() => {
-		graphWorkerRef.current?.recalculate(nodesRef.current);
-	}, []);
+	const graphWorkerRef = React.useRef<
+		ReturnType<typeof useFlumeGraphWorker> | null
+	>(null);
+
+	const onNodeLayoutChange = React.useCallback(
+		(nodeId: string, width: number, height: number) => {
+			graphWorkerRef.current?.setNodeLayout(nodeId, width, height);
+		},
+		[],
+	);
 
 	const { indexRef, registerPortLayout: registerPortLayoutBase } =
 		useSpatialIndex(editorId, dispatchNodes, onNodeLayoutChange);
@@ -215,57 +230,45 @@ export const NodeEditor = ({
 		edgeRoutingMode,
 		indexRef,
 	);
-	const graphWorkerRef = React.useRef(graphWorkerBase);
 	graphWorkerRef.current = graphWorkerBase;
 
 	const graphWorker = React.useMemo(
 		() => ({
+			...graphWorkerBase,
 			beginDrag: (nodeId: string) => {
 				graphWorkerBase.beginDrag(nodeId);
 			},
 			updateDrag: (nodeId: string, x: number, y: number) => {
-				setDragOverride({ [nodeId]: { x, y } });
+				setDragOverrideInStore(editorId, { [nodeId]: { x, y } });
 				graphWorkerBase.updateDrag(nodeId, x, y);
 			},
 			endDrag: (nodeId: string, x: number, y: number) => {
-				setDragOverride(null);
+				setDragOverrideInStore(editorId, null);
 				graphWorkerBase.endDrag(nodeId, x, y);
 			},
-			recalculate: graphWorkerBase.recalculate,
 		}),
-		[graphWorkerBase],
+		[graphWorkerBase, editorId],
 	);
+
+	// Push topology to the worker whenever nodes change. This is the
+	// only place setGraph fires; everything downstream (port layouts,
+	// node sizes, routing mode, drag) is handled by incremental setters.
+	React.useEffect(() => {
+		graphWorkerBase.setGraph(nodes);
+	}, [graphWorkerBase, nodes]);
 
 	const recalculateConnections = React.useCallback(
 		(positionOverrides?: Record<string, { x: number; y: number }>) => {
-			createConnections(
-				nodes,
-				stageState,
-				editorId,
-				edgeRoutingMode,
-				indexRef.current,
-				positionOverrides,
-			);
+			// All routing math lives in the worker. This call just nudges
+			// the render pipeline; the worker already has the current
+			// state via incremental setters.
 			graphWorker.recalculate(nodes, positionOverrides);
 		},
-		[nodes, editorId, stageState, edgeRoutingMode, indexRef, graphWorker],
+		[nodes, graphWorker],
 	);
 
 	const recalculateConnectionsRef = React.useRef(recalculateConnections);
 	recalculateConnectionsRef.current = recalculateConnections;
-
-	const portRecalcFrameRef = React.useRef<number | null>(null);
-
-	const schedulePortLayoutRecalculate = React.useCallback(() => {
-		if (portRecalcFrameRef.current !== null) {
-			return;
-		}
-
-		portRecalcFrameRef.current = requestAnimationFrame(() => {
-			portRecalcFrameRef.current = null;
-			recalculateConnectionsRef.current();
-		});
-	}, []);
 
 	const registerPortLayout = React.useCallback<
 		NonNullable<React.ContextType<typeof PortLayoutRegistrationContext>>
@@ -283,18 +286,16 @@ export const NodeEditor = ({
 			}
 
 			registerPortLayoutBase(nodeId, portName, transputType, entry);
-			schedulePortLayoutRecalculate();
+			graphWorkerBase.setPortLayout(
+				nodeId,
+				portName,
+				transputType,
+				entry.offsetX,
+				entry.offsetY,
+			);
 		},
-		[indexRef, registerPortLayoutBase, schedulePortLayoutRecalculate],
+		[indexRef, registerPortLayoutBase, graphWorkerBase],
 	);
-
-	React.useEffect(() => {
-		return () => {
-			if (portRecalcFrameRef.current !== null) {
-				cancelAnimationFrame(portRecalcFrameRef.current);
-			}
-		};
-	}, []);
 
 	const recalculateStageRect = React.useCallback(() => {
 		stage.current = document

@@ -21,9 +21,11 @@ import type {
 	TransputType,
 } from "#/components/flume/types";
 import type {
+	ConnectionDescriptor,
 	ConnectionPathResult,
 	DragUpdateResult,
 	GraphSnapshot,
+	RecalculateResult,
 } from "#/workers/flume-graph.types";
 
 const snapshotFromEngine = (
@@ -76,6 +78,33 @@ export class FlumeGraphEngine {
 	private portLayouts = new Map<string, PortLayoutEntry>();
 	private dragNodeId: string | null = null;
 	private dragPosition: Coordinate | null = null;
+
+	/*
+	setGraph replaces only the node topology, preserving any port and
+	node layouts that have already been measured by the main thread.
+	Use this for incremental topology updates; loadSnapshot is only for
+	full state replacement (initial hydration).
+	*/
+	setGraph(nodes: NodeMap): void {
+		this.nodes = structuredClone(nodes);
+
+		// Drop layouts for nodes that no longer exist; keep the rest.
+		const liveIds = new Set(Object.keys(this.nodes));
+
+		for (const nodeId of Array.from(this.nodeLayouts.keys())) {
+			if (!liveIds.has(nodeId)) {
+				this.nodeLayouts.delete(nodeId);
+			}
+		}
+
+		for (const key of Array.from(this.portLayouts.keys())) {
+			const nodeId = key.split("|")[0];
+
+			if (!liveIds.has(nodeId)) {
+				this.portLayouts.delete(key);
+			}
+		}
+	}
 
 	loadSnapshot(snapshot: GraphSnapshot): void {
 		this.nodes = structuredClone(snapshot.nodes);
@@ -165,6 +194,10 @@ export class FlumeGraphEngine {
 	}
 
 	computePaths(): ConnectionPathResult[] {
+		return this.recalculate().paths;
+	}
+
+	recalculate(): RecalculateResult {
 		const positionOverrides = this.buildPositionOverrides();
 		const snapshot = snapshotFromEngine(this.nodeLayouts, this.portLayouts);
 		const allObstaclesById = buildObstacleMapFromSpatialIndex(
@@ -179,9 +212,20 @@ export class FlumeGraphEngine {
 			positionOverrides,
 		);
 
-		return resolved.map((connection) => {
+		const paths: ConnectionPathResult[] = [];
+		const roster: ConnectionDescriptor[] = [];
+
+		for (const connection of resolved) {
+			roster.push({
+				id: connection.id,
+				outputNodeId: connection.outputNodeId,
+				outputPortName: connection.outputPortName,
+				inputNodeId: connection.inputNodeId,
+				inputPortName: connection.inputPortName,
+			});
+
 			if (this.routingMode === "orthogonal") {
-				return {
+				paths.push({
 					id: connection.id,
 					d: computeOrthogonalPath(
 						connection.from,
@@ -191,10 +235,11 @@ export class FlumeGraphEngine {
 						connection.inputNodeId,
 						allObstacles,
 					),
-				};
+				});
+				continue;
 			}
 
-			return {
+			paths.push({
 				id: connection.id,
 				d: calculateEdgePath(
 					this.routingMode,
@@ -203,8 +248,10 @@ export class FlumeGraphEngine {
 					allObstacles,
 					allObstacles,
 				),
-			};
-		});
+			});
+		}
+
+		return { paths, roster };
 	}
 
 	getSnapshot(): GraphSnapshot {

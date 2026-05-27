@@ -47,8 +47,10 @@ export const NodeDragOverrideContext = React.createContext<Record<
 > | null>(null);
 
 /*
-FlumeGraphWorkerContext exposes Comlink-backed graph routing: load snapshot,
-update drag coordinates, and apply returned SVG path data off the main thread.
+FlumeGraphWorkerContext exposes the push-only worker handle. Main-thread
+callers send state mutations (setGraph, setPortLayout, setNodeLayout,
+drag events) and the worker recomputes paths off-thread, calling back
+to the DOM via syncConnectionElements + applyPaths internally.
 */
 export type FlumeGraphWorkerHandle = {
 	beginDrag: (nodeId: string) => void;
@@ -58,6 +60,16 @@ export type FlumeGraphWorkerHandle = {
 		nodes: NodeMap,
 		positionOverrides?: Record<string, { x: number; y: number }>,
 	) => void;
+	setGraph: (nodes: NodeMap) => void;
+	setPortLayout: (
+		nodeId: string,
+		portName: string,
+		transputType: "input" | "output",
+		offsetX: number,
+		offsetY: number,
+	) => void;
+	setNodeLayout: (nodeId: string, width: number, height: number) => void;
+	scheduleRender: () => void;
 };
 
 export const FlumeGraphWorkerContext =

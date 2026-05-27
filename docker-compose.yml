@@ -16,7 +16,10 @@ services:
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/electric?sslmode=disable
     volumes:
-      - ./models:/app/models
+      # WORKDIR in the Dockerfile is /app/caramba, so the binary's relative
+      # "models" lookup resolves to /app/caramba/models. The mount has to
+      # match that, otherwise the host files are invisible to the process.
+      - ./models:/app/caramba/models
     depends_on:
       postgres:
         condition: service_healthy

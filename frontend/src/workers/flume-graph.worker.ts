@@ -5,6 +5,7 @@ import { FlumeGraphEngine } from "#/workers/flume-graph.engine";
 import type {
 	ConnectionPathResult,
 	GraphSnapshot,
+	RecalculateResult,
 } from "#/workers/flume-graph.types";
 
 const engine = new FlumeGraphEngine();
@@ -15,10 +16,7 @@ const api = {
 	},
 
 	setGraph(nodes: NodeMap): void {
-		engine.loadSnapshot({
-			...engine.getSnapshot(),
-			nodes: structuredClone(nodes),
-		});
+		engine.setGraph(nodes);
 	},
 
 	setRoutingMode(routingMode: EdgeRoutingMode): void {
@@ -51,8 +49,8 @@ const api = {
 		return engine.endDrag(nodeId, x, y);
 	},
 
-	recalculate(): ConnectionPathResult[] {
-		return engine.computePaths();
+	recalculate(): RecalculateResult {
+		return engine.recalculate();
 	},
 
 	getSnapshot(): GraphSnapshot {

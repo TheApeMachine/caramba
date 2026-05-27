@@ -494,6 +494,101 @@ export const updateConnection = ({
 	);
 };
 
+/*
+ConnectionShellDescriptor matches the worker's roster entry: just the
+endpoint identifiers needed to find or create the SVG path element.
+The actual d attribute is set separately by applyPaths from the worker
+output.
+*/
+export type ConnectionShellDescriptor = {
+	id: string;
+	outputNodeId: string;
+	outputPortName: string;
+	inputNodeId: string;
+	inputPortName: string;
+};
+
+/*
+syncConnectionElements ensures the SVG path elements in the stage
+exactly match the roster from the worker. Adds missing elements with
+an empty d attribute (worker fills it in), removes stale ones. No
+geometry math runs here — that's the worker's job.
+*/
+export const syncConnectionElements = (
+	roster: ReadonlyArray<ConnectionShellDescriptor>,
+	editorId: string,
+	routingMode: EdgeRoutingMode = "smooth",
+): void => {
+	const stage = getStageRef(editorId);
+
+	if (!stage) {
+		return;
+	}
+
+	const rosterById = new Map<string, ConnectionShellDescriptor>();
+
+	for (const entry of roster) {
+		rosterById.set(entry.id, entry);
+	}
+
+	for (const pathElement of stage.querySelectorAll<SVGPathElement>(
+		"[data-connection-id]",
+	)) {
+		const id = pathElement.getAttribute("data-connection-id");
+
+		if (!id || !rosterById.has(id)) {
+			pathElement.parentElement?.remove();
+		}
+	}
+
+	for (const entry of roster) {
+		const existing = stage.querySelector<SVGPathElement>(
+			`[data-connection-id="${entry.id}"]`,
+		);
+
+		if (existing) {
+			if (routingMode === "orthogonal") {
+				existing.setAttribute("stroke-linejoin", "miter");
+			} else {
+				existing.removeAttribute("stroke-linejoin");
+			}
+			continue;
+		}
+
+		const svg = document.createElementNS(
+			"http://www.w3.org/2000/svg",
+			"svg",
+		);
+		svg.setAttribute(
+			"style",
+			"position:absolute;left:0;top:0;pointer-events:none;z-index:0;overflow:visible;",
+		);
+
+		const path = document.createElementNS(
+			"http://www.w3.org/2000/svg",
+			"path",
+		);
+		path.setAttribute("d", "");
+		path.setAttribute("stroke", "rgb(185, 186, 189)");
+		path.setAttribute("stroke-width", "3");
+		path.setAttribute("stroke-linecap", "round");
+
+		if (routingMode === "orthogonal") {
+			path.setAttribute("stroke-linejoin", "miter");
+		}
+
+		path.setAttribute("fill", "none");
+		path.setAttribute("data-connection-id", entry.id);
+		path.setAttribute("data-output-node-id", entry.outputNodeId);
+		path.setAttribute("data-output-port-name", entry.outputPortName);
+		path.setAttribute("data-input-node-id", entry.inputNodeId);
+		path.setAttribute("data-input-port-name", entry.inputPortName);
+
+		svg.appendChild(path);
+		stage.appendChild(svg);
+	}
+};
+
 export const createSVG = ({
 	from,
 	to,
