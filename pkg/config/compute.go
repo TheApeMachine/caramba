@@ -9,8 +9,8 @@ var computeRootKey = "compute"
 
 type ComputeConfig struct {
 	Device string
-	Metal MetalConfig
-	XLA   XLAConfig
+	Metal  MetalConfig
+	XLA    XLAConfig
 }
 
 type MetalConfig struct {

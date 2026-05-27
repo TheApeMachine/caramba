@@ -59,6 +59,33 @@ services:
       postgres:
         condition: service_healthy
 
+  # Self-hosted Jazz 2.0 sync server (CRDT-primary data layer).
+  # Validates Clerk-issued JWTs against Clerk's JWKS endpoint, so the JWT claims
+  # are usable in permissions.ts. Persists data to the jazz_data volume; a
+  # separate bridge worker projects it into Postgres for the Go orchestrator.
+  # NOTE: jazz-tools is alpha and npx-fetched on boot — pin a version before prod.
+  jazz:
+    image: node:22-alpine
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - >
+        npx --yes jazz-tools@alpha server "$$JAZZ_APP_ID"
+        --port 1625
+        --data-dir /data
+        --admin-secret "$$JAZZ_ADMIN_SECRET"
+        --jwks-url "$$JAZZ_JWKS_URL"
+    environment:
+      JAZZ_APP_ID: ${JAZZ_APP_ID}
+      JAZZ_ADMIN_SECRET: ${JAZZ_ADMIN_SECRET}
+      JAZZ_JWKS_URL: ${JAZZ_JWKS_URL}
+    ports:
+      - "1625:1625"
+    volumes:
+      - jazz_data:/data
+    restart: unless-stopped
+
   neo4j:
     image: neo4j:latest
     container_name: neo4j
@@ -311,6 +338,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  jazz_data:
     driver: local
   certs:
     driver: local

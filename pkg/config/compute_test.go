@@ -9,6 +9,7 @@ import (
 
 func TestNewComputeConfig(test *testing.T) {
 	Convey("Given XLA compute settings", test, func() {
+		setComputeConfigValue(test, "compute.device", "metal")
 		setComputeConfigValue(test, "compute.xla.include_dir", "/opt/xla")
 		setComputeConfigValue(test, "compute.xla.cpu_plugin_file", "/opt/pjrt/cpu.so")
 		setComputeConfigValue(test, "compute.xla.gpu_plugin_file", "/opt/pjrt/gpu.so")
@@ -18,6 +19,7 @@ func TestNewComputeConfig(test *testing.T) {
 		computeConfig := NewComputeConfig()
 
 		Convey("It should load XLA paths from config", func() {
+			So(computeConfig.Device, ShouldEqual, "metal")
 			So(computeConfig.XLA.IncludeDir, ShouldEqual, "/opt/xla")
 			So(computeConfig.XLA.PluginFile("cpu"), ShouldEqual, "/opt/pjrt/cpu.so")
 			So(computeConfig.XLA.PluginFile("gpu"), ShouldEqual, "/opt/pjrt/gpu.so")
