@@ -21,16 +21,17 @@ import (
 Server is the main server for the API.
 */
 type Server struct {
-	app                *fiber.App
-	compute            *compute.Service
-	architecture       *architecture.Service
-	modelscope         *modelscope.Service
-	researchProjects   *research.ProjectService
-	researchPapers     *research.PaperService
-	teams              *research.TeamService
-	researcherProfiles *ResearcherProfileService
-	assistantPersonas  *assistant.PersonaService
-	assistantSessions  *assistant.SessionService
+	app                 *fiber.App
+	compute             *compute.Service
+	architecture        *architecture.Service
+	modelscope          *modelscope.Service
+	researchProjects    *research.ProjectService
+	researchPapers      *research.PaperService
+	researchPaperBlocks *research.PaperBlockService
+	teams               *research.TeamService
+	researcherProfiles  *ResearcherProfileService
+	assistantPersonas   *assistant.PersonaService
+	assistantSessions   *assistant.SessionService
 }
 
 /*
@@ -44,15 +45,16 @@ func NewServer() *Server {
 			ServerHeader:  "Fiber",
 			AppName:       "Caramba v1.0.0",
 		}),
-		compute:            compute.NewService(),
-		architecture:       architecture.NewService(),
-		modelscope:         modelscope.NewService(),
-		researchProjects:   research.NewProjectService(config.NewDevTeamConfig().DatabaseURL),
-		researchPapers:     research.NewPaperService(config.NewDevTeamConfig().DatabaseURL),
-		teams:              research.NewTeamService(config.NewDevTeamConfig().DatabaseURL),
-		researcherProfiles: NewResearcherProfileService(config.NewDevTeamConfig().DatabaseURL),
-		assistantPersonas:  assistant.NewPersonaService(config.NewDevTeamConfig().DatabaseURL),
-		assistantSessions:  assistant.NewSessionService(config.NewDevTeamConfig().DatabaseURL),
+		compute:             compute.NewService(),
+		architecture:        architecture.NewService(),
+		modelscope:          modelscope.NewService(),
+		researchProjects:    research.NewProjectService(config.NewDevTeamConfig().DatabaseURL),
+		researchPapers:      research.NewPaperService(config.NewDevTeamConfig().DatabaseURL),
+		researchPaperBlocks: research.NewPaperBlockService(config.NewDevTeamConfig().DatabaseURL),
+		teams:               research.NewTeamService(config.NewDevTeamConfig().DatabaseURL),
+		researcherProfiles:  NewResearcherProfileService(config.NewDevTeamConfig().DatabaseURL),
+		assistantPersonas:   assistant.NewPersonaService(config.NewDevTeamConfig().DatabaseURL),
+		assistantSessions:   assistant.NewSessionService(config.NewDevTeamConfig().DatabaseURL),
 	}
 }
 
@@ -96,6 +98,11 @@ func (server *Server) Up() error {
 	server.app.Put("/backend/researcher-profile", wrap(server.researcherProfiles.Save))
 	server.app.Post("/backend/research-papers", wrap(server.researchPapers.Create))
 	server.app.Put("/backend/research-papers", wrap(server.researchPapers.Update))
+
+	server.app.Post("/backend/research-paper-blocks", wrap(server.researchPaperBlocks.Create))
+	server.app.Put("/backend/research-paper-blocks", wrap(server.researchPaperBlocks.Update))
+	server.app.Delete("/backend/research-paper-blocks", wrap(server.researchPaperBlocks.Delete))
+	server.app.Post("/backend/research-paper-blocks/reorder", wrap(server.researchPaperBlocks.Reorder))
 
 	server.app.Post("/backend/assistant/personas", wrap(server.assistantPersonas.Create))
 	server.app.Put("/backend/assistant/personas", wrap(server.assistantPersonas.Update))

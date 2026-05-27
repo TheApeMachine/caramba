@@ -8,7 +8,7 @@ import {
 	type BlockKindDescriptor,
 	matchMarkdownShortcut,
 } from "#/components/latex/model/block-catalog";
-import type { SetBlockKindOptions } from "#/components/latex/model/paper-reducer";
+import type { SetBlockKindOptions } from "#/components/latex/blocks/convert-block";
 import type {
 	PaperBlock,
 	PaperBlockKind,

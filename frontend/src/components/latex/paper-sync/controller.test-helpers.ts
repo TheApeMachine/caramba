@@ -1,39 +1,34 @@
 import type { ResearchPaperRowType } from "#/collections/research_paper";
 import { serializePaperDocument } from "#/components/latex/model/paper-document";
-import type { PaperBlock, PaperMetadata } from "#/components/latex/model/types";
-import type {
-	PaperCollectionPort,
-	PaperSyncDocument,
-} from "#/components/latex/paper-sync/controller";
+import type { PaperMetadata } from "#/components/latex/model/types";
+import type { PaperCollectionPort } from "#/components/latex/paper-sync/controller";
 import { ResearchPaperRevisionConflictError } from "#/server/research-papers";
 
 export const flush = (): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, 0));
 
-export const buildMetadata = (): PaperMetadata => ({
+export const buildMetadata = (
+	overrides: Partial<PaperMetadata> = {},
+): PaperMetadata => ({
 	title: "",
 	authors: "",
 	keywords: "",
 	abstract: "",
+	...overrides,
 });
-
-export const buildBlocks = (text = ""): PaperBlock[] => [
-	{ id: "para-1", type: "paragraph", text },
-];
 
 export const buildRow = (
 	overrides: Partial<ResearchPaperRowType>,
 ): ResearchPaperRowType => {
 	const now = new Date();
 	const metadata = buildMetadata();
-	const blocks = buildBlocks();
 
 	return {
 		id: "00000000-0000-4000-8000-000000000001",
 		research_project_id: "11111111-1111-4111-8111-111111111111",
 		organization_slug: "",
 		title: "Paper",
-		document: serializePaperDocument(metadata, blocks),
+		document: serializePaperDocument(metadata),
 		revision: 1,
 		created_at: now,
 		updated_at: now,
@@ -154,28 +149,28 @@ export class FakeCollection implements PaperCollectionPort {
 
 export type ControllerHarness = {
 	collection: FakeCollection;
-	getDocument: () => PaperSyncDocument;
-	setDocument: (doc: PaperSyncDocument) => void;
-	applied: PaperSyncDocument[];
+	getMetadata: () => PaperMetadata;
+	setMetadata: (metadata: PaperMetadata) => void;
+	applied: PaperMetadata[];
 	bootstrapped: string[];
+	created: string[];
 };
 
 export const buildHarness = (): ControllerHarness => {
-	let current: PaperSyncDocument = {
-		blocks: buildBlocks(),
-		metadata: buildMetadata(),
-	};
-	const applied: PaperSyncDocument[] = [];
+	let current: PaperMetadata = buildMetadata();
+	const applied: PaperMetadata[] = [];
 	const bootstrapped: string[] = [];
+	const created: string[] = [];
 
 	return {
 		collection: new FakeCollection(),
-		getDocument: () => current,
-		setDocument: (next) => {
+		getMetadata: () => current,
+		setMetadata: (next) => {
 			current = next;
 		},
 		applied,
 		bootstrapped,
+		created,
 	};
 };
 

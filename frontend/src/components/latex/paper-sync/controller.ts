@@ -10,9 +10,8 @@ import {
 	parsePaperDocument,
 	serializePaperDocument,
 } from "#/components/latex/model/paper-document";
-import { createInitialPaperBlocks } from "#/components/latex/model/paper-reducer";
 import type { PaperMetadata } from "#/components/latex/model/types";
-import { PaperAutosave } from "#/components/latex/paper-sync/autosave";
+import { PaperMetadataAutosave } from "#/components/latex/paper-sync/autosave";
 import {
 	clearBootstrapDraftId,
 	readBootstrapDraftId,
@@ -25,23 +24,20 @@ import {
 	type PaperSyncConfig,
 	type PaperSyncState,
 } from "#/components/latex/paper-sync/controller-types";
-import { paperDocumentSnapshot } from "#/components/latex/paper-sync/snapshot";
+import { paperMetadataSnapshot } from "#/components/latex/paper-sync/snapshot";
 
 export type {
 	PaperCollectionPort,
 	PaperSyncConfig,
-	PaperSyncDocument,
 	PaperSyncState,
 } from "#/components/latex/paper-sync/controller-types";
 
 /*
-PaperSyncController owns the bootstrap / hydrate / autosave state
-machine for one paper editor. It subscribes directly to
-researchPaperCollection (no useLiveQuery needed) and exposes its
-reactive state through a Tanstack Store so the hook layer is pure
-read-and-render. The autosave timer + flush + conflict retry live in
-a composed PaperAutosave instance so this file stays focused on
-lifecycle, bootstrap, and hydration.
+PaperSyncController owns the bootstrap / hydrate / metadata-autosave
+state machine for one paper editor. Blocks live in their own Tanstack
+DB collection and are mutated directly through that collection's
+insert/update/delete; this controller now only round-trips the paper
+row's metadata column.
 */
 export class PaperSyncController {
 	readonly store: Store<PaperSyncState>;
@@ -49,7 +45,7 @@ export class PaperSyncController {
 	private config: PaperSyncConfig;
 	private readonly collection: PaperCollectionPort;
 	private collectionUnsub: (() => void) | null = null;
-	private readonly autosave: PaperAutosave;
+	private readonly autosave: PaperMetadataAutosave;
 	private bootstrapInFlight = false;
 
 	constructor(config: PaperSyncConfig) {
@@ -58,10 +54,10 @@ export class PaperSyncController {
 			config.collection ??
 			(researchPaperCollection as unknown as PaperCollectionPort);
 		this.store = new Store<PaperSyncState>(initialPaperSyncState);
-		this.autosave = new PaperAutosave({
+		this.autosave = new PaperMetadataAutosave({
 			collection: this.collection,
 			store: this.store,
-			getDocument: () => this.config.getDocument(),
+			getMetadata: () => this.config.getMetadata(),
 			getPaperId: () => this.effectivePaperId,
 		});
 		this.subscribeToCollection();
@@ -94,7 +90,7 @@ export class PaperSyncController {
 		this.collectionUnsub = null;
 	}
 
-	notifyDocument(): void {
+	notifyMetadata(): void {
 		this.autosave.notify();
 	}
 
@@ -216,14 +212,13 @@ export class PaperSyncController {
 		newId: string,
 	): Promise<void> {
 		try {
-			const initialBlocks = createInitialPaperBlocks();
 			const initialMetadata: PaperMetadata = {
 				title: "",
 				authors: "",
 				keywords: "",
 				abstract: "",
 			};
-			const document = serializePaperDocument(initialMetadata, initialBlocks);
+			const document = serializePaperDocument(initialMetadata);
 			const now = new Date();
 
 			const transaction = this.collection.insert({
@@ -244,6 +239,7 @@ export class PaperSyncController {
 				bootstrappedId: newId,
 				bootstrapError: null,
 			}));
+			this.config.onBootstrapPaperCreated?.(newId);
 			this.config.onPaperBootstrapped?.(newId);
 		} catch (cause) {
 			clearBootstrapDraftId(projectId);
@@ -302,17 +298,14 @@ export class PaperSyncController {
 			return;
 		}
 
-		const snapshot = paperDocumentSnapshot(parsed.metadata, parsed.blocks);
+		const snapshot = paperMetadataSnapshot(parsed.metadata);
 		this.autosave.markPersisted(row, snapshot);
 		this.store.setState((previous) => ({
 			...previous,
 			hydratedRevision: coercePaperRevision(row.revision),
 		}));
 
-		this.config.applyDocument({
-			blocks: parsed.blocks,
-			metadata: parsed.metadata,
-		});
+		this.config.applyMetadata(parsed.metadata);
 	}
 }
 

@@ -122,9 +122,9 @@ export const areaSpec = ({
 				{
 					encoding: {
 						color: colorEnc,
-						opacity: seriesOpacity,
 						x: xEnc,
 						y: yEnc,
+						...(seriesOpacity ? { opacity: seriesOpacity } : {}),
 					},
 					mark: {
 						interpolate: "monotone",

@@ -71,10 +71,9 @@ function DocumentTitle() {
 export const LatexToolbar = () => {
 	const {
 		blocks,
-		dispatch,
-		focusBlock,
 		focusedBlockId,
 		insertBlockAfter,
+		insertBlockAtStart,
 		metadataForm,
 		paperPersistence,
 	} = usePaperEditor();
@@ -84,8 +83,7 @@ export const LatexToolbar = () => {
 		const block = descriptor.build();
 
 		if (!targetId) {
-			dispatch({ type: "INSERT_AT_START", block });
-			queueMicrotask(() => focusBlock(block.id));
+			insertBlockAtStart(block);
 			return;
 		}
 

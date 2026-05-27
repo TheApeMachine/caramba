@@ -3,7 +3,6 @@ import { serializePaperDocument } from "#/components/latex/model/paper-document"
 import { createPaperSyncController } from "#/components/latex/paper-sync/controller";
 import {
 	AUTOSAVE_DELAY_MS,
-	buildBlocks,
 	buildHarness,
 	buildMetadata,
 	buildRow,
@@ -26,8 +25,8 @@ describe("PaperSyncController", () => {
 	it("returns immediately when neither paperIdProp nor bootstrapProjectId is set", () => {
 		const harness = buildHarness();
 		const controller = createPaperSyncController({
-			getDocument: harness.getDocument,
-			applyDocument: (doc) => harness.applied.push(doc),
+			getMetadata: harness.getMetadata,
+			applyMetadata: (metadata) => harness.applied.push(metadata),
 			collection: harness.collection,
 		});
 
@@ -45,8 +44,9 @@ describe("PaperSyncController", () => {
 		const controller = createPaperSyncController({
 			bootstrapProjectId: projectId,
 			onPaperBootstrapped: (id) => harness.bootstrapped.push(id),
-			getDocument: harness.getDocument,
-			applyDocument: (doc) => harness.applied.push(doc),
+			onBootstrapPaperCreated: (id) => harness.created.push(id),
+			getMetadata: harness.getMetadata,
+			applyMetadata: (metadata) => harness.applied.push(metadata),
 			collection: harness.collection,
 		});
 
@@ -55,8 +55,13 @@ describe("PaperSyncController", () => {
 		await flush();
 
 		expect(harness.collection.insertCalls).toHaveLength(1);
-		expect(harness.collection.insertCalls[0].research_project_id).toBe(projectId);
+		expect(harness.collection.insertCalls[0].research_project_id).toBe(
+			projectId,
+		);
 		expect(harness.bootstrapped).toEqual([
+			"33333333-3333-4333-8333-333333333333",
+		]);
+		expect(harness.created).toEqual([
 			"33333333-3333-4333-8333-333333333333",
 		]);
 		expect(controller.store.state.bootstrappedId).toBe(
@@ -79,8 +84,8 @@ describe("PaperSyncController", () => {
 		const controller = createPaperSyncController({
 			bootstrapProjectId: projectId,
 			onPaperBootstrapped: (id) => harness.bootstrapped.push(id),
-			getDocument: harness.getDocument,
-			applyDocument: (doc) => harness.applied.push(doc),
+			getMetadata: harness.getMetadata,
+			applyMetadata: (metadata) => harness.applied.push(metadata),
 			collection: harness.collection,
 		});
 
@@ -88,57 +93,54 @@ describe("PaperSyncController", () => {
 
 		expect(harness.collection.insertCalls).toHaveLength(0);
 		expect(harness.bootstrapped).toEqual([existing.id]);
+		expect(harness.created).toEqual([]);
 		controller.dispose();
 	});
 
-	it("hydrates the editor from the remote row and tracks revision", async () => {
+	it("hydrates the editor metadata from the remote row and tracks revision", async () => {
 		const harness = buildHarness();
 		const paperId = "66666666-6666-4666-8666-666666666666";
 		const remoteRow = buildRow({
 			id: paperId,
 			revision: 7,
 			document: serializePaperDocument(
-				{ ...buildMetadata(), title: "Remote title" },
-				buildBlocks("hydrated"),
+				buildMetadata({ title: "Remote title" }),
 			),
 		});
 		harness.collection.rows.set(paperId, remoteRow);
 
 		const controller = createPaperSyncController({
 			paperIdProp: paperId,
-			getDocument: harness.getDocument,
-			applyDocument: (doc) => harness.applied.push(doc),
+			getMetadata: harness.getMetadata,
+			applyMetadata: (metadata) => harness.applied.push(metadata),
 			collection: harness.collection,
 		});
 
 		await flush();
 
 		expect(harness.applied).toHaveLength(1);
-		expect(harness.applied[0].metadata.title).toBe("Remote title");
+		expect(harness.applied[0].title).toBe("Remote title");
 		expect(controller.store.state.hydratedRevision).toBe(7);
 		expect(controller.ready).toBe(true);
 		controller.dispose();
 	});
 
-	it("debounces autosave on document changes and writes with expected revision", async () => {
+	it("debounces autosave on metadata changes and writes with expected revision", async () => {
 		const harness = buildHarness();
 		const paperId = "77777777-7777-4777-8777-777777777777";
 		harness.collection.rows.set(paperId, buildRow({ id: paperId, revision: 3 }));
 
 		const controller = createPaperSyncController({
 			paperIdProp: paperId,
-			getDocument: harness.getDocument,
-			applyDocument: (doc) => harness.applied.push(doc),
+			getMetadata: harness.getMetadata,
+			applyMetadata: (metadata) => harness.applied.push(metadata),
 			collection: harness.collection,
 		});
 
 		await flush();
 
-		harness.setDocument({
-			blocks: buildBlocks("edited"),
-			metadata: buildMetadata(),
-		});
-		controller.notifyDocument();
+		harness.setMetadata(buildMetadata({ title: "Edited" }));
+		controller.notifyMetadata();
 
 		await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS - 1);
 		expect(harness.collection.updateCalls).toHaveLength(0);
@@ -164,18 +166,15 @@ describe("PaperSyncController", () => {
 
 		const controller = createPaperSyncController({
 			paperIdProp: paperId,
-			getDocument: harness.getDocument,
-			applyDocument: (doc) => harness.applied.push(doc),
+			getMetadata: harness.getMetadata,
+			applyMetadata: (metadata) => harness.applied.push(metadata),
 			collection: harness.collection,
 		});
 
 		await flush();
 
-		harness.setDocument({
-			blocks: buildBlocks("local edit"),
-			metadata: buildMetadata(),
-		});
-		controller.notifyDocument();
+		harness.setMetadata(buildMetadata({ title: "Local edit" }));
+		controller.notifyMetadata();
 		await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS);
 		await flush();
 		await flush();
@@ -201,18 +200,15 @@ describe("PaperSyncController", () => {
 
 		const controller = createPaperSyncController({
 			paperIdProp: paperId,
-			getDocument: harness.getDocument,
-			applyDocument: (doc) => harness.applied.push(doc),
+			getMetadata: harness.getMetadata,
+			applyMetadata: (metadata) => harness.applied.push(metadata),
 			collection: harness.collection,
 		});
 
 		await flush();
 
-		harness.setDocument({
-			blocks: buildBlocks("edit"),
-			metadata: buildMetadata(),
-		});
-		controller.notifyDocument();
+		harness.setMetadata(buildMetadata({ title: "Edit" }));
+		controller.notifyMetadata();
 		await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS);
 		await flush();
 
@@ -220,23 +216,23 @@ describe("PaperSyncController", () => {
 		controller.dispose();
 	});
 
-	it("ignores duplicate notifyDocument calls with the same snapshot", async () => {
+	it("ignores duplicate notifyMetadata calls with the same snapshot", async () => {
 		const harness = buildHarness();
 		const paperId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 		harness.collection.rows.set(paperId, buildRow({ id: paperId, revision: 1 }));
 
 		const controller = createPaperSyncController({
 			paperIdProp: paperId,
-			getDocument: harness.getDocument,
-			applyDocument: (doc) => harness.applied.push(doc),
+			getMetadata: harness.getMetadata,
+			applyMetadata: (metadata) => harness.applied.push(metadata),
 			collection: harness.collection,
 		});
 
 		await flush();
 
-		controller.notifyDocument();
-		controller.notifyDocument();
-		controller.notifyDocument();
+		controller.notifyMetadata();
+		controller.notifyMetadata();
+		controller.notifyMetadata();
 
 		await vi.advanceTimersByTimeAsync(AUTOSAVE_DELAY_MS);
 		await flush();

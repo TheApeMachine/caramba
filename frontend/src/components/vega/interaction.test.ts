@@ -57,6 +57,7 @@ describe("zoomDomainAtPointer", () => {
 describe("buildZoomParams", () => {
 	it("should use wheel zoom with shift-wheel pan and escape reset", () => {
 		const params = buildZoomParams("xy");
+		expect(params).toHaveLength(1);
 		const zoom = params[0] as {
 			select: {
 				zoom: string;

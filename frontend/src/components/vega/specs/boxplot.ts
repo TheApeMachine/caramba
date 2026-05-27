@@ -1,8 +1,4 @@
-import {
-	attachChartInteraction,
-	boundedScale,
-	extentNumbers,
-} from "#/components/vega/interaction";
+import { boundedScale, extentNumbers } from "#/components/vega/interaction";
 import type { Spec } from "./types";
 
 interface BoxPlotSpecOptions {
@@ -66,41 +62,36 @@ export const boxPlotSpec = ({
 
 	const horizontal = orientation === "horizontal";
 
-	return attachChartInteraction(
-		{
-			$schema: "https://vega.github.io/schema/vega-lite/v6.json",
-			autosize: { contains: "padding", resize: true, type: "fit" },
-			background: "transparent",
-			data: { values: data },
-			encoding: {
-				color: { field: "category", legend: null, type: "nominal" },
-				x: horizontal ? valueEnc : categoryEnc,
-				y: horizontal ? categoryEnc : valueEnc,
-			},
-			height: "container",
-			mark: {
-				box: { fillOpacity: 0.45, stroke: "var(--foreground)", strokeWidth: 1 },
-				extent,
-				median: { color: "var(--background)", strokeWidth: 1.5 },
-				outliers: {
-					fill: "var(--color-chart-2)",
-					filled: true,
-					size: 24,
-					stroke: "var(--background)",
-					strokeWidth: 0.75,
-				},
-				rule: { color: "var(--foreground)", strokeWidth: 1 },
-				ticks: { color: "var(--foreground)" },
-				type: "boxplot",
-			},
-			padding: { bottom: 4, left: 4, right: 8, top: 4 },
-			width: "container",
-		} as unknown as Spec,
-		{
-			profile: horizontal ? "x" : "y",
-			bounds: {
-				[horizontal ? "x" : "y"]: valueBounds,
-			},
+	const spec = {
+		$schema: "https://vega.github.io/schema/vega-lite/v6.json",
+		autosize: { contains: "padding", resize: true, type: "fit" },
+		background: "transparent",
+		data: { values: data },
+		encoding: {
+			color: { field: "category", legend: null, type: "nominal" },
+			x: horizontal ? valueEnc : categoryEnc,
+			y: horizontal ? categoryEnc : valueEnc,
 		},
-	);
+		height: "container",
+		mark: {
+			box: { fillOpacity: 0.45, stroke: "var(--foreground)", strokeWidth: 1 },
+			extent,
+			median: { color: "var(--background)", strokeWidth: 1.5 },
+			outliers: {
+				fill: "var(--color-chart-2)",
+				filled: true,
+				size: 24,
+				stroke: "var(--background)",
+				strokeWidth: 0.75,
+			},
+			rule: { color: "var(--foreground)", strokeWidth: 1 },
+			ticks: { color: "var(--foreground)" },
+			type: "boxplot",
+		},
+		padding: { bottom: 4, left: 4, right: 8, top: 4 },
+		width: "container",
+	} as Spec;
+
+	// Boxplot marks do not support interval selection / scale binding yet.
+	return spec;
 };

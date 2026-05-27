@@ -1,4 +1,5 @@
-import type { SetBlockKindOptions } from "./model/paper-reducer";
+import { Store } from "@tanstack/store";
+import type { SetBlockKindOptions } from "./blocks/convert-block";
 import type {
 	HeadingLevel,
 	PaperBlock,
@@ -31,16 +32,20 @@ export type EditorBridgeAPI = {
 	scrollToBlock: (id: string) => void;
 };
 
-let api: EditorBridgeAPI | null = null;
+/*
+editorBridgeStore exposes the active paper editor's API to assistant
+tools through a Tanstack Store. The editor publishes its API as part
+of its provider render; tools read the latest value with editorBridge.get()
+or subscribe via the store. No imperative lifecycle, no useEffect.
+*/
+const editorBridgeStore = new Store<EditorBridgeAPI | null>(null);
 
 export const editorBridge = {
-	register(impl: EditorBridgeAPI) {
-		api = impl;
-	},
-	unregister() {
-		api = null;
+	publish(api: EditorBridgeAPI | null): void {
+		editorBridgeStore.setState(() => api);
 	},
 	get(): EditorBridgeAPI | null {
-		return api;
+		return editorBridgeStore.state;
 	},
+	store: editorBridgeStore,
 };

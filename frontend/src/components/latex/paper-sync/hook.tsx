@@ -1,26 +1,22 @@
 "use client";
 
 import { useSelector } from "@tanstack/react-store";
-import type { Dispatch } from "react";
 import { useEffect, useRef } from "react";
 import {
 	createPaperSyncController,
 	type PaperSyncController,
 } from "#/components/latex/paper-sync/controller";
-import type { PaperAction } from "#/components/latex/model/paper-reducer";
-import type { PaperBlock, PaperMetadata } from "#/components/latex/model/types";
+import type { PaperMetadata } from "#/components/latex/model/types";
 
 type MetadataWriter = {
 	setFieldValue: (name: keyof PaperMetadata, value: string) => void;
 };
 
-export type UseResearchPaperCollectionSyncArgs = {
+export type UseResearchPaperSyncArgs = {
 	paperIdProp?: string;
 	bootstrapProjectId?: string;
 	onPaperBootstrapped?: (paperId: string) => void;
-	dispatch: Dispatch<PaperAction>;
-	blocksRef: { current: PaperBlock[] };
-	blocks: PaperBlock[];
+	onBootstrapPaperCreated?: (paperId: string) => void;
 	metadata: PaperMetadata;
 	metadataForm: MetadataWriter;
 };
@@ -35,14 +31,14 @@ export type ResearchPaperSyncResult = {
 };
 
 /*
-useResearchPaperCollectionSync is a thin React wrapper over
-PaperSyncController. The controller owns every piece of sync state
-in a Tanstack Store + collection subscription, so this hook only
-threads props through, subscribes to the controller's state, and
-disposes the controller on unmount.
+useResearchPaperSync is a thin React wrapper over PaperSyncController.
+The controller owns every piece of sync state (Tanstack Store +
+collection subscription), so this hook only threads props through,
+subscribes to the controller's state, and disposes the controller on
+unmount.
 */
-export const useResearchPaperCollectionSync = (
-	args: UseResearchPaperCollectionSyncArgs,
+export const useResearchPaperSync = (
+	args: UseResearchPaperSyncArgs,
 ): ResearchPaperSyncResult => {
 	const controllerRef = useRef<PaperSyncController | null>(null);
 
@@ -51,12 +47,9 @@ export const useResearchPaperCollectionSync = (
 			paperIdProp: args.paperIdProp,
 			bootstrapProjectId: args.bootstrapProjectId,
 			onPaperBootstrapped: args.onPaperBootstrapped,
-			getDocument: () => ({
-				blocks: args.blocksRef.current,
-				metadata: args.metadata,
-			}),
-			applyDocument: ({ blocks, metadata }) => {
-				args.dispatch({ type: "REPLACE_BLOCKS", blocks });
+			onBootstrapPaperCreated: args.onBootstrapPaperCreated,
+			getMetadata: () => args.metadata,
+			applyMetadata: (metadata) => {
 				args.metadataForm.setFieldValue("title", metadata.title);
 				args.metadataForm.setFieldValue("authors", metadata.authors);
 				args.metadataForm.setFieldValue("keywords", metadata.keywords);
@@ -71,12 +64,9 @@ export const useResearchPaperCollectionSync = (
 		paperIdProp: args.paperIdProp,
 		bootstrapProjectId: args.bootstrapProjectId,
 		onPaperBootstrapped: args.onPaperBootstrapped,
-		getDocument: () => ({
-			blocks: args.blocksRef.current,
-			metadata: args.metadata,
-		}),
-		applyDocument: ({ blocks, metadata }) => {
-			args.dispatch({ type: "REPLACE_BLOCKS", blocks });
+		onBootstrapPaperCreated: args.onBootstrapPaperCreated,
+		getMetadata: () => args.metadata,
+		applyMetadata: (metadata) => {
 			args.metadataForm.setFieldValue("title", metadata.title);
 			args.metadataForm.setFieldValue("authors", metadata.authors);
 			args.metadataForm.setFieldValue("keywords", metadata.keywords);
@@ -84,7 +74,7 @@ export const useResearchPaperCollectionSync = (
 		},
 	});
 
-	controller.notifyDocument();
+	controller.notifyMetadata();
 
 	const syncState = useSelector(controller.store, (state) => state);
 

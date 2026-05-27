@@ -6,59 +6,40 @@ import {
 	type ResearchPaperRowType,
 } from "#/collections/research_paper";
 import { serializePaperDocument } from "#/components/latex/model/paper-document";
-import type { PaperBlock } from "#/components/latex/model/types";
+import type { PaperMetadata } from "#/components/latex/model/types";
 import type {
 	PaperCollectionPort,
-	PaperSyncDocument,
 	PaperSyncState,
 } from "#/components/latex/paper-sync/controller-types";
-import {
-	paperDocumentSnapshot,
-	paperStructureSignature,
-} from "#/components/latex/paper-sync/snapshot";
+import { paperMetadataSnapshot } from "#/components/latex/paper-sync/snapshot";
 import { ResearchPaperRevisionConflictError } from "#/server/research-papers";
 
 const AUTOSAVE_MS = 1200;
-const STRUCTURAL_AUTOSAVE_MS = 200;
 
 type AutosaveDeps = {
 	collection: PaperCollectionPort;
 	store: Store<PaperSyncState>;
-	getDocument: () => PaperSyncDocument;
+	getMetadata: () => PaperMetadata;
 	getPaperId: () => string | null;
 };
 
-const resolveTitle = (
-	metadata: PaperSyncDocument["metadata"],
-	blocks: PaperBlock[],
-): string => {
+const resolveTitle = (metadata: PaperMetadata): string => {
 	const fromMeta = metadata.title.trim();
 
 	if (fromMeta) {
 		return fromMeta;
 	}
 
-	const heading = blocks.find((block) => block.type === "heading");
-
-	if (heading?.type === "heading") {
-		const headingText = heading.text.trim();
-
-		if (headingText) {
-			return headingText;
-		}
-	}
-
 	return "Untitled paper";
 };
 
 /*
-PaperAutosave owns the debounced autosave + conflict-retry state
-machine for a single paper editor. It exposes notify() (snapshot
-comparison + debounce), flush() (immediate save), and tracks the
-persisted revision in private fields so the controller stays focused
-on lifecycle and bootstrap concerns.
+PaperMetadataAutosave owns the debounced metadata save + conflict-retry
+state machine for one paper. Blocks live in their own collection and are
+not this class's concern; this only persists title / authors / keywords
+/ abstract changes back to the paper row.
 */
-export class PaperAutosave {
+export class PaperMetadataAutosave {
 	private readonly deps: AutosaveDeps;
 
 	private timer: ReturnType<typeof setTimeout> | null = null;
@@ -67,7 +48,6 @@ export class PaperAutosave {
 	private persistedRevision: number | null = null;
 	private lastPersistedSnapshot: string | null = null;
 	private lastNotifiedSnapshot: string | null = null;
-	private blockStructure = "";
 
 	constructor(deps: AutosaveDeps) {
 		this.deps = deps;
@@ -82,22 +62,16 @@ export class PaperAutosave {
 		this.persistedRevision = null;
 		this.lastPersistedSnapshot = null;
 		this.lastNotifiedSnapshot = null;
-		this.blockStructure = "";
 	}
 
 	markPersisted(row: ResearchPaperRowType, snapshot: string): void {
 		this.persistedRevision = coercePaperRevision(row.revision);
 		this.lastPersistedSnapshot = snapshot;
 		this.lastNotifiedSnapshot = snapshot;
-		this.blockStructure = "";
 	}
 
 	bumpRevision(revision: number): void {
 		this.persistedRevision = Math.max(this.persistedRevision ?? 0, revision);
-	}
-
-	getPersistedRevision(): number | null {
-		return this.persistedRevision;
 	}
 
 	isLocallyDirty(): boolean {
@@ -105,10 +79,8 @@ export class PaperAutosave {
 			return false;
 		}
 
-		const document = this.deps.getDocument();
-
 		return (
-			paperDocumentSnapshot(document.metadata, document.blocks) !==
+			paperMetadataSnapshot(this.deps.getMetadata()) !==
 			this.lastPersistedSnapshot
 		);
 	}
@@ -121,15 +93,14 @@ export class PaperAutosave {
 			return;
 		}
 
-		const document = this.deps.getDocument();
-		const snapshot = paperDocumentSnapshot(document.metadata, document.blocks);
+		const snapshot = paperMetadataSnapshot(this.deps.getMetadata());
 
 		if (snapshot === this.lastNotifiedSnapshot) {
 			return;
 		}
 
 		this.lastNotifiedSnapshot = snapshot;
-		this.schedule(document.blocks);
+		this.schedule();
 	}
 
 	private cancelTimer(): void {
@@ -139,16 +110,10 @@ export class PaperAutosave {
 		}
 	}
 
-	private schedule(blocks: PaperBlock[]): void {
-		const signature = paperStructureSignature(blocks);
-		const structureChanged =
-			this.blockStructure !== "" && this.blockStructure !== signature;
-		this.blockStructure = signature;
-
+	private schedule(): void {
 		this.cancelTimer();
 		this.generation += 1;
 		const generation = this.generation;
-		const delay = structureChanged ? STRUCTURAL_AUTOSAVE_MS : AUTOSAVE_MS;
 
 		this.timer = setTimeout(() => {
 			this.timer = null;
@@ -158,7 +123,7 @@ export class PaperAutosave {
 			}
 
 			void this.flush();
-		}, delay);
+		}, AUTOSAVE_MS);
 	}
 
 	async flush(retryRevision?: number): Promise<void> {
@@ -178,9 +143,9 @@ export class PaperAutosave {
 			return;
 		}
 
-		const { blocks, metadata } = this.deps.getDocument();
-		const document = serializePaperDocument(metadata, blocks);
-		const title = resolveTitle(metadata, blocks);
+		const metadata = this.deps.getMetadata();
+		const document = serializePaperDocument(metadata);
+		const title = resolveTitle(metadata);
 		const expectedRevision =
 			retryRevision ??
 			this.persistedRevision ??
@@ -210,7 +175,7 @@ export class PaperAutosave {
 
 			const nextRevision = expectedRevision + 1;
 			this.persistedRevision = nextRevision;
-			const snapshot = paperDocumentSnapshot(metadata, blocks);
+			const snapshot = paperMetadataSnapshot(metadata);
 			this.lastPersistedSnapshot = snapshot;
 			this.lastNotifiedSnapshot = snapshot;
 			this.deps.store.setState((previous) => ({

@@ -179,11 +179,6 @@ export const buildZoomParams = (
 			},
 			bind: "scales",
 		},
-		{
-			name: "chartReset",
-			select: { on: "dblclick", type: "point" },
-			bind: "scales",
-		},
 	];
 };
 
@@ -201,20 +196,9 @@ export const buildLegendBindParam = (
 
 /*
 legendOpacityEncoding dims non-selected series when the legend selection
-is active; empty selection shows every series at full opacity.
+is active; empty selection shows every series at full opacity. Requires
+seriesLegend (or custom paramName) from buildLegendBindParam on the spec.
 */
-/** Opacity on a color encoding when legend selection is active (no extra top-level param). */
-export const legendOpacityOnColorEncoding = (
-	legendField: string,
-	dimmed = 0.2,
-) => ({
-	condition: {
-		selection: { type: "point", fields: [{ field: legendField }] },
-		value: 1,
-	},
-	value: dimmed,
-});
-
 export const legendOpacityEncoding = (
 	paramName = SERIES_LEGEND_PARAM,
 	dimmed = 0.2,

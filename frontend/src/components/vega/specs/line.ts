@@ -66,21 +66,11 @@ export const lineSpec = ({
 	const yScale: Record<string, unknown> = { nice: true, zero: zeroY };
 	const interpolate = smooth ? "monotone" : "linear";
 	const multiSeries = seriesKeys.length > 1;
-	const seriesOpacity = multiSeries
-		? legendOpacityOnColorEncoding("series")
-		: undefined;
+	const seriesOpacity = multiSeries ? legendOpacityEncoding() : undefined;
 
 	const colorEnc = {
 		field: "series",
-		legend:
-			seriesKeys.length > 1
-				? {
-						offset: 4,
-						orient: "top" as const,
-						symbolType: "stroke",
-						title: null,
-					}
-				: null,
+		legend: null,
 		type: "nominal" as const,
 	};
 
@@ -117,25 +107,22 @@ export const lineSpec = ({
 
 	const layers: Record<string, unknown>[] = [];
 
+	const seriesLayerEncoding = {
+		color: colorEnc,
+		x: xEnc,
+		y: yEnc,
+		...(seriesOpacity ? { opacity: seriesOpacity } : {}),
+	};
+
 	if (areaFill) {
 		layers.push({
-			encoding: {
-				color: { field: "series", legend: null, type: "nominal" },
-				opacity: seriesOpacity ?? { value: 0.14 },
-				x: xEnc,
-				y: yEnc,
-			},
+			encoding: seriesLayerEncoding,
 			mark: { interpolate, line: false, type: "area" },
 		});
 	}
 
 	layers.push({
-		encoding: {
-			color: colorEnc,
-			opacity: seriesOpacity,
-			x: xEnc,
-			y: yEnc,
-		},
+		encoding: seriesLayerEncoding,
 		mark: {
 			interpolate,
 			strokeCap: "round",

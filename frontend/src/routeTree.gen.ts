@@ -40,6 +40,7 @@ import { Route as KanbanOrgOrganizationSlugRouteImport } from './routes/kanban/o
 import { Route as ApiShapeTeamsRouteImport } from './routes/api/shape/teams'
 import { Route as ApiShapeResearchProjectsRouteImport } from './routes/api/shape/research-projects'
 import { Route as ApiShapeResearchPapersRouteImport } from './routes/api/shape/research-papers'
+import { Route as ApiShapeResearchPaperBlocksRouteImport } from './routes/api/shape/research-paper-blocks'
 import { Route as ApiShapeAssistantSessionsRouteImport } from './routes/api/shape/assistant-sessions'
 import { Route as ApiShapeAssistantSessionPersonasRouteImport } from './routes/api/shape/assistant-session-personas'
 import { Route as ApiShapeAssistantPersonasRouteImport } from './routes/api/shape/assistant-personas'
@@ -205,6 +206,12 @@ const ApiShapeResearchPapersRoute = ApiShapeResearchPapersRouteImport.update({
   path: '/api/shape/research-papers',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiShapeResearchPaperBlocksRoute =
+  ApiShapeResearchPaperBlocksRouteImport.update({
+    id: '/api/shape/research-paper-blocks',
+    path: '/api/shape/research-paper-blocks',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiShapeAssistantSessionsRoute =
   ApiShapeAssistantSessionsRouteImport.update({
     id: '/api/shape/assistant-sessions',
@@ -270,6 +277,7 @@ export interface FileRoutesByFullPath {
   '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
   '/api/shape/assistant-session-personas': typeof ApiShapeAssistantSessionPersonasRoute
   '/api/shape/assistant-sessions': typeof ApiShapeAssistantSessionsRoute
+  '/api/shape/research-paper-blocks': typeof ApiShapeResearchPaperBlocksRoute
   '/api/shape/research-papers': typeof ApiShapeResearchPapersRoute
   '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/api/shape/teams': typeof ApiShapeTeamsRoute
@@ -308,6 +316,7 @@ export interface FileRoutesByTo {
   '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
   '/api/shape/assistant-session-personas': typeof ApiShapeAssistantSessionPersonasRoute
   '/api/shape/assistant-sessions': typeof ApiShapeAssistantSessionsRoute
+  '/api/shape/research-paper-blocks': typeof ApiShapeResearchPaperBlocksRoute
   '/api/shape/research-papers': typeof ApiShapeResearchPapersRoute
   '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/api/shape/teams': typeof ApiShapeTeamsRoute
@@ -348,6 +357,7 @@ export interface FileRoutesById {
   '/api/shape/assistant-personas': typeof ApiShapeAssistantPersonasRoute
   '/api/shape/assistant-session-personas': typeof ApiShapeAssistantSessionPersonasRoute
   '/api/shape/assistant-sessions': typeof ApiShapeAssistantSessionsRoute
+  '/api/shape/research-paper-blocks': typeof ApiShapeResearchPaperBlocksRoute
   '/api/shape/research-papers': typeof ApiShapeResearchPapersRoute
   '/api/shape/research-projects': typeof ApiShapeResearchProjectsRoute
   '/api/shape/teams': typeof ApiShapeTeamsRoute
@@ -389,6 +399,7 @@ export interface FileRouteTypes {
     | '/api/shape/assistant-personas'
     | '/api/shape/assistant-session-personas'
     | '/api/shape/assistant-sessions'
+    | '/api/shape/research-paper-blocks'
     | '/api/shape/research-papers'
     | '/api/shape/research-projects'
     | '/api/shape/teams'
@@ -427,6 +438,7 @@ export interface FileRouteTypes {
     | '/api/shape/assistant-personas'
     | '/api/shape/assistant-session-personas'
     | '/api/shape/assistant-sessions'
+    | '/api/shape/research-paper-blocks'
     | '/api/shape/research-papers'
     | '/api/shape/research-projects'
     | '/api/shape/teams'
@@ -466,6 +478,7 @@ export interface FileRouteTypes {
     | '/api/shape/assistant-personas'
     | '/api/shape/assistant-session-personas'
     | '/api/shape/assistant-sessions'
+    | '/api/shape/research-paper-blocks'
     | '/api/shape/research-papers'
     | '/api/shape/research-projects'
     | '/api/shape/teams'
@@ -505,6 +518,7 @@ export interface RootRouteChildren {
   ApiShapeAssistantPersonasRoute: typeof ApiShapeAssistantPersonasRoute
   ApiShapeAssistantSessionPersonasRoute: typeof ApiShapeAssistantSessionPersonasRoute
   ApiShapeAssistantSessionsRoute: typeof ApiShapeAssistantSessionsRoute
+  ApiShapeResearchPaperBlocksRoute: typeof ApiShapeResearchPaperBlocksRoute
   ApiShapeResearchPapersRoute: typeof ApiShapeResearchPapersRoute
   ApiShapeResearchProjectsRoute: typeof ApiShapeResearchProjectsRoute
   ApiShapeTeamsRoute: typeof ApiShapeTeamsRoute
@@ -731,6 +745,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiShapeResearchPapersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/shape/research-paper-blocks': {
+      id: '/api/shape/research-paper-blocks'
+      path: '/api/shape/research-paper-blocks'
+      fullPath: '/api/shape/research-paper-blocks'
+      preLoaderRoute: typeof ApiShapeResearchPaperBlocksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/shape/assistant-sessions': {
       id: '/api/shape/assistant-sessions'
       path: '/api/shape/assistant-sessions'
@@ -832,6 +853,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiShapeAssistantPersonasRoute: ApiShapeAssistantPersonasRoute,
   ApiShapeAssistantSessionPersonasRoute: ApiShapeAssistantSessionPersonasRoute,
   ApiShapeAssistantSessionsRoute: ApiShapeAssistantSessionsRoute,
+  ApiShapeResearchPaperBlocksRoute: ApiShapeResearchPaperBlocksRoute,
   ApiShapeResearchPapersRoute: ApiShapeResearchPapersRoute,
   ApiShapeResearchProjectsRoute: ApiShapeResearchProjectsRoute,
   ApiShapeTeamsRoute: ApiShapeTeamsRoute,

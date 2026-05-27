@@ -1,23 +1,34 @@
 "use client";
 
+import { eq, useLiveQuery } from "@tanstack/react-db";
 import { useStore } from "@tanstack/react-form";
 import type React from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import {
-	createContext,
-	useCallback,
-	useContext,
-	useEffect,
-	useMemo,
-	useReducer,
-	useRef,
-	useState,
-} from "react";
+	type ResearchPaperBlockRowType,
+	researchPaperBlockCollection,
+} from "#/collections/research_paper_blocks";
 import {
-	createInitialPaperBlocks,
-	type PaperAction,
-	paperReducer,
-	type SetBlockKindOptions,
-} from "#/components/latex/model/paper-reducer";
+	insertBlockAfter as insertBlockAfterAction,
+	insertBlockAtStart as insertBlockAtStartAction,
+	type InsertContext,
+	insertEquationAfter as insertEquationAfterAction,
+	insertHeadingAfter as insertHeadingAfterAction,
+	insertListAfter as insertListAfterAction,
+	insertParagraphAfter as insertParagraphAfterAction,
+	removeBlock as removeBlockAction,
+	reorderBlock as reorderBlockAction,
+	setBlockKind as setBlockKindAction,
+	updateBlockLatex,
+	updateBlockText,
+} from "#/components/latex/blocks/actions";
+import type { SetBlockKindOptions } from "#/components/latex/blocks/convert-block";
+import {
+	setFocusedBlockId,
+	useFocusedBlockId,
+} from "#/components/latex/blocks/focus-store";
+import { researchPaperBlockRowToBlock } from "#/components/latex/blocks/row-to-block";
+import { editorBridge } from "#/components/latex/editor-bridge";
 import type {
 	HeadingLevel,
 	PaperBlock,
@@ -28,8 +39,7 @@ import {
 	type PaperMetadataFormApi,
 	usePaperMetadataForm,
 } from "#/components/latex/panels/metadata-tab";
-import { useResearchPaperCollectionSync } from "#/components/latex/paper-sync";
-import { editorBridge } from "./editor-bridge";
+import { useResearchPaperSync } from "#/components/latex/paper-sync";
 
 export type PaperEditorPersistence = {
 	enabled: boolean;
@@ -42,7 +52,6 @@ export type PaperEditorPersistence = {
 
 type PaperEditorContextValue = {
 	blocks: PaperBlock[];
-	dispatch: React.Dispatch<PaperAction>;
 	focusedBlockId: string | null;
 	setFocusedBlockId: (id: string | null) => void;
 	metadataForm: PaperMetadataFormApi;
@@ -54,6 +63,7 @@ type PaperEditorContextValue = {
 	insertHeadingAfter: (afterId: string, level: HeadingLevel) => string;
 	insertListAfter: (afterId: string, ordered: boolean) => string;
 	insertBlockAfter: (afterId: string, block: PaperBlock) => string;
+	insertBlockAtStart: (block: PaperBlock) => string;
 	removeBlockAndFocusPrevious: (id: string) => void;
 	reorderBlock: (
 		sourceId: string,
@@ -72,11 +82,16 @@ type PaperEditorContextValue = {
 
 const PaperEditorContext = createContext<PaperEditorContextValue | null>(null);
 
-function newId(): string {
-	return crypto.randomUUID();
-}
+const sortRows = (
+	rows: ReadonlyArray<ResearchPaperBlockRowType>,
+): ResearchPaperBlockRowType[] =>
+	[...rows].sort((left, right) =>
+		left.sort_order === right.sort_order
+			? left.created_at.getTime() - right.created_at.getTime()
+			: left.sort_order - right.sort_order,
+	);
 
-export function PaperEditorProvider({
+export const PaperEditorProvider = ({
 	children,
 	paperId: paperIdProp,
 	bootstrapProjectId,
@@ -86,18 +101,9 @@ export function PaperEditorProvider({
 	paperId?: string;
 	bootstrapProjectId?: string;
 	onPaperBootstrapped?: (paperId: string) => void;
-}) {
-	const [blocks, dispatch] = useReducer(
-		paperReducer,
-		undefined,
-		createInitialPaperBlocks,
-	);
-	const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
+}) => {
 	const anchorsRef = useRef(new Map<string, HTMLElement>());
 	const metadataForm = usePaperMetadataForm();
-
-	const blocksRef = useRef(blocks);
-	blocksRef.current = blocks;
 
 	const metadata = useStore(
 		metadataForm.store,
@@ -111,171 +117,164 @@ export function PaperEditorProvider({
 		waitingForRemote,
 		bootstrapError,
 		saveError,
-	} = useResearchPaperCollectionSync({
+	} = useResearchPaperSync({
 		paperIdProp,
 		bootstrapProjectId,
 		onPaperBootstrapped,
-		dispatch,
-		blocksRef,
-		blocks,
 		metadata,
 		metadataForm,
 	});
 
-	const paperPersistence = useMemo(
-		(): PaperEditorPersistence => ({
-			enabled: persistEnabled,
-			ready: persistReady,
-			waitingForRemote,
-			bootstrapError,
-			saveError,
-			effectivePaperId,
-		}),
-		[
-			persistEnabled,
-			persistReady,
-			waitingForRemote,
-			bootstrapError,
-			saveError,
-			effectivePaperId,
-		],
+	const blockQuery = useLiveQuery(
+		(query) =>
+			query
+				.from({ row: researchPaperBlockCollection })
+				.where(({ row }) => eq(row.paper_id, effectivePaperId ?? "")),
+		[effectivePaperId],
 	);
 
-	const registerBlockAnchor = useCallback(
-		(id: string, el: HTMLElement | null) => {
-			if (el) {
-				anchorsRef.current.set(id, el);
-				return;
-			}
-
-			anchorsRef.current.delete(id);
-		},
-		[],
+	const rows = useMemo(
+		() => sortRows(blockQuery.data ?? []),
+		[blockQuery.data],
 	);
 
-	const focusBlock = useCallback((id: string) => {
+	const blocks = useMemo(
+		() => rows.map(researchPaperBlockRowToBlock),
+		[rows],
+	);
+
+	const focusedBlockId = useFocusedBlockId();
+
+	const insertContext: InsertContext | null = useMemo(() => {
+		if (!effectivePaperId) {
+			return null;
+		}
+
+		const organizationSlug = rows[0]?.organization_slug ?? "";
+
+		return {
+			paperId: effectivePaperId,
+			organizationSlug,
+			blocks: rows,
+		};
+	}, [effectivePaperId, rows]);
+
+	const focusBlock = (id: string): void => {
 		const root = anchorsRef.current.get(id);
 		const editable = root?.querySelector<HTMLElement>("[contenteditable]");
 		editable?.focus();
 		root?.scrollIntoView({ behavior: "smooth", block: "center" });
-	}, []);
+	};
 
-	const scrollToBlock = useCallback(
-		(id: string) => {
-			focusBlock(id);
-		},
-		[focusBlock],
-	);
+	const registerBlockAnchor = (id: string, el: HTMLElement | null): void => {
+		if (el) {
+			anchorsRef.current.set(id, el);
+			return;
+		}
 
-	const updateText = useCallback((id: string, text: string) => {
-		dispatch({ type: "UPDATE_TEXT", id, text });
-	}, []);
+		anchorsRef.current.delete(id);
+	};
 
-	const updateLatex = useCallback((id: string, latex: string) => {
-		dispatch({ type: "UPDATE_LATEX", id, latex });
-	}, []);
+	const insertParagraphAfter = (afterId: string, text = ""): string => {
+		if (!insertContext) {
+			return "";
+		}
 
-	const insertBlockAfter = useCallback(
-		(afterId: string, block: PaperBlock): string => {
-			dispatch({ type: "INSERT_AFTER", afterId, block });
-			queueMicrotask(() => focusBlock(block.id));
-			return block.id;
-		},
-		[focusBlock],
-	);
+		const id = insertParagraphAfterAction(insertContext, afterId, text);
+		queueMicrotask(() => focusBlock(id));
+		return id;
+	};
 
-	const insertParagraphAfter = useCallback(
-		(afterId: string, text = ""): string =>
-			insertBlockAfter(afterId, { id: newId(), type: "paragraph", text }),
-		[insertBlockAfter],
-	);
+	const insertEquationAfter = (afterId: string, latex = ""): string => {
+		if (!insertContext) {
+			return "";
+		}
 
-	const insertEquationAfter = useCallback(
-		(afterId: string, latex = ""): string =>
-			insertBlockAfter(afterId, {
-				id: newId(),
-				type: "equation",
-				latex,
-				display: true,
-			}),
-		[insertBlockAfter],
-	);
+		const id = insertEquationAfterAction(insertContext, afterId, latex);
+		queueMicrotask(() => focusBlock(id));
+		return id;
+	};
 
-	const insertHeadingAfter = useCallback(
-		(afterId: string, level: HeadingLevel): string =>
-			insertBlockAfter(afterId, {
-				id: newId(),
-				type: "heading",
-				level,
-				text: "",
-			}),
-		[insertBlockAfter],
-	);
+	const insertHeadingAfter = (
+		afterId: string,
+		level: HeadingLevel,
+	): string => {
+		if (!insertContext) {
+			return "";
+		}
 
-	const insertListAfter = useCallback(
-		(afterId: string, ordered: boolean): string =>
-			insertBlockAfter(afterId, {
-				id: newId(),
-				type: "list",
-				ordered,
-				text: "",
-			}),
-		[insertBlockAfter],
-	);
+		const id = insertHeadingAfterAction(insertContext, afterId, level);
+		queueMicrotask(() => focusBlock(id));
+		return id;
+	};
 
-	const removeBlockAndFocusPrevious = useCallback(
-		(id: string) => {
-			const idx = blocksRef.current.findIndex((block) => block.id === id);
-			const prevId = idx > 0 ? blocksRef.current[idx - 1]?.id : undefined;
-			dispatch({ type: "REMOVE_BLOCK", id });
+	const insertListAfter = (afterId: string, ordered: boolean): string => {
+		if (!insertContext) {
+			return "";
+		}
 
-			if (prevId) {
-				queueMicrotask(() => focusBlock(prevId));
-			}
-		},
-		[focusBlock],
-	);
+		const id = insertListAfterAction(insertContext, afterId, ordered);
+		queueMicrotask(() => focusBlock(id));
+		return id;
+	};
 
-	const reorderBlock = useCallback(
-		(sourceId: string, targetId: string, position: "above" | "below") => {
-			dispatch({ type: "REORDER_BLOCK", sourceId, targetId, position });
-		},
-		[],
-	);
+	const insertBlockAfter = (afterId: string, block: PaperBlock): string => {
+		if (!insertContext) {
+			return "";
+		}
 
-	const setBlockKind = useCallback(
-		(id: string, kind: PaperBlockKind, options?: SetBlockKindOptions) => {
-			dispatch({ type: "SET_BLOCK_KIND", id, kind, options });
-		},
-		[],
-	);
+		const id = insertBlockAfterAction(insertContext, afterId, block);
+		queueMicrotask(() => focusBlock(id));
+		return id;
+	};
 
-	useEffect(() => {
-		editorBridge.register({
-			getBlocks: () => blocksRef.current,
-			getMetadata: () => metadataForm.store.state.values as PaperMetadata,
-			updateText,
-			updateLatex,
-			insertParagraphAfter,
-			insertHeadingAfter,
-			insertEquationAfter,
-			insertListAfter,
-			insertBlockAfter,
-			removeBlock: (id) => dispatch({ type: "REMOVE_BLOCK", id }),
-			reorderBlock,
-			setBlockKind,
-			updateMetadata: (patch) => {
-				for (const [key, val] of Object.entries(patch)) {
-					metadataForm.setFieldValue(key as keyof PaperMetadata, val as string);
-				}
-			},
-			scrollToBlock,
-		});
+	const insertBlockAtStart = (block: PaperBlock): string => {
+		if (!insertContext) {
+			return "";
+		}
 
-		return () => editorBridge.unregister();
-	}, [
-		updateText,
-		updateLatex,
+		const id = insertBlockAtStartAction(insertContext, block);
+		queueMicrotask(() => focusBlock(id));
+		return id;
+	};
+
+	const removeBlockAndFocusPrevious = (id: string): void => {
+		if (!insertContext) {
+			return;
+		}
+
+		const index = rows.findIndex((entry) => entry.id === id);
+		const previousId = index > 0 ? rows[index - 1]?.id : undefined;
+
+		removeBlockAction(insertContext, id);
+
+		if (previousId) {
+			queueMicrotask(() => focusBlock(previousId));
+		}
+	};
+
+	const reorderBlock = (
+		sourceId: string,
+		targetId: string,
+		position: "above" | "below",
+	): void => {
+		if (!insertContext) {
+			return;
+		}
+
+		void reorderBlockAction(insertContext, sourceId, targetId, position);
+	};
+
+	const setBlockKind = (
+		id: string,
+		kind: PaperBlockKind,
+		options?: SetBlockKindOptions,
+	): void => {
+		setBlockKindAction(id, kind, options);
+	};
+
+	const bridgeRef = useRef({
+		blocks,
 		insertParagraphAfter,
 		insertHeadingAfter,
 		insertEquationAfter,
@@ -283,61 +282,107 @@ export function PaperEditorProvider({
 		insertBlockAfter,
 		reorderBlock,
 		setBlockKind,
-		scrollToBlock,
+		focusBlock,
 		metadataForm,
-	]);
+	});
 
-	const value = useMemo(
-		(): PaperEditorContextValue => ({
-			blocks,
-			dispatch,
-			focusedBlockId,
-			setFocusedBlockId,
-			metadataForm,
-			paperPersistence,
-			updateText,
-			updateLatex,
-			insertParagraphAfter,
-			insertEquationAfter,
-			insertHeadingAfter,
-			insertListAfter,
-			insertBlockAfter,
-			removeBlockAndFocusPrevious,
-			reorderBlock,
-			setBlockKind,
-			focusBlock,
-			registerBlockAnchor,
-			scrollToBlock,
-		}),
-		[
-			blocks,
-			focusedBlockId,
-			metadataForm,
-			paperPersistence,
-			updateText,
-			updateLatex,
-			insertParagraphAfter,
-			insertEquationAfter,
-			insertHeadingAfter,
-			insertListAfter,
-			insertBlockAfter,
-			removeBlockAndFocusPrevious,
-			reorderBlock,
-			setBlockKind,
-			focusBlock,
-			registerBlockAnchor,
-			scrollToBlock,
-		],
+	bridgeRef.current = {
+		blocks,
+		insertParagraphAfter,
+		insertHeadingAfter,
+		insertEquationAfter,
+		insertListAfter,
+		insertBlockAfter,
+		reorderBlock,
+		setBlockKind,
+		focusBlock,
+		metadataForm,
+	};
+
+	const bridgePublishedRef = useRef(false);
+
+	if (!bridgePublishedRef.current) {
+		bridgePublishedRef.current = true;
+		editorBridge.publish({
+			getBlocks: () => bridgeRef.current.blocks,
+			getMetadata: () =>
+				bridgeRef.current.metadataForm.store.state.values as PaperMetadata,
+			updateText: updateBlockText,
+			updateLatex: updateBlockLatex,
+			insertParagraphAfter: (afterId, text) =>
+				bridgeRef.current.insertParagraphAfter(afterId, text),
+			insertHeadingAfter: (afterId, level) =>
+				bridgeRef.current.insertHeadingAfter(afterId, level),
+			insertEquationAfter: (afterId, latex) =>
+				bridgeRef.current.insertEquationAfter(afterId, latex),
+			insertListAfter: (afterId, ordered) =>
+				bridgeRef.current.insertListAfter(afterId, ordered),
+			insertBlockAfter: (afterId, block) =>
+				bridgeRef.current.insertBlockAfter(afterId, block),
+			removeBlock: (id) => researchPaperBlockCollection.delete(id),
+			reorderBlock: (sourceId, targetId, position) =>
+				bridgeRef.current.reorderBlock(sourceId, targetId, position),
+			setBlockKind: (id, kind, options) =>
+				bridgeRef.current.setBlockKind(id, kind, options),
+			updateMetadata: (patch) => {
+				for (const [key, value] of Object.entries(patch)) {
+					bridgeRef.current.metadataForm.setFieldValue(
+						key as keyof PaperMetadata,
+						value as string,
+					);
+				}
+			},
+			scrollToBlock: (id) => bridgeRef.current.focusBlock(id),
+		});
+	}
+
+	useEffect(
+		() => () => {
+			editorBridge.publish(null);
+			bridgePublishedRef.current = false;
+		},
+		[],
 	);
+
+	const paperPersistence: PaperEditorPersistence = {
+		enabled: persistEnabled,
+		ready: persistReady,
+		waitingForRemote,
+		bootstrapError,
+		saveError,
+		effectivePaperId,
+	};
+
+	const value: PaperEditorContextValue = {
+		blocks,
+		focusedBlockId,
+		setFocusedBlockId,
+		metadataForm,
+		paperPersistence,
+		updateText: updateBlockText,
+		updateLatex: updateBlockLatex,
+		insertParagraphAfter,
+		insertEquationAfter,
+		insertHeadingAfter,
+		insertListAfter,
+		insertBlockAfter,
+		insertBlockAtStart,
+		removeBlockAndFocusPrevious,
+		reorderBlock,
+		setBlockKind,
+		focusBlock,
+		registerBlockAnchor,
+		scrollToBlock: focusBlock,
+	};
 
 	return (
 		<PaperEditorContext.Provider value={value}>
 			{children}
 		</PaperEditorContext.Provider>
 	);
-}
+};
 
-export function usePaperEditor(): PaperEditorContextValue {
+export const usePaperEditor = (): PaperEditorContextValue => {
 	const ctx = useContext(PaperEditorContext);
 
 	if (!ctx) {
@@ -345,4 +390,4 @@ export function usePaperEditor(): PaperEditorContextValue {
 	}
 
 	return ctx;
-}
+};
