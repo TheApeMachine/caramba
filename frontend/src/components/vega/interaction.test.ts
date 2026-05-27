@@ -70,7 +70,7 @@ describe("buildZoomParams", () => {
 
 		expect(zoom.bind).toBe("scales");
 		expect(zoom.select.zoom).toBe("wheel!");
-		expect(zoom.select.translate).toBe("wheel![event.shiftKey]");
+		expect(zoom.select.translate).toBeUndefined();
 		expect(zoom.select.clear).toBe("dblclick, escape");
 		expect(zoom.select.encodings).toEqual(["x", "y"]);
 	});

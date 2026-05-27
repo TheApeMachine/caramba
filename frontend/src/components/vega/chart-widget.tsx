@@ -48,7 +48,7 @@ export const ChartWidget = ({ spec, className }: ChartWidgetProps) => {
 
 		if (chartInteraction.profile !== "none") {
 			hints.push(
-				"Scroll to zoom. Shift+scroll to pan. Double-click or Escape to reset.",
+				"Scroll to zoom. Drag to pan. Double-click or Escape to reset.",
 			);
 		}
 

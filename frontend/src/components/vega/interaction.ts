@@ -156,9 +156,13 @@ export const boundedScale = (
 });
 
 /*
-buildZoomParams returns Vega-Lite params for wheel zoom, shift-wheel pan,
-and reset via double-click or Escape. Scale binding is handled inside the
-compiled Vega view (see Vega-Lite zoom / translate / bind docs).
+buildZoomParams returns Vega-Lite params for wheel zoom, drag pan, and reset
+via double-click or Escape. Scale binding is handled inside the compiled
+Vega view (see Vega-Lite zoom / bind docs).
+
+Do not set translate to a wheel event stream when bind is "scales": the
+translate compiler only supports drag-style between events and throws
+during compile otherwise.
 */
 export const buildZoomParams = (
 	profile: Exclude<ChartInteractionProfile, "none">,
@@ -173,7 +177,6 @@ export const buildZoomParams = (
 				clear: "dblclick, escape",
 				encodings,
 				mark: { fill: "transparent", stroke: "transparent" },
-				translate: "wheel![event.shiftKey]",
 				type: "interval",
 				zoom: "wheel!",
 			},
@@ -207,6 +210,19 @@ export const legendOpacityEncoding = (
 	value: dimmed,
 });
 
+const mergeParams = (
+	target: Record<string, unknown>,
+	interactionParams: Record<string, unknown>[],
+): void => {
+	const layerParams = Array.isArray(target.params) ? target.params : [];
+	target.params = [...layerParams, ...interactionParams];
+};
+
+/*
+attachChartInteraction adds zoom/legend params and usermeta. On layered specs,
+params must live on the first layer only — top-level scale binding emits
+duplicate chartZoom_* signals per layer and Vega parse fails.
+*/
 export const attachChartInteraction = (
 	spec: Spec,
 	meta: ChartInteractionMeta,
@@ -217,22 +233,42 @@ export const attachChartInteraction = (
 
 	const specRecord = spec as Record<string, unknown>;
 	const existing = specRecord.usermeta;
-	const existingParams = Array.isArray(specRecord.params)
-		? specRecord.params
-		: [];
 	const interactionParams = [...buildZoomParams(meta.profile)];
 
 	if (meta.legendField) {
 		interactionParams.push(buildLegendBindParam(meta.legendField));
 	}
 
+	const usermeta = {
+		...(typeof existing === "object" && existing !== null ? existing : {}),
+		[CHART_INTERACTION_META_KEY]: meta,
+	};
+
+	const layers = specRecord.layer;
+
+	if (Array.isArray(layers) && layers.length > 0) {
+		const nextLayers = layers.map((layer) =>
+			typeof layer === "object" && layer !== null
+				? { ...(layer as Record<string, unknown>) }
+				: {},
+		);
+		mergeParams(nextLayers[0], interactionParams);
+
+		return {
+			...spec,
+			layer: nextLayers,
+			usermeta,
+		} as Spec;
+	}
+
+	const existingParams = Array.isArray(specRecord.params)
+		? specRecord.params
+		: [];
+
 	return {
 		...spec,
 		params: [...existingParams, ...interactionParams],
-		usermeta: {
-			...(typeof existing === "object" && existing !== null ? existing : {}),
-			[CHART_INTERACTION_META_KEY]: meta,
-		},
+		usermeta,
 	} as Spec;
 };
 
