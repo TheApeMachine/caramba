@@ -2,10 +2,9 @@ import React from "react";
 import Checkbox from "#/components/flume/Checkbox/Checkbox";
 import {
 	ContextContext,
-	NodeDispatchContext,
+	NodeActionsContext,
 	RecalculateStageRectContext,
 } from "#/components/flume/context";
-import { NodesActionType } from "#/components/flume/nodesReducer";
 import Select from "#/components/flume/Select/Select";
 import type {
 	ControlData,
@@ -109,7 +108,7 @@ const Control = (props: ControlProps) => {
 		defaultValue,
 		isMonoControl,
 	} = props;
-	const nodesDispatch = React.useContext(NodeDispatchContext);
+	const nodeActions = React.useContext(NodeActionsContext);
 	const executionContext = React.useContext(ContextContext);
 	const recalculateStageRect = React.useContext(RecalculateStageRectContext);
 
@@ -134,16 +133,13 @@ const Control = (props: ControlProps) => {
 	const calculatedLabel = isMonoControl ? inputLabel : label;
 
 	const onChange = (data: unknown) => {
-		if (nodesDispatch) {
-			nodesDispatch({
-				type: NodesActionType.SET_PORT_DATA,
-				data,
-				nodeId,
-				portName,
-				controlName: name,
-				setValue,
-			});
-		}
+		nodeActions?.setPortData({
+			data,
+			nodeId,
+			portName,
+			controlName: name,
+			setValue,
+		});
 		triggerRecalculation();
 	};
 

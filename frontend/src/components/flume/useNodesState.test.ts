@@ -1,8 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { researchGraphCollection } from "#/collections/research_graph";
 import { buildFlumeConfigFromSchemas } from "./build-config-from-schemas";
-import { NodesActionType } from "./nodesReducer";
 import { useNodesState } from "./useNodesState";
 
 const clearCollection = () => {
@@ -21,7 +20,6 @@ const clearCollection = () => {
 
 const renderUseNodesState = (graphId: string) => {
 	const { nodeTypes, portTypes } = buildFlumeConfigFromSchemas({});
-	const setToasts = vi.fn();
 	const getEnvironment = () => ({
 		nodeTypes,
 		portTypes,
@@ -36,7 +34,6 @@ const renderUseNodesState = (graphId: string) => {
 			portTypes,
 			context: {},
 			getEnvironment,
-			setSideEffectToasts: setToasts,
 		}),
 	);
 };
@@ -90,9 +87,9 @@ describe("useNodesState", () => {
 		expect(Object.keys(secondRow?.nodes as object)).toHaveLength(2);
 	});
 
-	it("dispatch reconciles the draft so reducer sees a normalized shape", () => {
+	it("setNodeCoordinates reconciles the draft so actions see a normalized shape", () => {
 		// Pre-seed a stale row: a node missing the connections field that
-		// the reducer expects. reconcileNodes-on-write should fill it in.
+		// the actions expect. reconcileNodes-on-write should fill it in.
 		researchGraphCollection.insert({
 			id: "graph-c",
 			project_id: null,
@@ -117,8 +114,7 @@ describe("useNodesState", () => {
 		const { result } = renderUseNodesState("graph-c");
 
 		act(() => {
-			result.current.dispatch({
-				type: NodesActionType.SET_NODE_COORDINATES,
+			result.current.actions.setNodeCoordinates({
 				nodeId: "source",
 				x: 100,
 				y: 100,

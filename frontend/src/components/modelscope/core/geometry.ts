@@ -17,7 +17,27 @@ import {
 	textVertexShader,
 } from "../shaders";
 import { getTextCoordinates } from "../utils/font-data";
-import type { Graph } from "./graph";
+import type { Graph, NodeData } from "./graph";
+
+interface ModuleNodeData extends NodeData {
+	kind: "module";
+	tensors?: number;
+	elements?: number;
+	bytes?: number;
+}
+
+interface AttentionEdgeData extends NodeData {
+	kind: "attn";
+	w?: number;
+}
+
+const isModuleNodeData = (data: NodeData | undefined): data is ModuleNodeData =>
+	data?.kind === "module";
+
+const isAttentionEdgeData = (
+	data: NodeData | undefined,
+): data is AttentionEdgeData =>
+	data?.kind === "attn" && typeof data.w === "number";
 
 export interface LookupTableEntry {
 	texPos: [number, number];
@@ -92,8 +112,8 @@ function formatNodeLabel(
 	labelDetailMode: LabelDetailMode,
 ): string {
 	const node = graph.nodes[key];
-	const data0 = (node?.data?.[0] as any) ?? null;
-	if (data0?.kind === "module") {
+	const data0 = node?.data?.[0];
+	if (isModuleNodeData(data0)) {
 		if (labelDetailMode === "compact") {
 			return shortenModulePath(key);
 		}
@@ -384,11 +404,10 @@ function createEdgeGeometry(
 		// We use this to modulate edge brightness for readability (cheap + effective).
 		// Minimum factor increased from 0.2 to 0.4 for better visibility.
 		let weightFactor = 1.0;
-		for (const d of edge.data ?? []) {
-			const anyD = d as any;
-			if (anyD && anyD.kind === "attn" && typeof anyD.w === "number") {
-				const w = Math.max(0, Math.min(1, anyD.w));
-				weightFactor = 0.4 + 0.6 * Math.sqrt(w);
+		for (const edgeDatum of edge.data ?? []) {
+			if (isAttentionEdgeData(edgeDatum)) {
+				const weight = Math.max(0, Math.min(1, edgeDatum.w));
+				weightFactor = 0.4 + 0.6 * Math.sqrt(weight);
 				break;
 			}
 		}

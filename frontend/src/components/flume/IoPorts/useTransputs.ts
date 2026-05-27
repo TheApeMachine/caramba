@@ -1,9 +1,8 @@
 import React from "react";
 import {
 	ContextContext,
-	NodeDispatchContext,
+	NodeActionsContext,
 } from "#/components/flume/context";
-import { NodesActionType } from "#/components/flume/nodesReducer";
 import type {
 	Connections,
 	InputData,
@@ -15,7 +14,7 @@ import usePrevious from "#/hooks/usePrevious";
 
 /*
 useTransputs resolves the runtime list of input or output ports for a
-node and emits DESTROY_TRANSPUT actions when a previously-present
+node and emits destroyTransput actions when a previously-present
 dynamic port disappears. Static array port definitions skip the
 destroy-on-removal path because the registry guarantees those ports
 exist for the lifetime of the node type.
@@ -28,7 +27,7 @@ export const useTransputs = (
 	inputData: InputData,
 	connections: Connections,
 ) => {
-	const nodesDispatch = React.useContext(NodeDispatchContext);
+	const nodeActions = React.useContext(NodeActionsContext);
 	const executionContext = React.useContext(ContextContext);
 
 	const transputs = React.useMemo(() => {
@@ -53,17 +52,16 @@ export const useTransputs = (
 				continue;
 			}
 
-			nodesDispatch?.({
-				type: NodesActionType.DESTROY_TRANSPUT,
+			nodeActions?.destroyTransput(
+				{ nodeId, portName: `${transput.name}` },
 				transputType,
-				transput: { nodeId, portName: `${transput.name}` },
-			});
+			);
 		}
 	}, [
 		transputsFn,
 		transputs,
 		prevTransputs,
-		nodesDispatch,
+		nodeActions,
 		nodeId,
 		transputType,
 	]);

@@ -9,16 +9,13 @@ import {
 } from "#/components/flume/connectionCalculator";
 import {
 	EditorIdContext,
-	NodeDispatchContext,
+	NodeActionsContext,
 	PortTypesContext,
 	StageContext,
 	useEdgeRouting,
 } from "#/components/flume/context";
-import type { NodesAction } from "#/components/flume/nodesReducer";
-import { NodesActionType } from "#/components/flume/nodesReducer";
+import type { NodeActions } from "#/components/flume/nodes-actions";
 import type { Coordinate, PortTypeMap } from "#/components/flume/types";
-
-type NodesDispatch = React.Dispatch<NodesAction> | null;
 
 /*
 usePortDrag isolates the drag-line state machine that used to live inside
@@ -27,7 +24,7 @@ and portal, while this hook owns:
   - mouse event registration / cleanup
   - dragStartCoordinates state
   - main-thread SVG `d` attribute updates against the routing mode
-  - drop resolution (ADD_CONNECTION / REMOVE_CONNECTION dispatch)
+  - drop resolution (addConnection / removeConnection action calls)
 */
 
 interface PortDragOptions {
@@ -86,7 +83,7 @@ const dispatchAcceptedConnection = ({
 	nodeId,
 	name,
 	inputTypes,
-	nodesDispatch,
+	nodeActions,
 	triggerRecalculation,
 }: {
 	target: HTMLElement;
@@ -94,7 +91,7 @@ const dispatchAcceptedConnection = ({
 	nodeId: string;
 	name: string;
 	inputTypes: PortTypeMap;
-	nodesDispatch: NodesDispatch;
+	nodeActions: NodeActions | null;
 	triggerRecalculation: () => void;
 }) => {
 	const {
@@ -122,11 +119,10 @@ const dispatchAcceptedConnection = ({
 		return;
 	}
 
-	nodesDispatch?.({
-		type: NodesActionType.ADD_CONNECTION,
-		output: { nodeId, portName: name },
-		input: { nodeId: inputNodeId, portName: inputPortName },
-	});
+	nodeActions?.addConnection(
+		{ nodeId: inputNodeId, portName: inputPortName },
+		{ nodeId, portName: name },
+	);
 	triggerRecalculation();
 };
 
@@ -136,14 +132,14 @@ const resolveInputDrop = ({
 	outputPortName,
 	type,
 	inputTypes,
-	nodesDispatch,
+	nodeActions,
 }: {
 	target: HTMLElement;
 	outputNodeId: string;
 	outputPortName: string;
 	type: string;
 	inputTypes: PortTypeMap;
-	nodesDispatch: NodesDispatch;
+	nodeActions: NodeActions | null;
 }) => {
 	const {
 		portName: connectToPortName,
@@ -170,11 +166,10 @@ const resolveInputDrop = ({
 		return;
 	}
 
-	nodesDispatch?.({
-		type: NodesActionType.ADD_CONNECTION,
-		input: { nodeId: connectToNodeId, portName: connectToPortName },
-		output: { nodeId: outputNodeId, portName: outputPortName },
-	});
+	nodeActions?.addConnection(
+		{ nodeId: connectToNodeId, portName: connectToPortName },
+		{ nodeId: outputNodeId, portName: outputPortName },
+	);
 };
 
 export const usePortDrag = ({
@@ -185,7 +180,7 @@ export const usePortDrag = ({
 	triggerRecalculation,
 	portButtonRef,
 }: PortDragOptions): PortDragHandle => {
-	const nodesDispatch = React.useContext(NodeDispatchContext);
+	const nodeActions = React.useContext(NodeActionsContext);
 	const stageState = React.useContext(StageContext) || {
 		scale: 1,
 		translate: { x: 0, y: 0 },
@@ -238,11 +233,10 @@ export const usePortDrag = ({
 					outputPortName = "",
 				} = lineInToPort.current?.dataset ?? {};
 
-				nodesDispatch?.({
-					type: NodesActionType.REMOVE_CONNECTION,
-					input: { nodeId: inputNodeId, portName: inputPortName },
-					output: { nodeId: outputNodeId, portName: outputPortName },
-				});
+				nodeActions?.removeConnection(
+					{ nodeId: inputNodeId, portName: inputPortName },
+					{ nodeId: outputNodeId, portName: outputPortName },
+				);
 
 				if (droppedOnPort) {
 					resolveInputDrop({
@@ -251,7 +245,7 @@ export const usePortDrag = ({
 						outputPortName,
 						type,
 						inputTypes,
-						nodesDispatch,
+						nodeActions,
 					});
 				}
 			} else if (droppedOnPort) {
@@ -261,7 +255,7 @@ export const usePortDrag = ({
 					nodeId,
 					name,
 					inputTypes,
-					nodesDispatch,
+					nodeActions,
 					triggerRecalculation,
 				});
 			}
@@ -273,7 +267,7 @@ export const usePortDrag = ({
 		[
 			handleDrag,
 			isInput,
-			nodesDispatch,
+			nodeActions,
 			type,
 			inputTypes,
 			nodeId,

@@ -1,9 +1,6 @@
 import React from "react";
 import { getCanvasRef } from "#/components/flume/connectionCalculator";
-import {
-	type NodesAction,
-	NodesActionType,
-} from "#/components/flume/nodesReducer";
+import type { NodeActions } from "#/components/flume/nodes-actions";
 import {
 	createSpatialIndexSnapshot,
 	type PortLayoutEntry,
@@ -38,7 +35,7 @@ reads only from this in-memory index.
 */
 export function useSpatialIndex(
 	editorId: string,
-	dispatchNodes: React.Dispatch<NodesAction> | null,
+	nodeActions: NodeActions | null,
 	onNodeLayoutChange?: (nodeId: string, width: number, height: number) => void,
 ): {
 	indexRef: React.RefObject<SpatialIndexSnapshot>;
@@ -79,12 +76,7 @@ export function useSpatialIndex(
 
 			indexRef.current.nodeLayouts.set(nodeId, { width, height });
 			onNodeLayoutChange?.(nodeId, width, height);
-			dispatchNodes?.({
-				type: NodesActionType.SET_NODE_DIMENSIONS,
-				nodeId,
-				width,
-				height,
-			});
+			nodeActions?.setNodeDimensions({ nodeId, width, height });
 		};
 
 		const resizeObserver = new ResizeObserver((entries) => {
@@ -149,7 +141,7 @@ export function useSpatialIndex(
 			mutationObserver.disconnect();
 			indexRef.current = createSpatialIndexSnapshot();
 		};
-	}, [editorId, dispatchNodes, onNodeLayoutChange]);
+	}, [editorId, nodeActions, onNodeLayoutChange]);
 
 	return { indexRef, registerPortLayout };
 }

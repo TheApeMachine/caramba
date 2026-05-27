@@ -5,10 +5,9 @@ import type { CommentAction } from "#/components/flume/commentsReducer";
 import { CommentActionTypes } from "#/components/flume/commentsReducer";
 import { CANVAS_ID, STAGE_ID } from "#/components/flume/constants";
 import {
-	NodeDispatchContext,
+	NodeActionsContext,
 	NodeTypesContext,
 } from "#/components/flume/context";
-import { NodesActionType } from "#/components/flume/nodesReducer";
 import type { StageActionSetter } from "#/components/flume/stageReducer";
 import { StageActionType } from "#/components/flume/stageReducer";
 import type {
@@ -54,7 +53,7 @@ const Stage = ({
 	disableFocusCapture,
 }: StageProps) => {
 	const nodeTypes = React.useContext(NodeTypesContext);
-	const dispatchNodes = React.useContext(NodeDispatchContext);
+	const nodeActions = React.useContext(NodeActionsContext);
 	const wrapper = React.useRef<HTMLDivElement>(null);
 	const translateWrapper = React.useRef<HTMLDivElement>(null);
 	const [menuOpen, setMenuOpen] = React.useState(false);
@@ -243,8 +242,7 @@ const Stage = ({
 					y,
 				});
 			} else {
-				dispatchNodes?.({
-					type: NodesActionType.ADD_NODE,
+				nodeActions?.addNode({
 					x,
 					y,
 					nodeType: node?.type || "",

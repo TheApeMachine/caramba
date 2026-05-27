@@ -1,19 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { buildFlumeConfigFromSchemas } from "./build-config-from-schemas";
-import nodesReducer, {
-	applyDefaultConnections,
-	getInitialNodes,
-	NodesActionType,
+import { buildInitialNodes } from "./nodes-actions";
+import {
 	pruneDanglingConnections,
-} from "./nodesReducer";
+	reconcileNodes,
+} from "./nodes-helpers";
 import type { DefaultConnection, FlumeNode } from "./types";
 
-describe("reconcileNodes via getInitialNodes", () => {
+/*
+This file used to exercise the React reducer. The reducer has been
+removed; topology mutations now flow through nodes-actions which
+write directly to researchGraphCollection. The pure helpers
+(reconcileNodes, pruneDanglingConnections, buildInitialNodes) are
+still part of the public surface and remain unit-testable in isolation.
+*/
+
+describe("reconcileNodes via buildInitialNodes", () => {
 	it("normalizes persisted nodes missing connections", () => {
 		const config = buildFlumeConfigFromSchemas({});
 
-		const nodes = getInitialNodes(
-			{
+		const nodes = buildInitialNodes({
+			initialNodes: {
 				source: {
 					id: "source",
 					type: "source",
@@ -22,11 +29,12 @@ describe("reconcileNodes via getInitialNodes", () => {
 					y: 180,
 				} as FlumeNode,
 			},
-			[],
-			config.nodeTypes,
-			config.portTypes,
-			{},
-		);
+			env: {
+				nodeTypes: config.nodeTypes,
+				portTypes: config.portTypes,
+				context: {},
+			},
+		});
 
 		expect(nodes.source.connections).toEqual({ inputs: {}, outputs: {} });
 		expect(nodes.source.inputData).toEqual({});
@@ -35,8 +43,8 @@ describe("reconcileNodes via getInitialNodes", () => {
 	it("drops nodes whose types are not in the current registry", () => {
 		const config = buildFlumeConfigFromSchemas({});
 
-		const nodes = getInitialNodes(
-			{
+		const nodes = buildInitialNodes({
+			initialNodes: {
 				unknown: {
 					id: "unknown",
 					type: "math.missing",
@@ -56,11 +64,12 @@ describe("reconcileNodes via getInitialNodes", () => {
 					connections: { inputs: {}, outputs: {} },
 				},
 			},
-			[],
-			config.nodeTypes,
-			config.portTypes,
-			{},
-		);
+			env: {
+				nodeTypes: config.nodeTypes,
+				portTypes: config.portTypes,
+				context: {},
+			},
+		});
 
 		expect(nodes.unknown).toBeUndefined();
 		expect(nodes.source).toBeDefined();
@@ -82,13 +91,14 @@ describe("reconcileNodes via getInitialNodes", () => {
 			},
 		});
 
-		const initial = getInitialNodes(
-			{},
-			[{ type: "math.test", x: 10, y: 10 }],
-			fullConfig.nodeTypes,
-			fullConfig.portTypes,
-			{},
-		);
+		const initial = buildInitialNodes({
+			defaultNodes: [{ type: "math.test", x: 10, y: 10 }],
+			env: {
+				nodeTypes: fullConfig.nodeTypes,
+				portTypes: fullConfig.portTypes,
+				context: {},
+			},
+		});
 
 		const extraNode = Object.values(initial).find(
 			(node) => node.type === "math.test",
@@ -99,25 +109,19 @@ describe("reconcileNodes via getInitialNodes", () => {
 		const builtinConfig = buildFlumeConfigFromSchemas({});
 
 		expect(() =>
-			nodesReducer(
+			reconcileNodes(
 				initial,
-				{ type: NodesActionType.RECONCILE_NODE_TYPES },
-				{
-					nodeTypes: builtinConfig.nodeTypes,
-					portTypes: builtinConfig.portTypes,
-					context: {},
-				},
+				builtinConfig.nodeTypes,
+				builtinConfig.portTypes,
+				{},
 			),
 		).not.toThrow();
 
-		const reconciled = nodesReducer(
+		const reconciled = reconcileNodes(
 			initial,
-			{ type: NodesActionType.RECONCILE_NODE_TYPES },
-			{
-				nodeTypes: builtinConfig.nodeTypes,
-				portTypes: builtinConfig.portTypes,
-				context: {},
-			},
+			builtinConfig.nodeTypes,
+			builtinConfig.portTypes,
+			{},
 		);
 
 		expect(
@@ -138,18 +142,19 @@ describe("reconcileNodes via getInitialNodes", () => {
 			},
 		];
 
-		const nodes = getInitialNodes(
-			{},
-			[
+		const nodes = buildInitialNodes({
+			defaultNodes: [
 				{ type: "source", x: 120, y: 180 },
 				{ type: "gate", x: 420, y: 180 },
 				{ type: "sink", x: 720, y: 180 },
 			],
-			config.nodeTypes,
-			config.portTypes,
-			{},
-			demoConnections,
-		);
+			defaultConnections: demoConnections,
+			env: {
+				nodeTypes: config.nodeTypes,
+				portTypes: config.portTypes,
+				context: {},
+			},
+		});
 
 		const source = Object.values(nodes).find((node) => node.type === "source");
 		const gate = Object.values(nodes).find((node) => node.type === "gate");
@@ -167,33 +172,6 @@ describe("reconcileNodes via getInitialNodes", () => {
 		expect(sink?.connections.inputs.value).toEqual([
 			{ nodeId: gate?.id, portName: "out" },
 		]);
-	});
-});
-
-describe("applyDefaultConnections", () => {
-	it("skips wiring when a valid link already exists", () => {
-		const config = buildFlumeConfigFromSchemas({});
-		const demoConnections: DefaultConnection[] = [
-			{
-				output: { nodeType: "source", portName: "value" },
-				input: { nodeType: "gate", portName: "in" },
-			},
-		];
-		const seeded = getInitialNodes(
-			{},
-			[
-				{ type: "source", x: 120, y: 180 },
-				{ type: "gate", x: 420, y: 180 },
-			],
-			config.nodeTypes,
-			config.portTypes,
-			{},
-			demoConnections,
-		);
-
-		const linkedAgain = applyDefaultConnections(seeded, demoConnections);
-
-		expect(linkedAgain).toBe(seeded);
 	});
 });
 

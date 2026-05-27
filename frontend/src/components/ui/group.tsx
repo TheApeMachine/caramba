@@ -33,17 +33,20 @@ export function Group({
 	className?: string;
 	orientation?: VariantProps<typeof groupVariants>["orientation"];
 	children: React.ReactNode;
-} & React.ComponentProps<"div">): React.ReactElement {
+} & React.ComponentProps<"fieldset">): React.ReactElement {
 	return (
-		<div
-			className={cn(groupVariants({ orientation }), className)}
+		<fieldset
+			className={cn(
+				"border-0 p-0 m-0 min-w-0",
+				groupVariants({ orientation }),
+				className,
+			)}
 			data-orientation={orientation}
 			data-slot="group"
-			role="group"
 			{...props}
 		>
 			{children}
-		</div>
+		</fieldset>
 	);
 }
 

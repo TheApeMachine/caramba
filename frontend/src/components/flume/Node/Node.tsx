@@ -14,12 +14,11 @@ import {
 	ConnectionRecalculateContext,
 	FlumeGraphWorkerContext,
 	GraphIdContext,
-	NodeDispatchContext,
+	NodeActionsContext,
 	NodeTypesContext,
 	PortTypesContext,
 	StageContext,
 } from "#/components/flume/context";
-import { NodesActionType } from "#/components/flume/nodesReducer";
 import type {
 	Connections,
 	Coordinate,
@@ -88,7 +87,7 @@ const Node = ({
 }: NodeProps) => {
 	const nodeTypes = React.useContext(NodeTypesContext) ?? {};
 	const portTypes = React.useContext(PortTypesContext) ?? {};
-	const nodesDispatch = React.useContext(NodeDispatchContext);
+	const nodeActions = React.useContext(NodeActionsContext);
 	const graphWorker = React.useContext(FlumeGraphWorkerContext);
 	const triggerRecalculation = React.useContext(ConnectionRecalculateContext);
 	const stageState = React.useContext(StageContext) ?? {
@@ -126,10 +125,10 @@ const Node = ({
 	};
 
 	const stopDrag = (_event: unknown, coordinates: Coordinate) => {
-		nodesDispatch?.({
-			type: NodesActionType.SET_NODE_COORDINATES,
-			...coordinates,
+		nodeActions?.setNodeCoordinates({
 			nodeId: id,
+			x: coordinates.x,
+			y: coordinates.y,
 		});
 		graphWorker?.endDrag(id, coordinates.x, coordinates.y);
 	};
@@ -159,7 +158,7 @@ const Node = ({
 	const closeContextMenu = () => setMenuOpen(false);
 
 	const deleteNode = () => {
-		nodesDispatch?.({ type: NodesActionType.REMOVE_NODE, nodeId: id });
+		nodeActions?.removeNode(id);
 	};
 
 	const handleMenuOption = ({ value }: SelectOption) => {

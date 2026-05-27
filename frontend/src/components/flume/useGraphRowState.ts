@@ -87,10 +87,13 @@ export const useViewportState = (
 		| { scale?: number; translate?: StageTranslate }
 		| undefined;
 
-	const viewport: StageState = {
-		scale: stored?.scale ?? DEFAULT_VIEWPORT.scale,
-		translate: stored?.translate ?? DEFAULT_VIEWPORT.translate,
-	};
+	const viewport = React.useMemo<StageState>(
+		() => ({
+			scale: stored?.scale ?? DEFAULT_VIEWPORT.scale,
+			translate: stored?.translate ?? DEFAULT_VIEWPORT.translate,
+		}),
+		[stored?.scale, stored?.translate],
+	);
 
 	const pendingRef = React.useRef<StageState | null>(null);
 	const frameRef = React.useRef<number | null>(null);

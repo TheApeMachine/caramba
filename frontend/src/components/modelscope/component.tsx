@@ -1021,7 +1021,7 @@ export function ModelScope({
 
 		simulator.setSelectedNode(node.id);
 		selectedNodeRef.current = selectedNodeName;
-	}, [selectedNodeName, externalGraph, graphVersion]);
+	}, [selectedNodeName, externalGraph]);
 
 	const formatTime = useCallback(
 		(t: number) => {

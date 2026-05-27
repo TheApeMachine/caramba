@@ -28,11 +28,7 @@ const RootDocument = ({ children }: { children: React.ReactNode }) => {
 		<html lang="en" suppressHydrationWarning>
 			<head>
 				<HeadContent />
-				<script
-					dangerouslySetInnerHTML={{
-						__html: `(function(){try{var t=localStorage.getItem('caramba.theme')||'dark';var c=localStorage.getItem('caramba.contrast')==='1';var r=document.documentElement;['light','dim','dark'].forEach(function(x){r.classList.remove(x)});var resolved=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;r.classList.add(resolved);r.classList.toggle('contrast',c);}catch(e){}})();`,
-					}}
-				/>
+				<script src="/theme-init.js" />
 			</head>
 			<body className="flex h-full min-h-svh flex-col" suppressHydrationWarning>
 				<ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up">

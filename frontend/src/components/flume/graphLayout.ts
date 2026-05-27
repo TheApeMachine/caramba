@@ -3,11 +3,7 @@ Reorders and repositions nodes for simple pipeline previews. Consumers call
 {@link dispatchGraphLayout} after the user selects a non-freeform preset; topological
 ordering follows edges producer → consumer.
 */
-import type React from "react";
-import {
-	type NodesAction,
-	NodesActionType,
-} from "#/components/flume/nodesReducer";
+import type { NodeActions } from "#/components/flume/nodes-actions";
 import type { NodeMap } from "#/components/flume/types";
 
 /** How automatic arrangement places nodes relative to dependency order. */
@@ -118,7 +114,7 @@ export function topologicalSortNodeIds(nodes: NodeMap): string[] {
 export function dispatchGraphLayout(
 	mode: GraphLayoutMode,
 	nodeMap: NodeMap,
-	dispatch: React.Dispatch<NodesAction>,
+	actions: NodeActions,
 ) {
 	if (mode === "freeform") return;
 
@@ -135,29 +131,21 @@ export function dispatchGraphLayout(
 			layer.sort((a, b) => a.localeCompare(b));
 		}
 
+		const updates: Array<{ nodeId: string; x: number; y: number }> = [];
 		layers.forEach((layer, rank) => {
 			const n = layer.length;
 			layer.forEach((nodeId, i) => {
 				const x = n <= 1 ? 0 : (i - (n - 1) / 2) * VERT_PARALLEL_GAP;
 				const y = rank * VERT_RANK_GAP;
-				dispatch({
-					type: NodesActionType.SET_NODE_COORDINATES,
-					nodeId,
-					x,
-					y,
-				});
+				updates.push({ nodeId, x, y });
 			});
 		});
+		actions.applyNodeCoordinates(updates);
 		return;
 	}
 
 	const order = topologicalSortNodeIds(nodeMap);
-	order.forEach((nodeId, i) => {
-		dispatch({
-			type: NodesActionType.SET_NODE_COORDINATES,
-			nodeId,
-			x: i * HORIZ_STEP,
-			y: 0,
-		});
-	});
+	actions.applyNodeCoordinates(
+		order.map((nodeId, i) => ({ nodeId, x: i * HORIZ_STEP, y: 0 })),
+	);
 }

@@ -11,7 +11,7 @@ import {
 	FlumeGraphWorkerContext,
 	type FlumeGraphWorkerHandle,
 	GraphIdContext,
-	NodeDispatchContext,
+	NodeActionsContext,
 	NodeDragOverrideContext,
 	NodeMapContext,
 	NodeTypesContext,
@@ -19,7 +19,7 @@ import {
 	RecalculateStageRectContext,
 	StageContext,
 } from "#/components/flume/context";
-import type { NodesAction } from "#/components/flume/nodesReducer";
+import type { NodeActions } from "#/components/flume/nodes-actions";
 import type { SpatialIndexSnapshot } from "#/components/flume/spatial-index";
 import type { StageState } from "#/components/flume/stageReducer";
 import type {
@@ -51,7 +51,7 @@ export type FlumeProvidersValue = {
 	edgeRoutingMode: EdgeRoutingMode;
 	portTypes: PortTypeMap;
 	nodeTypes: NodeTypeMap;
-	dispatchNodes: React.Dispatch<NodesAction>;
+	nodeActions: NodeActions;
 	triggerRecalculation: () => void;
 	context: unknown;
 	stageState: StageState;
@@ -77,7 +77,7 @@ export const FlumeProviders = ({
 							<EdgeRoutingContext.Provider value={value.edgeRoutingMode}>
 								<PortTypesContext.Provider value={value.portTypes}>
 									<NodeTypesContext.Provider value={value.nodeTypes}>
-										<NodeDispatchContext.Provider value={value.dispatchNodes}>
+										<NodeActionsContext.Provider value={value.nodeActions}>
 											<ConnectionRecalculateContext.Provider
 												value={value.triggerRecalculation}
 											>
@@ -99,7 +99,7 @@ export const FlumeProviders = ({
 													</StageContext.Provider>
 												</ContextContext.Provider>
 											</ConnectionRecalculateContext.Provider>
-										</NodeDispatchContext.Provider>
+										</NodeActionsContext.Provider>
 									</NodeTypesContext.Provider>
 								</PortTypesContext.Provider>
 							</EdgeRoutingContext.Provider>

@@ -26,7 +26,6 @@ import usePrevious from "#/hooks/usePrevious";
 import { cn } from "@/lib/utils";
 import { FlumeProviders } from "./FlumeProviders";
 import { dispatchGraphLayout, type GraphLayoutMode } from "./graphLayout";
-import { NodesActionType } from "./nodesReducer";
 import styles from "./styles.module.css";
 import { dispatchFlumeToastAction, type ToastAction } from "./toastsReducer";
 import type {
@@ -132,7 +131,7 @@ export const NodeEditor = ({
 
 	const {
 		nodes,
-		dispatch: dispatchNodes,
+		actions: nodeActions,
 		isLoading: nodesHydrating,
 		seed: seedNodes,
 	} = useNodesState({
@@ -142,7 +141,6 @@ export const NodeEditor = ({
 		portTypes,
 		context,
 		getEnvironment,
-		setSideEffectToasts,
 	});
 
 	const { comments, dispatch: dispatchComments } = useCommentsState(graphId);
@@ -158,7 +156,7 @@ export const NodeEditor = ({
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reconcile graph when node/port registries change
 	React.useEffect(() => {
-		dispatchNodes({ type: NodesActionType.RECONCILE_NODE_TYPES });
+		nodeActions.reconcileNodeTypes();
 	}, [nodeTypeRegistryKey, portTypeRegistryKey]);
 
 	const visibleNodes = React.useMemo(
@@ -193,7 +191,7 @@ export const NodeEditor = ({
 	);
 
 	const { indexRef, registerPortLayout: registerPortLayoutBase } =
-		useSpatialIndex(editorId, dispatchNodes, onNodeLayoutChange);
+		useSpatialIndex(editorId, nodeActions, onNodeLayoutChange);
 	const graphWorkerBase = useFlumeGraphWorker(
 		editorId,
 		edgeRoutingMode,
@@ -282,14 +280,14 @@ export const NodeEditor = ({
 		const mode = graphLayoutMode ?? "freeform";
 		if (prevGraphLayout === undefined || prevGraphLayout === mode) return;
 		if (mode === "freeform") return;
-		dispatchGraphLayout(mode, nodesRefForLayout.current, dispatchNodes);
+		dispatchGraphLayout(mode, nodesRefForLayout.current, nodeActions);
 		triggerRecalculation();
 	}, [
 		graphLayoutMode,
-		nodesRefForLayout,
 		prevGraphLayout,
 		triggerRecalculation,
-		dispatchNodes,
+		nodeActions,
+		nodesRefForLayout,
 	]);
 
 	React.useImperativeHandle(ref, () => ({
@@ -347,7 +345,7 @@ export const NodeEditor = ({
 					edgeRoutingMode,
 					portTypes,
 					nodeTypes,
-					dispatchNodes,
+					nodeActions,
 					triggerRecalculation,
 					context,
 					stageState,

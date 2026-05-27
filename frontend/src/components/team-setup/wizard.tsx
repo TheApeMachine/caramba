@@ -2,7 +2,7 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { type TeamRow, teamCollection } from "#/collections/team";
 import { Button } from "#/components/ui/button";
 import {
@@ -80,9 +80,9 @@ export const TeamSetupWizard = ({ team }: { team: TeamRow }) => {
 	const isFirst = stepIndex === 0;
 	const isLast = stepIndex === WIZARD_STEPS.length - 1;
 
-	const merge = (next: Partial<WizardDraft>) => {
+	const merge = useCallback((next: Partial<WizardDraft>) => {
 		setDraft((previous) => ({ ...previous, ...next }));
-	};
+	}, []);
 
 	const persistDraft = async () => {
 		const transaction = teamCollection.update(team.id, (existing) => {
@@ -136,7 +136,7 @@ export const TeamSetupWizard = ({ team }: { team: TeamRow }) => {
 		}
 
 		return <StepPrivacy draft={draft} onChange={merge} />;
-	}, [currentStep.id, draft]);
+	}, [currentStep.id, draft, merge]);
 
 	return (
 		<Flex.Column className="mx-auto w-full max-w-2xl gap-6 p-8">

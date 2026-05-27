@@ -2,7 +2,7 @@ import React, { type RefObject } from "react";
 
 import type FlumeCache from "#/components/flume/Cache";
 import type { EdgeRoutingMode } from "#/components/flume/connectionCalculator";
-import type { NodesAction } from "#/components/flume/nodesReducer";
+import type { NodeActions } from "#/components/flume/nodes-actions";
 import type {
 	FlumeNode,
 	NodeMap,
@@ -21,8 +21,27 @@ export function useEdgeRouting(): EdgeRoutingMode {
 
 export const NodeTypesContext = React.createContext<NodeTypeMap | null>(null);
 export const PortTypesContext = React.createContext<PortTypeMap | null>(null);
-export const NodeDispatchContext =
-	React.createContext<React.Dispatch<NodesAction> | null>(null);
+
+/*
+NodeActionsContext exposes the bound action functions that write
+directly to researchGraphCollection. Replaces the prior NodeDispatchContext
++ useReducer dispatch chain — there is no React reducer in the Flume
+pipeline, only TanStack DB and TanStack Store.
+*/
+export const NodeActionsContext = React.createContext<NodeActions | null>(null);
+
+export const useNodeActionsContext = (): NodeActions => {
+	const actions = React.useContext(NodeActionsContext);
+
+	if (!actions) {
+		throw new Error(
+			"useNodeActionsContext must be called inside a NodeEditor — NodeActionsContext is not set.",
+		);
+	}
+
+	return actions;
+};
+
 export const ConnectionRecalculateContext = React.createContext<
 	| ((positionOverrides?: Record<string, { x: number; y: number }>) => void)
 	| null
