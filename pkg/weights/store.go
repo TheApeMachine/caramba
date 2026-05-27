@@ -45,7 +45,8 @@ stores linear layers as [out_features, in_features] and the canonical PyTorch
 forward computes y = x @ W.T; the dispatcher's generic Matmul kernel expects
 row-major [inner, cols], so projection.linear consumers ask for the
 transposed handle via LookupTransposed and the matmul operates as
-[batch, in_features] × [in_features, out_features] without an inline copy.
+[batch, in_features] × [in_features, out_features] with the resident
+transpose materialized once.
 The transposed handle is materialized once per name and cached.
 */
 type Store struct {
@@ -155,43 +156,10 @@ func (store *Store) Lookup(name string) (tensor.Tensor, error) {
 }
 
 func (store *Store) load(name string, entry tensorEntry) (tensor.Tensor, error) {
-	file, err := os.Open(entry.path)
+	buffer, sourceDType, shape, err := store.readEntryBuffer(name, entry)
 
 	if err != nil {
-		return nil, fmt.Errorf("weights store: open %q: %w", entry.path, err)
-	}
-
-	defer file.Close()
-
-	start := entry.dataBase + entry.meta.DataOffsets[0]
-	length := entry.meta.DataOffsets[1] - entry.meta.DataOffsets[0]
-
-	if length < 0 {
-		return nil, fmt.Errorf("weights store: tensor %q has negative length", name)
-	}
-
-	buffer := make([]byte, length)
-
-	if _, err := file.ReadAt(buffer, start); err != nil {
-		return nil, fmt.Errorf("weights store: read %q: %w", name, err)
-	}
-
-	sourceDType, err := dtype.Parse(entry.meta.DType)
-
-	if err != nil {
-		return nil, fmt.Errorf("weights store: parse dtype for %q: %w", name, err)
-	}
-
-	dims := make([]int, len(entry.meta.Shape))
-
-	for index, dimension := range entry.meta.Shape {
-		dims[index] = int(dimension)
-	}
-
-	shape, err := tensor.NewShape(dims)
-
-	if err != nil {
-		return nil, fmt.Errorf("weights store: shape for %q: %w", name, err)
+		return nil, err
 	}
 
 	if sourceDType == dtype.Float32 {
@@ -204,13 +172,119 @@ func (store *Store) load(name string, entry tensorEntry) (tensor.Tensor, error) 
 		return nil, fmt.Errorf("weights store: convert %q: %w", name, err)
 	}
 
+	return store.memory.Upload(shape, dtype.Float32, float32ValuesToBytes(values))
+}
+
+func (store *Store) readEntryBuffer(
+	name string,
+	entry tensorEntry,
+) ([]byte, dtype.DType, tensor.Shape, error) {
+	file, err := os.Open(entry.path)
+
+	if err != nil {
+		return nil, dtype.Invalid, tensor.Shape{}, fmt.Errorf(
+			"weights store: open %q: %w",
+			entry.path,
+			err,
+		)
+	}
+
+	defer file.Close()
+
+	start := entry.dataBase + entry.meta.DataOffsets[0]
+	length := entry.meta.DataOffsets[1] - entry.meta.DataOffsets[0]
+
+	if length < 0 {
+		return nil, dtype.Invalid, tensor.Shape{}, fmt.Errorf(
+			"weights store: tensor %q has negative length",
+			name,
+		)
+	}
+
+	buffer := make([]byte, length)
+
+	if _, err := file.ReadAt(buffer, start); err != nil {
+		return nil, dtype.Invalid, tensor.Shape{}, fmt.Errorf(
+			"weights store: read %q: %w",
+			name,
+			err,
+		)
+	}
+
+	sourceDType, err := dtype.Parse(entry.meta.DType)
+
+	if err != nil {
+		return nil, dtype.Invalid, tensor.Shape{}, fmt.Errorf(
+			"weights store: parse dtype for %q: %w",
+			name,
+			err,
+		)
+	}
+
+	dims := make([]int, len(entry.meta.Shape))
+
+	for index, dimension := range entry.meta.Shape {
+		dims[index] = int(dimension)
+	}
+
+	shape, err := tensor.NewShape(dims)
+
+	if err != nil {
+		return nil, dtype.Invalid, tensor.Shape{}, fmt.Errorf(
+			"weights store: shape for %q: %w",
+			name,
+			err,
+		)
+	}
+
+	return buffer, sourceDType, shape, nil
+}
+
+func (store *Store) loadFloat32Values(
+	name string,
+	entry tensorEntry,
+) (tensor.Shape, []float32, error) {
+	buffer, sourceDType, shape, err := store.readEntryBuffer(name, entry)
+
+	if err != nil {
+		return tensor.Shape{}, nil, err
+	}
+
+	if sourceDType != dtype.Float32 {
+		values, err := convert.BytesToFloat32(sourceDType, buffer)
+
+		if err != nil {
+			return tensor.Shape{}, nil, fmt.Errorf("weights store: convert %q: %w", name, err)
+		}
+
+		return shape, values, nil
+	}
+
+	if len(buffer)%4 != 0 {
+		return tensor.Shape{}, nil, fmt.Errorf(
+			"weights store: tensor %q byte length %d is not divisible by 4",
+			name,
+			len(buffer),
+		)
+	}
+
+	values := make([]float32, len(buffer)/4)
+
+	for index := range values {
+		values[index] = math.Float32frombits(binary.LittleEndian.Uint32(buffer[index*4:]))
+	}
+
+	return shape, values, nil
+}
+
+func float32ValuesToBytes(values []float32) []byte {
 	output := make([]byte, len(values)*4)
 
 	for index, value := range values {
 		binary.LittleEndian.PutUint32(output[index*4:], math.Float32bits(value))
 	}
 
-	return store.memory.Upload(shape, dtype.Float32, output)
+	return output
 }
 
 /*
@@ -219,13 +293,6 @@ The result is materialized once and cached; subsequent calls reuse the
 resident tensor. Non-2-D weights are rejected with a clear error so a
 caller that asks for an inappropriate transpose surfaces the bug at
 dispatch time instead of corrupting silently.
-
-Implementation note: today the transpose is performed host-side via
-Float32Native — fine while caramba pins the device pool to tensor.Host
-(see runProgram). When the dispatcher learns to route through resident
-device buffers per puter/ARCHITECTURE.md §3.1, this method should
-delegate to the device's shape.transpose / device.Backend pathway so the
-copy stays on-device.
 */
 func (store *Store) LookupTransposed(name string) (tensor.Tensor, error) {
 	store.mu.Lock()
@@ -237,13 +304,19 @@ func (store *Store) LookupTransposed(name string) (tensor.Tensor, error) {
 
 	store.mu.Unlock()
 
-	original, err := store.Lookup(name)
+	entry, ok := store.entries[name]
+
+	if !ok {
+		return nil, execution.ErrWeightNotFound
+	}
+
+	shape, source, err := store.loadFloat32Values(name, entry)
 
 	if err != nil {
 		return nil, err
 	}
 
-	dims := original.Shape().Dims()
+	dims := shape.Dims()
 
 	if len(dims) != 2 {
 		return nil, fmt.Errorf(
@@ -253,12 +326,6 @@ func (store *Store) LookupTransposed(name string) (tensor.Tensor, error) {
 	}
 
 	rows, cols := dims[0], dims[1]
-
-	source, err := original.Float32Native()
-
-	if err != nil {
-		return nil, fmt.Errorf("weights store: read %q for transpose: %w", name, err)
-	}
 
 	transposedBytes := make([]byte, rows*cols*4)
 

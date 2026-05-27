@@ -32,6 +32,7 @@ devteam:
     model: claude-sonnet-4-6
 
 compute:
+  device: metal
   metal:
     metallib_directory: ${CARAMBA_METAL_METALLIB_DIRECTORY}
   xla:

@@ -6,6 +6,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS research_projects_organization_project_slug_ui
   ON research_projects (organization_slug, project_slug)
   WHERE project_slug IS NOT NULL AND organization_slug <> '';
 
+-- Plain index for the Electric shape snapshot query (WHERE organization_slug = $1).
+-- The partial unique index above only covers rows with a non-null project_slug,
+-- so it can't serve the shape's full org scan; this one always can.
+CREATE INDEX IF NOT EXISTS research_projects_organization_slug_idx
+  ON research_projects (organization_slug);
+
 -- Canonical backlog intake board for inbound feature requests (Clerk org slug "caramba").
 INSERT INTO research_projects (
   id,

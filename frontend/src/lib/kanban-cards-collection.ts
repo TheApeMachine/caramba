@@ -1,10 +1,8 @@
 import { electricCollectionOptions } from "@tanstack/electric-db-collection";
 import { createCollection } from "@tanstack/react-db";
+import { shapeUrl } from "#/lib/electric-shape";
 import { kanbanCardRowSchema } from "#/lib/kanban-card-schema";
 import { insertKanbanCard } from "#/server/kanban-cards";
-
-const electricShapeUrl =
-	import.meta.env.VITE_ELECTRIC_SHAPE_URL ?? "http://127.0.0.1:3010/v1/shape";
 
 export const kanbanCardsCollection = createCollection(
 	electricCollectionOptions({
@@ -12,8 +10,11 @@ export const kanbanCardsCollection = createCollection(
 		schema: kanbanCardRowSchema,
 		getKey: (item) => item.id,
 		shapeOptions: {
-			url: electricShapeUrl,
-			params: { table: "kanban_cards" },
+			// Scoped to the caller's organization by the proxy (auth + where clause),
+			// like every other collection. Previously this pointed straight at
+			// Electric with no where clause and synced the entire table to every
+			// client, which is what was dragging out page load.
+			url: shapeUrl("kanban-cards"),
 			parser: {
 				timestamptz: (value: string) => new Date(value),
 			},

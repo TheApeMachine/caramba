@@ -8,6 +8,7 @@ import (
 var computeRootKey = "compute"
 
 type ComputeConfig struct {
+	Device string
 	Metal MetalConfig
 	XLA   XLAConfig
 }
@@ -27,6 +28,7 @@ type XLAConfig struct {
 
 func NewComputeConfig() *ComputeConfig {
 	return &ComputeConfig{
+		Device: WithDefault(computeRootKey+".device", "host"),
 		Metal: MetalConfig{
 			MetallibDirectory: WithDefault(
 				computeRootKey+".metal.metallib_directory",

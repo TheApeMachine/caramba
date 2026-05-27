@@ -60,6 +60,9 @@ CREATE TABLE IF NOT EXISTS assistant_session_personas (
 ALTER TABLE assistant_session_personas REPLICA IDENTITY FULL;
 
 CREATE INDEX IF NOT EXISTS assistant_session_personas_session_idx ON assistant_session_personas (session_id);
+-- FK index: the composite PK (session_id, persona_id) only indexes persona_id as a
+-- trailing column, so deleting a persona (ON DELETE CASCADE) would seq-scan this table.
+CREATE INDEX IF NOT EXISTS assistant_session_personas_persona_idx ON assistant_session_personas (persona_id);
 
 CREATE TABLE IF NOT EXISTS assistant_messages (
   id           UUID PRIMARY KEY,
@@ -73,6 +76,9 @@ CREATE TABLE IF NOT EXISTS assistant_messages (
 ALTER TABLE assistant_messages REPLICA IDENTITY FULL;
 
 CREATE INDEX IF NOT EXISTS assistant_messages_session_idx ON assistant_messages (session_id, created_at);
+-- FK index: persona_id has no index of its own, so deleting a persona
+-- (ON DELETE SET NULL) would seq-scan the whole messages table.
+CREATE INDEX IF NOT EXISTS assistant_messages_persona_idx ON assistant_messages (persona_id);
 
 -- Seed a default global persona so first-time users have something usable.
 INSERT INTO assistant_personas (id, scope, name, system_prompt, model, temperature, max_tokens, adapter_type)
