@@ -243,7 +243,10 @@ export const createNodeActions = (
 					return undefined;
 				}
 
-				if (inputNode.connections.inputs[input.portName]) {
+				const existingInputLinks =
+					inputNode.connections.inputs[input.portName] ?? [];
+
+				if (existingInputLinks.length > 0) {
 					return undefined;
 				}
 

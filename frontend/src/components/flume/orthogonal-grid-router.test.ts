@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { calculateEdgePath } from "#/components/flume/connection-path-math";
 import {
 	buildRoutingGridFromObstacles,
+	compressGridCells,
+	countOrthogonalBends,
 	findGridPath,
 	formatOrthogonalSvgPath,
 	GRID_CELL_SIZE,
@@ -37,6 +40,21 @@ describe("findGridPath", () => {
 
 			expect(grid.isOccupied(cell.cellX, cell.cellY)).toBe(false);
 		}
+	});
+
+	it("prefers fewer bends over longer grid walks", () => {
+		const grid = new RoutingGrid();
+		grid.markRect(
+			{ left: 64, right: 96, top: 64, bottom: 96 },
+			OBSTACLE_GRID_PADDING,
+		);
+
+		const start = grid.worldToCell(0, 80);
+		const goal = grid.worldToCell(160, 80);
+		const path = findGridPath(grid, start, goal);
+
+		expect(path).not.toBeNull();
+		expect(compressGridCells(path ?? []).length).toBeLessThanOrEqual(5);
 	});
 });
 
@@ -79,6 +97,40 @@ describe("routeOrthogonalWithGrid", () => {
 				{ x: 64, y: 32 },
 			]),
 		).toBe("M 0 0 L 64 0 L 64 32");
+	});
+});
+
+describe("calculateEdgePath orthogonal", () => {
+	it("uses a centered corridor with minimal bends when the path is clear", () => {
+		const from = { x: 100, y: 120 };
+		const to = { x: 400, y: 140 };
+		const path = calculateEdgePath("orthogonal", from, to, [], []);
+		const bends = countOrthogonalBends(path);
+		const startStubX = from.x + PORT_EXIT_STUB;
+		const endStubX = to.x - PORT_EXIT_STUB;
+		const expectedMid = Math.round((startStubX + endStubX) / 2);
+
+		expect(bends).toBeLessThanOrEqual(3);
+		expect(path).toContain(`L ${startStubX} ${from.y}`);
+		expect(path).toContain(`L ${expectedMid} ${from.y}`);
+		expect(path).toContain(`L ${expectedMid} ${to.y}`);
+		expect(path).toContain(`L ${endStubX} ${to.y}`);
+	});
+
+	it("keeps grid fallback routes compact when the corridor is blocked", () => {
+		const from = { x: 120, y: 160 };
+		const to = { x: 420, y: 180 };
+		const obstacles = [{ left: 250, right: 330, top: 120, bottom: 220 }];
+		const path = calculateEdgePath(
+			"orthogonal",
+			from,
+			to,
+			obstacles,
+			obstacles,
+		);
+
+		expect(countOrthogonalBends(path)).toBeLessThanOrEqual(4);
+		expect(path).toMatch(/^M .* L .* L /);
 	});
 });
 

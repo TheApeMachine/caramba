@@ -14,7 +14,7 @@ interface ConnectionProps {
 	from: Coordinate;
 	to: Coordinate;
 	id?: string;
-	lineRef: RefLike<SVGPathElement>;
+	lineRef?: RefLike<SVGPathElement>;
 	outputNodeId?: string;
 	outputPortName?: string;
 	inputNodeId?: string;

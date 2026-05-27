@@ -27,14 +27,15 @@ export const screenPointToCanvas = (
 	screenY: number,
 	stageRect: DOMRect,
 	scale: number,
+	translate: Coordinate = { x: 0, y: 0 },
 ): Coordinate => {
 	const byScale = (value: number) => (1 / scale) * value;
 	const stageHalfWidth = stageRect.width / 2;
 	const stageHalfHeight = stageRect.height / 2;
 
 	return {
-		x: byScale(screenX - stageRect.x - stageHalfWidth),
-		y: byScale(screenY - stageRect.y - stageHalfHeight),
+		x: byScale(screenX - stageRect.x - stageHalfWidth + translate.x),
+		y: byScale(screenY - stageRect.y - stageHalfHeight + translate.y),
 	};
 };
 
@@ -42,13 +43,21 @@ export const screenRectToCanvas = (
 	rect: DOMRect,
 	stageRect: DOMRect,
 	scale: number,
+	translate: Coordinate = { x: 0, y: 0 },
 ): { x: number; y: number; width: number; height: number } => {
-	const topLeft = screenPointToCanvas(rect.left, rect.top, stageRect, scale);
+	const topLeft = screenPointToCanvas(
+		rect.left,
+		rect.top,
+		stageRect,
+		scale,
+		translate,
+	);
 	const bottomRight = screenPointToCanvas(
 		rect.right,
 		rect.bottom,
 		stageRect,
 		scale,
+		translate,
 	);
 
 	return {

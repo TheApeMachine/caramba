@@ -11,11 +11,17 @@ export const GRID_CELL_SIZE = 32;
 export const PORT_EXIT_STUB = 40;
 export const OBSTACLE_GRID_PADDING = 16;
 const ASTAR_ITERATION_LIMIT = 12_000;
+/** Prefer straight runs over zig-zagging through grid cells. */
+const BEND_PENALTY = 12;
+/** Nudge A* toward the corridor midpoint without overriding shortest paths. */
+const CENTER_BIAS_WEIGHT = 0.25;
 
 export type GridCell = {
 	cellX: number;
 	cellY: number;
 };
+
+type GridDirection = "east" | "west" | "north" | "south";
 
 /*
 RoutingGrid tracks occupied cells for orthogonal A* edge routing.
@@ -105,6 +111,32 @@ const gridCellKey = (cell: GridCell) => `${cell.cellX},${cell.cellY}`;
 const manhattanDistance = (left: GridCell, right: GridCell) =>
 	Math.abs(left.cellX - right.cellX) + Math.abs(left.cellY - right.cellY);
 
+const directionBetween = (
+	from: GridCell,
+	to: GridCell,
+): GridDirection | null => {
+	const deltaX = to.cellX - from.cellX;
+	const deltaY = to.cellY - from.cellY;
+
+	if (deltaX === 1 && deltaY === 0) {
+		return "east";
+	}
+
+	if (deltaX === -1 && deltaY === 0) {
+		return "west";
+	}
+
+	if (deltaX === 0 && deltaY === 1) {
+		return "south";
+	}
+
+	if (deltaX === 0 && deltaY === -1) {
+		return "north";
+	}
+
+	return null;
+};
+
 const neighborsOf = (cell: GridCell): GridCell[] => [
 	{ cellX: cell.cellX + 1, cellY: cell.cellY },
 	{ cellX: cell.cellX - 1, cellY: cell.cellY },
@@ -151,8 +183,54 @@ const reconstructGridPath = (
 };
 
 /*
-findGridPath runs A* over four-connected grid cells. Returns null when no route
-exists within the iteration budget.
+compressGridCells keeps only direction-change corners so A* output does not
+emit one bend per grid cell.
+*/
+export const compressGridCells = (
+	cellPath: ReadonlyArray<GridCell>,
+): GridCell[] => {
+	if (cellPath.length <= 2) {
+		return [...cellPath];
+	}
+
+	const compressed: GridCell[] = [cellPath[0]];
+
+	for (let index = 1; index < cellPath.length - 1; index++) {
+		const previous = cellPath[index - 1];
+		const current = cellPath[index];
+		const next = cellPath[index + 1];
+		const incoming = directionBetween(previous, current);
+		const outgoing = directionBetween(current, next);
+
+		if (incoming === outgoing) {
+			continue;
+		}
+
+		compressed.push(current);
+	}
+
+	compressed.push(cellPath[cellPath.length - 1]);
+
+	return compressed;
+};
+
+const centerlineBias = (
+	cell: GridCell,
+	start: GridCell,
+	goal: GridCell,
+): number => {
+	const midCellX = (start.cellX + goal.cellX) / 2;
+	const midCellY = (start.cellY + goal.cellY) / 2;
+
+	return (
+		(Math.abs(cell.cellX - midCellX) + Math.abs(cell.cellY - midCellY)) *
+		CENTER_BIAS_WEIGHT
+	);
+};
+
+/*
+findGridPath runs A* over four-connected grid cells. Turn penalties prefer
+fewer bends; centerline bias prefers corridors through the midpoint.
 */
 export const findGridPath = (
 	grid: RoutingGrid,
@@ -167,7 +245,7 @@ export const findGridPath = (
 	gScore.set(startKey, 0);
 	open.push({
 		cell: start,
-		fScore: manhattanDistance(start, goal),
+		fScore: manhattanDistance(start, goal) + centerlineBias(start, start, goal),
 	});
 
 	for (let iteration = 0; iteration < ASTAR_ITERATION_LIMIT; iteration++) {
@@ -191,6 +269,11 @@ export const findGridPath = (
 
 		const currentKey = gridCellKey(current);
 		const currentGScore = gScore.get(currentKey) ?? Number.POSITIVE_INFINITY;
+		const previousCell = cameFrom.get(currentKey);
+		const incomingDirection =
+			previousCell === undefined
+				? null
+				: directionBetween(previousCell, current);
 
 		for (const neighbor of neighborsOf(current)) {
 			if (!isWalkable(grid, neighbor, start, goal)) {
@@ -198,7 +281,14 @@ export const findGridPath = (
 			}
 
 			const neighborKey = gridCellKey(neighbor);
-			const tentativeGScore = currentGScore + 1;
+			const moveDirection = directionBetween(current, neighbor);
+			const turnCost =
+				incomingDirection !== null &&
+				moveDirection !== null &&
+				incomingDirection !== moveDirection
+					? BEND_PENALTY
+					: 0;
+			const tentativeGScore = currentGScore + 1 + turnCost;
 
 			if (
 				tentativeGScore >= (gScore.get(neighborKey) ?? Number.POSITIVE_INFINITY)
@@ -210,7 +300,10 @@ export const findGridPath = (
 			gScore.set(neighborKey, tentativeGScore);
 			open.push({
 				cell: neighbor,
-				fScore: tentativeGScore + manhattanDistance(neighbor, goal),
+				fScore:
+					tentativeGScore +
+					manhattanDistance(neighbor, goal) +
+					centerlineBias(neighbor, start, goal),
 			});
 		}
 	}
@@ -275,6 +368,37 @@ export const formatOrthogonalSvgPath = (
 		.join("")}`;
 };
 
+export const parseOrthogonalPathPoints = (path: string): Coordinate[] => {
+	const matches = path.matchAll(
+		/(?:M|L)\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g,
+	);
+
+	return Array.from(matches, (match) => ({
+		x: Number(match[1]),
+		y: Number(match[2]),
+	}));
+};
+
+export const countOrthogonalBends = (path: string): number => {
+	const points = simplifyOrthogonalPoints(parseOrthogonalPathPoints(path));
+
+	return Math.max(0, points.length - 2);
+};
+
+const appendAxisAlignedBridge = (
+	points: Coordinate[],
+	from: Coordinate,
+	to: Coordinate,
+): void => {
+	if (from.x !== to.x && from.y !== to.y) {
+		points.push({ x: to.x, y: from.y });
+	}
+
+	if (!sameCoordinate(points[points.length - 1], to)) {
+		points.push(to);
+	}
+};
+
 /*
 routeOrthogonalWithGrid finds an axis-aligned path from output port to input
 port using A* over the occupancy grid, honoring fixed exit/approach stubs.
@@ -300,38 +424,63 @@ export const routeOrthogonalWithGrid = (
 		return null;
 	}
 
+	const cornerCells = compressGridCells(cellPath);
 	const routePoints: Coordinate[] = [from, startStub];
 
-	// Bridge from startStub (port y) to first cell center (cell y) with an
-	// axis-aligned elbow so we never emit a diagonal between them.
-	if (cellPath.length > 0) {
-		const firstCell = grid.cellCenterWorld(
-			cellPath[0].cellX,
-			cellPath[0].cellY,
+	if (cornerCells.length > 0) {
+		const firstCorner = grid.cellCenterWorld(
+			cornerCells[0].cellX,
+			cornerCells[0].cellY,
 		);
-
-		if (firstCell.y !== startStub.y) {
-			routePoints.push({ x: startStub.x, y: firstCell.y });
-		}
+		appendAxisAlignedBridge(routePoints, startStub, firstCorner);
 	}
 
-	for (const cell of cellPath) {
-		routePoints.push(grid.cellCenterWorld(cell.cellX, cell.cellY));
-	}
-
-	// Same bridge on the way out: last cell center → endStub (port y).
-	if (cellPath.length > 0) {
-		const lastCell = grid.cellCenterWorld(
-			cellPath[cellPath.length - 1].cellX,
-			cellPath[cellPath.length - 1].cellY,
+	for (let index = 1; index < cornerCells.length; index++) {
+		const corner = grid.cellCenterWorld(
+			cornerCells[index].cellX,
+			cornerCells[index].cellY,
 		);
+		const previous = routePoints[routePoints.length - 1];
 
-		if (lastCell.y !== endStub.y) {
-			routePoints.push({ x: endStub.x, y: lastCell.y });
+		if (sameCoordinate(previous, corner)) {
+			continue;
 		}
+
+		appendAxisAlignedBridge(routePoints, previous, corner);
 	}
 
-	routePoints.push(endStub, to);
+	if (cornerCells.length > 0) {
+		const lastCorner = grid.cellCenterWorld(
+			cornerCells[cornerCells.length - 1].cellX,
+			cornerCells[cornerCells.length - 1].cellY,
+		);
+		appendAxisAlignedBridge(routePoints, lastCorner, endStub);
+	} else {
+		appendAxisAlignedBridge(routePoints, startStub, endStub);
+	}
 
-	return formatOrthogonalSvgPath(simplifyOrthogonalPoints(routePoints));
+	if (!sameCoordinate(routePoints[routePoints.length - 1], endStub)) {
+		routePoints.push(endStub);
+	}
+
+	if (!sameCoordinate(routePoints[routePoints.length - 1], to)) {
+		routePoints.push(to);
+	}
+
+	const interiorPoints = routePoints.slice(2, -2);
+	const simplifiedInterior =
+		interiorPoints.length > 0
+			? simplifyOrthogonalPoints([startStub, ...interiorPoints, endStub]).slice(
+					1,
+					-1,
+				)
+			: [];
+
+	return formatOrthogonalSvgPath([
+		from,
+		startStub,
+		...simplifiedInterior,
+		endStub,
+		to,
+	]);
 };

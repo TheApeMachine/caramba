@@ -1,7 +1,10 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import Connection from "#/components/flume/Connection/Connection";
-import { CONNECTIONS_ID, PORT_LAYER_ID } from "#/components/flume/constants";
+import {
+	DRAG_CONNECTION_ID,
+	PORT_LAYER_ID,
+} from "#/components/flume/constants";
 import { EditorIdContext } from "#/components/flume/context";
 import type { Colors } from "#/components/flume/types";
 import { Button } from "#/components/ui/button";
@@ -39,21 +42,20 @@ const Port = ({
 	triggerRecalculation,
 }: PortProps) => {
 	const editorId = React.useContext(EditorIdContext);
-	const connectionsDomId = `${CONNECTIONS_ID}${editorId}`;
 	const portAnchor = React.useRef<HTMLSpanElement>(null);
 	const portButtonRef = React.useRef<HTMLButtonElement>(null);
-
-	const connectionsPortalHost =
-		typeof document !== "undefined"
-			? document.getElementById(connectionsDomId)
-			: null;
 
 	const [portLayerHost, setPortLayerHost] = React.useState<HTMLElement | null>(
 		null,
 	);
+	const [dragPortalHost, setDragPortalHost] =
+		React.useState<HTMLElement | null>(null);
 
 	React.useLayoutEffect(() => {
 		setPortLayerHost(document.getElementById(`${PORT_LAYER_ID}${editorId}`));
+		setDragPortalHost(
+			document.getElementById(`${DRAG_CONNECTION_ID}${editorId}`),
+		);
 	}, [editorId]);
 
 	const overlayPosition = usePortOverlayPosition(
@@ -67,7 +69,7 @@ const Port = ({
 	const {
 		isDragging,
 		dragStartCoordinates,
-		lineRef,
+		dragCurrentCoordinates,
 		handleDragStart,
 		beginDragFromPort,
 	} = usePortDrag({
@@ -128,14 +130,13 @@ const Port = ({
 						portLayerHost,
 					)
 				: null}
-			{isDragging && !isInput && connectionsPortalHost
+			{isDragging && dragPortalHost
 				? createPortal(
 						<Connection
 							from={dragStartCoordinates}
-							to={dragStartCoordinates}
-							lineRef={lineRef}
+							to={dragCurrentCoordinates}
 						/>,
-						connectionsPortalHost,
+						dragPortalHost,
 					)
 				: null}
 		</span>

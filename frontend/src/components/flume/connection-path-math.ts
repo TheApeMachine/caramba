@@ -74,8 +74,10 @@ Port conventions (fixed by UI layout):
   - Output ports are on the RIGHT face of a node → wire exits rightward
   - Input ports are on the LEFT face of a node  → wire enters leftward
 
-Case A — forward (px < qx): vertical bus vx sits between the two stubs.
-Case B — backward (px >= qx): wire loops above or below both nodes.
+Routing order:
+  1. Corridor scan — minimal bends, vertical bus at stub midpoint
+  2. Grid A* — obstacle avoiding fallback with bend-penalized search
+  3. Forced corridor — last resort when grid exhausts its budget
 */
 export const calculateOrthogonalEdgePath = (
 	from: Coordinate,
@@ -83,6 +85,17 @@ export const calculateOrthogonalEdgePath = (
 	obstaclesVertical: ReadonlyArray<ObstacleRect>,
 	obstaclesHorizontal: ReadonlyArray<ObstacleRect>,
 ): string => {
+	const corridorPath = tryOrthogonalCorridorRoute(
+		from,
+		to,
+		obstaclesVertical,
+		obstaclesHorizontal,
+	);
+
+	if (corridorPath) {
+		return corridorPath;
+	}
+
 	const grid = buildRoutingGridFromObstacles(obstaclesHorizontal);
 	const gridPath = routeOrthogonalWithGrid(from, to, grid);
 
@@ -90,7 +103,7 @@ export const calculateOrthogonalEdgePath = (
 		return gridPath;
 	}
 
-	return calculateOrthogonalEdgePathCorridor(
+	return calculateOrthogonalEdgePathForced(
 		from,
 		to,
 		obstaclesVertical,
@@ -98,11 +111,111 @@ export const calculateOrthogonalEdgePath = (
 	);
 };
 
-const calculateOrthogonalEdgePathCorridor = (
+const tryOrthogonalCorridorRoute = (
 	from: Coordinate,
 	to: Coordinate,
 	obstaclesVertical: ReadonlyArray<ObstacleRect>,
 	obstaclesHorizontal: ReadonlyArray<ObstacleRect>,
+): string | null => {
+	const px = from.x + PORT_EXIT_STUB;
+	const py = from.y;
+	const qx = to.x - PORT_EXIT_STUB;
+	const qy = to.y;
+
+	if (px < qx) {
+		const segment = (busX: number) =>
+			`M ${from.x} ${from.y} L ${px} ${py} L ${busX} ${py} L ${busX} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
+
+		const isClear = (busX: number) =>
+			!segmentHitsHorizontal(py, px, busX, obstaclesHorizontal) &&
+			!segmentHitsHorizontal(qy, busX, qx, obstaclesHorizontal) &&
+			!segmentHitsVertical(busX, py, qy, obstaclesVertical);
+
+		const mid = Math.round((px + qx) / 2);
+
+		for (let step = 0; step <= CORRIDOR_SCAN_LIMIT; step++) {
+			if (isClear(mid + step * CORRIDOR_SCAN_STEP)) {
+				return segment(mid + step * CORRIDOR_SCAN_STEP);
+			}
+
+			if (step > 0 && isClear(mid - step * CORRIDOR_SCAN_STEP)) {
+				return segment(mid - step * CORRIDOR_SCAN_STEP);
+			}
+		}
+
+		const midY = Math.round((py + qy) / 2);
+		const detourSegment = (routeY: number) =>
+			`M ${from.x} ${from.y} L ${px} ${py} L ${px} ${routeY} L ${qx} ${routeY} L ${qx} ${qy} L ${to.x} ${to.y}`;
+		const isDetourClear = (routeY: number) =>
+			!segmentHitsVertical(px, py, routeY, obstaclesVertical) &&
+			!segmentHitsHorizontal(routeY, px, qx, obstaclesHorizontal) &&
+			!segmentHitsVertical(qx, routeY, qy, obstaclesVertical);
+
+		for (let step = 0; step <= CORRIDOR_SCAN_LIMIT; step++) {
+			if (isDetourClear(midY + step * CORRIDOR_SCAN_STEP)) {
+				return detourSegment(midY + step * CORRIDOR_SCAN_STEP);
+			}
+
+			if (step > 0 && isDetourClear(midY - step * CORRIDOR_SCAN_STEP)) {
+				return detourSegment(midY - step * CORRIDOR_SCAN_STEP);
+			}
+		}
+
+		return null;
+	}
+
+	const eastBus = Math.max(from.x, to.x) + CORRIDOR_MARGIN;
+	const westBus = Math.min(from.x, to.x) - CORRIDOR_MARGIN;
+
+	const segment = (busY: number, busXEast: number, busXWest: number) =>
+		`M ${from.x} ${from.y} L ${px} ${py} L ${busXEast} ${py} L ${busXEast} ${busY} L ${busXWest} ${busY} L ${busXWest} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
+
+	const allNodes = [...obstaclesVertical, ...obstaclesHorizontal];
+	const nodeExtents = allNodes.flatMap((obstacle) => [
+		obstacle.top - OBSTACLE_PADDING,
+		obstacle.bottom + OBSTACLE_PADDING,
+	]);
+	const yMin = Math.min(py, qy, ...nodeExtents) - CORRIDOR_MARGIN;
+	const yMax = Math.max(py, qy, ...nodeExtents) + CORRIDOR_MARGIN;
+	const midY = Math.round((py + qy) / 2);
+	const candidates = Array.from(
+		new Set<number>([
+			midY,
+			yMin,
+			yMax,
+			...nodeExtents.flatMap((extent) => [
+				extent - CORRIDOR_MARGIN,
+				extent + CORRIDOR_MARGIN,
+			]),
+		]),
+	).sort((left, right) => Math.abs(left - midY) - Math.abs(right - midY));
+
+	const isBypassClear = (busY: number, busXEast: number, busXWest: number) =>
+		!segmentHitsHorizontal(py, px, busXEast, obstaclesHorizontal) &&
+		!segmentHitsHorizontal(qy, busXWest, qx, obstaclesHorizontal) &&
+		!segmentHitsVertical(busXEast, py, busY, obstaclesVertical) &&
+		!segmentHitsVertical(busXWest, busY, qy, obstaclesVertical) &&
+		!segmentHitsHorizontal(busY, busXWest, busXEast, obstaclesVertical);
+
+	for (let busStep = 0; busStep < CORRIDOR_SCAN_LIMIT; busStep++) {
+		const busXEast = eastBus + busStep * CORRIDOR_SCAN_STEP;
+		const busXWest = westBus - busStep * CORRIDOR_SCAN_STEP;
+
+		for (const busY of candidates) {
+			if (isBypassClear(busY, busXEast, busXWest)) {
+				return segment(busY, busXEast, busXWest);
+			}
+		}
+	}
+
+	return null;
+};
+
+const calculateOrthogonalEdgePathForced = (
+	from: Coordinate,
+	to: Coordinate,
+	obstaclesVertical: ReadonlyArray<ObstacleRect>,
+	_obstaclesHorizontal: ReadonlyArray<ObstacleRect>,
 ): string => {
 	const px = from.x + PORT_EXIT_STUB;
 	const py = from.y;
@@ -110,68 +223,25 @@ const calculateOrthogonalEdgePathCorridor = (
 	const qy = to.y;
 
 	if (px < qx) {
-		const seg = (vx: number) =>
-			`M ${from.x} ${from.y} L ${px} ${py} L ${vx} ${py} L ${vx} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
+		const segment = (busX: number) =>
+			`M ${from.x} ${from.y} L ${px} ${py} L ${busX} ${py} L ${busX} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
 
-		const isClear = (vx: number) =>
-			!segmentHitsHorizontal(py, px, vx, obstaclesHorizontal) &&
-			!segmentHitsHorizontal(qy, vx, qx, obstaclesHorizontal) &&
-			!segmentHitsVertical(vx, py, qy, obstaclesVertical);
-
-		const mid = Math.round((px + qx) / 2);
-
-		for (let i = 0; i <= CORRIDOR_SCAN_LIMIT; i++) {
-			if (isClear(mid + i * CORRIDOR_SCAN_STEP))
-				return seg(mid + i * CORRIDOR_SCAN_STEP);
-			if (i > 0 && isClear(mid - i * CORRIDOR_SCAN_STEP))
-				return seg(mid - i * CORRIDOR_SCAN_STEP);
-		}
-
-		return seg(mid);
+		return segment(Math.round((px + qx) / 2));
 	}
 
 	const eastBus = Math.max(from.x, to.x) + CORRIDOR_MARGIN;
 	const westBus = Math.min(from.x, to.x) - CORRIDOR_MARGIN;
+	const yMin =
+		Math.min(
+			py,
+			qy,
+			...obstaclesVertical.flatMap((obstacle) => [
+				obstacle.top - OBSTACLE_PADDING,
+				obstacle.bottom + OBSTACLE_PADDING,
+			]),
+		) - CORRIDOR_MARGIN;
 
-	const seg7 = (vy: number, vxEast: number, vxWest: number) =>
-		`M ${from.x} ${from.y} L ${px} ${py} L ${vxEast} ${py} L ${vxEast} ${vy} L ${vxWest} ${vy} L ${vxWest} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
-
-	const allNodes = [...obstaclesVertical, ...obstaclesHorizontal];
-	const nodeExtents = allNodes.flatMap((o) => [
-		o.top - OBSTACLE_PADDING,
-		o.bottom + OBSTACLE_PADDING,
-	]);
-	const yMin = Math.min(py, qy, ...nodeExtents) - CORRIDOR_MARGIN;
-	const yMax = Math.max(py, qy, ...nodeExtents) + CORRIDOR_MARGIN;
-
-	const candidates: number[] = [yMin, yMax];
-
-	for (const y of nodeExtents) {
-		candidates.push(y - CORRIDOR_MARGIN, y + CORRIDOR_MARGIN);
-	}
-
-	candidates.sort((a, b) => a - b);
-
-	const isBypassClear = (vy: number, vxEast: number, vxWest: number) =>
-		!segmentHitsHorizontal(py, px, vxEast, obstaclesHorizontal) &&
-		!segmentHitsHorizontal(qy, vxWest, qx, obstaclesHorizontal) &&
-		!segmentHitsVertical(vxEast, py, vy, obstaclesVertical) &&
-		!segmentHitsVertical(vxWest, vy, qy, obstaclesVertical) &&
-		!segmentHitsHorizontal(vy, vxWest, vxEast, obstaclesVertical);
-
-	for (let busStep = 0; busStep < CORRIDOR_SCAN_LIMIT; busStep++) {
-		const vxEast = eastBus + busStep * CORRIDOR_SCAN_STEP;
-		const vxWest = westBus - busStep * CORRIDOR_SCAN_STEP;
-
-		for (const vy of candidates) {
-			if (isBypassClear(vy, vxEast, vxWest)) {
-				return seg7(vy, vxEast, vxWest);
-			}
-		}
-	}
-
-	const vy = yMin - CORRIDOR_SCAN_STEP * 4;
-	return seg7(vy, eastBus, westBus);
+	return `M ${from.x} ${from.y} L ${px} ${py} L ${eastBus} ${py} L ${eastBus} ${yMin} L ${westBus} ${yMin} L ${westBus} ${qy} L ${qx} ${qy} L ${to.x} ${to.y}`;
 };
 
 const calculateSmoothCurve = (from: Coordinate, to: Coordinate) => {

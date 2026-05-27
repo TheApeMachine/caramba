@@ -30,6 +30,7 @@ export {
 	findPortHandle,
 	getPortInEditor,
 	getPortRect,
+	resolvePortDropTarget,
 } from "./connection-ports";
 export {
 	getCanvasRef,

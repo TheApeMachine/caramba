@@ -1,10 +1,9 @@
 import React from "react";
 import {
-	calculateEdgePath,
-	type EdgeRoutingMode,
 	getPortRect,
 	getStageBounds,
 	readLiveStageScale,
+	resolvePortDropTarget,
 	screenPointToCanvas,
 } from "#/components/flume/connectionCalculator";
 import {
@@ -12,7 +11,6 @@ import {
 	NodeActionsContext,
 	PortTypesContext,
 	StageContext,
-	useEdgeRouting,
 } from "#/components/flume/context";
 import type { NodeActions } from "#/components/flume/nodes-actions";
 import type { Coordinate, PortTypeMap } from "#/components/flume/types";
@@ -22,8 +20,7 @@ usePortDrag isolates the drag-line state machine that used to live inside
 the Port component. The Port component now only owns the visual anchor
 and portal, while this hook owns:
   - mouse event registration / cleanup
-  - dragStartCoordinates state
-  - main-thread SVG `d` attribute updates against the routing mode
+  - dragStartCoordinates / dragCurrentCoordinates state
   - drop resolution (addConnection / removeConnection action calls)
 */
 
@@ -36,46 +33,21 @@ interface PortDragOptions {
 	portButtonRef: React.RefObject<HTMLButtonElement | null>;
 }
 
+type PendingInputDisconnect = {
+	inputNodeId: string;
+	inputPortName: string;
+	outputNodeId: string;
+	outputPortName: string;
+	connectionElement: SVGPathElement;
+};
+
 export interface PortDragHandle {
 	isDragging: boolean;
 	dragStartCoordinates: Coordinate;
-	lineRef: React.RefObject<SVGPathElement | null>;
+	dragCurrentCoordinates: Coordinate;
 	handleDragStart: (e: React.MouseEvent<HTMLButtonElement>) => void;
 	beginDragFromPort: () => void;
 }
-
-const clientPointToCanvasAt = (
-	editorId: string,
-	fallbackScale: number,
-	clientX: number,
-	clientY: number,
-): Coordinate => {
-	const stageRect = getStageBounds(editorId);
-
-	if (!stageRect) {
-		return { x: 0, y: 0 };
-	}
-
-	const scale = readLiveStageScale(editorId, fallbackScale);
-	return screenPointToCanvas(clientX, clientY, stageRect, scale);
-};
-
-const portRectCenterToCanvas = (
-	editorId: string,
-	fallbackScale: number,
-	rect: DOMRect | null | undefined,
-): Coordinate => {
-	if (!rect) {
-		return { x: 0, y: 0 };
-	}
-
-	return clientPointToCanvasAt(
-		editorId,
-		fallbackScale,
-		rect.left + rect.width / 2,
-		rect.top + rect.height / 2,
-	);
-};
 
 const dispatchAcceptedConnection = ({
 	target,
@@ -133,6 +105,7 @@ const resolveInputDrop = ({
 	type,
 	inputTypes,
 	nodeActions,
+	triggerRecalculation,
 }: {
 	target: HTMLElement;
 	outputNodeId: string;
@@ -140,6 +113,7 @@ const resolveInputDrop = ({
 	type: string;
 	inputTypes: PortTypeMap;
 	nodeActions: NodeActions | null;
+	triggerRecalculation: () => void;
 }) => {
 	const {
 		portName: connectToPortName,
@@ -170,6 +144,7 @@ const resolveInputDrop = ({
 		{ nodeId: connectToNodeId, portName: connectToPortName },
 		{ nodeId: outputNodeId, portName: outputPortName },
 	);
+	triggerRecalculation();
 };
 
 export const usePortDrag = ({
@@ -187,70 +162,154 @@ export const usePortDrag = ({
 	};
 	const editorId = React.useContext(EditorIdContext);
 	const inputTypes = React.useContext(PortTypesContext) ?? {};
-	const edgeRouting: EdgeRoutingMode = useEdgeRouting();
 
 	const [isDragging, setIsDragging] = React.useState(false);
 	const [dragStartCoordinates, setDragStartCoordinates] =
 		React.useState<Coordinate>({ x: 0, y: 0 });
-	const dragStartCoordinatesCache = React.useRef(dragStartCoordinates);
-	const line = React.useRef<SVGPathElement | null>(null);
-	const lineInToPort = React.useRef<SVGPathElement | null>(null);
+	const [dragCurrentCoordinates, setDragCurrentCoordinates] =
+		React.useState<Coordinate>({ x: 0, y: 0 });
+	const dragFrameRef = React.useRef<number | null>(null);
+	const pendingPointerRef = React.useRef<Coordinate | null>(null);
+	const pendingInputDisconnectRef = React.useRef<PendingInputDisconnect | null>(
+		null,
+	);
+	const handleDragRef = React.useRef<(event: MouseEvent) => void>(() => {});
+	const handleDragEndRef = React.useRef<(event: MouseEvent) => void>(() => {});
+
+	const DRAG_LISTENER_OPTIONS: AddEventListenerOptions = { capture: true };
+
+	const clientPointToCanvasAt = React.useCallback(
+		(clientX: number, clientY: number): Coordinate => {
+			const stageRect = getStageBounds(editorId);
+
+			if (!stageRect) {
+				return { x: 0, y: 0 };
+			}
+
+			const scale = readLiveStageScale(editorId, stageState.scale ?? 1);
+
+			return screenPointToCanvas(
+				clientX,
+				clientY,
+				stageRect,
+				scale,
+				stageState.translate ?? { x: 0, y: 0 },
+			);
+		},
+		[editorId, stageState.scale, stageState.translate],
+	);
+
+	const portRectCenterToCanvas = React.useCallback(
+		(rect: DOMRect | null | undefined): Coordinate => {
+			if (!rect) {
+				return { x: 0, y: 0 };
+			}
+
+			return clientPointToCanvasAt(
+				rect.left + rect.width / 2,
+				rect.top + rect.height / 2,
+			);
+		},
+		[clientPointToCanvasAt],
+	);
+
+	const clearDragListeners = React.useCallback(() => {
+		if (dragFrameRef.current !== null) {
+			cancelAnimationFrame(dragFrameRef.current);
+			dragFrameRef.current = null;
+		}
+
+		document.removeEventListener(
+			"mouseup",
+			handleDragEndRef.current,
+			DRAG_LISTENER_OPTIONS,
+		);
+		document.removeEventListener(
+			"mousemove",
+			handleDragRef.current,
+			DRAG_LISTENER_OPTIONS,
+		);
+	}, []);
+
+	const restoreHiddenConnection = React.useCallback(() => {
+		const pending = pendingInputDisconnectRef.current;
+
+		if (!pending?.connectionElement.parentElement) {
+			pendingInputDisconnectRef.current = null;
+			return;
+		}
+
+		pending.connectionElement.parentElement.style.visibility = "";
+		pendingInputDisconnectRef.current = null;
+	}, []);
 
 	const handleDrag = React.useCallback(
 		(event: MouseEvent) => {
-			const to = clientPointToCanvasAt(
-				editorId,
-				stageState.scale ?? 1,
+			pendingPointerRef.current = clientPointToCanvasAt(
 				event.clientX,
 				event.clientY,
 			);
-			const d = calculateEdgePath(
-				edgeRouting,
-				dragStartCoordinatesCache.current,
-				to,
-			);
 
-			if (isInput) {
-				lineInToPort.current?.setAttribute("d", d);
+			if (dragFrameRef.current !== null) {
 				return;
 			}
 
-			line.current?.setAttribute("d", d);
+			dragFrameRef.current = requestAnimationFrame(() => {
+				dragFrameRef.current = null;
+				const pointer = pendingPointerRef.current;
+
+				if (!pointer) {
+					return;
+				}
+
+				setDragCurrentCoordinates(pointer);
+			});
 		},
-		[editorId, stageState.scale, edgeRouting, isInput],
+		[clientPointToCanvasAt],
 	);
 
+	handleDragRef.current = handleDrag;
+
 	const handleDragEnd = React.useCallback(
-		(e: MouseEvent) => {
-			const target = e.target as HTMLElement;
-			const droppedOnPort = !!target?.dataset?.portName;
+		(event: MouseEvent) => {
+			clearDragListeners();
 
-			if (isInput) {
-				const {
-					inputNodeId = "",
-					inputPortName = "",
-					outputNodeId = "",
-					outputPortName = "",
-				} = lineInToPort.current?.dataset ?? {};
+			const pointer = clientPointToCanvasAt(event.clientX, event.clientY);
+			setDragCurrentCoordinates(pointer);
 
+			const dropTarget = resolvePortDropTarget(event);
+			const pendingInputDisconnect = pendingInputDisconnectRef.current;
+
+			if (isInput && pendingInputDisconnect) {
 				nodeActions?.removeConnection(
-					{ nodeId: inputNodeId, portName: inputPortName },
-					{ nodeId: outputNodeId, portName: outputPortName },
+					{
+						nodeId: pendingInputDisconnect.inputNodeId,
+						portName: pendingInputDisconnect.inputPortName,
+					},
+					{
+						nodeId: pendingInputDisconnect.outputNodeId,
+						portName: pendingInputDisconnect.outputPortName,
+					},
 				);
 
-				if (droppedOnPort) {
+				if (dropTarget) {
 					resolveInputDrop({
-						target,
-						outputNodeId,
-						outputPortName,
+						target: dropTarget,
+						outputNodeId: pendingInputDisconnect.outputNodeId,
+						outputPortName: pendingInputDisconnect.outputPortName,
 						type,
 						inputTypes,
 						nodeActions,
+						triggerRecalculation,
 					});
+				} else {
+					triggerRecalculation();
 				}
-			} else if (droppedOnPort) {
+
+				pendingInputDisconnectRef.current = null;
+			} else if (dropTarget) {
 				dispatchAcceptedConnection({
-					target,
+					target: dropTarget,
 					type,
 					nodeId,
 					name,
@@ -261,91 +320,110 @@ export const usePortDrag = ({
 			}
 
 			setIsDragging(false);
-			document.removeEventListener("mouseup", handleDragEnd);
-			document.removeEventListener("mousemove", handleDrag);
 		},
 		[
-			handleDrag,
+			clearDragListeners,
+			clientPointToCanvasAt,
 			isInput,
-			nodeActions,
-			type,
 			inputTypes,
-			nodeId,
 			name,
+			nodeActions,
+			nodeId,
 			triggerRecalculation,
+			type,
 		],
 	);
 
+	handleDragEndRef.current = handleDragEnd;
+
+	const attachDragListeners = React.useCallback(() => {
+		document.addEventListener(
+			"mouseup",
+			handleDragEndRef.current,
+			DRAG_LISTENER_OPTIONS,
+		);
+		document.addEventListener(
+			"mousemove",
+			handleDragRef.current,
+			DRAG_LISTENER_OPTIONS,
+		);
+	}, []);
+
 	const beginDragFromPort = React.useCallback(() => {
 		if (isInput) {
-			lineInToPort.current = document.querySelector<SVGPathElement>(
+			const connectionElement = document.querySelector<SVGPathElement>(
 				`[data-input-node-id="${nodeId}"][data-input-port-name="${name}"]`,
 			);
 
-			const portIsConnected = !!lineInToPort.current;
-
-			if (
-				!portIsConnected ||
-				!lineInToPort.current ||
-				!lineInToPort.current.parentElement
-			) {
+			if (!connectionElement?.parentElement) {
 				return;
 			}
 
-			lineInToPort.current.parentElement.style.zIndex = "9999";
+			const {
+				inputNodeId = nodeId,
+				inputPortName = name,
+				outputNodeId = "",
+				outputPortName = "",
+			} = connectionElement.dataset;
 
-			const outputRect = getPortRect(
-				lineInToPort.current.dataset.outputNodeId || "",
-				lineInToPort.current.dataset.outputPortName || "",
-				"output",
-			);
-			const coordinates = portRectCenterToCanvas(
-				editorId,
-				stageState.scale ?? 1,
-				outputRect,
-			);
+			if (!outputNodeId || !outputPortName) {
+				return;
+			}
+
+			const outputRect = getPortRect(outputNodeId, outputPortName, "output");
+			const coordinates = portRectCenterToCanvas(outputRect);
+
+			pendingInputDisconnectRef.current = {
+				inputNodeId,
+				inputPortName,
+				outputNodeId,
+				outputPortName,
+				connectionElement,
+			};
+			connectionElement.parentElement.style.visibility = "hidden";
 			setDragStartCoordinates(coordinates);
-			dragStartCoordinatesCache.current = coordinates;
+			setDragCurrentCoordinates(coordinates);
 			setIsDragging(true);
-			document.addEventListener("mouseup", handleDragEnd);
-			document.addEventListener("mousemove", handleDrag);
+			attachDragListeners();
 			return;
 		}
 
 		const coordinates = portRectCenterToCanvas(
-			editorId,
-			stageState.scale ?? 1,
 			portButtonRef.current?.getBoundingClientRect(),
 		);
 		setDragStartCoordinates(coordinates);
-		dragStartCoordinatesCache.current = coordinates;
+		setDragCurrentCoordinates(coordinates);
 		setIsDragging(true);
-		document.addEventListener("mouseup", handleDragEnd);
-		document.addEventListener("mousemove", handleDrag);
+		attachDragListeners();
 	}, [
+		attachDragListeners,
 		isInput,
-		nodeId,
 		name,
-		editorId,
-		stageState.scale,
-		handleDrag,
-		handleDragEnd,
+		nodeId,
 		portButtonRef,
+		portRectCenterToCanvas,
 	]);
 
 	const handleDragStart = React.useCallback(
-		(e: React.MouseEvent<HTMLButtonElement>) => {
-			e.preventDefault();
-			e.stopPropagation();
+		(event: React.MouseEvent<HTMLButtonElement>) => {
+			event.preventDefault();
+			event.stopPropagation();
 			beginDragFromPort();
 		},
 		[beginDragFromPort],
 	);
 
+	React.useEffect(() => {
+		return () => {
+			clearDragListeners();
+			restoreHiddenConnection();
+		};
+	}, [clearDragListeners, restoreHiddenConnection]);
+
 	return {
 		isDragging,
 		dragStartCoordinates,
-		lineRef: line,
+		dragCurrentCoordinates,
 		handleDragStart,
 		beginDragFromPort,
 	};

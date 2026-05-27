@@ -4,10 +4,6 @@ import {
 	type ObstacleRect,
 } from "#/components/flume/connectionCalculator";
 import {
-	buildRoutingGridFromObstacleMap,
-	routeOrthogonalWithGrid,
-} from "#/components/flume/orthogonal-grid-router";
-import {
 	buildObstacleMapFromSpatialIndex,
 	type NodeLayoutEntry,
 	type PortLayoutEntry,
@@ -44,16 +40,6 @@ const computeOrthogonalPath = (
 	inputNodeId: string,
 	allObstacles: ObstacleRect[],
 ): string => {
-	const grid = buildRoutingGridFromObstacleMap(
-		allObstaclesById,
-		new Set([outputNodeId, inputNodeId]),
-	);
-	const gridPath = routeOrthogonalWithGrid(from, to, grid);
-
-	if (gridPath) {
-		return gridPath;
-	}
-
 	const obstaclesHorizontal = Array.from(allObstaclesById.entries())
 		.filter(([nodeId]) => nodeId !== outputNodeId && nodeId !== inputNodeId)
 		.map(([, rect]) => rect);

@@ -153,8 +153,10 @@ export const useFlumeGraphWorker = (
 			const plain = JSON.parse(JSON.stringify(nodes)) as NodeMap;
 
 			lastNodesRef.current = plain;
-			void api.setGraph(plain);
-			scheduleRender();
+			void (async () => {
+				await api.setGraph(plain);
+				scheduleRender();
+			})();
 		},
 		[scheduleRender],
 	);
