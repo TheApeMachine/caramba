@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/theapemachine/manifesto/compiler"
 )
 
 /*
@@ -27,17 +28,11 @@ var (
 		Use:   "caramba",
 		Short: "Caramba is a fully featured machine learning research platform.",
 		Long:  rootLong,
-		RunE:  runRoot,
+		RunE:  func(cmd *cobra.Command, args []string) error {
+			return compiler.NewCompiler()
+		},
 	}
 )
-
-func runRoot(command *cobra.Command, args []string) error {
-	if strings.TrimSpace(programPath) == "" {
-		return fmt.Errorf("caramba: --program is required")
-	}
-
-	return runProgram(command, programPath, nil)
-}
 
 func Execute() {
 	err := rootCmd.Execute()
