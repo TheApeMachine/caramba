@@ -27,8 +27,6 @@ require (
 	github.com/theapemachine/errnie v1.2.3
 	github.com/theapemachine/hf v1.2.3
 	github.com/theapemachine/manifesto v1.2.3
-	github.com/theapemachine/puter v1.2.3
-	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -60,13 +58,16 @@ require (
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
+	github.com/llir/llvm v0.3.6 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.21 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
+	github.com/mewmew/float v0.0.0-20201204173432-505706aa38fa // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/smarty/assertions v1.16.0 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
@@ -79,8 +80,12 @@ require (
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	golang.org/x/crypto v0.50.0 // indirect
+	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/tools v0.43.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+	tinygo.org/x/go-llvm v0.0.0-20260422095634-06c6725fe5e6 // indirect
 )
 
 require (
