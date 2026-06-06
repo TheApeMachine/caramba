@@ -13,6 +13,7 @@ replace github.com/theapemachine/puter => ../puter
 replace github.com/theapemachine/hf => ../hf
 
 // replace github.com/theapemachine/qpool => ../qpool
+replace github.com/theapemachine/qpool => ../qpool
 
 require (
 	capnproto.org/go/capnp/v3 v3.1.0-alpha.2
@@ -27,6 +28,7 @@ require (
 	github.com/theapemachine/errnie v1.2.3
 	github.com/theapemachine/hf v1.2.3
 	github.com/theapemachine/manifesto v1.2.3
+	github.com/theapemachine/puter v1.2.3
 )
 
 require (

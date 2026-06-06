@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"os"
@@ -9,7 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/theapemachine/manifesto/compiler"
+	"github.com/theapemachine/caramba/pkg/config"
+	carambaruntime "github.com/theapemachine/caramba/pkg/runtime"
 )
 
 /*
@@ -28,9 +30,7 @@ var (
 		Use:   "caramba",
 		Short: "Caramba is a fully featured machine learning research platform.",
 		Long:  rootLong,
-		RunE:  func(cmd *cobra.Command, args []string) error {
-			return compiler.NewCompiler()
-		},
+		RunE:  runRoot,
 	}
 )
 
@@ -120,3 +120,35 @@ func initConfig() {
 const rootLong = `
 Caramba is a fully featured machine learning research platform.
 `
+
+func runRoot(cmd *cobra.Command, args []string) error {
+	if !cmd.PersistentFlags().Changed("program") || strings.TrimSpace(programPath) == "" {
+		return cmd.Help()
+	}
+
+	ctx := cmd.Context()
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	computeConfig := config.NewComputeConfig()
+	hubConfig := config.NewHubConfig()
+	platform, err := carambaruntime.NewPlatform(ctx, carambaruntime.PlatformOptions{
+		ComputeConfig: computeConfig,
+		HubConfig:     hubConfig,
+		Stdin:         os.Stdin,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	defer platform.Close()
+
+	return platform.RunProgram(ctx, programPath, carambaruntime.PlatformOptions{
+		ComputeConfig: computeConfig,
+		HubConfig:     hubConfig,
+		Stdin:         os.Stdin,
+	})
+}
