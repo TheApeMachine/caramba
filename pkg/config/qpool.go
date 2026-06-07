@@ -49,7 +49,7 @@ func NewQPoolConfig() *QPoolConfig {
 /*
 NewWorkerPool constructs the process-wide qpool from config.
 */
-func (qpoolConfig *QPoolConfig) NewWorkerPool(ctx context.Context) *qpool.Q {
+func (qpoolConfig *QPoolConfig) NewWorkerPool(ctx context.Context) *qpool.Q[any] {
 	poolConfig := qpool.NewConfig()
 	poolConfig.SchedulingTimeout = qpoolConfig.SchedulingTimeout
 
@@ -59,7 +59,7 @@ func (qpoolConfig *QPoolConfig) NewWorkerPool(ctx context.Context) *qpool.Q {
 
 	poolConfig.TelemetryPublish = qpool.Publish
 
-	return qpool.NewQ(
+	return qpool.NewQ[any](
 		ctx,
 		qpoolConfig.MinWorkers,
 		qpoolConfig.MaxWorkers,

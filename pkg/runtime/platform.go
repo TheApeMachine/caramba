@@ -31,7 +31,7 @@ type Platform struct {
 	devicePool   *pool.Pool
 	compute      *execution.Backend
 	weights      *execution.ResidentStore
-	workerPool   *qpool.Q
+	workerPool   *qpool.Q[any]
 	weightParser types.Parser
 }
 
@@ -232,6 +232,7 @@ func plannerBindingsForProgram(programPath string) ir.SymbolMap {
 		if state.Name == "write_page_ids" && len(state.Shape) >= 1 {
 			if tokenCount, ok := int64FromAny(state.Shape[0]); ok {
 				bindings["N"] = tokenCount
+				bindings["T"] = tokenCount
 			}
 		}
 
