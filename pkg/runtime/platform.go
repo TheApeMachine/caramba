@@ -236,6 +236,23 @@ func plannerBindingsForProgram(programPath string) ir.SymbolMap {
 			}
 		}
 
+		if state.Type == "tensor" && len(state.Shape) >= 2 {
+			if batchSize, ok := int64FromAny(state.Shape[0]); ok && batchSize > 0 {
+				bindings["B"] = batchSize
+			}
+
+			if sequenceLength, ok := int64FromAny(state.Shape[1]); ok && sequenceLength > 0 {
+				if state.Name == "latents" {
+					bindings["T"] = sequenceLength
+				}
+
+				if state.Name == "text_embedding" {
+					bindings["N"] = sequenceLength
+					bindings["C"] = sequenceLength
+				}
+			}
+		}
+
 		if state.Type != "paged_tensor" {
 			continue
 		}
@@ -322,11 +339,11 @@ func loadProgramWeights(
 		return nil, execution.NewResidentStore(memory), nil
 	}
 
-	var weightParser types.Parser
-	var weightStore *execution.ResidentStore
+	weightStore := execution.NewResidentStore(memory)
+	weightParsers := make([]types.Parser, 0, len(programAST.Includes))
 
 	for includeName, includeSource := range programAST.Includes {
-		repoID, _, ok := compiler.ParseHFReference(includeSource)
+		repoID, component, ok := compiler.ParseHFReference(includeSource)
 
 		if !ok {
 			continue
@@ -347,12 +364,18 @@ func loadProgramWeights(
 			return nil, nil, fmt.Errorf("parse include block %q: %w", includeName, err)
 		}
 
+		subfolder := block.WeightSubfolder()
+
+		if subfolder == "" && component != "" {
+			subfolder = component
+		}
+
 		location := hub.ManifestRepoLocation(repoID, "", hubConfig.Token)
 		bundle, _, err := execution.DownloadSafetensorsBundle(
 			ctx,
 			resolveHub,
 			location,
-			block.WeightSubfolder(),
+			subfolder,
 			hubConfig.CacheDir,
 			memory,
 		)
@@ -361,15 +384,11 @@ func loadProgramWeights(
 			return nil, nil, fmt.Errorf("download weights for include %q: %w", includeName, err)
 		}
 
-		weightParser = bundle.Parser
-		weightStore = bundle.Store
+		weightStore.Absorb(bundle.Store)
+		weightParsers = append(weightParsers, bundle.Parser)
 	}
 
-	if weightStore == nil {
-		weightStore = execution.NewResidentStore(memory)
-	}
-
-	return weightParser, weightStore, nil
+	return execution.NewMergedParser(weightParsers...), weightStore, nil
 }
 
 func readProgramBytes(programPath string) ([]byte, error) {
